@@ -87,16 +87,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               size="lg"
               render={(buttonProps) => (
                 <Link href="/dashboard" {...buttonProps}>
-                  <Image
-                    src="/icons/mpp.svg"
-                    alt="multi-plantform poster"
-                    width={28}
-                    height={28}
-                  />
+                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                    <Image
+                      src="/icons/mpp.svg"
+                      alt="Multi-Poster"
+                      width={20}
+                      height={20}
+                      className="size-5"
+                    />
+                  </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">
-                      multi-plantform poster
-                    </span>
+                    <span className="truncate font-semibold">Multi-Poster</span>
+                    <span className="truncate text-xs">内容一键分发</span>
                   </div>
                 </Link>
               )}
