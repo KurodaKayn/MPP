@@ -28,7 +28,7 @@ const (
 )
 
 type User struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
 	Username  string    `gorm:"not null"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -36,7 +36,7 @@ type User struct {
 }
 
 type Project struct {
-	ID            uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	ID            uuid.UUID `gorm:"type:uuid;primaryKey"`
 	UserID        uuid.UUID `gorm:"type:uuid;not null;index:idx_projects_user_status_created_at"`
 	Title         string    `gorm:"not null"`
 	SourceContent string    `gorm:"type:text;not null"`
@@ -47,7 +47,7 @@ type Project struct {
 }
 
 type ProjectPlatformPublication struct {
-	ID             uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	ID             uuid.UUID      `gorm:"type:uuid;primaryKey"`
 	ProjectID      uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:idx_publications_project_platform"`
 	Platform       string         `gorm:"not null;uniqueIndex:idx_publications_project_platform;index:idx_publications_platform_status"`
 	Enabled        bool           `gorm:"not null;default:true"`
