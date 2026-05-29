@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import * as React from "react";
 import {
   LayoutDashboard,
   FileText,
@@ -9,7 +9,9 @@ import {
   PlusCircle,
   LogOut,
   User,
-} from "lucide-react"
+} from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
 
 import {
   Sidebar,
@@ -20,7 +22,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,9 +30,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import Link from "next/link"
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const data = {
   user: {
@@ -67,7 +68,7 @@ const data = {
       icon: Settings,
     },
   ],
-}
+};
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
@@ -75,12 +76,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton 
-              size="lg" 
+            <SidebarMenuButton
+              size="lg"
               render={(buttonProps) => (
                 <Link href="/dashboard" {...buttonProps}>
                   <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <img src="/icons/mpp.svg" alt="Multi-Poster" className="size-5" />
+                    <Image
+                      src="/icons/mpp.svg"
+                      alt="Multi-Poster"
+                      width={20}
+                      height={20}
+                      className="size-5"
+                    />
                   </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-semibold">Multi-Poster</span>
@@ -96,7 +103,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           {data.navMain.map((item) => (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton 
+              <SidebarMenuButton
                 tooltip={item.title}
                 render={(buttonProps) => (
                   <Link href={item.url} {...buttonProps}>
@@ -111,7 +118,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu className="mt-auto">
           {data.navSecondary.map((item) => (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton 
+              <SidebarMenuButton
                 size="sm"
                 render={(buttonProps) => (
                   <Link href={item.url} {...buttonProps}>
@@ -137,13 +144,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   >
                     <Avatar className="h-8 w-8 rounded-lg">
                       {data.user.avatar ? (
-                        <AvatarImage src={data.user.avatar} alt={data.user.name} />
+                        <AvatarImage
+                          src={data.user.avatar}
+                          alt={data.user.name}
+                        />
                       ) : null}
                       <AvatarFallback className="rounded-lg">CR</AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-semibold">{data.user.name}</span>
-                      <span className="truncate text-xs">{data.user.email}</span>
+                      <span className="truncate font-semibold">
+                        {data.user.name}
+                      </span>
+                      <span className="truncate text-xs">
+                        {data.user.email}
+                      </span>
                     </div>
                   </SidebarMenuButton>
                 )}
@@ -158,13 +172,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                     <Avatar className="h-8 w-8 rounded-lg">
                       {data.user.avatar ? (
-                        <AvatarImage src={data.user.avatar} alt={data.user.name} />
+                        <AvatarImage
+                          src={data.user.avatar}
+                          alt={data.user.name}
+                        />
                       ) : null}
                       <AvatarFallback className="rounded-lg">CR</AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-semibold">{data.user.name}</span>
-                      <span className="truncate text-xs">{data.user.email}</span>
+                      <span className="truncate font-semibold">
+                        {data.user.name}
+                      </span>
+                      <span className="truncate text-xs">
+                        {data.user.email}
+                      </span>
                     </div>
                   </div>
                 </DropdownMenuLabel>
@@ -189,5 +210,5 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
-  )
+  );
 }
