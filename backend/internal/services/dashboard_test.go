@@ -1,12 +1,15 @@
 package services_test
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/dto"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
+	"github.com/kurodakayn/sevenoxcloud-backend/internal/publisher"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/services"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/datatypes"
@@ -81,6 +84,23 @@ func (f *fakeWechatTester) Test(appID, appSecret string) dto.WechatConnectionTes
 	f.appID = appID
 	f.secret = appSecret
 	return f.result
+}
+
+type fakePlatformPublisher struct {
+	config datatypes.JSON
+}
+
+func (f *fakePlatformPublisher) ValidateConfig(config []byte) error {
+	return nil
+}
+
+func (f *fakePlatformPublisher) AdaptContent(project *models.Project) ([]byte, error) {
+	return nil, nil
+}
+
+func (f *fakePlatformPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication) (string, string, error) {
+	f.config = append(datatypes.JSON(nil), pub.Config...)
+	return "remote-id", "https://example.com/published", nil
 }
 
 func TestGetStats(t *testing.T) {
@@ -247,4 +267,83 @@ func TestWechatAccountTestUsesSavedSecretAndUpdatesStatus(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, models.PlatformAccountStatusConnected, saved.Status)
 	assert.Empty(t, saved.LastTestError)
+}
+
+func TestWechatAccountTestDoesNotPersistUnsavedCredentialsStatus(t *testing.T) {
+	db := setupTestDB()
+	testedAt := time.Now()
+	tester := &fakeWechatTester{
+		result: dto.WechatConnectionTestResponse{
+			Connected: false,
+			Status:    models.PlatformAccountStatusFailed,
+			Message:   "failed",
+			TestedAt:  testedAt,
+		},
+	}
+	s := services.NewDashboardServiceWithWechatTester(db, tester)
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+
+	_, err := s.UpsertWechatAccount(user.ID, dto.UpsertWechatAccountRequest{
+		AppID:     "wx-saved",
+		AppSecret: "saved-secret",
+	})
+	assert.NoError(t, err)
+
+	result, err := s.TestWechatAccount(user.ID, dto.TestWechatAccountRequest{
+		AppID:     "wx-draft",
+		AppSecret: "draft-secret",
+	})
+	assert.NoError(t, err)
+	assert.False(t, result.Connected)
+	assert.Equal(t, "wx-draft", tester.appID)
+	assert.Equal(t, "draft-secret", tester.secret)
+
+	saved, err := s.GetWechatAccount(user.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, models.PlatformAccountStatusUntested, saved.Status)
+	assert.Nil(t, saved.LastTestedAt)
+	assert.Empty(t, saved.LastTestError)
+}
+
+func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &fakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	db.Create(&project)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"app_id":"stale","app_secret":"stale-secret","title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	db.Create(&pub)
+	_, err := s.UpsertWechatAccount(user.ID, dto.UpsertWechatAccountRequest{
+		AppID:     "wx-saved",
+		AppSecret: "saved-secret",
+	})
+	assert.NoError(t, err)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+
+	var config map[string]string
+	assert.NoError(t, json.Unmarshal(fakePublisher.config, &config))
+	assert.Equal(t, "wx-saved", config["app_id"])
+	assert.Equal(t, "saved-secret", config["app_secret"])
+	assert.Equal(t, "Title", config["title"])
 }
