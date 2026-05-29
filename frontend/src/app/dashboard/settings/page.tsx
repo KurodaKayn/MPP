@@ -153,7 +153,12 @@ export default function SettingsPage() {
 
   const currentIPHint = testResult?.ip_whitelist ?? account?.ip_whitelist;
   const currentAuthHint = testResult?.account_auth ?? account?.account_auth;
-  const currentStatus = account?.status ?? "unconfigured";
+  const currentStatus = testResult?.status ?? account?.status ?? "unconfigured";
+  const currentLastTestedAt = testResult?.tested_at ?? account?.last_tested_at;
+  let currentTestError = account?.last_test_error;
+  if (testResult) {
+    currentTestError = testResult.connected ? undefined : testResult.message;
+  }
 
   const handleSave = async () => {
     setSaving(true);
@@ -183,18 +188,6 @@ export default function SettingsPage() {
         app_secret: appSecret.trim(),
       });
       setTestResult(result);
-      setAccount((current) =>
-        current
-          ? {
-              ...current,
-              account_auth: result.account_auth,
-              ip_whitelist: result.ip_whitelist,
-              last_test_error: result.connected ? undefined : result.message,
-              last_tested_at: result.tested_at,
-              status: result.status,
-            }
-          : current,
-      );
 
       if (result.connected) {
         toast.success("连接成功", {
@@ -250,7 +243,10 @@ export default function SettingsPage() {
                   id="wechat-app-id"
                   autoComplete="off"
                   value={appID}
-                  onChange={(event) => setAppID(event.target.value)}
+                  onChange={(event) => {
+                    setAppID(event.target.value);
+                    setTestResult(null);
+                  }}
                   placeholder="wx..."
                   disabled={loading || saving || testing}
                 />
@@ -263,7 +259,10 @@ export default function SettingsPage() {
                   autoComplete="new-password"
                   type="password"
                   value={appSecret}
-                  onChange={(event) => setAppSecret(event.target.value)}
+                  onChange={(event) => {
+                    setAppSecret(event.target.value);
+                    setTestResult(null);
+                  }}
                   placeholder={
                     account?.has_app_secret
                       ? "已保存，留空则继续沿用"
@@ -314,7 +313,7 @@ export default function SettingsPage() {
               连接检查
             </CardTitle>
             <CardDescription>
-              最近测试：{formatDate(account?.last_tested_at)}
+              最近测试：{formatDate(currentLastTestedAt)}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -323,9 +322,9 @@ export default function SettingsPage() {
               {currentAuthHint ? (
                 <RequirementPanel hint={currentAuthHint} />
               ) : null}
-              {account?.last_test_error ? (
+              {currentTestError ? (
                 <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm leading-6 text-destructive">
-                  {account.last_test_error}
+                  {currentTestError}
                 </div>
               ) : null}
               {testResult?.err_code ? (
