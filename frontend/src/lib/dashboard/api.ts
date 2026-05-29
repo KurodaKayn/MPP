@@ -1,3 +1,5 @@
+import { formatBearerToken, getStoredAuthToken } from "../auth/client";
+
 export type DashboardStats = {
   total_users: number;
   total_projects: number;
@@ -38,49 +40,6 @@ type ApiErrorResponse = {
     message?: string;
   };
 };
-
-const authTokenStorageKeys = [
-  "sevenoxcloud.auth_token",
-  "auth_token",
-  "access_token",
-];
-
-function formatBearerToken(token: string) {
-  return token.toLowerCase().startsWith("bearer ") ? token : `Bearer ${token}`;
-}
-
-function getStorageToken(storage: Storage) {
-  for (const key of authTokenStorageKeys) {
-    const token = storage.getItem(key);
-    if (token) {
-      return token;
-    }
-  }
-
-  return null;
-}
-
-function getStoredAuthToken() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  for (const getStorage of [
-    () => window.localStorage,
-    () => window.sessionStorage,
-  ]) {
-    try {
-      const token = getStorageToken(getStorage());
-      if (token) {
-        return token;
-      }
-    } catch {
-      // Some privacy modes can deny Web Storage access.
-    }
-  }
-
-  return null;
-}
 
 async function fetchDashboard<T>(path: string): Promise<T> {
   const headers = new Headers({
