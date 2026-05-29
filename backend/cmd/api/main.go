@@ -1,12 +1,29 @@
 package main
 
 import (
+	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/kurodakayn/sevenoxcloud-backend/internal/db"
+	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
 	"net/http"
+	"os"
 )
 
 func main() {
+	// Load .env file if it exists
+	_ = godotenv.Load()
+
+	// Initialize Database
+	db.InitDB()
+
+	// Auto Migrate
+	db.DB.AutoMigrate(
+		&models.User{},
+		&models.Project{},
+		&models.ProjectPlatformPublication{},
+	)
+
 	e := echo.New()
 
 	// Middleware
@@ -20,6 +37,20 @@ func main() {
 		})
 	})
 
+	// AI Proxy example
+	e.POST("/api/ai/calibrate", func(c echo.Context) error {
+		// In a real app, this would proxy to the AI service
+		return c.JSON(http.StatusOK, map[string]string{
+			"status": "pending",
+			"message": "AI calibration endpoint initialized",
+		})
+	})
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	// Start server
-	e.Logger.Fatal(e.Start(":8080"))
+	e.Logger.Fatal(e.Start(":" + port))
 }
