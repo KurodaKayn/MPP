@@ -13,10 +13,11 @@ RUN pnpm install --frozen-lockfile
 FROM base AS dev
 WORKDIR /app
 ENV NODE_ENV=development
+ENV CI=true
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 EXPOSE 3000
-CMD ["sh", "-c", "pnpm install --frozen-lockfile && pnpm dev --hostname 0.0.0.0"]
+CMD ["sh", "-c", "pnpm install --frozen-lockfile --config.confirmModulesPurge=false --store-dir /pnpm/store && pnpm dev --hostname 0.0.0.0"]
 
 FROM base AS builder
 WORKDIR /app

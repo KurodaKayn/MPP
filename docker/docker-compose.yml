@@ -1,3 +1,5 @@
+name: mpp
+
 services:
   frontend:
     build:
