@@ -1,4 +1,5 @@
 package services
+
 import (
 	"context"
 	"encoding/json"
@@ -60,11 +61,19 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
 
 type DashboardService struct {
-	db *gorm.DB
+	db           *gorm.DB
+	wechatTester WechatConnectionTester
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
-	return &DashboardService{db: db}
+	return NewDashboardServiceWithWechatTester(db, WechatAPITester{})
+}
+
+func NewDashboardServiceWithWechatTester(db *gorm.DB, tester WechatConnectionTester) *DashboardService {
+	if tester == nil {
+		tester = WechatAPITester{}
+	}
+	return &DashboardService{db: db, wechatTester: tester}
 }
 
 func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
@@ -130,7 +139,7 @@ func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, p
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
-	
+
 	if platform != "" {
 		query = query.Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id").
 			Where("ppp.platform = ?", platform).

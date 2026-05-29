@@ -3,6 +3,7 @@ package publisher
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
@@ -104,7 +105,7 @@ func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	// Handle special error code 48001 (Unauthorized API publishing)
 	if errCode == 48001 {
 		warningMsg := "Draft created successfully (MediaID: " + draftMediaID + "), but your account requires manual publication via WeChat Dashboard (Error 48001)."
-		return draftMediaID, "", fmt.Errorf(warningMsg)
+		return draftMediaID, "", errors.New(warningMsg)
 	}
 
 	publishURL := fmt.Sprintf("https://mp.weixin.qq.com/s?publish_id=%s", publishID)
