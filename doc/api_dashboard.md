@@ -1,11 +1,12 @@
 # Dashboard API Documentation
 
-This document defines the core read-only APIs used by the platform dashboard. All endpoints follow RESTful conventions and return a standardized error data structure upon failure.
+This document defines the core read-only APIs used by the platform dashboard. The APIs are segregated into Admin and User (Personal Center) scopes. All endpoints follow RESTful conventions and return a standardized error data structure upon failure.
 
 ## Global Conventions
 
-### Base Path
-`/api`
+### Base Paths
+- Admin Scope: `/api/admin/dashboard`
+- User Scope: `/api/user/dashboard`
 
 ### Standard Pagination Response
 Endpoints that return paginated lists will use the following nested structure:
@@ -24,7 +25,7 @@ Upon failure (HTTP status codes 4xx or 5xx), the following structure will be ret
 ```json
 {
   "error": {
-    "code": "invalid_request",  // Error code (e.g., invalid_request, not_found, internal_error)
+    "code": "invalid_request",  // Error code (e.g., invalid_request, unauthorized, forbidden, not_found, internal_error)
     "message": "Detailed error description" // Specific error message intended for developers
   }
 }
@@ -32,47 +33,72 @@ Upon failure (HTTP status codes 4xx or 5xx), the following structure will be ret
 
 ---
 
-## 1. Get Dashboard Overview Statistics (Dashboard Stats)
+## Authentication & Authorization
 
-Retrieves macro-level system metrics used for the primary data display at the top of the dashboard.
+### 1. Mock Login (Development Only)
+Generates a JWT token for local testing without a full authentication flow.
 
-- **URL**: `/dashboard/stats`
-- **Method**: `GET`
-- **Auth Required**: Admin (Not strictly enforced during the current development phase)
+- **URL**: `/api/auth/mock-login`
+- **Method**: `POST`
+- **Auth Required**: None
 
-### Request Parameters
-None.
-
-### Response `200 OK`
+**Request Body** (`application/json`):
 ```json
 {
-  "total_users": 2,                           // Total number of registered users on the platform
-  "total_projects": 19,                       // Total number of projects (articles) created in the system
-  "total_published_publications": 2,          // Total number of successfully published records across all platforms
-  "total_failed_publications": 1              // Total number of failed publication records across all platforms
+  "username": "kuroda_kayn"
 }
 ```
 
+**Response `200 OK`**:
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+### 2. User Scope Authentication
+All endpoints under `/api/user/dashboard` require a valid JWT token passed in the Authorization header.
+- **Header**: `Authorization: Bearer <token>`
+- **Behavior**: The server extracts the `user_id` securely from the JWT. Attempting to access another user's project will result in a `403 Forbidden` error.
+
 ---
 
-## 2. Get Project List (List Projects)
+## Dashboard APIs (Admin & User)
 
-Retrieves a paginated list of projects (articles). This endpoint is optimized for list rendering; **it explicitly excludes extremely large text fields like `source_content`**, and returns a nested, summarized distribution status for each platform.
+The following APIs share the same response structures but apply different data scope boundaries depending on the base path.
 
-- **URL**: `/projects`
-- **Method**: `GET`
-- **Auth Required**: Admin (or the user specified in the current context)
+### 1. Get Dashboard Overview Statistics
+Retrieves macro-level system metrics used for the primary data display.
 
-### Query Parameters
+- **Admin URL**: `GET /api/admin/dashboard/stats` (Returns global totals across all users)
+- **User URL**: `GET /api/user/dashboard/stats` (Returns totals belonging only to the authenticated user)
+
+**Response `200 OK`**:
+```json
+{
+  "total_users": 2,                           // Total users (Always 1 for User URL)
+  "total_projects": 19,                       // Total number of projects (articles)
+  "total_published_publications": 2,          // Total successfully published records
+  "total_failed_publications": 1              // Total failed publication records
+}
+```
+
+### 2. Get Project List
+Retrieves a paginated list of projects (articles). Optimized for list rendering; explicitly excludes extremely large text fields like `source_content`, returning a summarized distribution status for each platform.
+
+- **Admin URL**: `GET /api/admin/dashboard/projects`
+- **User URL**: `GET /api/user/dashboard/projects` (Strictly scoped to the authenticated user)
+
+**Query Parameters**:
 | Parameter | Type | Required | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `page` | integer | No | 1 | Current page number, minimum is 1 |
-| `limit` | integer | No | 10 | Number of items to display per page, maximum limit is 100 |
+| `limit` | integer | No | 10 | Number of items to display per page, maximum is 100 |
 | `status` | string | No | - | Filter by project status (`draft`, `ready`, `publishing`, `published`, `failed`) |
-| `user_id`| string(uuid)| No | - | (Admin only) Filter projects belonging to a specific user |
-| `platform`| string | No | - | Filter projects that contain distribution records for a specific platform (e.g., `wechat`, `zhihu`) |
+| `user_id`| string(uuid)| No | - | **(Admin URL only)** Filter projects belonging to a specific user |
+| `platform`| string | No | - | Filter projects containing distribution records for a specific platform (e.g., `wechat`, `zhihu`) |
 
-### Response `200 OK`
+**Response `200 OK`**:
 ```json
 {
   "items": [
@@ -90,13 +116,6 @@ Retrieves a paginated list of projects (articles). This endpoint is optimized fo
           "enabled": true,
           "status": "published",
           "publish_url": "https://mp.weixin.qq.com/s/abcdefg123456"
-        },
-        {
-          "id": "231d85d2-9dec-49a9-9e85-af05e71a3391",
-          "platform": "zhihu",
-          "enabled": true,
-          "status": "published",
-          "publish_url": "https://www.zhihu.com/question/12345/answer/67890"
         }
       ]
     }
@@ -108,24 +127,20 @@ Retrieves a paginated list of projects (articles). This endpoint is optimized fo
 }
 ```
 
----
+### 3. Get Project Platform Publication Details
+Used on the project detail page to view specific configurations, adapted content summaries, and distribution statuses for this content across various social media platforms.
 
-## 3. Get Project Platform Publication Details (Project Publication Details)
+> ⚠️ **Security Notice**: To prevent the leakage of sensitive information, this endpoint implements strict **whitelist filtering** on the `config` field (hiding credentials such as Tokens and Cookies). `adapted_content` only returns the format type and a text summary, filtering out the massive `full_text` string used for rendering.
 
-Used on the project detail page to view the specific configurations, adapted content summaries, and distribution statuses for this content across various social media platforms.
+- **Admin URL**: `GET /api/admin/dashboard/projects/:id/publications`
+- **User URL**: `GET /api/user/dashboard/projects/:id/publications` (Verifies ownership of `:id`)
 
-> ⚠️ **Security Notice**: To prevent the leakage of sensitive information, this endpoint implements strict **whitelist filtering** on the `config` field (hiding credentials such as Tokens and Cookies). To ensure network transmission efficiency, `adapted_content` only returns the format type and a text summary, filtering out the massive `full_text` string used for rendering.
-
-- **URL**: `/projects/:id/publications`
-- **Method**: `GET`
-- **Auth Required**: Admin (or the owning user)
-
-### Path Parameters
+**Path Parameters**:
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `id` | string(uuid) | Yes | The UUID of the Project |
 
-### Response `200 OK`
+**Response `200 OK`**:
 ```json
 {
   "project_id": "f31d7ae2-0cea-4c7a-a0e9-f760e568f4d5",
@@ -143,15 +158,15 @@ Used on the project detail page to view the specific configurations, adapted con
         // Note: Sensitive configurations like author_token stored in the database are automatically sanitized
       },
       "adapted_content": {
-        "summary": "A comprehensive 10,000-word analysis of 2026 AI large model development trends, helping you understand the future of multi-modality and Agent ecosystems. Click 'Read More' for the full report.",
+        "summary": "A comprehensive analysis of 2026 AI large model trends.",
         "format": "html"
-        // Note: The massive body text for rendering is filtered out to protect frontend performance
+        // Note: The massive body text for rendering is filtered out
       },
       "publish_url": "https://mp.weixin.qq.com/s/abcdefg123456",
       "remote_id": "wx_article_998877",
       "retry_count": 0,
       "last_attempt_at": null,
-      "published_at": null,
+      "published_at": "2026-05-26T11:23:50.482Z",
       "created_at": "2026-05-26T11:23:50.482Z",
       "updated_at": "2026-05-26T11:23:50.482Z"
     }
@@ -159,7 +174,7 @@ Used on the project detail page to view the specific configurations, adapted con
 }
 ```
 
-### Error Response Examples
-
-- **400 Bad Request** (`invalid_request`): The provided `id` is not a valid UUID format.
-- **404 Not Found** (`not_found`): The specified project ID does not exist in the database.
+**Error Response Examples**:
+- **401 Unauthorized**: Missing or invalid JWT token on `/api/user/*` routes.
+- **403 Forbidden**: Authenticated user attempts to view a project they do not own.
+- **404 Not Found**: The specified project ID does not exist.
