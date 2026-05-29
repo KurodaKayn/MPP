@@ -11,7 +11,6 @@ import (
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/db"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/handlers"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/middleware"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/services"
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
@@ -37,13 +36,6 @@ func main() {
 
 	// Initialize Database
 	db.InitDB()
-
-	// Auto Migrate
-	db.DB.AutoMigrate(
-		&models.User{},
-		&models.Project{},
-		&models.ProjectPlatformPublication{},
-	)
 
 	// Initialize Services and Handlers
 	dashboardService := services.NewDashboardService(db.DB)
