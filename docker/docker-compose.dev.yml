@@ -23,6 +23,9 @@ services:
   backend:
     build:
       target: dev
+    environment:
+      APP_ENV: development
+      ENABLE_DEV_SEED: "true"
     volumes:
       - ../backend:/app
       - backend_go_cache:/go/pkg/mod
