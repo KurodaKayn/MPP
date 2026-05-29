@@ -130,16 +130,17 @@ func (s *DashboardService) TestWechatAccount(userID uuid.UUID, req dto.TestWecha
 		return nil, err
 	}
 
+	var savedCredentials wechatCredentials
 	if accountExists {
-		credentials, err := parseWechatCredentials(account.Credentials)
+		savedCredentials, err = parseWechatCredentials(account.Credentials)
 		if err != nil {
 			return nil, err
 		}
 		if appID == "" {
-			appID = credentials.AppID
+			appID = savedCredentials.AppID
 		}
 		if appSecret == "" {
-			appSecret = credentials.AppSecret
+			appSecret = savedCredentials.AppSecret
 		}
 	}
 
@@ -149,7 +150,7 @@ func (s *DashboardService) TestWechatAccount(userID uuid.UUID, req dto.TestWecha
 
 	result := s.wechatTester.Test(appID, appSecret)
 
-	if accountExists {
+	if accountExists && appID == savedCredentials.AppID && appSecret == savedCredentials.AppSecret {
 		status := models.PlatformAccountStatusFailed
 		errMessage := result.Message
 		if result.Connected {
@@ -167,6 +168,52 @@ func (s *DashboardService) TestWechatAccount(userID uuid.UUID, req dto.TestWecha
 	}
 
 	return &result, nil
+}
+
+func (s *DashboardService) applySavedWechatCredentialsToPublication(userID uuid.UUID, pub *models.ProjectPlatformPublication) error {
+	if pub.Platform != wechatPlatform {
+		return nil
+	}
+
+	var account models.PlatformAccount
+	err := s.db.Where("user_id = ? AND platform = ?", userID, wechatPlatform).First(&account).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	credentials, err := parseWechatCredentials(account.Credentials)
+	if err != nil {
+		return err
+	}
+	if credentials.AppID == "" && credentials.AppSecret == "" {
+		return nil
+	}
+
+	config := map[string]interface{}{}
+	if len(pub.Config) > 0 {
+		if err := json.Unmarshal(pub.Config, &config); err != nil {
+			return fmt.Errorf("failed to parse wechat publication config: %w", err)
+		}
+	}
+	if config == nil {
+		config = map[string]interface{}{}
+	}
+	if credentials.AppID != "" {
+		config["app_id"] = credentials.AppID
+	}
+	if credentials.AppSecret != "" {
+		config["app_secret"] = credentials.AppSecret
+	}
+
+	merged, err := marshalJSON(config)
+	if err != nil {
+		return err
+	}
+	pub.Config = merged
+	return nil
 }
 
 func emptyWechatAccountResponse() dto.WechatAccountResponse {
@@ -234,7 +281,7 @@ func buildWechatConnectionResult(err error) dto.WechatConnectionTestResponse {
 	resp := dto.WechatConnectionTestResponse{
 		Connected:   false,
 		Status:      models.PlatformAccountStatusFailed,
-		Message:     "连接失败：" + err.Error(),
+		Message:     "连接失败：无法完成微信接口校验，请稍后重试。",
 		TestedAt:    testedAt,
 		IPWhitelist: unknownIPWhitelistHint(),
 		AccountAuth: unknownAccountAuthHint(),
@@ -244,6 +291,7 @@ func buildWechatConnectionResult(err error) dto.WechatConnectionTestResponse {
 	if errors.As(err, &apiErr) {
 		resp.ErrCode = apiErr.ErrCode
 		resp.ErrMsg = apiErr.ErrMsg
+		resp.Message = "连接失败：微信接口返回错误，请根据错误码确认公众号配置。"
 		switch apiErr.ErrCode {
 		case 40164:
 			resp.Message = "连接失败：当前服务器出口 IP 未加入公众号后台 IP 白名单。"
