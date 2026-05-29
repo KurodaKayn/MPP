@@ -6,37 +6,39 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/dto"
+	"github.com/kurodakayn/sevenoxcloud-backend/internal/middleware"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/services"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
 
-type DashboardHandler struct {
+type UserDashboardHandler struct {
 	dashboardService *services.DashboardService
 }
 
-func NewDashboardHandler(s *services.DashboardService) *DashboardHandler {
-	return &DashboardHandler{dashboardService: s}
+func NewUserDashboardHandler(s *services.DashboardService) *UserDashboardHandler {
+	return &UserDashboardHandler{dashboardService: s}
 }
 
-func sendError(c echo.Context, code int, errCode, message string) error {
-	resp := dto.ErrorResponse{}
-	resp.Error.Code = errCode
-	resp.Error.Message = message
-	return c.JSON(code, resp)
-}
+func (h *UserDashboardHandler) GetMyStats(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
 
-func (h *DashboardHandler) GetStats(c echo.Context) error {
-	// Admin view: no scope
-	stats, err := h.dashboardService.GetStats(nil)
+	stats, err := h.dashboardService.GetStats(&userID)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 	return c.JSON(http.StatusOK, stats)
 }
 
-func (h *DashboardHandler) ListProjects(c echo.Context) error {
+func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	if page < 1 {
 		page = 1
@@ -51,11 +53,10 @@ func (h *DashboardHandler) ListProjects(c echo.Context) error {
 	}
 
 	status := c.QueryParam("status")
-	userID := c.QueryParam("user_id")
 	platform := c.QueryParam("platform")
 
-	// Admin view: no scope, filterUserID allowed
-	resp, err := h.dashboardService.ListProjects(page, limit, status, userID, platform, nil)
+	// Personal view: enforce scopeUserID, ignore any requested filterUserID
+	resp, err := h.dashboardService.ListProjects(page, limit, status, "", platform, &userID)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -63,15 +64,20 @@ func (h *DashboardHandler) ListProjects(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
-func (h *DashboardHandler) GetProjectPublications(c echo.Context) error {
+func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
 	idParam := c.Param("id")
 	projectID, err := uuid.Parse(idParam)
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 
-	// Admin view: no scope
-	resp, err := h.dashboardService.GetProjectPublications(projectID, nil)
+	// Personal view: enforce scopeUserID to check ownership
+	resp, err := h.dashboardService.GetProjectPublications(projectID, &userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
@@ -84,4 +90,3 @@ func (h *DashboardHandler) GetProjectPublications(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, resp)
 }
-

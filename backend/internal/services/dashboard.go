@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"math"
 
 	"github.com/google/uuid"
@@ -9,6 +10,8 @@ import (
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
 	"gorm.io/gorm"
 )
+
+var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
 
 type DashboardService struct {
 	db *gorm.DB
@@ -18,46 +21,70 @@ func NewDashboardService(db *gorm.DB) *DashboardService {
 	return &DashboardService{db: db}
 }
 
-func (s *DashboardService) GetStats() (*dto.DashboardStatsResponse, error) {
+func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
 	var stats dto.DashboardStatsResponse
 
-	if err := s.db.Model(&models.User{}).Count(&stats.TotalUsers).Error; err != nil {
+	// Users count (Only admin should see total users)
+	if scopeUserID == nil {
+		if err := s.db.Model(&models.User{}).Count(&stats.TotalUsers).Error; err != nil {
+			return nil, err
+		}
+	} else {
+		stats.TotalUsers = 1 // Scoped to self
+	}
+
+	// Projects count
+	projQuery := s.db.Model(&models.Project{})
+	if scopeUserID != nil {
+		projQuery = projQuery.Where("user_id = ?", *scopeUserID)
+	}
+	if err := projQuery.Count(&stats.TotalProjects).Error; err != nil {
 		return nil, err
 	}
 
-	if err := s.db.Model(&models.Project{}).Count(&stats.TotalProjects).Error; err != nil {
+	// Published publications count
+	pubPubQuery := s.db.Model(&models.ProjectPlatformPublication{}).Where("project_platform_publications.status = ?", models.PublicationStatusPublished)
+	if scopeUserID != nil {
+		pubPubQuery = pubPubQuery.Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
+			Where("projects.user_id = ?", *scopeUserID)
+	}
+	if err := pubPubQuery.Count(&stats.TotalPublishedPublications).Error; err != nil {
 		return nil, err
 	}
 
-	if err := s.db.Model(&models.ProjectPlatformPublication{}).
-		Where("status = ?", models.PublicationStatusPublished).
-		Count(&stats.TotalPublishedPublications).Error; err != nil {
-		return nil, err
+	// Failed publications count
+	failPubQuery := s.db.Model(&models.ProjectPlatformPublication{}).Where("project_platform_publications.status = ?", models.PublicationStatusFailed)
+	if scopeUserID != nil {
+		failPubQuery = failPubQuery.Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
+			Where("projects.user_id = ?", *scopeUserID)
 	}
-
-	if err := s.db.Model(&models.ProjectPlatformPublication{}).
-		Where("status = ?", models.PublicationStatusFailed).
-		Count(&stats.TotalFailedPublications).Error; err != nil {
+	if err := failPubQuery.Count(&stats.TotalFailedPublications).Error; err != nil {
 		return nil, err
 	}
 
 	return &stats, nil
 }
 
-func (s *DashboardService) ListProjects(page, limit int, status, userID, platform string) (*dto.PaginationResponse, error) {
+func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
 	var projects []models.Project
 	var total int64
 
 	query := s.db.Model(&models.Project{})
 
-	if status != "" {
-		query = query.Where("status = ?", status)
-	}
-	if userID != "" {
-		if uid, err := uuid.Parse(userID); err == nil {
+	// Apply scope (User dashboard enforces scopeUserID, overriding any filterUserID)
+	if scopeUserID != nil {
+		query = query.Where("user_id = ?", *scopeUserID)
+	} else if filterUserID != "" {
+		// Admin dashboard can filter by specific user
+		if uid, err := uuid.Parse(filterUserID); err == nil {
 			query = query.Where("user_id = ?", uid)
 		}
 	}
+
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	
 	if platform != "" {
 		query = query.Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id").
 			Where("ppp.platform = ?", platform).
@@ -78,7 +105,7 @@ func (s *DashboardService) ListProjects(page, limit int, status, userID, platfor
 		Preload("Publications", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, project_id, platform, enabled, status, publish_url")
 		}).
-		Order("created_at desc").
+		Order("projects.created_at desc").
 		Limit(limit).Offset(offset).
 		Find(&projects).Error; err != nil {
 		return nil, err
@@ -122,14 +149,16 @@ func (s *DashboardService) ListProjects(page, limit int, status, userID, platfor
 	}, nil
 }
 
-func (s *DashboardService) GetProjectPublications(projectID uuid.UUID) (*dto.ProjectPublicationsResponse, error) {
-	// Verify project exists
-	var count int64
-	if err := s.db.Model(&models.Project{}).Where("id = ?", projectID).Count(&count).Error; err != nil {
+func (s *DashboardService) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.UUID) (*dto.ProjectPublicationsResponse, error) {
+	// Verify project exists and ownership
+	var proj models.Project
+	if err := s.db.Select("id, user_id").Where("id = ?", projectID).First(&proj).Error; err != nil {
 		return nil, err
 	}
-	if count == 0 {
-		return nil, gorm.ErrRecordNotFound
+
+	// Enforce ownership if scoped
+	if scopeUserID != nil && proj.UserID != *scopeUserID {
+		return nil, ErrForbidden
 	}
 
 	var publications []models.ProjectPlatformPublication
