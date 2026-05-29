@@ -1,15 +1,61 @@
 package services
-
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/dto"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
+	"github.com/kurodakayn/sevenoxcloud-backend/internal/publisher"
 	"gorm.io/gorm"
 )
+
+// ...
+
+func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
+	// 1. Check ownership
+	var proj models.Project
+	if err := s.db.Where("id = ? AND user_id = ?", projectID, *scopeUserID).First(&proj).Error; err != nil {
+		return nil, ErrForbidden
+	}
+
+	// 2. Get publication record
+	var pub models.ProjectPlatformPublication
+	if err := s.db.Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
+		return nil, fmt.Errorf("publication record not found for platform: %s", platform)
+	}
+
+	// 3. Get Publisher from factory
+	p, err := publisher.Factory.GetPublisher(platform)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. Execute Publish
+	// Note: We use pub.AdaptedContent. If empty, you might want to sync from proj.SourceContent first.
+	remoteID, publishURL, err := p.Publish(context.Background(), &pub)
+
+	// 5. Update DB
+	status := models.PublicationStatusPublished
+	errMsg := ""
+	if err != nil {
+		status = models.PublicationStatusFailed
+		errMsg = err.Error()
+	}
+
+	updates := map[string]interface{}{
+		"status":        status,
+		"remote_id":     remoteID,
+		"publish_url":   publishURL,
+		"error_message": errMsg,
+	}
+	s.db.Model(&pub).Updates(updates)
+
+	return updates, nil
+}
 
 var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
 
