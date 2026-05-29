@@ -12,7 +12,10 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
+import { useAuth } from "@/components/auth/auth-provider";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Sidebar,
   SidebarContent,
@@ -31,14 +34,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const data = {
-  user: {
-    name: "Creator",
-    email: "creator@example.com",
-    avatar: "",
-  },
   navMain: [
     {
       title: "概览",
@@ -71,6 +68,16 @@ const data = {
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const { logout, session } = useAuth();
+  const router = useRouter();
+  const username = session?.username ?? "Creator";
+  const initials = username.slice(0, 2).toUpperCase();
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace("/login");
+  };
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -143,21 +150,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     {...triggerProps}
                   >
                     <Avatar className="h-8 w-8 rounded-lg">
-                      {data.user.avatar ? (
-                        <AvatarImage
-                          src={data.user.avatar}
-                          alt={data.user.name}
-                        />
-                      ) : null}
-                      <AvatarFallback className="rounded-lg">CR</AvatarFallback>
+                      <AvatarFallback className="rounded-lg">
+                        {initials}
+                      </AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-semibold">
-                        {data.user.name}
-                      </span>
-                      <span className="truncate text-xs">
-                        {data.user.email}
-                      </span>
+                      <span className="truncate font-semibold">{username}</span>
+                      <span className="truncate text-xs">已登录</span>
                     </div>
                   </SidebarMenuButton>
                 )}
@@ -171,21 +170,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <DropdownMenuLabel className="p-0 font-normal">
                   <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                     <Avatar className="h-8 w-8 rounded-lg">
-                      {data.user.avatar ? (
-                        <AvatarImage
-                          src={data.user.avatar}
-                          alt={data.user.name}
-                        />
-                      ) : null}
-                      <AvatarFallback className="rounded-lg">CR</AvatarFallback>
+                      <AvatarFallback className="rounded-lg">
+                        {initials}
+                      </AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-semibold">
-                        {data.user.name}
-                      </span>
-                      <span className="truncate text-xs">
-                        {data.user.email}
-                      </span>
+                      <span className="truncate font-semibold">{username}</span>
+                      <span className="truncate text-xs">已登录</span>
                     </div>
                   </div>
                 </DropdownMenuLabel>
@@ -199,7 +190,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   账户设置
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   退出登录
                 </DropdownMenuItem>
