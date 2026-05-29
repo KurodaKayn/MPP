@@ -36,7 +36,7 @@ const data = {
   user: {
     name: "Creator",
     email: "creator@example.com",
-    avatar: "/avatars/creator.jpg",
+    avatar: "",
   },
   navMain: [
     {
@@ -136,7 +136,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     {...triggerProps}
                   >
                     <Avatar className="h-8 w-8 rounded-lg">
-                      <AvatarImage src={data.user.avatar} alt={data.user.name} />
+                      {data.user.avatar ? (
+                        <AvatarImage src={data.user.avatar} alt={data.user.name} />
+                      ) : null}
                       <AvatarFallback className="rounded-lg">CR</AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
@@ -155,7 +157,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <DropdownMenuLabel className="p-0 font-normal">
                   <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                     <Avatar className="h-8 w-8 rounded-lg">
-                      <AvatarImage src={data.user.avatar} alt={data.user.name} />
+                      {data.user.avatar ? (
+                        <AvatarImage src={data.user.avatar} alt={data.user.name} />
+                      ) : null}
                       <AvatarFallback className="rounded-lg">CR</AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
