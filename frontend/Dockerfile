@@ -10,6 +10,14 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
+FROM base AS dev
+WORKDIR /app
+ENV NODE_ENV=development
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+EXPOSE 3000
+CMD ["sh", "-c", "pnpm install --frozen-lockfile && pnpm dev --hostname 0.0.0.0"]
+
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules

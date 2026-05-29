@@ -9,6 +9,17 @@ COPY . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+FROM ghcr.io/astral-sh/uv:python3.12-alpine AS dev
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen
+COPY . /app
+ENV PATH="/app/.venv/bin:$PATH"
+EXPOSE 8000
+CMD ["sh", "-c", "uv sync --frozen && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"]
+
 FROM python:3.12-alpine
 WORKDIR /app
 COPY --from=builder /app /app

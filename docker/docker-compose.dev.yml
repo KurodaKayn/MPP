@@ -1,0 +1,54 @@
+services:
+  frontend:
+    build:
+      target: dev
+    environment:
+      NODE_ENV: development
+      BACKEND_API_BASE_URL: http://backend:8080
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ../frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+    develop:
+      watch:
+        - action: rebuild
+          path: ../frontend/package.json
+        - action: rebuild
+          path: ../frontend/pnpm-lock.yaml
+
+  backend:
+    build:
+      target: dev
+    volumes:
+      - ../backend:/app
+      - backend_go_cache:/go/pkg/mod
+      - backend_go_build_cache:/root/.cache/go-build
+    develop:
+      watch:
+        - action: rebuild
+          path: ../backend/go.mod
+        - action: rebuild
+          path: ../backend/go.sum
+
+  ai-service:
+    build:
+      target: dev
+    volumes:
+      - ../ai-service:/app
+      - ai_service_venv:/app/.venv
+      - ai_service_uv_cache:/root/.cache/uv
+    develop:
+      watch:
+        - action: rebuild
+          path: ../ai-service/pyproject.toml
+        - action: rebuild
+          path: ../ai-service/uv.lock
+
+volumes:
+  frontend_node_modules:
+  frontend_next:
+  backend_go_cache:
+  backend_go_build_cache:
+  ai_service_venv:
+  ai_service_uv_cache:
