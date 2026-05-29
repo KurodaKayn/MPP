@@ -15,6 +15,8 @@ docker compose up -d
 docker compose logs -f
 ```
 
+默认 Compose project name 为 `mpp`。
+
 ## 2. 容器 Dev 模式 (热重载)
 
 如果你希望一键拉起开发模式容器，并让代码修改自动生效，在项目根目录执行：
@@ -22,6 +24,8 @@ docker compose logs -f
 ```bash
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml watch
 ```
+
+Dev 模式的 Compose project name 为 `mpp-dev`。
 
 这个模式会启动前端、后端、AI 服务和数据库：
 
