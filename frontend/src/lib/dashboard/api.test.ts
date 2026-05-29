@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getDashboardProjects, getDashboardStats } from "./api";
+import {
+  getDashboardProjects,
+  getDashboardStats,
+  getProjectPublications,
+  publishProject,
+} from "./api";
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {
@@ -90,6 +95,67 @@ describe("dashboard api client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getDashboardStats()).rejects.toThrow("not your project");
+  });
+
+  it("fetches publication details for a project", async () => {
+    const publications = {
+      items: [
+        {
+          adapted_content: { summary: "ready" },
+          config: {},
+          created_at: "2026-05-29T12:00:00Z",
+          enabled: true,
+          id: "pub-1",
+          platform: "wechat",
+          retry_count: 0,
+          status: "adapted",
+          updated_at: "2026-05-29T12:00:00Z",
+        },
+      ],
+      project_id: "project-1",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse(publications),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getProjectPublications("project-1")).resolves.toEqual(
+      publications,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/publications",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+  });
+
+  it("posts a publish request with the selected platform", async () => {
+    const result = {
+      publish_url: "https://example.com/post",
+      status: "published",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(result));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(publishProject("project-1", "wechat")).resolves.toEqual(
+      result,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/publish",
+      expect.objectContaining({
+        body: JSON.stringify({ platform: "wechat" }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
+      }),
+    );
+    const [, init] = fetchMock.mock.calls[0];
+    const headers = init!.headers as Headers;
+    expect(headers.get("Content-Type")).toBe("application/json");
   });
 
   it("falls back to the HTTP status when an error response is not JSON", async () => {

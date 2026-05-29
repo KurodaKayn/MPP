@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  ExternalLink,
   FileText,
   RefreshCw,
   Share2,
   XCircle,
 } from "lucide-react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -257,16 +259,29 @@ export default function DashboardPage() {
               共 {formatNumber(totalProjects)} 篇内容，显示最近 8 篇。
             </CardDescription>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void loadDashboard()}
-            disabled={loading}
-          >
-            <RefreshCw className="h-4 w-4" />
-            刷新
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              render={(buttonProps) => (
+                <Link href="/dashboard/posts" {...buttonProps}>
+                  <ExternalLink className="h-4 w-4" />
+                  查看发布
+                </Link>
+              )}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void loadDashboard()}
+              disabled={loading}
+            >
+              <RefreshCw className="h-4 w-4" />
+              刷新
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
