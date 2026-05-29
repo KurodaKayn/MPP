@@ -15,6 +15,27 @@ docker compose up -d
 docker compose logs -f
 ```
 
+## 2. 容器 Dev 模式 (热重载)
+
+如果你希望一键拉起开发模式容器，并让代码修改自动生效，在项目根目录执行：
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml watch
+```
+
+这个模式会启动前端、后端、AI 服务和数据库：
+
+- 前端使用 `pnpm dev`，源码变化会触发 Next.js 热更新。
+- 后端使用 `air`，Go 源码变化会自动重新编译并重启 API。
+- AI 服务使用 `uvicorn --reload`，Python 源码变化会自动重载。
+- 依赖文件变化会触发对应服务重新构建，包括 `package.json`、`pnpm-lock.yaml`、`go.mod`、`go.sum`、`pyproject.toml`、`uv.lock`。
+
+如果只想后台启动 dev 容器但不监听文件变化，可以执行：
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d
+```
+
 ### 访问地址：
 
 - **前端**: [http://localhost:3000](http://localhost:3000)
@@ -23,7 +44,7 @@ docker compose logs -f
 
 ---
 
-## 2. 本地开发启动
+## 3. 本地开发启动
 
 如果你需要进行调试或热更新开发，可以分别启动各服务。
 
@@ -56,7 +77,7 @@ uv run uvicorn main:app --reload
 
 ---
 
-## 3. 环境变量配置
+## 4. 环境变量配置
 
 - **统一管理**: 所有的环境变量现在都在 `docker/.env` 中进行统一管理。
 - **AI 服务**: 在 `docker/.env` 中设置 `OPENAI_API_KEY`。
