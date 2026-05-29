@@ -17,15 +17,12 @@ type JWTCustomClaims struct {
 }
 
 // GetJWTConfig returns the configuration for the JWT middleware.
-// In a real application, the secret key should be loaded from environment variables.
-func GetJWTConfig() echojwt.Config {
-	// Hardcoded for development/testing purposes based on the plan.
-	// Must be moved to env vars for production.
+func GetJWTConfig(signingKey []byte) echojwt.Config {
 	return echojwt.Config{
 		NewClaimsFunc: func(c echo.Context) jwt.Claims {
 			return new(JWTCustomClaims)
 		},
-		SigningKey: []byte("super-secret-key-for-local-dev"),
+		SigningKey: signingKey,
 	}
 }
 

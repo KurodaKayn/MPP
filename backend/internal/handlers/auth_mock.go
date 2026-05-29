@@ -12,11 +12,12 @@ import (
 )
 
 type AuthHandler struct {
-	db *gorm.DB
+	db            *gorm.DB
+	jwtSigningKey []byte
 }
 
-func NewAuthHandler(db *gorm.DB) *AuthHandler {
-	return &AuthHandler{db: db}
+func NewAuthHandler(db *gorm.DB, jwtSigningKey []byte) *AuthHandler {
+	return &AuthHandler{db: db, jwtSigningKey: jwtSigningKey}
 }
 
 // MockLogin creates a token for a given username. This is for local development only.
@@ -46,8 +47,7 @@ func (h *AuthHandler) MockLogin(c echo.Context) error {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	// Encode token (using the same hardcoded key from middleware for dev)
-	t, err := token.SignedString([]byte("super-secret-key-for-local-dev"))
+	t, err := token.SignedString(h.jwtSigningKey)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", "failed to sign token")
 	}
