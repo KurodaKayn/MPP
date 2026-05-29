@@ -17,6 +17,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Multi-Poster - 多平台内容发布工具",
   description: "一键适配并分发内容到多个社交平台",
+  icons: {
+    icon: "/icons/mpp.svg",
+    shortcut: "/icons/mpp.svg",
+    apple: "/icons/mpp.svg",
+  },
 };
 
 export default function RootLayout({

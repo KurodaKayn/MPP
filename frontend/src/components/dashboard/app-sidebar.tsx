@@ -80,7 +80,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               render={(buttonProps) => (
                 <Link href="/dashboard" {...buttonProps}>
                   <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <Share2 className="size-4" />
+                    <img src="/icons/mpp.svg" alt="Multi-Poster" className="size-5" />
                   </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-semibold">Multi-Poster</span>
