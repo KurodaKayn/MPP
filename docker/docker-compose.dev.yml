@@ -7,6 +7,7 @@ services:
     environment:
       NODE_ENV: development
       BACKEND_API_BASE_URL: http://backend:8080
+      PORT: "3000"
       WATCHPACK_POLLING: "true"
     volumes:
       - ../frontend:/app
