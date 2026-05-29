@@ -12,15 +12,25 @@ import (
 const BaseURL = "https://api.weixin.qq.com/cgi-bin"
 
 type Client struct {
-	AppID     string
-	AppSecret string
-	token     string
-	expiry    time.Time
+	AppID      string
+	AppSecret  string
+	HTTPClient *http.Client
+	token      string
+	expiry     time.Time
 }
 
 type ErrorResponse struct {
 	ErrCode int    `json:"errcode"`
 	ErrMsg  string `json:"errmsg"`
+}
+
+type APIError struct {
+	ErrCode int
+	ErrMsg  string
+}
+
+func (e APIError) Error() string {
+	return fmt.Sprintf("wechat error %d: %s", e.ErrCode, e.ErrMsg)
 }
 
 type TokenResponse struct {
@@ -47,9 +57,17 @@ type PublishResponse struct {
 
 func NewClient(appID, appSecret string) *Client {
 	return &Client{
-		AppID:     appID,
-		AppSecret: appSecret,
+		AppID:      appID,
+		AppSecret:  appSecret,
+		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+func (c *Client) httpClient() *http.Client {
+	if c.HTTPClient != nil {
+		return c.HTTPClient
+	}
+	return http.DefaultClient
 }
 
 func (c *Client) GetToken() (string, error) {
@@ -58,7 +76,7 @@ func (c *Client) GetToken() (string, error) {
 	}
 
 	u := fmt.Sprintf("%s/token?grant_type=client_credential&appid=%s&secret=%s", BaseURL, c.AppID, c.AppSecret)
-	resp, err := http.Get(u)
+	resp, err := c.httpClient().Get(u)
 	if err != nil {
 		return "", err
 	}
@@ -70,7 +88,7 @@ func (c *Client) GetToken() (string, error) {
 	}
 
 	if tr.ErrCode != 0 {
-		return "", fmt.Errorf("wechat error %d: %s", tr.ErrCode, tr.ErrMsg)
+		return "", APIError{ErrCode: tr.ErrCode, ErrMsg: tr.ErrMsg}
 	}
 
 	c.token = tr.AccessToken
@@ -102,7 +120,7 @@ func (c *Client) UploadImage(imageBytes []byte, filename string) (*MediaResponse
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.httpClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -114,21 +132,21 @@ func (c *Client) UploadImage(imageBytes []byte, filename string) (*MediaResponse
 	}
 
 	if mr.ErrCode != 0 {
-		return nil, fmt.Errorf("wechat error %d: %s", mr.ErrCode, mr.ErrMsg)
+		return nil, APIError{ErrCode: mr.ErrCode, ErrMsg: mr.ErrMsg}
 	}
 
 	return &mr, nil
 }
 
 type Article struct {
-	Title            string `json:"title"`
-	ThumbMediaID     string `json:"thumb_media_id"`
-	Author           string `json:"author"`
-	Digest           string `json:"digest"`
-	Content          string `json:"content"`
-	ContentSourceURL string `json:"content_source_url"`
-	NeedOpenComment  int    `json:"need_open_comment"`
-	OnlyFansCanComment int  `json:"only_fans_can_comment"`
+	Title              string `json:"title"`
+	ThumbMediaID       string `json:"thumb_media_id"`
+	Author             string `json:"author"`
+	Digest             string `json:"digest"`
+	Content            string `json:"content"`
+	ContentSourceURL   string `json:"content_source_url"`
+	NeedOpenComment    int    `json:"need_open_comment"`
+	OnlyFansCanComment int    `json:"only_fans_can_comment"`
 }
 
 func (c *Client) CreateDraft(articles []Article) (string, error) {
@@ -143,7 +161,7 @@ func (c *Client) CreateDraft(articles []Article) (string, error) {
 	body, _ := json.Marshal(payload)
 
 	u := fmt.Sprintf("%s/draft/add?access_token=%s", BaseURL, token)
-	resp, err := http.Post(u, "application/json", bytes.NewBuffer(body))
+	resp, err := c.httpClient().Post(u, "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		return "", err
 	}
@@ -155,7 +173,7 @@ func (c *Client) CreateDraft(articles []Article) (string, error) {
 	}
 
 	if dr.ErrCode != 0 {
-		return "", fmt.Errorf("wechat error %d: %s", dr.ErrCode, dr.ErrMsg)
+		return "", APIError{ErrCode: dr.ErrCode, ErrMsg: dr.ErrMsg}
 	}
 
 	return dr.MediaID, nil
@@ -171,7 +189,7 @@ func (c *Client) Publish(mediaID string) (string, int, error) {
 	body, _ := json.Marshal(payload)
 
 	u := fmt.Sprintf("%s/freepublish/submit?access_token=%s", BaseURL, token)
-	resp, err := http.Post(u, "application/json", bytes.NewBuffer(body))
+	resp, err := c.httpClient().Post(u, "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		return "", 0, err
 	}
