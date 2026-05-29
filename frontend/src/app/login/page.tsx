@@ -1,62 +1,25 @@
 "use client";
 
-import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense } from "react";
 import { ArrowRight, Loader2, LogIn } from "lucide-react";
 import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
-import { toast } from "sonner";
-import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-function resolveNextPath(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/dashboard";
-  }
-
-  return value;
-}
+import { useLoginController } from "./_hooks/use-login-controller";
 
 function LoginContent() {
-  const { initialized, login, session } = useAuth();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const nextPath = useMemo(
-    () => resolveNextPath(searchParams.get("next")),
-    [searchParams],
-  );
-  const [username, setUsername] = useState("kuroda_kayn");
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (initialized && session) {
-      router.replace(nextPath);
-    }
-  }, [initialized, nextPath, router, session]);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const normalizedUsername = username.trim();
-
-    if (!normalizedUsername) {
-      toast.error("请输入用户名");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await login(normalizedUsername);
-      router.replace(nextPath);
-    } catch (error) {
-      toast.error("登录失败", {
-        description:
-          error instanceof Error ? error.message : "请检查开发账号是否存在。",
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const {
+    accessToken,
+    handleMockLoginSubmit,
+    handleTokenLoginSubmit,
+    initialized,
+    loginMethods,
+    setAccessToken,
+    setUsername,
+    submitting,
+    username,
+  } = useLoginController();
 
   return (
     <main className="min-h-svh bg-[#f6f4ee] text-[#1f2520]">
@@ -112,36 +75,68 @@ function LoginContent() {
                 登录控制台
               </h2>
               <p className="mt-2 text-sm text-[#667064]">
-                使用开发账号进入工作台。
+                {loginMethods.mock
+                  ? "使用开发账号进入工作台。"
+                  : "使用访问令牌进入工作台。"}
               </p>
             </div>
 
-            <form className="space-y-5" onSubmit={handleSubmit}>
-              <div className="space-y-2">
-                <Label htmlFor="username">用户名</Label>
-                <Input
-                  id="username"
-                  autoComplete="username"
-                  className="h-10 border-[#cfc8ba] bg-white/70"
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                />
-              </div>
+            {loginMethods.mock ? (
+              <form className="space-y-5" onSubmit={handleMockLoginSubmit}>
+                <div className="space-y-2">
+                  <Label htmlFor="username">用户名</Label>
+                  <Input
+                    id="username"
+                    autoComplete="username"
+                    className="h-10 border-[#cfc8ba] bg-white/70"
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                  />
+                </div>
 
-              <Button
-                type="submit"
-                className="h-10 w-full bg-[#1f2520] text-[#f6f4ee] hover:bg-[#303830]"
-                disabled={submitting || !initialized}
-              >
-                {submitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <LogIn className="h-4 w-4" />
-                )}
-                进入工作台
-                <ArrowRight className="ml-auto h-4 w-4" />
-              </Button>
-            </form>
+                <Button
+                  type="submit"
+                  className="h-10 w-full bg-[#1f2520] text-[#f6f4ee] hover:bg-[#303830]"
+                  disabled={submitting || !initialized}
+                >
+                  {submitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <LogIn className="h-4 w-4" />
+                  )}
+                  进入工作台
+                  <ArrowRight className="ml-auto h-4 w-4" />
+                </Button>
+              </form>
+            ) : (
+              <form className="space-y-5" onSubmit={handleTokenLoginSubmit}>
+                <div className="space-y-2">
+                  <Label htmlFor="access-token">访问令牌</Label>
+                  <Input
+                    id="access-token"
+                    type="password"
+                    autoComplete="off"
+                    className="h-10 border-[#cfc8ba] bg-white/70"
+                    value={accessToken}
+                    onChange={(event) => setAccessToken(event.target.value)}
+                  />
+                </div>
+
+                <Button
+                  type="submit"
+                  className="h-10 w-full bg-[#1f2520] text-[#f6f4ee] hover:bg-[#303830]"
+                  disabled={submitting || !initialized}
+                >
+                  {submitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <LogIn className="h-4 w-4" />
+                  )}
+                  进入工作台
+                  <ArrowRight className="ml-auto h-4 w-4" />
+                </Button>
+              </form>
+            )}
           </div>
         </section>
       </div>
