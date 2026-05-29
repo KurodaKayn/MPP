@@ -77,11 +77,44 @@ func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
 	}
 
 	// Personal view: enforce scopeUserID to check ownership
-	resp, err := h.dashboardService.GetProjectPublications(projectID, &userID)
+	publications, err := h.dashboardService.GetProjectPublications(projectID, &userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
 		}
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, publications)
+}
+
+func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	idParam := c.Param("id")
+	projectID, err := uuid.Parse(idParam)
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+
+	type PublishRequest struct {
+		Platform string `json:"platform"`
+	}
+	req := new(PublishRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	// This is a simplified direct trigger for testing
+	// In a real app, this would be an async task/queue
+	resp, err := h.dashboardService.PublishProject(projectID, req.Platform, &userID)
+	if err != nil {
 		if errors.Is(err, services.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}

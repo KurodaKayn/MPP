@@ -71,6 +71,7 @@ func main() {
 	userGroup.GET("/stats", userDashboardHandler.GetMyStats)
 	userGroup.GET("/projects", userDashboardHandler.ListMyProjects)
 	userGroup.GET("/projects/:id/publications", userDashboardHandler.GetMyProjectPublications)
+	userGroup.POST("/projects/:id/publish", userDashboardHandler.PublishProject)
 
 	// AI Proxy example
 	e.POST("/api/ai/calibrate", func(c echo.Context) error {
