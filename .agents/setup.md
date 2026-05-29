@@ -30,7 +30,7 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml wat
 - AI 服务使用 `uvicorn --reload`，Python 源码变化会自动重载。
 - 依赖文件变化会触发对应服务重新构建，包括 `package.json`、`pnpm-lock.yaml`、`go.mod`、`go.sum`、`pyproject.toml`、`uv.lock`。
 
-如果只想后台启动 dev 容器但不监听文件变化，可以执行：
+如果只想后台启动 dev 容器（源码热重载仍会生效，但依赖文件变化不会自动触发 Compose rebuild），可以执行：
 
 ```bash
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d
