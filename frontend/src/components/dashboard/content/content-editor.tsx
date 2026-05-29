@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ImagePlus } from "lucide-react";
 import { toast } from "sonner";
-import type { ContentValue } from "./types";
+import type { ContentValue } from "@/lib/content/types";
 
 type ContentEditorProps = {
   title: string;

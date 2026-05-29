@@ -8,12 +8,30 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Eye } from "lucide-react";
-import type { ContentValue } from "@/components/dashboard/content/types";
+import Image from "next/image";
+import { PLATFORM_TABS } from "@/lib/content/platforms";
+import type { ContentValue } from "@/lib/content/types";
 
 type PlatformPreviewProps = {
   title: string;
   content: ContentValue;
 };
+
+function PlatformTabLabel({ icon, label }: { icon: string; label: string }) {
+  return (
+    <>
+      <Image
+        src={icon}
+        alt=""
+        width={16}
+        height={16}
+        aria-hidden="true"
+        className="size-4 shrink-0"
+      />
+      <span>{label}</span>
+    </>
+  );
+}
 
 export function PlatformPreview({ title, content }: PlatformPreviewProps) {
   const hasBodyContent = Boolean(content.text.trim() || content.firstImageSrc);
@@ -36,12 +54,18 @@ export function PlatformPreview({ title, content }: PlatformPreviewProps) {
         </div>
       </CardHeader>
       <CardContent className="flex-1">
-        <Tabs defaultValue="wechat" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="wechat">公众号</TabsTrigger>
-            <TabsTrigger value="zhihu">知乎</TabsTrigger>
-            <TabsTrigger value="bilibili">B站</TabsTrigger>
-            <TabsTrigger value="xiaohongshu">小红书</TabsTrigger>
+        <Tabs defaultValue={PLATFORM_TABS[0].value} className="w-full">
+          <TabsList
+            className="grid w-full"
+            style={{
+              gridTemplateColumns: `repeat(${PLATFORM_TABS.length}, minmax(0, 1fr))`,
+            }}
+          >
+            {PLATFORM_TABS.map((platform) => (
+              <TabsTrigger key={platform.value} value={platform.value}>
+                <PlatformTabLabel icon={platform.icon} label={platform.label} />
+              </TabsTrigger>
+            ))}
           </TabsList>
           <ScrollArea className="h-[500px] w-full rounded-md border p-4 mt-4">
             {!title && !hasBodyContent ? (
