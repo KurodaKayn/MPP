@@ -3,10 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { ContentEditor } from "@/components/dashboard/content/content-editor";
-import {
-  emptyContentValue,
-  type ContentValue,
-} from "@/components/dashboard/content/types";
+import { emptyContentValue, type ContentValue } from "@/lib/content/types";
 import { ContentPageHeader } from "./_components/content-page-header";
 import { PlatformPreview } from "./_components/platform-preview";
 
