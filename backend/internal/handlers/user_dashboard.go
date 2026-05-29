@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
+	"github.com/kurodakayn/sevenoxcloud-backend/internal/dto"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/middleware"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/services"
 	"github.com/labstack/echo/v4"
@@ -117,6 +118,64 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	if err != nil {
 		if errors.Is(err, services.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) GetWechatAccount(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	resp, err := h.dashboardService.GetWechatAccount(userID)
+	if err != nil {
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) SaveWechatAccount(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	req := new(dto.UpsertWechatAccountRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.dashboardService.UpsertWechatAccount(userID, *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidPlatformAccount) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) TestWechatAccount(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	req := new(dto.TestWechatAccountRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.dashboardService.TestWechatAccount(userID, *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidPlatformAccount) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}

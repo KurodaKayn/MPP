@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,6 +39,20 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		title TEXT NOT NULL,
 		source_content TEXT NOT NULL,
 		status TEXT NOT NULL,
+		created_at DATETIME,
+		updated_at DATETIME
+	)`).Error)
+
+	require.NoError(t, db.Exec(`CREATE TABLE platform_accounts (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		platform TEXT NOT NULL,
+		name TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'untested',
+		credentials TEXT NOT NULL DEFAULT '{}',
+		metadata TEXT NOT NULL DEFAULT '{}',
+		last_tested_at DATETIME,
+		last_test_error TEXT,
 		created_at DATETIME,
 		updated_at DATETIME
 	)`).Error)
@@ -215,4 +230,33 @@ func TestUserDashboardHandlerGetProjectPublicationsReturnsForbidden(t *testing.T
 	var resp dto.ErrorResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, "forbidden", resp.Error.Code)
+}
+
+func TestUserDashboardHandlerSavesWechatAccount(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/api/user/dashboard/settings/wechat/account",
+		strings.NewReader(`{"app_id":"wx-app","app_secret":"wx-secret"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.SaveWechatAccount(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp dto.WechatAccountResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "wechat", resp.Platform)
+	require.Equal(t, "wx-app", resp.AppID)
+	require.True(t, resp.HasAppSecret)
+	require.Equal(t, models.PlatformAccountStatusUntested, resp.Status)
 }
