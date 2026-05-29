@@ -29,6 +29,10 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 		return nil, fmt.Errorf("publication record not found for platform: %s", platform)
 	}
 
+	if err := s.applySavedWechatCredentialsToPublication(proj.UserID, &pub); err != nil {
+		return nil, err
+	}
+
 	// 3. Get Publisher from factory
 	p, err := publisher.Factory.GetPublisher(platform)
 	if err != nil {
