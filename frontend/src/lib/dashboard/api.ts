@@ -15,6 +15,30 @@ export type PublicationSummary = {
   publish_url?: string;
 };
 
+export type PublicationDetail = PublicationSummary & {
+  error_message?: string;
+  config: Record<string, unknown>;
+  adapted_content: Record<string, unknown>;
+  remote_id?: string;
+  retry_count: number;
+  last_attempt_at?: string;
+  published_at?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectPublications = {
+  project_id: string;
+  items: PublicationDetail[];
+};
+
+export type PublishResult = {
+  status: string;
+  remote_id?: string;
+  publish_url?: string;
+  error_message?: string;
+};
+
 export type ProjectListItem = {
   id: string;
   user_id: string;
@@ -41,7 +65,10 @@ type ApiErrorResponse = {
   };
 };
 
-async function fetchDashboard<T>(path: string): Promise<T> {
+async function fetchDashboard<T>(
+  path: string,
+  init?: Omit<RequestInit, "headers" | "credentials">,
+): Promise<T> {
   const headers = new Headers({
     Accept: "application/json",
   });
@@ -51,7 +78,12 @@ async function fetchDashboard<T>(path: string): Promise<T> {
     headers.set("Authorization", formatBearerToken(token));
   }
 
+  if (init?.body) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const response = await fetch(path, {
+    ...init,
     credentials: "same-origin",
     headers,
   });
@@ -85,5 +117,21 @@ export function getDashboardProjects(limit = 8) {
 
   return fetchDashboard<PaginatedProjects>(
     `/api/user/dashboard/projects?${params.toString()}`,
+  );
+}
+
+export function getProjectPublications(projectId: string) {
+  return fetchDashboard<ProjectPublications>(
+    `/api/user/dashboard/projects/${projectId}/publications`,
+  );
+}
+
+export function publishProject(projectId: string, platform: string) {
+  return fetchDashboard<PublishResult>(
+    `/api/user/dashboard/projects/${projectId}/publish`,
+    {
+      body: JSON.stringify({ platform }),
+      method: "POST",
+    },
   );
 }
