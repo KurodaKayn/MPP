@@ -3,9 +3,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain_openai import OpenAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.agents import create_openai_tools_agent, AgentExecutor
 
 load_dotenv()
 
