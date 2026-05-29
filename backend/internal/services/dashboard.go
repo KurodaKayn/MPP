@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/dto"
@@ -48,7 +49,7 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 	errMsg := ""
 	if err != nil {
 		status = models.PublicationStatusFailed
-		errMsg = err.Error()
+		errMsg = sanitizeUserFacingErrorMessage(err.Error())
 	}
 
 	updates := map[string]interface{}{
@@ -63,6 +64,12 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 }
 
 var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
+
+var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
+
+func sanitizeUserFacingErrorMessage(message string) string {
+	return sensitiveErrorQueryParamPattern.ReplaceAllString(message, "$1=<redacted>")
+}
 
 type DashboardService struct {
 	db           *gorm.DB
