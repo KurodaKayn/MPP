@@ -6,6 +6,8 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/db"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
+	"github.com/kurodakayn/sevenoxcloud-backend/internal/services"
+	"github.com/kurodakayn/sevenoxcloud-backend/internal/handlers"
 	"net/http"
 	"os"
 )
@@ -24,6 +26,10 @@ func main() {
 		&models.ProjectPlatformPublication{},
 	)
 
+	// Initialize Services and Handlers
+	dashboardService := services.NewDashboardService(db.DB)
+	dashboardHandler := handlers.NewDashboardHandler(dashboardService)
+
 	e := echo.New()
 
 	// Middleware
@@ -36,6 +42,11 @@ func main() {
 			"message": "pong",
 		})
 	})
+
+	// Dashboard APIs
+	e.GET("/api/dashboard/stats", dashboardHandler.GetStats)
+	e.GET("/api/projects", dashboardHandler.ListProjects)
+	e.GET("/api/projects/:id/publications", dashboardHandler.GetProjectPublications)
 
 	// AI Proxy example
 	e.POST("/api/ai/calibrate", func(c echo.Context) error {
