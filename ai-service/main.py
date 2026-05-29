@@ -1,21 +1,45 @@
-from fastapi import FastAPI
+import os
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain_openai import OpenAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.chat_models import ChatOpenAI
+from langchain.agents import create_openai_tools_agent, AgentExecutor
 
-app = FastAPI()
+load_dotenv()
 
-class Query(BaseModel):
-    text: str
+app = FastAPI(title="Multi-Platform Poster AI Service")
 
-@app.get("/")
-async def root():
-    return {"message": "AI Service is running"}
+# Initialize LLM
+llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
-@app.post("/chat")
-async def chat(query: Query):
-    # This is a placeholder for LangChain logic
-    return {"response": f"You said: {query.text}"}
+class CalibrateRequest(BaseModel):
+    content: str
+    platform: str
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+@app.post("/calibrate")
+async def calibrate(request: CalibrateRequest):
+    try:
+        # Simple prompt for format calibration
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are an expert social media manager. Calibrate the following content for {platform} rules and style."),
+            ("user", "{content}")
+        ])
+        
+        chain = prompt | llm
+        response = chain.invoke({"platform": request.platform, "content": request.content})
+        
+        return {
+            "platform": request.platform,
+            "calibrated_content": response.content
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
