@@ -37,6 +37,9 @@ func (a *DouyinAdapter) AllowedDomains() []DomainRule {
 		{Host: "bytednsdoc.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "static assets and icons"},
 		{Host: "volces.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "captcha images"},
 		{Host: "bytecdn.cn", Match: "suffix", Schemes: []string{"https"}, Purpose: "cdn assets"},
+		{Host: "yhgfb-cn-static.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "user center secure sdk"},
+		{Host: "bytetcc.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "tcc config"},
+		{Host: "bytedance.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "mssdk and ttwid security tokens"},
 	}
 }
 
