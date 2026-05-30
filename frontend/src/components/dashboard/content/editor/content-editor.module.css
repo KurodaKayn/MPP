@@ -1,0 +1,143 @@
+.body {
+  min-height: 600px;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--background);
+  background-clip: padding-box;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.editorArea {
+  padding: clamp(1.25rem, 2vw, 2rem);
+}
+
+.prose {
+  min-height: 520px;
+  color: var(--foreground);
+  font-size: 1rem;
+  line-height: 1.8;
+  outline: none;
+}
+
+.prose:focus {
+  outline: none;
+}
+
+.prose > *:first-child {
+  margin-top: 0;
+}
+
+.prose > *:last-child {
+  margin-bottom: 0;
+}
+
+.prose p {
+  margin: 0.85rem 0;
+}
+
+.prose h1,
+.prose h2,
+.prose h3 {
+  margin: 1.35rem 0 0.65rem;
+  color: var(--foreground);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.prose h1 {
+  font-size: 1.875rem;
+}
+
+.prose h2 {
+  font-size: 1.5rem;
+}
+
+.prose h3 {
+  font-size: 1.2rem;
+}
+
+.prose ul,
+.prose ol {
+  margin: 0.9rem 0;
+  padding-left: 1.35rem;
+}
+
+.prose ul {
+  list-style: disc;
+}
+
+.prose ol {
+  list-style: decimal;
+}
+
+.prose li + li {
+  margin-top: 0.35rem;
+}
+
+.prose blockquote {
+  margin: 1.2rem 0;
+  border-left: 3px solid var(--primary);
+  padding: 0.2rem 0 0.2rem 1rem;
+  color: var(--muted-foreground);
+}
+
+.prose hr {
+  margin: 1.4rem 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.prose code {
+  border-radius: 0.35rem;
+  background: var(--muted);
+  padding: 0.1rem 0.3rem;
+  font-size: 0.88em;
+}
+
+.prose pre {
+  margin: 1.2rem 0;
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  background: var(--foreground);
+  color: var(--background);
+  padding: 1rem;
+}
+
+.prose pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.link {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.image {
+  display: block;
+  max-width: 100%;
+  max-height: 520px;
+  margin: 1.25rem auto;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--muted);
+  object-fit: contain;
+}
+
+.prose :global(.ProseMirror-selectednode) {
+  outline: 3px solid oklch(0.708 0 0 / 45%);
+  outline-offset: 3px;
+}
+
+.prose p.emptyEditor:first-child::before {
+  float: left;
+  height: 0;
+  color: var(--muted-foreground);
+  content: attr(data-placeholder);
+  opacity: 0.75;
+  pointer-events: none;
+}
