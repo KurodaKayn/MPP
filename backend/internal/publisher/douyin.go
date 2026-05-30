@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -52,70 +51,87 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	defer cancelPublish()
 
 	var publishURL string
-	var currentURL string
-
+	
 	err = chromedp.Run(publishCtx,
-		// 1. 导航到图文发布页 (type=2 代表图文)
-		chromedp.Navigate("https://creator.douyin.com/content/publish?type=2"),
+		// 1. 进入核心上传页
+		chromedp.Navigate("https://creator.douyin.com/creator-micro/content/upload?default-tab=3"),
 		chromedp.Sleep(5*time.Second),
-		chromedp.Location(&currentURL),
+
+		// 2. 根据用户提供的 HTML 源码，精准点击“上传图文”按钮
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			if strings.Contains(currentURL, "login") {
-				return fmt.Errorf("抖音登录失效，请更新 Cookie")
-			}
+			script := `
+				(function() {
+					// 优先使用用户提供的精准类名锁定按钮
+					const btn = document.querySelector('.container-drag-btn-k6XmB4') || 
+					            document.querySelector('button.semi-button-primary');
+					if (btn) {
+						btn.click();
+						return "Target 'Upload Image Post' button clicked via class";
+					}
+					// 备选：点击整个拖拽容器
+					const container = document.querySelector('.container-drag-VAfIfu');
+					if (container) {
+						container.click();
+						return "Drag container clicked as fallback";
+					}
+					return "Upload button NOT found";
+				})()
+			`
+			var res string
+			chromedp.Evaluate(script, &res).Do(ctx)
+			fmt.Printf("Douyin Action: %s\n", res)
 			return nil
 		}),
+		chromedp.Sleep(2*time.Second),
 
-		// 2. 上传图片 (利用 input[type="file"])
-		// 抖音图文页通常有隐藏的 input 接收图片
+		// 3. 注入本地图片 (input[type="file"] 就在你提供的 HTML 底部)
 		chromedp.WaitVisible(`input[type="file"]`, chromedp.ByQuery),
 		chromedp.SetUploadFiles(`input[type="file"]`, []string{localImagePath}, chromedp.ByQuery),
-		chromedp.Sleep(10*time.Second), // 等待图片解析和上传进度
+		chromedp.Sleep(10*time.Second), // 图片上传解析时间
 
-		// 3. 填入标题
-		// 抖音标题选择器 (需根据实际页面微调)
+
+		// 4. 开始填写文字：标题
 		chromedp.WaitVisible(`input[placeholder*="标题"]`, chromedp.ByQuery),
 		chromedp.SendKeys(`input[placeholder*="标题"]`, title),
 
-		// 4. 填入描述正文 (使用模拟粘贴 Ctrl+V 方案，最稳妥)
-		// 抖音描述框通常是 contenteditable 的 div
+		// 5. 填写文字：描述正文 (模拟 Ctrl+V)
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			// 寻找描述框并聚焦
 			script := `
 				(function() {
 					const el = document.querySelector('.public-DraftEditor-content') || 
 					           document.querySelector('div[contenteditable="true"]');
 					if (el) {
 						el.focus();
-						return "Description editor focused";
+						return "Description focused";
 					}
-					return "Description editor NOT found";
+					return "Description NOT found";
 				})()
 			`
 			return chromedp.Evaluate(script, nil).Do(ctx)
 		}),
 		PasteContent(`div[contenteditable="true"]`, content, false),
-		chromedp.Sleep(2*time.Second),
+		chromedp.Sleep(3*time.Second),
 
-		// 5. 点击发布
-		// 寻找文本为“发布”的按钮
+		// 6. 暂存离开
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			script := `
 				(function() {
 					const buttons = Array.from(document.querySelectorAll('button'));
-					const pubBtn = buttons.find(b => b.textContent.trim() === '发布');
-					if (pubBtn) {
-						pubBtn.click();
-						return "Publish button clicked";
+					const draftBtn = buttons.find(b => b.textContent.includes('暂存离开'));
+					if (draftBtn) {
+						draftBtn.click();
+						return "Draft button clicked";
 					}
-					return "Publish button NOT found";
+					return "Draft button NOT found";
 				})()
 			`
-			return chromedp.Evaluate(script, nil).Do(ctx)
+			var res string
+			err := chromedp.Evaluate(script, &res).Do(ctx)
+			fmt.Printf("Douyin Action: %s\n", res)
+			return err
 		}),
 
-		// 6. 等待发布成功跳转
-		chromedp.Sleep(20*time.Second),
+		chromedp.Sleep(10*time.Second),
 		chromedp.Location(&publishURL),
 	)
 
