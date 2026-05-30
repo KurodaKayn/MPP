@@ -22,15 +22,15 @@ sleep 1
 echo "Starting websockify (noVNC) on port $STREAM_PORT..."
 websockify --web /usr/share/novnc/ $STREAM_PORT localhost:$VNC_PORT &
 
-echo "Starting Chromium with CDP on port $CDP_PORT..."
+echo "Starting Chromium with CDP on port $CDP_PORT (internally 9223)..."
+# Chromium ignores 0.0.0.0 in some environments, so we use socat to proxy it
+socat TCP-LISTEN:$CDP_PORT,fork,bind=0.0.0.0 TCP:127.0.0.1:9223 &
+
 # EXTREMELY IMPORTANT: --remote-allow-origins=* must be set
-# --no-sandbox and --headless=new can also help stability if UI is not strictly needed, 
-# but here we WANT the UI for the user.
 chromium \
     --no-sandbox \
     --disable-setuid-sandbox \
-    --remote-debugging-address=0.0.0.0 \
-    --remote-debugging-port=$CDP_PORT \
+    --remote-debugging-port=9223 \
     --remote-allow-origins=* \
     --user-data-dir=$BROWSER_PROFILE \
     --no-first-run \
@@ -38,6 +38,8 @@ chromium \
     --disable-gpu \
     --disable-software-rasterizer \
     --disable-dev-shm-usage \
+    --disable-web-security \
+    --ignore-certificate-errors \
     --window-size=1366,768 \
     --window-position=0,0 \
     --kiosk \

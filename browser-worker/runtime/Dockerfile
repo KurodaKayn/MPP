@@ -1,7 +1,11 @@
-FROM debian:bookworm-slim
+# 使用国内可用的镜像源替代官方 docker.io
+FROM docker.m.daocloud.io/library/debian:bookworm-slim
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Switch to Tsinghua mirror (more stable for security blobs)
+RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources
 
 # Install Chromium, Xvfb, x11vnc, Openbox, and noVNC
 RUN apt-get update && apt-get install -y \
@@ -13,31 +17,31 @@ RUN apt-get update && apt-get install -y \
     novnc \
     procps \
     curl \
+    socat \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Pre-create X11 directory with correct permissions as root
+RUN mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
 
 # Set up environment
 ENV DISPLAY=:99
 ENV RESOLUTION=1366x768x24
 ENV HOME=/home/browser
 
-# Create a non-root user for security
+# Create a non-root user
 RUN useradd -m browser
 WORKDIR /home/browser
 
-# Copy the entrypoint script and make it executable
+# Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-
-# Assign ownership to the browser user
 RUN chown -R browser:browser /home/browser
 
-# Switch to the non-root user
+# Switch to non-root user
 USER browser
 
-# Expose ports: 
-# 9222: Chrome DevTools Protocol (CDP)
-# 6080: noVNC (HTTP/WebSocket)
+# Expose ports
 EXPOSE 9222 6080
 
 ENTRYPOINT ["/entrypoint.sh"]
