@@ -32,6 +32,13 @@ func (c *HttpBrowserWorkerClient) CreateSession(ctx context.Context, req StartWo
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
+		var errResp struct {
+			Message string `json:"message"`
+		}
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		if errResp.Message != "" {
+			return nil, fmt.Errorf("worker error: %s", errResp.Message)
+		}
 		return nil, fmt.Errorf("worker returned status %d", resp.StatusCode)
 	}
 
