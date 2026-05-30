@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -139,7 +140,6 @@ func main() {
 						WebSocketDebuggerUrl string `json:"webSocketDebuggerUrl"`
 					}
 					if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && result.WebSocketDebuggerUrl != "" {
-						import "net/url"
 						u, _ := url.Parse(result.WebSocketDebuggerUrl)
 						u.Host = fmt.Sprintf("127.0.0.1:%d", cdpPort)
 						wsURL = u.String()
