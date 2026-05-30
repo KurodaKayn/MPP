@@ -28,6 +28,15 @@ func (a *DouyinAdapter) AllowedDomains() []DomainRule {
 		{Host: "bytegoofy.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "frontend bundles"},
 		{Host: "snssdk.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "captcha and verification"},
 		{Host: "bytedance.net", Match: "suffix", Schemes: []string{"https"}, Purpose: "verification and static dependencies"},
+		
+		// Newly discovered domains required for React/UI rendering and security checks
+		{Host: "bytetos.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "security glue scripts"},
+		{Host: "byted-static.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "react and systemjs bundles"},
+		{Host: "zijieapi.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "monitoring and security metrics"},
+		{Host: "ibytedapm.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "slardar apm monitoring"},
+		{Host: "bytednsdoc.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "static assets and icons"},
+		{Host: "volces.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "captcha images"},
+		{Host: "bytecdn.cn", Match: "suffix", Schemes: []string{"https"}, Purpose: "cdn assets"},
 	}
 }
 
