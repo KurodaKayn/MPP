@@ -28,6 +28,14 @@ type DashboardStatsResponse struct {
 	TotalFailedPublications    int64 `json:"total_failed_publications"`
 }
 
+type CreateProjectRequest struct {
+	Title         string   `json:"title"`
+	SourceContent string   `json:"source_content"`
+	Summary       string   `json:"summary,omitempty"`
+	CoverImageURL string   `json:"cover_image_url,omitempty"`
+	Platforms     []string `json:"platforms"`
+}
+
 type PublicationSummary struct {
 	ID         uuid.UUID `json:"id"`
 	Platform   string    `json:"platform"`

@@ -201,6 +201,35 @@ func TestUserDashboardHandlerListProjectsUsesJWTUserScope(t *testing.T) {
 	require.Equal(t, owner.ID, resp.Items[0].UserID)
 }
 
+func TestUserDashboardHandlerCreateProject(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/projects",
+		strings.NewReader(`{"title":"Post title","source_content":"<p>Body</p>","summary":"Body","platforms":["wechat"]}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.CreateProject(c))
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp dto.ProjectListItem
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "Post title", resp.Title)
+	require.Equal(t, user.ID, resp.UserID)
+	require.Len(t, resp.Publications, 1)
+	require.Equal(t, "wechat", resp.Publications[0].Platform)
+}
+
 func TestUserDashboardHandlerGetProjectPublicationsReturnsForbidden(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)
