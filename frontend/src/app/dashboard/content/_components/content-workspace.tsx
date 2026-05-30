@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { ContentEditor } from "@/components/dashboard/content/content-editor";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,16 +9,18 @@ import { ContentPrepublishPanel } from "./content-prepublish-panel";
 import { ContentPublishBar } from "./content-publish-bar";
 import { PlatformPreview } from "./platform-preview";
 import { useContentPageController } from "../_hooks/use-content-page-controller";
+import {
+  type ContentView,
+  useContentPageStore,
+} from "../_stores/content-page-store";
 
 type ContentWorkspaceProps = {
   projectId?: string;
 };
 
-type ContentView = "editor" | "preview";
-
 export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
   const contentPage = useContentPageController(projectId);
-  const [contentView, setContentView] = useState<ContentView>("editor");
+  const { contentView, setContentView } = useContentPageStore();
 
   if (contentPage.isLoading) {
     return (

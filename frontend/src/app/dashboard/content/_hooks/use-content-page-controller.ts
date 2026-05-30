@@ -1,10 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
-import { emptyContentValue, type ContentValue } from "@/lib/content/types";
+import type { ContentValue } from "@/lib/content/types";
 import {
   createDashboardProject,
   getDashboardProject,
@@ -16,7 +16,10 @@ import {
   publishContentToPlatforms,
   type PublishPlatform,
 } from "../_lib/publish-content";
-import type { PrepublishDraft } from "../_stores/content-page-store";
+import {
+  type PrepublishDraft,
+  useContentPageStore,
+} from "../_stores/content-page-store";
 
 function isPublishPlatform(platform: string): platform is PublishPlatform {
   return PLATFORM_TABS.some((item) => item.value === platform);
@@ -35,19 +38,27 @@ function contentValueFromSource(sourceContent: string): ContentValue {
 
 export function useContentPageController(projectId?: string) {
   const router = useRouter();
-  const [content, setContent] = useState<ContentValue>(emptyContentValue);
-  const [selectedPlatforms, setSelectedPlatforms] = useState<PublishPlatform[]>(
-    [],
-  );
-  const [title, setTitle] = useState("");
-  const [isLoading, setIsLoading] = useState(Boolean(projectId));
-  const [isOpeningXPostIntent, setIsOpeningXPostIntent] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isPublishing, setIsPublishing] = useState(false);
-  const [isSyncingPrepublish, setIsSyncingPrepublish] = useState(false);
-  const [prepublishDrafts, setPrepublishDrafts] = useState<
-    Partial<Record<PublishPlatform, PrepublishDraft>>
-  >({});
+  const {
+    content,
+    isLoading,
+    isOpeningXPostIntent,
+    isPublishing,
+    isSaving,
+    isSyncingPrepublish,
+    prepublishDrafts,
+    resetForCreate,
+    selectedPlatforms,
+    setContent,
+    setIsLoading,
+    setIsOpeningXPostIntent,
+    setIsPublishing,
+    setIsSaving,
+    setIsSyncingPrepublish,
+    setPrepublishDrafts,
+    setSelectedPlatforms,
+    setTitle,
+    title,
+  } = useContentPageStore();
   const publishBarRef = useRef<HTMLDivElement>(null);
   const hasBodyContent = Boolean(content.text.trim() || content.firstImageSrc);
   const hasRequiredContent = Boolean(
@@ -61,7 +72,7 @@ export function useContentPageController(projectId?: string) {
 
   useEffect(() => {
     if (!projectId) {
-      setIsLoading(false);
+      resetForCreate();
       return;
     }
 
@@ -85,6 +96,7 @@ export function useContentPageController(projectId?: string) {
               : [],
           ),
         );
+        setPrepublishDrafts({});
       } catch (requestError) {
         toast.error("无法加载项目内容", {
           description:
