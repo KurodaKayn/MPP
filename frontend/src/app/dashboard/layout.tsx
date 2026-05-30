@@ -1,13 +1,6 @@
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
+import { DashboardBreadcrumb } from "@/components/dashboard/dashboard-breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import {
   SidebarInset,
@@ -29,17 +22,7 @@ export default function DashboardLayout({
             <div className="flex items-center gap-2 px-4">
               <SidebarTrigger className="-ml-1" />
               <Separator orientation="vertical" className="mr-2 h-4" />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem className="hidden md:block">
-                    <BreadcrumbLink href="/dashboard">控制台</BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator className="hidden md:block" />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>概览</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
+              <DashboardBreadcrumb />
             </div>
           </header>
           <main className="flex flex-1 flex-col gap-4 p-4 pt-0">
