@@ -285,6 +285,27 @@ describe("dashboard api client", () => {
     expect(headers.get("Content-Type")).toBe("application/json");
   });
 
+  it("posts a manual publish request when requested", async () => {
+    const result = {
+      publish_url: "https://x.com/intent/post?text=hello",
+      status: "manual_required",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(result));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      publishProject("project-1", "x", { mode: "manual" }),
+    ).resolves.toEqual(result);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/publish",
+      expect.objectContaining({
+        body: JSON.stringify({ mode: "manual", platform: "x" }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("fetches and updates the WeChat account settings", async () => {
     const account = {
       account_auth: {

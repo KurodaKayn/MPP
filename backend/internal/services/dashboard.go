@@ -101,9 +101,54 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 	return updates, nil
 }
 
+func (s *DashboardService) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
+	var proj models.Project
+	if err := s.db.Where("id = ? AND user_id = ?", projectID, *scopeUserID).First(&proj).Error; err != nil {
+		return nil, ErrForbidden
+	}
+
+	var pub models.ProjectPlatformPublication
+	if err := s.db.Where("project_id = ? AND platform = ?", projectID, "x").First(&pub).Error; err != nil {
+		return nil, fmt.Errorf("publication record not found for platform: x")
+	}
+	if !pub.Enabled || pub.Status == models.PublicationStatusDisabled {
+		return nil, ErrPublicationDisabled
+	}
+
+	publishURL, err := publisher.BuildXPostIntentURL(pub.AdaptedContent)
+	if err != nil {
+		adaptedContent, adaptErr := (&publisher.XPublisher{}).AdaptContent(&proj)
+		if adaptErr != nil {
+			return nil, adaptErr
+		}
+		pub.AdaptedContent = datatypes.JSON(adaptedContent)
+		if saveErr := s.db.Model(&pub).Update("adapted_content", pub.AdaptedContent).Error; saveErr != nil {
+			return nil, saveErr
+		}
+		publishURL, err = publisher.BuildXPostIntentURL(pub.AdaptedContent)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := s.db.Model(&pub).Updates(map[string]interface{}{
+		"publish_url":   publishURL,
+		"error_message": "",
+	}).Error; err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"status":      "manual_required",
+		"platform":    "x",
+		"publish_url": publishURL,
+	}, nil
+}
+
 var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
 var ErrInvalidProject = errors.New("invalid project")
 var ErrPublicationDisabled = errors.New("publication is disabled")
+var ErrManualPublishUnsupported = errors.New("manual publish is only supported for x")
 
 var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
 var allowedProjectPlatforms = map[string]struct{}{

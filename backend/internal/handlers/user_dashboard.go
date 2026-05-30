@@ -196,10 +196,29 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	type PublishRequest struct {
 		Platform  string   `json:"platform"`
 		Platforms []string `json:"platforms"`
+		Mode      string   `json:"mode"`
 	}
 	req := new(PublishRequest)
 	if err := c.Bind(req); err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	if strings.EqualFold(strings.TrimSpace(req.Mode), "manual") {
+		if len(req.Platforms) > 0 || !strings.EqualFold(strings.TrimSpace(req.Platform), "x") {
+			return sendError(c, http.StatusBadRequest, "invalid_request", services.ErrManualPublishUnsupported.Error())
+		}
+
+		resp, err := h.dashboardService.CreateXPostIntent(projectID, &userID)
+		if err != nil {
+			if errors.Is(err, services.ErrPublicationDisabled) {
+				return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
+			}
+			if errors.Is(err, services.ErrForbidden) {
+				return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+			}
+			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		}
+		return c.JSON(http.StatusOK, resp)
 	}
 
 	if len(req.Platforms) > 0 {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	stdhtml "html"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 
 const xCharacterLimit = 280
 const xURLWeight = 23
+const xPostIntentURL = "https://x.com/intent/tweet"
 
 const (
 	xAuthTypeOAuth1 = "oauth1"
@@ -75,6 +77,22 @@ func (x *XPublisher) AdaptContent(project *models.Project) ([]byte, error) {
 		Summary: text,
 		Text:    text,
 	})
+}
+
+func BuildXPostIntentURL(raw []byte) (string, error) {
+	text := truncateXTextWithEllipsis(extractXText(raw), xCharacterLimit)
+	if text == "" {
+		return "", fmt.Errorf("x post text is empty")
+	}
+
+	endpoint, err := url.Parse(xPostIntentURL)
+	if err != nil {
+		return "", err
+	}
+	query := endpoint.Query()
+	query.Set("text", text)
+	endpoint.RawQuery = query.Encode()
+	return endpoint.String(), nil
 }
 
 func (x *XPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {

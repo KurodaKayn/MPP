@@ -3,6 +3,7 @@ package publisher
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -48,6 +49,24 @@ func TestXWeightedLengthCountsURLsAsTransformedLength(t *testing.T) {
 
 	if got := xWeightedLength(text); got != 26 {
 		t.Fatalf("expected URL weighted length 26, got %d", got)
+	}
+}
+
+func TestBuildXPostIntentURLUsesAdaptedText(t *testing.T) {
+	intentURL, err := BuildXPostIntentURL(datatypes.JSON(`{"text":"hello x & \u4e2d\u6587"}`))
+	if err != nil {
+		t.Fatalf("expected intent URL, got %v", err)
+	}
+
+	parsed, err := url.Parse(intentURL)
+	if err != nil {
+		t.Fatalf("expected valid URL, got %v", err)
+	}
+	if parsed.Scheme != "https" || parsed.Host != "x.com" || parsed.Path != "/intent/tweet" {
+		t.Fatalf("unexpected intent URL: %s", intentURL)
+	}
+	if got := parsed.Query().Get("text"); got != "hello x & \u4e2d\u6587" {
+		t.Fatalf("expected text query to round-trip, got %q", got)
 	}
 }
 

@@ -858,6 +858,50 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 	assert.Equal(t, "tweet.read tweet.write users.read offline.access", savedCredentials["oauth2_scope"])
 }
 
+func TestCreateXPostIntentReturnsManualPublishURL(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "<p>source content</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"text":"hello x & \u4e2d\u6587"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	result, err := s.CreateXPostIntent(project.ID, &user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "manual_required", result["status"])
+	assert.Equal(t, "x", result["platform"])
+
+	publishURL, ok := result["publish_url"].(string)
+	require.True(t, ok)
+	parsed, err := url.Parse(publishURL)
+	require.NoError(t, err)
+	assert.Equal(t, "https", parsed.Scheme)
+	assert.Equal(t, "x.com", parsed.Host)
+	assert.Equal(t, "/intent/tweet", parsed.Path)
+	assert.Equal(t, "hello x & \u4e2d\u6587", parsed.Query().Get("text"))
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
+	assert.Equal(t, models.PublicationStatusAdapted, saved.Status)
+	assert.Equal(t, publishURL, saved.PublishURL)
+	assert.Empty(t, saved.ErrorMessage)
+}
+
 func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
