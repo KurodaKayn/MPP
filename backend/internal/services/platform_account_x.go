@@ -105,7 +105,7 @@ func (s *DashboardService) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccou
 		account = models.PlatformAccount{
 			UserID:      userID,
 			Platform:    xPlatform,
-			Name:        "X",
+			Username:    "X",
 			Credentials: credentials,
 			Metadata:    datatypes.JSON([]byte(`{}`)),
 			Status:      models.PlatformAccountStatusUntested,
@@ -113,7 +113,7 @@ func (s *DashboardService) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccou
 		err = s.db.Create(&account).Error
 	} else {
 		err = s.db.Model(&account).Updates(map[string]interface{}{
-			"name":            "X",
+			"username":        "X",
 			"credentials":     credentials,
 			"metadata":        datatypes.JSON([]byte(`{}`)),
 			"status":          models.PlatformAccountStatusUntested,

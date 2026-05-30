@@ -163,7 +163,7 @@ func (s *DashboardService) saveXOAuth2Account(userID uuid.UUID, token pkgx.OAuth
 		account = models.PlatformAccount{
 			UserID:        userID,
 			Platform:      xPlatform,
-			Name:          "X",
+			Username:      "X",
 			Credentials:   rawCredentials,
 			Metadata:      metadata,
 			Status:        models.PlatformAccountStatusConnected,
@@ -173,7 +173,7 @@ func (s *DashboardService) saveXOAuth2Account(userID uuid.UUID, token pkgx.OAuth
 		err = s.db.Create(&account).Error
 	} else {
 		err = s.db.Model(&account).Updates(map[string]interface{}{
-			"name":            "X",
+			"username":        "X",
 			"credentials":     rawCredentials,
 			"metadata":        datatypes.JSON(metadata),
 			"status":          models.PlatformAccountStatusConnected,

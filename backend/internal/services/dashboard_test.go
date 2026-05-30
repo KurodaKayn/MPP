@@ -91,7 +91,7 @@ func setupTestDB() *gorm.DB {
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
 		platform TEXT NOT NULL,
-		name TEXT NOT NULL,
+		username TEXT NOT NULL,
 		status TEXT NOT NULL DEFAULT 'untested',
 		credentials TEXT NOT NULL DEFAULT '{}',
 		metadata TEXT NOT NULL DEFAULT '{}',
@@ -751,7 +751,7 @@ func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
 	require.NoError(t, db.Create(&models.PlatformAccount{
 		UserID:   user.ID,
 		Platform: "x",
-		Name:     "X",
+		Username: "X",
 		Status:   models.PlatformAccountStatusConnected,
 		Credentials: datatypes.JSON(`{
 			"auth_type":"oauth2",
@@ -828,7 +828,7 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 	require.NoError(t, db.Create(&models.PlatformAccount{
 		UserID:      user.ID,
 		Platform:    "x",
-		Name:        "X",
+		Username: "X",
 		Status:      models.PlatformAccountStatusConnected,
 		Credentials: datatypes.JSON(credentials),
 		Metadata:    datatypes.JSON(`{"username":"creator"}`),

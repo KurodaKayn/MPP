@@ -48,7 +48,7 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
 		platform TEXT NOT NULL,
-		name TEXT NOT NULL,
+		username TEXT NOT NULL,
 		status TEXT NOT NULL DEFAULT 'untested',
 		credentials TEXT NOT NULL DEFAULT '{}',
 		metadata TEXT NOT NULL DEFAULT '{}',
