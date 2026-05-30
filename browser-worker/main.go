@@ -207,7 +207,20 @@ func main() {
 				log.Printf("Failed to setup interception for %s: %v", wsURL, err)
 			}
 			
-			chromedp.Run(ctx, chromedp.Navigate(req.LoginURL))
+			// Navigate and ENSURE the tab is activated (brought to front)
+			err = chromedp.Run(ctx, 
+				chromedp.Navigate(req.LoginURL),
+				chromedp.ActionFunc(func(ctx context.Context) error {
+					// Get the target ID of the current context and activate it
+					targetID := chromedp.FromContext(ctx).TargetID
+					return target.ActivateTarget(targetID).Do(ctx)
+				}),
+			)
+			if err != nil {
+				log.Printf("Failed to navigate or activate: %v", err)
+			} else {
+				log.Printf("Navigated to %s and activated tab", req.LoginURL)
+			}
 		}()
 
 		ref := uuid.NewString()
