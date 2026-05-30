@@ -44,7 +44,14 @@ func main() {
 	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
 
 	// Remote Browser Session (New)
-	workerClient := publisher.NewMockBrowserWorkerClient()
+	var workerClient publisher.BrowserWorkerClient
+	workerURL := os.Getenv("BROWSER_WORKER_URL")
+	if workerURL != "" {
+		workerClient = publisher.NewHttpBrowserWorkerClient(workerURL)
+	} else {
+		workerClient = publisher.NewMockBrowserWorkerClient()
+	}
+
 	cookieStore := publisher.NewCookieStore(db.DB)
 	browserSessionService := services.NewBrowserSessionService(db.DB, workerClient, cookieStore)
 	browserSessionHandler := handlers.NewBrowserSessionHandler(browserSessionService)
