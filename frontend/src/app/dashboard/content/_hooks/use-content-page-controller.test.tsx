@@ -13,19 +13,23 @@ declare global {
 const mocks = vi.hoisted(() => ({
   createDashboardProject: vi.fn(),
   getDashboardProject: vi.fn(),
+  getProjectPublications: vi.fn(),
   publishProject: vi.fn(),
   push: vi.fn(),
   refresh: vi.fn(),
   replace: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
+  syncProjectPrepublish: vi.fn(),
   updateDashboardProject: vi.fn(),
 }));
 
 vi.mock("@/lib/dashboard/api", () => ({
   createDashboardProject: mocks.createDashboardProject,
   getDashboardProject: mocks.getDashboardProject,
+  getProjectPublications: mocks.getProjectPublications,
   publishProject: mocks.publishProject,
+  syncProjectPrepublish: mocks.syncProjectPrepublish,
   updateDashboardProject: mocks.updateDashboardProject,
 }));
 
@@ -82,12 +86,14 @@ describe("useContentPageController", () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     mocks.createDashboardProject.mockReset();
     mocks.getDashboardProject.mockReset();
+    mocks.getProjectPublications.mockReset();
     mocks.publishProject.mockReset();
     mocks.push.mockReset();
     mocks.replace.mockReset();
     mocks.refresh.mockReset();
     mocks.toastError.mockReset();
     mocks.toastSuccess.mockReset();
+    mocks.syncProjectPrepublish.mockReset();
     mocks.updateDashboardProject.mockReset();
     useContentPageStore.getState().resetForCreate();
   });
@@ -114,7 +120,43 @@ describe("useContentPageController", () => {
     view.unmount();
   });
 
-  it("syncs prepublish drafts with platform-specific formats", () => {
+  it("syncs prepublish drafts with platform-specific formats", async () => {
+    mocks.createDashboardProject.mockResolvedValue({ id: "project-1" });
+    mocks.syncProjectPrepublish.mockResolvedValue({
+      items: [
+        {
+          adapted_content: {
+            format: "html",
+            html: "<p>Rendered body</p>",
+            source_revision: "2026-05-30T12:00:00.000Z",
+          },
+          enabled: true,
+          platform: "wechat",
+          updated_at: "2026-05-30T12:00:00.000Z",
+        },
+        {
+          adapted_content: {
+            format: "markdown",
+            markdown: "Rendered body",
+            source_revision: "2026-05-30T12:00:00.000Z",
+          },
+          enabled: true,
+          platform: "zhihu",
+          updated_at: "2026-05-30T12:00:00.000Z",
+        },
+        {
+          adapted_content: {
+            format: "text",
+            source_revision: "2026-05-30T12:00:00.000Z",
+            text: "Rendered body",
+          },
+          enabled: true,
+          platform: "x",
+          updated_at: "2026-05-30T12:00:00.000Z",
+        },
+      ],
+      project_id: "project-1",
+    });
     const view = renderController();
 
     act(() => {
@@ -129,8 +171,8 @@ describe("useContentPageController", () => {
       });
     });
 
-    act(() => {
-      view.getController().syncPrepublish();
+    await act(async () => {
+      await view.getController().syncPrepublish();
     });
 
     const state = useContentPageStore.getState();
@@ -140,16 +182,26 @@ describe("useContentPageController", () => {
     });
     expect(state.prepublishDrafts.zhihu).toMatchObject({
       format: "markdown",
-      raw: "<p>Rendered body</p>",
+      raw: "Rendered body",
     });
     expect(state.prepublishDrafts.x).toMatchObject({
       format: "text",
-      raw: "<p>Rendered body</p>",
+      raw: "Rendered body",
     });
     expect(state.isSyncingPrepublish).toBe(false);
-    expect(mocks.toastSuccess).toHaveBeenCalledWith("已同步到预发布", {
-      description: "暂未做格式转换，当前内容已复制到各平台草稿。",
+    expect(mocks.createDashboardProject).toHaveBeenCalledWith({
+      platforms: ["wechat", "zhihu", "x"],
+      source_content: "<p>Rendered body</p>",
+      summary: "Rendered body",
+      title: "Post title",
     });
+    expect(mocks.syncProjectPrepublish).toHaveBeenCalledWith("project-1", {
+      platforms: ["wechat", "zhihu", "x"],
+    });
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("已同步到预发布", {
+      description: "平台草稿已由后端适配并保存。",
+    });
+    expect(mocks.replace).toHaveBeenCalledWith("/dashboard/content/project-1");
 
     view.unmount();
   });
