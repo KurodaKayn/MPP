@@ -27,12 +27,20 @@ const (
 	PublicationStatusDisabled   = "disabled"
 )
 
+// Platform account status constants
+const (
+	PlatformAccountStatusUntested  = "untested"
+	PlatformAccountStatusConnected = "connected"
+	PlatformAccountStatusFailed    = "failed"
+)
+
 type User struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
-	Username  string    `gorm:"not null"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Projects  []Project `gorm:"foreignKey:UserID"`
+	ID               uuid.UUID         `gorm:"type:uuid;primaryKey"`
+	Username         string            `gorm:"not null"`
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	Projects         []Project         `gorm:"foreignKey:UserID"`
+	PlatformAccounts []PlatformAccount `gorm:"foreignKey:UserID"`
 }
 
 type Project struct {
@@ -64,6 +72,23 @@ type ProjectPlatformPublication struct {
 	UpdatedAt      time.Time
 }
 
+type PlatformAccount struct {
+	ID            uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	UserID        uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:idx_platform_accounts_user_platform"`
+	Platform      string         `gorm:"not null;uniqueIndex:idx_platform_accounts_user_platform;index:idx_platform_accounts_platform_status"`
+	Name          string         `gorm:"not null"`
+	Status        string         `gorm:"not null;default:'untested';index:idx_platform_accounts_platform_status"`
+	Cookies       datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"` // From feature branch
+	Credentials   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From main branch
+	Metadata      datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From main branch
+	Config        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From feature branch
+	AvatarURL     string         // From feature branch
+	LastTestedAt  *time.Time
+	LastTestError string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 // BeforeCreate hook to generate UUID if not set
 func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
 	if u.ID == uuid.Nil {
@@ -82,6 +107,13 @@ func (p *Project) BeforeCreate(tx *gorm.DB) (err error) {
 func (p *ProjectPlatformPublication) BeforeCreate(tx *gorm.DB) (err error) {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
+	}
+	return
+}
+
+func (pa *PlatformAccount) BeforeCreate(tx *gorm.DB) (err error) {
+	if pa.ID == uuid.Nil {
+		pa.ID = uuid.New()
 	}
 	return
 }

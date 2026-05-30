@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/middleware"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )

@@ -1,41 +1,39 @@
 "use client";
 
-import { useState } from "react";
-import { toast } from "sonner";
 import { ContentEditor } from "@/components/dashboard/content/content-editor";
-import { emptyContentValue, type ContentValue } from "@/lib/content/types";
 import { ContentPageHeader } from "./_components/content-page-header";
+import { ContentPublishBar } from "./_components/content-publish-bar";
 import { PlatformPreview } from "./_components/platform-preview";
+import { useContentPageController } from "./_hooks/use-content-page-controller";
 
 export default function ContentPage() {
-  const [content, setContent] = useState<ContentValue>(emptyContentValue);
-  const [title, setTitle] = useState("");
-  const hasBodyContent = Boolean(content.text.trim() || content.firstImageSrc);
-
-  const handlePublish = () => {
-    if (!title || !hasBodyContent) {
-      toast.error("内容不完整", {
-        description: "请填写标题和正文后再发布。",
-      });
-      return;
-    }
-    toast.success("发布中...", {
-      description: "内容正在同步到后端服务。",
-    });
-  };
+  const contentPage = useContentPageController();
 
   return (
-    <div className="flex flex-col gap-6">
-      <ContentPageHeader onPublish={handlePublish} />
+    <div className="flex flex-col gap-6 pb-4">
+      <ContentPageHeader onOpenPublishPanel={contentPage.openPublishPanel} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <ContentEditor
-          title={title}
-          content={content}
-          onTitleChange={setTitle}
-          onContentChange={setContent}
+          title={contentPage.title}
+          content={contentPage.content}
+          onTitleChange={contentPage.setTitle}
+          onContentChange={contentPage.setContent}
         />
-        <PlatformPreview title={title} content={content} />
+        <PlatformPreview
+          title={contentPage.title}
+          content={contentPage.content}
+        />
+      </div>
+
+      <div ref={contentPage.publishBarRef}>
+        <ContentPublishBar
+          canPublish={contentPage.canPublish}
+          isPublishing={contentPage.isPublishing}
+          selectedPlatforms={contentPage.selectedPlatforms}
+          onSelectedPlatformsChange={contentPage.setSelectedPlatforms}
+          onPublish={contentPage.publish}
+        />
       </div>
     </div>
   );

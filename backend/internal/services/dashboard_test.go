@@ -1,13 +1,16 @@
 package services_test
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/glebarez/sqlite"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/dto"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -36,6 +39,23 @@ func setupTestDB() *gorm.DB {
 		updated_at DATETIME
 	)`)
 
+	db.Exec(`CREATE TABLE platform_accounts (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		platform TEXT NOT NULL,
+		name TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'untested',
+		credentials TEXT NOT NULL DEFAULT '{}',
+		metadata TEXT NOT NULL DEFAULT '{}',
+		cookies TEXT NOT NULL DEFAULT '[]',
+		config TEXT NOT NULL DEFAULT '{}',
+		avatar_url TEXT,
+		last_tested_at DATETIME,
+		last_test_error TEXT,
+		created_at DATETIME,
+		updated_at DATETIME
+	)`)
+
 	db.Exec(`CREATE TABLE project_platform_publications (
 		id TEXT PRIMARY KEY,
 		project_id TEXT NOT NULL,
@@ -57,6 +77,39 @@ func setupTestDB() *gorm.DB {
 	return db
 }
 
+type fakeWechatTester struct {
+	result dto.WechatConnectionTestResponse
+	appID  string
+	secret string
+}
+
+func (f *fakeWechatTester) Test(appID, appSecret string) dto.WechatConnectionTestResponse {
+	f.appID = appID
+	f.secret = appSecret
+	return f.result
+}
+
+type fakePlatformPublisher struct {
+	config datatypes.JSON
+}
+
+func (f *fakePlatformPublisher) ValidateConfig(config []byte) error {
+	return nil
+}
+
+func (f *fakePlatformPublisher) AdaptContent(project *models.Project) ([]byte, error) {
+	return nil, nil
+}
+
+func (f *fakePlatformPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
+	f.config = append(datatypes.JSON(nil), pub.Config...)
+	return "remote-id", "https://example.com/published", nil
+}
+
+func ptrTime(value time.Time) *time.Time {
+	return &value
+}
+
 func TestGetStats(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
@@ -65,7 +118,7 @@ func TestGetStats(t *testing.T) {
 	u2 := models.User{Username: "test2"}
 	db.Create(&u1)
 	db.Create(&u2)
-	
+
 	p1 := models.Project{UserID: u1.ID, Title: "p1", SourceContent: "c", Status: models.ProjectStatusDraft}
 	p2 := models.Project{UserID: u2.ID, Title: "p2", SourceContent: "c", Status: models.ProjectStatusDraft}
 	db.Create(&p1)
@@ -99,7 +152,7 @@ func TestListProjects(t *testing.T) {
 	u2 := models.User{Username: "other"}
 	db.Create(&u1)
 	db.Create(&u2)
-	
+
 	p1 := models.Project{UserID: u1.ID, Title: "p1", SourceContent: "c1", Status: models.ProjectStatusPublished, CreatedAt: time.Now().Add(-1 * time.Hour)}
 	p2 := models.Project{UserID: u1.ID, Title: "p2", SourceContent: "c2", Status: models.ProjectStatusDraft, CreatedAt: time.Now()}
 	p3 := models.Project{UserID: u2.ID, Title: "p3", SourceContent: "c3", Status: models.ProjectStatusDraft, CreatedAt: time.Now()}
@@ -113,7 +166,7 @@ func TestListProjects(t *testing.T) {
 	res, err := s.ListProjects(1, 10, "", "", "", nil)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(3), res.Total)
-	
+
 	// Test Personal scope (u1)
 	resScoped, errScoped := s.ListProjects(1, 10, "", "", "", &u1.ID)
 	assert.NoError(t, errScoped)
@@ -126,6 +179,184 @@ func TestListProjects(t *testing.T) {
 	}
 }
 
+func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+
+	resp, err := s.CreateProject(user.ID, dto.CreateProjectRequest{
+		Title:         "WeChat title",
+		SourceContent: "<p>Hello WeChat</p>",
+		Summary:       "Hello WeChat",
+		CoverImageURL: "data:image/png;base64,aGVsbG8=",
+		Platforms:     []string{"wechat", "wechat", "bilibili"},
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "WeChat title", resp.Title)
+	assert.Equal(t, models.ProjectStatusReady, resp.Status)
+	assert.Len(t, resp.Publications, 2)
+
+	var project models.Project
+	assert.NoError(t, db.First(&project, "id = ?", resp.ID).Error)
+	assert.Equal(t, user.ID, project.UserID)
+	assert.Equal(t, "<p>Hello WeChat</p>", project.SourceContent)
+
+	var wechatPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", resp.ID, "wechat").Error)
+	assert.Equal(t, models.PublicationStatusAdapted, wechatPub.Status)
+
+	var config map[string]string
+	assert.NoError(t, json.Unmarshal(wechatPub.Config, &config))
+	assert.Equal(t, "WeChat title", config["title"])
+	assert.Equal(t, "Hello WeChat", config["digest"])
+	assert.Equal(t, "data:image/png;base64,aGVsbG8=", config["cover_image_url"])
+
+	var adapted map[string]string
+	assert.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &adapted))
+	assert.Equal(t, "html", adapted["format"])
+	assert.Equal(t, "<p>Hello WeChat</p>", adapted["html"])
+
+	var bilibiliPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&bilibiliPub, "project_id = ? AND platform = ?", resp.ID, "bilibili").Error)
+	assert.Equal(t, models.PublicationStatusPending, bilibiliPub.Status)
+}
+
+func TestCreateProjectRejectsInvalidInput(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+
+	_, err := s.CreateProject(user.ID, dto.CreateProjectRequest{
+		Title:         "Missing platform",
+		SourceContent: "content",
+	})
+	assert.ErrorIs(t, err, services.ErrInvalidProject)
+
+	_, err = s.CreateProject(user.ID, dto.CreateProjectRequest{
+		Title:         "Unknown platform",
+		SourceContent: "content",
+		Platforms:     []string{"threads"},
+	})
+	assert.ErrorIs(t, err, services.ErrInvalidProject)
+}
+
+func TestGetProjectReturnsSourceContentForOwner(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner"}
+	stranger := models.User{Username: "stranger"}
+	db.Create(&owner)
+	db.Create(&stranger)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Existing post",
+		SourceContent: "<p>Editable body</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	db.Create(&project)
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusPublished,
+	})
+
+	resp, err := s.GetProject(project.ID, &owner.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, project.ID, resp.ID)
+	assert.Equal(t, "<p>Editable body</p>", resp.SourceContent)
+	assert.Len(t, resp.Publications, 1)
+
+	_, err = s.GetProject(project.ID, &stranger.ID)
+	assert.ErrorIs(t, err, services.ErrForbidden)
+}
+
+func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner"}
+	stranger := models.User{Username: "stranger"}
+	db.Create(&owner)
+	db.Create(&stranger)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Old title",
+		SourceContent: "old body",
+		Status:        models.ProjectStatusPublished,
+	}
+	db.Create(&project)
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID:    project.ID,
+		Platform:     "wechat",
+		Enabled:      true,
+		Status:       models.PublicationStatusPublished,
+		PublishURL:   "https://example.com/old",
+		RemoteID:     "old-remote",
+		PublishedAt:  ptrTime(time.Now()),
+		RetryCount:   2,
+		ErrorMessage: "old error",
+	})
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID:    project.ID,
+		Platform:     "zhihu",
+		Enabled:      true,
+		Status:       models.PublicationStatusFailed,
+		ErrorMessage: "failed before",
+	})
+
+	resp, err := s.UpdateProject(project.ID, owner.ID, dto.UpdateProjectRequest{
+		Title:         "New title",
+		SourceContent: "<p>New body</p>",
+		Summary:       "New body",
+		Platforms:     []string{"zhihu", "bilibili"},
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "New title", resp.Title)
+	assert.Equal(t, "<p>New body</p>", resp.SourceContent)
+	assert.Len(t, resp.Publications, 3)
+
+	var saved models.Project
+	assert.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
+	assert.Equal(t, "New title", saved.Title)
+	assert.Equal(t, "<p>New body</p>", saved.SourceContent)
+	assert.Equal(t, models.ProjectStatusReady, saved.Status)
+
+	var wechatPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	assert.False(t, wechatPub.Enabled)
+	assert.Equal(t, models.PublicationStatusDisabled, wechatPub.Status)
+
+	var zhihuPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	assert.True(t, zhihuPub.Enabled)
+	assert.Equal(t, models.PublicationStatusAdapted, zhihuPub.Status)
+	assert.Empty(t, zhihuPub.ErrorMessage)
+	assert.Empty(t, zhihuPub.PublishURL)
+	assert.Nil(t, zhihuPub.PublishedAt)
+
+	var bilibiliPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&bilibiliPub, "project_id = ? AND platform = ?", project.ID, "bilibili").Error)
+	assert.True(t, bilibiliPub.Enabled)
+	assert.Equal(t, models.PublicationStatusPending, bilibiliPub.Status)
+
+	_, err = s.UpdateProject(project.ID, stranger.ID, dto.UpdateProjectRequest{
+		Title:         "Not allowed",
+		SourceContent: "content",
+		Platforms:     []string{"wechat"},
+	})
+	assert.ErrorIs(t, err, services.ErrForbidden)
+}
+
 func TestGetProjectPublications(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
@@ -134,7 +365,7 @@ func TestGetProjectPublications(t *testing.T) {
 	u2 := models.User{Username: "stranger"}
 	db.Create(&u1)
 	db.Create(&u2)
-	
+
 	p := models.Project{UserID: u1.ID, Title: "p1", SourceContent: "c1", Status: models.ProjectStatusPublished}
 	db.Create(&p)
 
@@ -159,9 +390,207 @@ func TestGetProjectPublications(t *testing.T) {
 	resOwner, errOwner := s.GetProjectPublications(p.ID, &u1.ID)
 	assert.NoError(t, errOwner)
 	assert.Equal(t, p.ID, resOwner.ProjectID)
-	
+
 	// Stranger gets Forbidden
 	_, errStranger := s.GetProjectPublications(p.ID, &u2.ID)
 	assert.ErrorIs(t, errStranger, services.ErrForbidden)
 }
 
+func TestBatchPublishProject(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	u := models.User{Username: "tester"}
+	db.Create(&u)
+
+	p := models.Project{UserID: u.ID, Title: "p", SourceContent: "c", Status: models.ProjectStatusDraft}
+	db.Create(&p)
+
+	// Create publications for multiple platforms
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: p.ID,
+		Platform:  "wechat",
+		Status:    models.PublicationStatusPending,
+		Config:    datatypes.JSON(`{"app_id": "test", "app_secret": "test"}`),
+	})
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: p.ID,
+		Platform:  "zhihu",
+		Status:    models.PublicationStatusPending,
+	})
+
+	// Test batch publish
+	platforms := []string{"wechat", "zhihu"}
+	results, err := s.BatchPublishProject(p.ID, platforms, &u.ID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(results))
+	
+	// Check results
+	for _, platform := range platforms {
+		assert.Contains(t, results, platform)
+	}
+}
+
+func TestWechatAccountSettingsSaveMasksSecret(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+
+	resp, err := s.UpsertWechatAccount(user.ID, dto.UpsertWechatAccountRequest{
+		AppID:     "wx-app",
+		AppSecret: "wx-secret",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "wechat", resp.Platform)
+	assert.Equal(t, "wx-app", resp.AppID)
+	assert.True(t, resp.HasAppSecret)
+	assert.Equal(t, models.PlatformAccountStatusUntested, resp.Status)
+
+	saved, err := s.GetWechatAccount(user.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, "wx-app", saved.AppID)
+	assert.True(t, saved.HasAppSecret)
+}
+
+func TestWechatAccountTestUsesSavedSecretAndUpdatesStatus(t *testing.T) {
+	db := setupTestDB()
+	tester := &fakeWechatTester{
+		result: dto.WechatConnectionTestResponse{
+			Connected: true,
+			Status:    models.PlatformAccountStatusConnected,
+			Message:   "ok",
+			TestedAt:  time.Now(),
+		},
+	}
+	s := services.NewDashboardServiceWithWechatTester(db, tester)
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+
+	_, err := s.UpsertWechatAccount(user.ID, dto.UpsertWechatAccountRequest{
+		AppID:     "wx-app",
+		AppSecret: "wx-secret",
+	})
+	assert.NoError(t, err)
+
+	result, err := s.TestWechatAccount(user.ID, dto.TestWechatAccountRequest{
+		AppID: "wx-app",
+	})
+	assert.NoError(t, err)
+	assert.True(t, result.Connected)
+	assert.Equal(t, "wx-app", tester.appID)
+	assert.Equal(t, "wx-secret", tester.secret)
+
+	saved, err := s.GetWechatAccount(user.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, models.PlatformAccountStatusConnected, saved.Status)
+	assert.Empty(t, saved.LastTestError)
+}
+
+func TestWechatAccountTestDoesNotPersistUnsavedCredentialsStatus(t *testing.T) {
+	db := setupTestDB()
+	testedAt := time.Now()
+	tester := &fakeWechatTester{
+		result: dto.WechatConnectionTestResponse{
+			Connected: false,
+			Status:    models.PlatformAccountStatusFailed,
+			Message:   "failed",
+			TestedAt:  testedAt,
+		},
+	}
+	s := services.NewDashboardServiceWithWechatTester(db, tester)
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+
+	_, err := s.UpsertWechatAccount(user.ID, dto.UpsertWechatAccountRequest{
+		AppID:     "wx-saved",
+		AppSecret: "saved-secret",
+	})
+	assert.NoError(t, err)
+
+	result, err := s.TestWechatAccount(user.ID, dto.TestWechatAccountRequest{
+		AppID:     "wx-draft",
+		AppSecret: "draft-secret",
+	})
+	assert.NoError(t, err)
+	assert.False(t, result.Connected)
+	assert.Equal(t, "wx-draft", tester.appID)
+	assert.Equal(t, "draft-secret", tester.secret)
+
+	saved, err := s.GetWechatAccount(user.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, models.PlatformAccountStatusUntested, saved.Status)
+	assert.Nil(t, saved.LastTestedAt)
+	assert.Empty(t, saved.LastTestError)
+}
+
+func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &fakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	db.Create(&project)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"app_id":"stale","app_secret":"stale-secret","title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	db.Create(&pub)
+	_, err := s.UpsertWechatAccount(user.ID, dto.UpsertWechatAccountRequest{
+		AppID:     "wx-saved",
+		AppSecret: "saved-secret",
+	})
+	assert.NoError(t, err)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+
+	var config map[string]string
+	assert.NoError(t, json.Unmarshal(fakePublisher.config, &config))
+	assert.Equal(t, "wx-saved", config["app_id"])
+	assert.Equal(t, "saved-secret", config["app_secret"])
+	assert.Equal(t, "Title", config["title"])
+}
+
+func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	db.Create(&project)
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        false,
+		Status:         models.PublicationStatusDisabled,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	})
+
+	_, err := s.PublishProject(project.ID, "wechat", &user.ID)
+	assert.ErrorIs(t, err, services.ErrPublicationDisabled)
+}

@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/pkg/html"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/pkg/media"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/pkg/wechat"
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/html"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/media"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/wechat"
 )
 
 type WechatPublisher struct{}
@@ -34,24 +34,24 @@ func (w *WechatPublisher) ValidateConfig(config []byte) error {
 }
 
 func (w *WechatPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	// For WeChat, the "adapted content" will be the HTML processed with WeChat image URLs.
-	// However, since image processing requires the Access Token (which is tied to a specific user's config),
-	// it's better to do the heavy lifting in the Publish phase.
-	// For now, we return a simple JSON indicating it's ready.
-	return []byte(`{"status": "ready_to_process"}`), nil
+	return json.Marshal(map[string]string{
+		"format": "html",
+		"html":   project.SourceContent,
+	})
 }
 
-func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication) (string, string, error) {
+func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
 	var cfg WechatConfig
 	if err := json.Unmarshal(pub.Config, &cfg); err != nil {
 		return "", "", fmt.Errorf("failed to parse wechat config: %w", err)
 	}
 
 	client := wechat.NewClient(cfg.AppID, cfg.AppSecret)
+	sourceHTML := extractWechatHTML(pub.AdaptedContent)
 
 	// 1. Process HTML images (Download -> Compress -> Upload to WeChat -> Replace URL)
 	processedHTML, err := html.ProcessHTMLImages(
-		string(pub.AdaptedContent), // Or from project.SourceContent if AdaptedContent is empty
+		sourceHTML,
 		media.DownloadAndProcess,
 		func(imgData []byte) (string, error) {
 			res, err := client.UploadImage(imgData, "content_image.jpg")
@@ -104,9 +104,31 @@ func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	// Handle special error code 48001 (Unauthorized API publishing)
 	if errCode == 48001 {
 		warningMsg := "Draft created successfully (MediaID: " + draftMediaID + "), but your account requires manual publication via WeChat Dashboard (Error 48001)."
-		return draftMediaID, "", fmt.Errorf(warningMsg)
+		return draftMediaID, "", fmt.Errorf("%s", warningMsg)
 	}
 
 	publishURL := fmt.Sprintf("https://mp.weixin.qq.com/s?publish_id=%s", publishID)
 	return draftMediaID, publishURL, nil
+}
+
+func extractWechatHTML(adaptedContent []byte) string {
+	var structured struct {
+		Content string `json:"content"`
+		HTML    string `json:"html"`
+	}
+	if err := json.Unmarshal(adaptedContent, &structured); err == nil {
+		if structured.HTML != "" {
+			return structured.HTML
+		}
+		if structured.Content != "" {
+			return structured.Content
+		}
+	}
+
+	var plain string
+	if err := json.Unmarshal(adaptedContent, &plain); err == nil {
+		return plain
+	}
+
+	return string(adaptedContent)
 }

@@ -2,10 +2,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createDashboardProject,
   getDashboardProjects,
   getDashboardStats,
   getProjectPublications,
+  getWechatAccount,
   publishProject,
+  saveWechatAccount,
+  testWechatConnection,
 } from "./api";
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
@@ -132,6 +136,53 @@ describe("dashboard api client", () => {
     );
   });
 
+  it("creates a project with selected platforms", async () => {
+    const project = {
+      created_at: "2026-05-29T12:00:00Z",
+      id: "project-1",
+      publications: [
+        {
+          enabled: true,
+          id: "pub-1",
+          platform: "wechat",
+          status: "adapted",
+        },
+      ],
+      status: "ready",
+      title: "New post",
+      updated_at: "2026-05-29T12:00:00Z",
+      user_id: "user-1",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(project));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createDashboardProject({
+        cover_image_url: "data:image/png;base64,aGVsbG8=",
+        platforms: ["wechat"],
+        source_content: "<p>Body</p>",
+        summary: "Body",
+        title: "New post",
+      }),
+    ).resolves.toEqual(project);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects",
+      expect.objectContaining({
+        body: JSON.stringify({
+          cover_image_url: "data:image/png;base64,aGVsbG8=",
+          platforms: ["wechat"],
+          source_content: "<p>Body</p>",
+          summary: "Body",
+          title: "New post",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
+      }),
+    );
+  });
+
   it("posts a publish request with the selected platform", async () => {
     const result = {
       publish_url: "https://example.com/post",
@@ -156,6 +207,92 @@ describe("dashboard api client", () => {
     const [, init] = fetchMock.mock.calls[0];
     const headers = init!.headers as Headers;
     expect(headers.get("Content-Type")).toBe("application/json");
+  });
+
+  it("fetches and updates the WeChat account settings", async () => {
+    const account = {
+      account_auth: {
+        message: "需要确认公众号认证",
+        status: "unknown",
+        title: "无法自动确认",
+      },
+      app_id: "wx-app",
+      has_app_secret: true,
+      ip_whitelist: {
+        message: "等待测试",
+        status: "unknown",
+        title: "等待测试",
+      },
+      platform: "wechat",
+      status: "untested",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(account));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getWechatAccount()).resolves.toEqual(account);
+    await expect(
+      saveWechatAccount({ app_id: "wx-app", app_secret: "wx-secret" }),
+    ).resolves.toEqual(account);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/user/dashboard/settings/wechat/account",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/user/dashboard/settings/wechat/account",
+      expect.objectContaining({
+        body: JSON.stringify({
+          app_id: "wx-app",
+          app_secret: "wx-secret",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "PUT",
+      }),
+    );
+  });
+
+  it("posts WeChat connection test credentials", async () => {
+    const result = {
+      account_auth: {
+        message: "连接成功不等于具备发布权限",
+        status: "warning",
+        title: "需确认认证与发布权限",
+      },
+      connected: true,
+      ip_whitelist: {
+        message: "微信接口已接受当前服务器请求",
+        status: "passed",
+        title: "IP 白名单已通过",
+      },
+      message: "连接成功",
+      status: "connected",
+      tested_at: "2026-05-29T12:00:00Z",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(result));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      testWechatConnection({ app_id: "wx-app", app_secret: "wx-secret" }),
+    ).resolves.toEqual(result);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/settings/wechat/test",
+      expect.objectContaining({
+        body: JSON.stringify({
+          app_id: "wx-app",
+          app_secret: "wx-secret",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
+      }),
+    );
   });
 
   it("falls back to the HTTP status when an error response is not JSON", async () => {

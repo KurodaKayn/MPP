@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -47,8 +47,10 @@ func InitDB() {
 func migrate(database *gorm.DB) error {
 	return database.AutoMigrate(
 		&models.User{},
+		&models.PlatformAccount{},
 		&models.Project{},
 		&models.ProjectPlatformPublication{},
+		&models.PlatformAccount{},
 	)
 }
 
