@@ -71,6 +71,8 @@ func main() {
 	userGroup.GET("/stats", userDashboardHandler.GetMyStats)
 	userGroup.GET("/projects", userDashboardHandler.ListMyProjects)
 	userGroup.POST("/projects", userDashboardHandler.CreateProject)
+	userGroup.GET("/projects/:id", userDashboardHandler.GetMyProject)
+	userGroup.PUT("/projects/:id", userDashboardHandler.UpdateProject)
 	userGroup.GET("/projects/:id/publications", userDashboardHandler.GetMyProjectPublications)
 	userGroup.POST("/projects/:id/publish", userDashboardHandler.PublishProject)
 	userGroup.GET("/settings/wechat/account", userDashboardHandler.GetWechatAccount)
