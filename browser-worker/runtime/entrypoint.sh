@@ -20,6 +20,8 @@ x11vnc -display :99 -nopw -forever -localhost -rfbport $VNC_PORT &
 sleep 1
 
 echo "Starting websockify (noVNC) on port $STREAM_PORT..."
+# Ensure index.html exists for easy access
+cp /usr/share/novnc/vnc.html /usr/share/novnc/index.html || true
 websockify --web /usr/share/novnc/ $STREAM_PORT localhost:$VNC_PORT &
 
 echo "Starting Chromium with CDP on port $CDP_PORT (internally 9223)..."
