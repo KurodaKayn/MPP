@@ -49,6 +49,7 @@ func migrate(database *gorm.DB) error {
 		&models.User{},
 		&models.Project{},
 		&models.ProjectPlatformPublication{},
+		&models.PlatformAccount{},
 	)
 }
 

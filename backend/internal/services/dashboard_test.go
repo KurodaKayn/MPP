@@ -54,6 +54,19 @@ func setupTestDB() *gorm.DB {
 		updated_at DATETIME
 	)`)
 
+	db.Exec(`CREATE TABLE platform_accounts (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		platform TEXT NOT NULL,
+		username TEXT,
+		avatar_url TEXT,
+		cookies TEXT NOT NULL DEFAULT '[]',
+		config TEXT NOT NULL DEFAULT '{}',
+		status TEXT NOT NULL DEFAULT 'active',
+		created_at DATETIME,
+		updated_at DATETIME
+	)`)
+
 	return db
 }
 
@@ -163,5 +176,42 @@ func TestGetProjectPublications(t *testing.T) {
 	// Stranger gets Forbidden
 	_, errStranger := s.GetProjectPublications(p.ID, &u2.ID)
 	assert.ErrorIs(t, errStranger, services.ErrForbidden)
+}
+
+func TestBatchPublishProject(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	u := models.User{Username: "tester"}
+	db.Create(&u)
+
+	p := models.Project{UserID: u.ID, Title: "p", SourceContent: "c", Status: models.ProjectStatusDraft}
+	db.Create(&p)
+
+	// Create publications for multiple platforms
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: p.ID,
+		Platform:  "wechat",
+		Status:    models.PublicationStatusPending,
+		Config:    datatypes.JSON(`{"app_id": "test", "app_secret": "test"}`),
+	})
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: p.ID,
+		Platform:  "zhihu",
+		Status:    models.PublicationStatusPending,
+	})
+
+	// Test batch publish
+	platforms := []string{"wechat", "zhihu"}
+	results, err := s.BatchPublishProject(p.ID, platforms, &u.ID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(results))
+	
+	// Check results
+	// Since we don't have real credentials, they might fail, but they should be processed
+	for _, platform := range platforms {
+		assert.Contains(t, results, platform)
+	}
 }
 

@@ -32,7 +32,21 @@ type User struct {
 	Username  string    `gorm:"not null"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	Projects  []Project `gorm:"foreignKey:UserID"`
+	Projects  []Project         `gorm:"foreignKey:UserID"`
+	Accounts  []PlatformAccount `gorm:"foreignKey:UserID"`
+}
+
+type PlatformAccount struct {
+	ID        uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	UserID    uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:idx_user_platform"`
+	Platform  string         `gorm:"not null;uniqueIndex:idx_user_platform"`
+	Username  string         // Account name on the platform
+	AvatarURL string         // Avatar URL
+	Cookies   datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"` // JSON array of cookie objects
+	Config    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // Extra platform specific config
+	Status    string         `gorm:"not null;default:'active'"`        // active, expired, etc.
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type Project struct {
@@ -82,6 +96,13 @@ func (p *Project) BeforeCreate(tx *gorm.DB) (err error) {
 func (p *ProjectPlatformPublication) BeforeCreate(tx *gorm.DB) (err error) {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
+	}
+	return
+}
+
+func (pa *PlatformAccount) BeforeCreate(tx *gorm.DB) (err error) {
+	if pa.ID == uuid.Nil {
+		pa.ID = uuid.New()
 	}
 	return
 }

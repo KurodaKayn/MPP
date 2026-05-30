@@ -104,15 +104,23 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	}
 
 	type PublishRequest struct {
-		Platform string `json:"platform"`
+		Platform  string   `json:"platform"`
+		Platforms []string `json:"platforms"`
 	}
 	req := new(PublishRequest)
 	if err := c.Bind(req); err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	// This is a simplified direct trigger for testing
-	// In a real app, this would be an async task/queue
+	if len(req.Platforms) > 0 {
+		resp, err := h.dashboardService.BatchPublishProject(projectID, req.Platforms, &userID)
+		if err != nil {
+			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		}
+		return c.JSON(http.StatusOK, resp)
+	}
+
+	// Single platform fallback
 	resp, err := h.dashboardService.PublishProject(projectID, req.Platform, &userID)
 	if err != nil {
 		if errors.Is(err, services.ErrForbidden) {
