@@ -131,6 +131,10 @@ func (s *DashboardService) saveXOAuth2Account(userID uuid.UUID, token pkgx.OAuth
 	}
 
 	credentials.AuthType = xAuthTypeOAuth2
+	credentials.APIKey = ""
+	credentials.APISecret = ""
+	credentials.AccessToken = ""
+	credentials.AccessTokenSecret = ""
 	credentials.OAuth2AccessToken = token.AccessToken
 	credentials.OAuth2RefreshToken = firstNonEmpty(token.RefreshToken, credentials.OAuth2RefreshToken)
 	if !token.ExpiresAt.IsZero() {

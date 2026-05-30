@@ -221,9 +221,6 @@ func (s *DashboardService) applySavedXCredentialsToPublication(userID uuid.UUID,
 	if err != nil {
 		return err
 	}
-	if err := credentials.clientCredentials().Validate(); err != nil {
-		return nil
-	}
 
 	config := map[string]interface{}{}
 	if len(pub.Config) > 0 {
@@ -235,10 +232,36 @@ func (s *DashboardService) applySavedXCredentialsToPublication(userID uuid.UUID,
 		config = map[string]interface{}{}
 	}
 
-	config["api_key"] = credentials.APIKey
-	config["api_secret"] = credentials.APISecret
-	config["access_token"] = credentials.AccessToken
-	config["access_token_secret"] = credentials.AccessTokenSecret
+	switch credentials.authType() {
+	case xAuthTypeOAuth2:
+		if strings.TrimSpace(credentials.OAuth2AccessToken) == "" {
+			return nil
+		}
+		config["auth_type"] = xAuthTypeOAuth2
+		config["oauth2_access_token"] = credentials.OAuth2AccessToken
+		config["oauth2_refresh_token"] = credentials.OAuth2RefreshToken
+		config["oauth2_scope"] = credentials.OAuth2Scope
+		if credentials.OAuth2ExpiresAt != nil {
+			config["oauth2_expires_at"] = credentials.OAuth2ExpiresAt
+		}
+		delete(config, "api_key")
+		delete(config, "api_secret")
+		delete(config, "access_token")
+		delete(config, "access_token_secret")
+	default:
+		if err := credentials.clientCredentials().Validate(); err != nil {
+			return nil
+		}
+		config["auth_type"] = xAuthTypeOAuth1
+		config["api_key"] = credentials.APIKey
+		config["api_secret"] = credentials.APISecret
+		config["access_token"] = credentials.AccessToken
+		config["access_token_secret"] = credentials.AccessTokenSecret
+		delete(config, "oauth2_access_token")
+		delete(config, "oauth2_refresh_token")
+		delete(config, "oauth2_expires_at")
+		delete(config, "oauth2_scope")
+	}
 	if credentials.Username != "" {
 		config["username"] = credentials.Username
 	}
@@ -305,16 +328,18 @@ func parseXCredentials(raw datatypes.JSON) (xCredentials, error) {
 
 func mergeXCredentials(existing, incoming xCredentials) xCredentials {
 	merged := xCredentials{
-		AuthType:           firstNonEmpty(incoming.AuthType, existing.AuthType),
-		APIKey:             firstNonEmpty(incoming.APIKey, existing.APIKey),
-		APISecret:          firstNonEmpty(incoming.APISecret, existing.APISecret),
-		AccessToken:        firstNonEmpty(incoming.AccessToken, existing.AccessToken),
-		AccessTokenSecret:  firstNonEmpty(incoming.AccessTokenSecret, existing.AccessTokenSecret),
-		Username:           firstNonEmpty(incoming.Username, existing.Username),
-		OAuth2AccessToken:  existing.OAuth2AccessToken,
-		OAuth2RefreshToken: existing.OAuth2RefreshToken,
-		OAuth2ExpiresAt:    existing.OAuth2ExpiresAt,
-		OAuth2Scope:        existing.OAuth2Scope,
+		AuthType:          firstNonEmpty(incoming.AuthType, existing.AuthType),
+		APIKey:            firstNonEmpty(incoming.APIKey, existing.APIKey),
+		APISecret:         firstNonEmpty(incoming.APISecret, existing.APISecret),
+		AccessToken:       firstNonEmpty(incoming.AccessToken, existing.AccessToken),
+		AccessTokenSecret: firstNonEmpty(incoming.AccessTokenSecret, existing.AccessTokenSecret),
+		Username:          firstNonEmpty(incoming.Username, existing.Username),
+	}
+	if incoming.AuthType != xAuthTypeOAuth1 {
+		merged.OAuth2AccessToken = existing.OAuth2AccessToken
+		merged.OAuth2RefreshToken = existing.OAuth2RefreshToken
+		merged.OAuth2ExpiresAt = existing.OAuth2ExpiresAt
+		merged.OAuth2Scope = existing.OAuth2Scope
 	}
 	if xCredentialIdentityChanged(existing, incoming) && incoming.Username == "" {
 		merged.Username = ""
