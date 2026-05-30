@@ -81,7 +81,7 @@ function ContentEditorDescription({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-muted-foreground">
-        像文档一样编写正文，发布前右侧实时预览
+        像文档一样编写正文，发布前可切换到预览查看效果
       </p>
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>{blockLabel}</span>
