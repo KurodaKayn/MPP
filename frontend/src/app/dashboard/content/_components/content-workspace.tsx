@@ -4,6 +4,7 @@ import { ContentEditor } from "@/components/dashboard/content/content-editor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ContentPageHeader } from "./content-page-header";
+import { ContentPrepublishPanel } from "./content-prepublish-panel";
 import { ContentPublishBar } from "./content-publish-bar";
 import { PlatformPreview } from "./platform-preview";
 import { useContentPageController } from "../_hooks/use-content-page-controller";
@@ -60,6 +61,16 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           />
         </TabsContent>
       </Tabs>
+
+      <ContentPrepublishPanel
+        title={contentPage.title}
+        content={contentPage.content}
+        drafts={contentPage.prepublishDrafts}
+        isSyncing={contentPage.isSyncingPrepublish}
+        selectedPlatforms={contentPage.selectedPlatforms}
+        onSelectedPlatformsChange={contentPage.setSelectedPlatforms}
+        onSync={contentPage.syncPrepublish}
+      />
 
       <div ref={contentPage.publishBarRef}>
         <ContentPublishBar

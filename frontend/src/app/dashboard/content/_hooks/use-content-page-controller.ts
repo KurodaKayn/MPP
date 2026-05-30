@@ -16,6 +16,7 @@ import {
   publishContentToPlatforms,
   type PublishPlatform,
 } from "../_lib/publish-content";
+import type { PrepublishDraft } from "../_components/content-prepublish-panel";
 
 function isPublishPlatform(platform: string): platform is PublishPlatform {
   return PLATFORM_TABS.some((item) => item.value === platform);
@@ -43,6 +44,10 @@ export function useContentPageController(projectId?: string) {
   const [isOpeningXPostIntent, setIsOpeningXPostIntent] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isSyncingPrepublish, setIsSyncingPrepublish] = useState(false);
+  const [prepublishDrafts, setPrepublishDrafts] = useState<
+    Partial<Record<PublishPlatform, PrepublishDraft>>
+  >({});
   const publishBarRef = useRef<HTMLDivElement>(null);
   const hasBodyContent = Boolean(content.text.trim() || content.firstImageSrc);
   const hasRequiredContent = Boolean(
@@ -176,6 +181,40 @@ export function useContentPageController(projectId?: string) {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const syncPrepublish = () => {
+    if (!validateContent()) {
+      return;
+    }
+
+    setIsSyncingPrepublish(true);
+    try {
+      const raw = content.html || content.text;
+      const syncedAt = new Date().toISOString();
+      const nextDrafts = selectedPlatforms.reduce<
+        Partial<Record<PublishPlatform, PrepublishDraft>>
+      >((drafts, platform) => {
+        drafts[platform] = {
+          format:
+            platform === "wechat"
+              ? "html"
+              : platform === "zhihu"
+                ? "markdown"
+                : "text",
+          raw,
+          syncedAt,
+        };
+        return drafts;
+      }, {});
+
+      setPrepublishDrafts(nextDrafts);
+      toast.success("已同步到预发布", {
+        description: "暂未做格式转换，当前内容已复制到各平台草稿。",
+      });
+    } finally {
+      setIsSyncingPrepublish(false);
     }
   };
 
@@ -332,8 +371,10 @@ export function useContentPageController(projectId?: string) {
     isOpeningXPostIntent,
     isPublishing,
     isSaving,
+    isSyncingPrepublish,
     openPublishPanel,
     openXPostIntent: () => void openXPostIntent(),
+    prepublishDrafts,
     publish: () => void publish(),
     publishBarRef,
     save: () => void save(),
@@ -341,6 +382,7 @@ export function useContentPageController(projectId?: string) {
     setContent,
     setSelectedPlatforms,
     setTitle,
+    syncPrepublish,
     title,
   };
 }
