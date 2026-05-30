@@ -30,7 +30,6 @@ export function SettingsPageHeader({
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h2 className="text-3xl font-bold">设置</h2>
         <p className="text-muted-foreground">
           管理微信公众号接口凭证和发布前置条件。
         </p>

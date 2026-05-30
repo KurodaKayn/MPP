@@ -208,7 +208,6 @@ export default function PostsPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">我的内容</h2>
           <p className="text-muted-foreground">
             查看各平台适配状态，并触发后端发布流程。
           </p>
