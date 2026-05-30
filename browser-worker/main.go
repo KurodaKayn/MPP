@@ -114,9 +114,6 @@ func main() {
 		}
 
 		// 2. Setup Security Interception (CDP)
-		// Instead of ws://localhost:9222 which tries to query /json/version via HTTP and fails host verification,
-		// we construct the exact websocket URL if possible, or use a custom allocator that skips the version check.
-		cdpEndpoint := fmt.Sprintf("ws://127.0.0.1:%d", cdpPort)
 		go func() {
 			var ctx context.Context
 			var cancel func()
@@ -125,9 +122,9 @@ func main() {
 			time.Sleep(5 * time.Second)
 
 			// Retry loop for CDP connection
+			allocatorURL := fmt.Sprintf("http://127.0.0.1:%d", cdpPort)
+			
 			for i := 0; i < 10; i++ {
-				// Use 127.0.0.1 explicitly to match the binding in docker.go
-				allocatorURL := fmt.Sprintf("http://127.0.0.1:%d", cdpPort)
 				allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), allocatorURL)
 				ctx, cancel = chromedp.NewContext(allocCtx)
 				
@@ -151,7 +148,7 @@ func main() {
 			}
 
 			if err := SetupInterception(ctx, req.AllowedDomains); err != nil {
-				log.Printf("Failed to setup interception for %s: %v", cdpEndpoint, err)
+				log.Printf("Failed to setup interception for %s: %v", allocatorURL, err)
 			}
 			
 			chromedp.Run(ctx, chromedp.Navigate(req.LoginURL))
