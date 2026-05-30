@@ -41,7 +41,7 @@ func (w *WechatPublisher) AdaptContent(project *models.Project) ([]byte, error) 
 	return []byte(`{"status": "ready_to_process"}`), nil
 }
 
-func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication) (string, string, error) {
+func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
 	var cfg WechatConfig
 	if err := json.Unmarshal(pub.Config, &cfg); err != nil {
 		return "", "", fmt.Errorf("failed to parse wechat config: %w", err)
@@ -104,7 +104,7 @@ func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	// Handle special error code 48001 (Unauthorized API publishing)
 	if errCode == 48001 {
 		warningMsg := "Draft created successfully (MediaID: " + draftMediaID + "), but your account requires manual publication via WeChat Dashboard (Error 48001)."
-		return draftMediaID, "", fmt.Errorf(warningMsg)
+		return draftMediaID, "", fmt.Errorf("%s", warningMsg)
 	}
 
 	publishURL := fmt.Sprintf("https://mp.weixin.qq.com/s?publish_id=%s", publishID)
