@@ -1,14 +1,42 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"log"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/chromedp/chromedp"
+	"github.com/chromedp/cdproto/network"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
+
+type Cookie struct {
+	Name     string  `json:"name"`
+	Value    string  `json:"value"`
+	Domain   string  `json:"domain"`
+	Path     string  `json:"path"`
+	Expires  float64 `json:"expires"`
+	Secure   bool    `json:"secure"`
+	HttpOnly bool    `json:"httpOnly"`
+	SameSite string  `json:"sameSite"`
+}
+
+type RemoteAccountProfile struct {
+	PlatformUserID string `json:"platform_user_id"`
+	Username       string `json:"username"`
+	AvatarURL      string `json:"avatar_url"`
+}
+
+type CaptureWorkerSessionResponse struct {
+	Status  string               `json:"status"`
+	Cookies []Cookie             `json:"cookies"`
+	Account RemoteAccountProfile `json:"account"`
+}
 
 // Reusing types from the design (simplified for implementation)
 type DomainRule struct {
@@ -65,6 +93,11 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
+	dm, err := NewDockerManager()
+	if err != nil {
+		log.Fatalf("Failed to initialize Docker manager: %v", err)
+	}
+
 	sm := NewSessionManager()
 
 	e.POST("/internal/browser-sessions", func(c echo.Context) error {
@@ -73,18 +106,27 @@ func main() {
 			return err
 		}
 
+		// 1. Start Docker Container
+		containerID, cdpPort, streamPort, err := dm.StartBrowserContainer(c.Request().Context(), req.SessionID.String())
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to start browser: %v", err))
+		}
+
 		ref := uuid.NewString()
 		now := time.Now()
 		expiresAt := now.Add(time.Duration(req.TTLSeconds) * time.Second)
 
+		// Note: In Docker Desktop on Windows/Mac, localhost:port is how you reach the mapped port.
+		// In production Linux, it might be the host IP.
 		session := &WorkerSession{
 			ID:                ref,
 			SessionID:         req.SessionID,
 			UserID:            req.UserID,
 			Platform:          req.Platform,
 			Status:            "ready",
-			CDPEndpointRef:    "ws://localhost:9222", // Placeholder
-			StreamEndpointRef: "ws://localhost:6080", // Placeholder
+			ContainerID:       containerID,
+			CDPEndpointRef:    fmt.Sprintf("ws://localhost:%d", cdpPort),
+			StreamEndpointRef: fmt.Sprintf("http://localhost:%d", streamPort),
 			ExpiresAt:         expiresAt,
 		}
 
@@ -95,6 +137,7 @@ func main() {
 		return c.JSON(http.StatusCreated, StartWorkerSessionResponse{
 			WorkerSessionRef:  ref,
 			Status:            session.Status,
+			ContainerID:       session.ContainerID,
 			CDPEndpointRef:    session.CDPEndpointRef,
 			StreamEndpointRef: session.StreamEndpointRef,
 			StartedAt:         now,
@@ -117,6 +160,75 @@ func main() {
 			"status":             session.Status,
 			"expires_at":         session.ExpiresAt,
 		})
+	})
+
+	e.POST("/internal/browser-sessions/:ref/capture", func(c echo.Context) error {
+		ref := c.Param("ref")
+		sm.mu.RLock()
+		session, ok := sm.sessions[ref]
+		sm.mu.RUnlock()
+
+		if !ok {
+			return echo.NewHTTPError(http.StatusNotFound, "session not found")
+		}
+
+		// Connect to the remote browser
+		allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), session.CDPEndpointRef)
+		ctx, cancel := chromedp.NewContext(allocCtx)
+		defer cancel()
+
+		var chromeCookies []*network.Cookie
+		var username string
+		
+		err := chromedp.Run(ctx,
+			chromedp.ActionFunc(func(ctx context.Context) error {
+				var err error
+				chromeCookies, err = network.GetCookies().Do(ctx)
+				return err
+			}),
+			// Best-effort account extraction (can be platform specific later)
+			chromedp.Evaluate(`(function() {
+				const nameEl = document.querySelector('.user-name') || document.querySelector('[class*="user-name"]');
+				return nameEl ? nameEl.innerText : "";
+			})()`, &username),
+		)
+
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("CDP capture failed: %v", err))
+		}
+
+		// Map cookies
+		var cookies []Cookie
+		for _, cc := range chromeCookies {
+			cookies = append(cookies, Cookie{
+				Name: cc.Name, Value: cc.Value, Domain: cc.Domain, Path: cc.Path,
+				Expires: cc.Expires, Secure: cc.Secure, HttpOnly: cc.HTTPOnly,
+			})
+		}
+
+		return c.JSON(http.StatusOK, CaptureWorkerSessionResponse{
+			Status:  "login_detected", // In a real app, we'd validate requirements here
+			Cookies: cookies,
+			Account: RemoteAccountProfile{
+				Username: username,
+			},
+		})
+	})
+
+	e.DELETE("/internal/browser-sessions/:ref", func(c echo.Context) error {
+		ref := c.Param("ref")
+		sm.mu.Lock()
+		session, ok := sm.sessions[ref]
+		if ok {
+			delete(sm.sessions, ref)
+		}
+		sm.mu.Unlock()
+
+		if ok && session.ContainerID != "" {
+			dm.StopContainer(context.Background(), session.ContainerID)
+		}
+
+		return c.NoContent(http.StatusNoContent)
 	})
 
 	e.Logger.Fatal(e.Start(":8081"))
