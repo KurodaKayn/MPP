@@ -119,9 +119,12 @@ func sanitizeUserFacingErrorMessage(message string) string {
 }
 
 type DashboardService struct {
-	db           *gorm.DB
-	wechatTester WechatConnectionTester
-	xTester      XConnectionTester
+	db              *gorm.DB
+	wechatTester    WechatConnectionTester
+	xTester         XConnectionTester
+	xOAuth2Provider XOAuth2Provider
+	xOAuth2States   map[string]xOAuth2PendingState
+	xOAuth2StatesMu sync.Mutex
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
@@ -139,7 +142,21 @@ func NewDashboardServiceWithPlatformTesters(db *gorm.DB, tester WechatConnection
 	if xTester == nil {
 		xTester = XAPITester{}
 	}
-	return &DashboardService{db: db, wechatTester: tester, xTester: xTester}
+	return &DashboardService{
+		db:              db,
+		wechatTester:    tester,
+		xTester:         xTester,
+		xOAuth2Provider: XOAuth2API{},
+		xOAuth2States:   make(map[string]xOAuth2PendingState),
+	}
+}
+
+func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider XOAuth2Provider) *DashboardService {
+	service := NewDashboardService(db)
+	if provider != nil {
+		service.xOAuth2Provider = provider
+	}
+	return service
 }
 
 func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
