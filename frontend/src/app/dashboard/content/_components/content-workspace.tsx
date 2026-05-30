@@ -56,9 +56,12 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
 
       <div ref={contentPage.publishBarRef}>
         <ContentPublishBar
+          canOpenXPostIntent={contentPage.canOpenXPostIntent}
           canPublish={contentPage.canPublish}
+          isOpeningXPostIntent={contentPage.isOpeningXPostIntent}
           isPublishing={contentPage.isPublishing}
           selectedPlatforms={contentPage.selectedPlatforms}
+          onOpenXPostIntent={contentPage.openXPostIntent}
           onSelectedPlatformsChange={contentPage.setSelectedPlatforms}
           onPublish={contentPage.publish}
           publishLabel={contentPage.isEditing ? "保存并发布" : "一键发布"}
