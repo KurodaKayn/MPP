@@ -2,6 +2,7 @@
 
 import { ContentEditor } from "@/components/dashboard/content/content-editor";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ContentPageHeader } from "./content-page-header";
 import { ContentPublishBar } from "./content-publish-bar";
 import { PlatformPreview } from "./platform-preview";
@@ -21,9 +22,9 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           <Skeleton className="h-9 w-40" />
           <Skeleton className="h-5 w-80 max-w-full" />
         </div>
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+        <div className="space-y-4">
+          <Skeleton className="h-9 w-56" />
           <Skeleton className="h-[740px] w-full" />
-          <Skeleton className="h-[560px] w-full" />
         </div>
       </div>
     );
@@ -39,20 +40,26 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         onSave={contentPage.isEditing ? contentPage.save : undefined}
       />
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <ContentEditor
-          title={contentPage.title}
-          content={contentPage.content}
-          onTitleChange={contentPage.setTitle}
-          onContentChange={contentPage.setContent}
-        />
-        <div className="xl:sticky xl:top-6">
+      <Tabs defaultValue="editor" className="w-full">
+        <TabsList>
+          <TabsTrigger value="editor">编辑</TabsTrigger>
+          <TabsTrigger value="preview">预览</TabsTrigger>
+        </TabsList>
+        <TabsContent value="editor" className="mt-4">
+          <ContentEditor
+            title={contentPage.title}
+            content={contentPage.content}
+            onTitleChange={contentPage.setTitle}
+            onContentChange={contentPage.setContent}
+          />
+        </TabsContent>
+        <TabsContent value="preview" className="mt-4">
           <PlatformPreview
             title={contentPage.title}
             content={contentPage.content}
           />
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
 
       <div ref={contentPage.publishBarRef}>
         <ContentPublishBar
