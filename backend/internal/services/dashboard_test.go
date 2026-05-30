@@ -798,6 +798,43 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	assert.Equal(t, "Title", config["title"])
 }
 
+func TestPublishProjectAdaptsPendingPublicationBeforePublishing(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &fakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "<p>source</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusPending,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
+	assert.Equal(t, models.PublicationStatusPublished, saved.Status)
+	assert.Empty(t, saved.ErrorMessage)
+}
+
 func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
@@ -974,6 +1011,47 @@ func TestCreateXPostIntentReturnsManualPublishURL(t *testing.T) {
 	assert.Equal(t, models.PublicationStatusAdapted, saved.Status)
 	assert.Equal(t, publishURL, saved.PublishURL)
 	assert.Empty(t, saved.ErrorMessage)
+}
+
+func TestCreateXPostIntentAdaptsPendingPublication(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "pending x",
+		SourceContent: "<p>source content</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Enabled:        true,
+		Status:         models.PublicationStatusPending,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	result, err := s.CreateXPostIntent(project.ID, &user.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, "manual_required", result["status"])
+
+	publishURL, ok := result["publish_url"].(string)
+	require.True(t, ok)
+	parsed, err := url.Parse(publishURL)
+	require.NoError(t, err)
+	assert.Contains(t, parsed.Query().Get("text"), "pending x")
+	assert.Contains(t, parsed.Query().Get("text"), "source content")
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
+	assert.Equal(t, models.PublicationStatusAdapted, saved.Status)
+	assert.Contains(t, string(saved.AdaptedContent), `"format":"text"`)
 }
 
 func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
