@@ -1,13 +1,14 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PLATFORM_TABS, type PlatformTab } from "@/lib/content/platforms";
-import { Check, Send } from "lucide-react";
+import { Check, Loader2, Send } from "lucide-react";
 import Image from "next/image";
 
 type PublishPlatform = PlatformTab["value"];
 
 type ContentPublishBarProps = {
   canPublish: boolean;
+  isPublishing: boolean;
   onPublish: () => void;
   onSelectedPlatformsChange: (platforms: PublishPlatform[]) => void;
   selectedPlatforms: PublishPlatform[];
@@ -15,6 +16,7 @@ type ContentPublishBarProps = {
 
 export function ContentPublishBar({
   canPublish,
+  isPublishing,
   onPublish,
   onSelectedPlatformsChange,
   selectedPlatforms,
@@ -62,10 +64,15 @@ export function ContentPublishBar({
         <Button
           type="button"
           onClick={onPublish}
-          disabled={!canPublish}
+          disabled={!canPublish || isPublishing}
           className="shrink-0"
         >
-          <Send className="h-4 w-4" /> 一键发布
+          {isPublishing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
+          一键发布
         </Button>
       </div>
 

@@ -65,6 +65,28 @@ func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+func (h *UserDashboardHandler) CreateProject(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	req := new(dto.CreateProjectRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.dashboardService.CreateProject(userID, *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "title, source_content and platforms are required")
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusCreated, resp)
+}
+
 func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {

@@ -172,6 +172,72 @@ func TestListProjects(t *testing.T) {
 	}
 }
 
+func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+
+	resp, err := s.CreateProject(user.ID, dto.CreateProjectRequest{
+		Title:         "WeChat title",
+		SourceContent: "<p>Hello WeChat</p>",
+		Summary:       "Hello WeChat",
+		CoverImageURL: "data:image/png;base64,aGVsbG8=",
+		Platforms:     []string{"wechat", "wechat", "bilibili"},
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "WeChat title", resp.Title)
+	assert.Equal(t, models.ProjectStatusReady, resp.Status)
+	assert.Len(t, resp.Publications, 2)
+
+	var project models.Project
+	assert.NoError(t, db.First(&project, "id = ?", resp.ID).Error)
+	assert.Equal(t, user.ID, project.UserID)
+	assert.Equal(t, "<p>Hello WeChat</p>", project.SourceContent)
+
+	var wechatPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", resp.ID, "wechat").Error)
+	assert.Equal(t, models.PublicationStatusAdapted, wechatPub.Status)
+
+	var config map[string]string
+	assert.NoError(t, json.Unmarshal(wechatPub.Config, &config))
+	assert.Equal(t, "WeChat title", config["title"])
+	assert.Equal(t, "Hello WeChat", config["digest"])
+	assert.Equal(t, "data:image/png;base64,aGVsbG8=", config["cover_image_url"])
+
+	var adapted map[string]string
+	assert.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &adapted))
+	assert.Equal(t, "html", adapted["format"])
+	assert.Equal(t, "<p>Hello WeChat</p>", adapted["html"])
+
+	var bilibiliPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&bilibiliPub, "project_id = ? AND platform = ?", resp.ID, "bilibili").Error)
+	assert.Equal(t, models.PublicationStatusPending, bilibiliPub.Status)
+}
+
+func TestCreateProjectRejectsInvalidInput(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+
+	_, err := s.CreateProject(user.ID, dto.CreateProjectRequest{
+		Title:         "Missing platform",
+		SourceContent: "content",
+	})
+	assert.ErrorIs(t, err, services.ErrInvalidProject)
+
+	_, err = s.CreateProject(user.ID, dto.CreateProjectRequest{
+		Title:         "Unknown platform",
+		SourceContent: "content",
+		Platforms:     []string{"threads"},
+	})
+	assert.ErrorIs(t, err, services.ErrInvalidProject)
+}
+
 func TestGetProjectPublications(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
