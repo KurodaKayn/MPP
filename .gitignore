@@ -29,6 +29,7 @@ frontend/next-env.d.ts
 backend/bin/
 backend/vendor/
 backend/sevenoxcloud-backend
+backend/tmp
 
 # AI Service (Python/uv)
 ai-service/__pycache__/

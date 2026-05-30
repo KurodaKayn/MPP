@@ -1,10 +1,12 @@
 package services
+
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"sync"
 
 	"github.com/google/uuid"
@@ -13,8 +15,6 @@ import (
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/publisher"
 	"gorm.io/gorm"
 )
-
-// ...
 
 func (s *DashboardService) BatchPublishProject(projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID) (map[string]map[string]interface{}, error) {
 	results := make(map[string]map[string]interface{})
@@ -53,6 +53,10 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 		return nil, fmt.Errorf("publication record not found for platform: %s", platform)
 	}
 
+	if err := s.applySavedWechatCredentialsToPublication(proj.UserID, &pub); err != nil {
+		return nil, err
+	}
+
 	// 3. Get Publisher from factory
 	p, err := publisher.Factory.GetPublisher(platform)
 	if err != nil {
@@ -75,7 +79,7 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 	errMsg := ""
 	if err != nil {
 		status = models.PublicationStatusFailed
-		errMsg = err.Error()
+		errMsg = sanitizeUserFacingErrorMessage(err.Error())
 	}
 
 	updates := map[string]interface{}{
@@ -91,12 +95,26 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 
 var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
 
+var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
+
+func sanitizeUserFacingErrorMessage(message string) string {
+	return sensitiveErrorQueryParamPattern.ReplaceAllString(message, "$1=<redacted>")
+}
+
 type DashboardService struct {
-	db *gorm.DB
+	db           *gorm.DB
+	wechatTester WechatConnectionTester
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
-	return &DashboardService{db: db}
+	return NewDashboardServiceWithWechatTester(db, WechatAPITester{})
+}
+
+func NewDashboardServiceWithWechatTester(db *gorm.DB, tester WechatConnectionTester) *DashboardService {
+	if tester == nil {
+		tester = WechatAPITester{}
+	}
+	return &DashboardService{db: db, wechatTester: tester}
 }
 
 func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
@@ -162,7 +180,7 @@ func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, p
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
-	
+
 	if platform != "" {
 		query = query.Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id").
 			Where("ppp.platform = ?", platform).

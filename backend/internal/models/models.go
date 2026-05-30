@@ -27,26 +27,20 @@ const (
 	PublicationStatusDisabled   = "disabled"
 )
 
-type User struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
-	Username  string    `gorm:"not null"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Projects  []Project         `gorm:"foreignKey:UserID"`
-	Accounts  []PlatformAccount `gorm:"foreignKey:UserID"`
-}
+// Platform account status constants
+const (
+	PlatformAccountStatusUntested  = "untested"
+	PlatformAccountStatusConnected = "connected"
+	PlatformAccountStatusFailed    = "failed"
+)
 
-type PlatformAccount struct {
-	ID        uuid.UUID      `gorm:"type:uuid;primaryKey"`
-	UserID    uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:idx_user_platform"`
-	Platform  string         `gorm:"not null;uniqueIndex:idx_user_platform"`
-	Username  string         // Account name on the platform
-	AvatarURL string         // Avatar URL
-	Cookies   datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"` // JSON array of cookie objects
-	Config    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // Extra platform specific config
-	Status    string         `gorm:"not null;default:'active'"`        // active, expired, etc.
-	CreatedAt time.Time
-	UpdatedAt time.Time
+type User struct {
+	ID               uuid.UUID         `gorm:"type:uuid;primaryKey"`
+	Username         string            `gorm:"not null"`
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	Projects         []Project         `gorm:"foreignKey:UserID"`
+	PlatformAccounts []PlatformAccount `gorm:"foreignKey:UserID"`
 }
 
 type Project struct {
@@ -76,6 +70,23 @@ type ProjectPlatformPublication struct {
 	PublishedAt    *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+}
+
+type PlatformAccount struct {
+	ID            uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	UserID        uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:idx_platform_accounts_user_platform"`
+	Platform      string         `gorm:"not null;uniqueIndex:idx_platform_accounts_user_platform;index:idx_platform_accounts_platform_status"`
+	Name          string         `gorm:"not null"`
+	Status        string         `gorm:"not null;default:'untested';index:idx_platform_accounts_platform_status"`
+	Cookies       datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"` // From feature branch
+	Credentials   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From main branch
+	Metadata      datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From main branch
+	Config        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From feature branch
+	AvatarURL     string         // From feature branch
+	LastTestedAt  *time.Time
+	LastTestError string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // BeforeCreate hook to generate UUID if not set

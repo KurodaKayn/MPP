@@ -1,3 +1,5 @@
+import { formatBearerToken, getStoredAuthToken } from "../auth/client";
+
 export type DashboardStats = {
   total_users: number;
   total_projects: number;
@@ -37,6 +39,40 @@ export type PublishResult = {
   error_message?: string;
 };
 
+export type RequirementStatus = {
+  status: "passed" | "warning" | "failed" | "unknown";
+  title: string;
+  message: string;
+};
+
+export type WechatAccount = {
+  platform: "wechat";
+  app_id: string;
+  has_app_secret: boolean;
+  status: "unconfigured" | "untested" | "connected" | "failed";
+  last_tested_at?: string;
+  last_test_error?: string;
+  updated_at?: string;
+  ip_whitelist: RequirementStatus;
+  account_auth: RequirementStatus;
+};
+
+export type SaveWechatAccountInput = {
+  app_id: string;
+  app_secret?: string;
+};
+
+export type WechatConnectionTestResult = {
+  connected: boolean;
+  status: "connected" | "failed";
+  message: string;
+  err_code?: number;
+  err_msg?: string;
+  tested_at: string;
+  ip_whitelist: RequirementStatus;
+  account_auth: RequirementStatus;
+};
+
 export type ProjectListItem = {
   id: string;
   user_id: string;
@@ -62,49 +98,6 @@ type ApiErrorResponse = {
     message?: string;
   };
 };
-
-const authTokenStorageKeys = [
-  "sevenoxcloud.auth_token",
-  "auth_token",
-  "access_token",
-];
-
-function formatBearerToken(token: string) {
-  return token.toLowerCase().startsWith("bearer ") ? token : `Bearer ${token}`;
-}
-
-function getStorageToken(storage: Storage) {
-  for (const key of authTokenStorageKeys) {
-    const token = storage.getItem(key);
-    if (token) {
-      return token;
-    }
-  }
-
-  return null;
-}
-
-function getStoredAuthToken() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  for (const getStorage of [
-    () => window.localStorage,
-    () => window.sessionStorage,
-  ]) {
-    try {
-      const token = getStorageToken(getStorage());
-      if (token) {
-        return token;
-      }
-    } catch {
-      // Some privacy modes can deny Web Storage access.
-    }
-  }
-
-  return null;
-}
 
 async function fetchDashboard<T>(
   path: string,
@@ -172,6 +165,32 @@ export function publishProject(projectId: string, platform: string) {
     `/api/user/dashboard/projects/${projectId}/publish`,
     {
       body: JSON.stringify({ platform }),
+      method: "POST",
+    },
+  );
+}
+
+export function getWechatAccount() {
+  return fetchDashboard<WechatAccount>(
+    "/api/user/dashboard/settings/wechat/account",
+  );
+}
+
+export function saveWechatAccount(input: SaveWechatAccountInput) {
+  return fetchDashboard<WechatAccount>(
+    "/api/user/dashboard/settings/wechat/account",
+    {
+      body: JSON.stringify(input),
+      method: "PUT",
+    },
+  );
+}
+
+export function testWechatConnection(input: SaveWechatAccountInput) {
+  return fetchDashboard<WechatConnectionTestResult>(
+    "/api/user/dashboard/settings/wechat/test",
+    {
+      body: JSON.stringify(input),
       method: "POST",
     },
   );

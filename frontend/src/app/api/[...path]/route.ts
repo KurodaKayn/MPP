@@ -1,11 +1,7 @@
 import type { NextRequest } from "next/server";
+import { authTokenNames, formatBearerToken } from "../../../lib/auth/tokens";
 
 const defaultBackendApiBaseUrl = "http://localhost:8080";
-const authTokenCookieNames = [
-  "sevenoxcloud.auth_token",
-  "auth_token",
-  "access_token",
-];
 const hopByHopHeaders = [
   "connection",
   "content-length",
@@ -41,16 +37,12 @@ function buildTargetUrl(request: NextRequest, path: string[]) {
   return targetUrl;
 }
 
-function formatBearerToken(token: string) {
-  return token.toLowerCase().startsWith("bearer ") ? token : `Bearer ${token}`;
-}
-
 function applyAuthorizationFromCookie(request: NextRequest, headers: Headers) {
   if (headers.has("authorization")) {
     return;
   }
 
-  for (const name of authTokenCookieNames) {
+  for (const name of authTokenNames) {
     const token = request.cookies.get(name)?.value;
     if (token) {
       headers.set("authorization", formatBearerToken(token));

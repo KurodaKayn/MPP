@@ -47,6 +47,7 @@ func InitDB() {
 func migrate(database *gorm.DB) error {
 	return database.AutoMigrate(
 		&models.User{},
+		&models.PlatformAccount{},
 		&models.Project{},
 		&models.ProjectPlatformPublication{},
 		&models.PlatformAccount{},

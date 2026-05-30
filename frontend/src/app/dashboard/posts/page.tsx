@@ -356,6 +356,7 @@ export default function PostsPage() {
                                       size="icon"
                                       variant="outline"
                                       title="打开发布链接"
+                                      nativeButton={false}
                                       render={(buttonProps) => (
                                         <a
                                           href={publication.publish_url}
