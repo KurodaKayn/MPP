@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"net/http"
 	"sync"
 	"time"
