@@ -11,11 +11,22 @@ declare global {
 }
 
 const mocks = vi.hoisted(() => ({
+  createDashboardProject: vi.fn(),
+  getDashboardProject: vi.fn(),
+  publishProject: vi.fn(),
   push: vi.fn(),
   refresh: vi.fn(),
   replace: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
+  updateDashboardProject: vi.fn(),
+}));
+
+vi.mock("@/lib/dashboard/api", () => ({
+  createDashboardProject: mocks.createDashboardProject,
+  getDashboardProject: mocks.getDashboardProject,
+  publishProject: mocks.publishProject,
+  updateDashboardProject: mocks.updateDashboardProject,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -69,12 +80,38 @@ function renderController(projectId?: string) {
 describe("useContentPageController", () => {
   beforeEach(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    mocks.createDashboardProject.mockReset();
+    mocks.getDashboardProject.mockReset();
+    mocks.publishProject.mockReset();
     mocks.push.mockReset();
     mocks.replace.mockReset();
     mocks.refresh.mockReset();
     mocks.toastError.mockReset();
     mocks.toastSuccess.mockReset();
+    mocks.updateDashboardProject.mockReset();
     useContentPageStore.getState().resetForCreate();
+  });
+
+  it("reports loading before the current edit project has loaded", () => {
+    mocks.getDashboardProject.mockImplementation(() => new Promise(() => {}));
+    useContentPageStore.setState({
+      content: {
+        firstImageSrc: "",
+        html: "<p>Old body</p>",
+        text: "Old body",
+      },
+      loadedProjectId: "old-project",
+      selectedPlatforms: ["wechat"],
+      title: "Old title",
+    });
+
+    const view = renderController("new-project");
+
+    expect(view.getController().isLoading).toBe(true);
+    expect(view.getController().canPublish).toBe(false);
+    expect(mocks.getDashboardProject).toHaveBeenCalledWith("new-project");
+
+    view.unmount();
   });
 
   it("syncs prepublish drafts with platform-specific formats", () => {

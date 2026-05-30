@@ -22,6 +22,7 @@ describe("useContentPageStore", () => {
       isPublishing: true,
       isSaving: true,
       isSyncingPrepublish: true,
+      loadedProjectId: "project-1",
       prepublishDrafts: {
         wechat: {
           format: "html",
@@ -43,6 +44,7 @@ describe("useContentPageStore", () => {
       isPublishing: false,
       isSaving: false,
       isSyncingPrepublish: false,
+      loadedProjectId: null,
       prepublishDrafts: {},
       selectedPlatforms: [],
       title: "",
