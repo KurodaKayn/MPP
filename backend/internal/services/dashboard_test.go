@@ -103,6 +103,10 @@ func (f *fakePlatformPublisher) Publish(ctx context.Context, pub *models.Project
 	return "remote-id", "https://example.com/published", nil
 }
 
+func ptrTime(value time.Time) *time.Time {
+	return &value
+}
+
 func TestGetStats(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
@@ -236,6 +240,118 @@ func TestCreateProjectRejectsInvalidInput(t *testing.T) {
 		Platforms:     []string{"threads"},
 	})
 	assert.ErrorIs(t, err, services.ErrInvalidProject)
+}
+
+func TestGetProjectReturnsSourceContentForOwner(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner"}
+	stranger := models.User{Username: "stranger"}
+	db.Create(&owner)
+	db.Create(&stranger)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Existing post",
+		SourceContent: "<p>Editable body</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	db.Create(&project)
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusPublished,
+	})
+
+	resp, err := s.GetProject(project.ID, &owner.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, project.ID, resp.ID)
+	assert.Equal(t, "<p>Editable body</p>", resp.SourceContent)
+	assert.Len(t, resp.Publications, 1)
+
+	_, err = s.GetProject(project.ID, &stranger.ID)
+	assert.ErrorIs(t, err, services.ErrForbidden)
+}
+
+func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner"}
+	stranger := models.User{Username: "stranger"}
+	db.Create(&owner)
+	db.Create(&stranger)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Old title",
+		SourceContent: "old body",
+		Status:        models.ProjectStatusPublished,
+	}
+	db.Create(&project)
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID:    project.ID,
+		Platform:     "wechat",
+		Enabled:      true,
+		Status:       models.PublicationStatusPublished,
+		PublishURL:   "https://example.com/old",
+		RemoteID:     "old-remote",
+		PublishedAt:  ptrTime(time.Now()),
+		RetryCount:   2,
+		ErrorMessage: "old error",
+	})
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID:    project.ID,
+		Platform:     "zhihu",
+		Enabled:      true,
+		Status:       models.PublicationStatusFailed,
+		ErrorMessage: "failed before",
+	})
+
+	resp, err := s.UpdateProject(project.ID, owner.ID, dto.UpdateProjectRequest{
+		Title:         "New title",
+		SourceContent: "<p>New body</p>",
+		Summary:       "New body",
+		Platforms:     []string{"zhihu", "bilibili"},
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "New title", resp.Title)
+	assert.Equal(t, "<p>New body</p>", resp.SourceContent)
+	assert.Len(t, resp.Publications, 3)
+
+	var saved models.Project
+	assert.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
+	assert.Equal(t, "New title", saved.Title)
+	assert.Equal(t, "<p>New body</p>", saved.SourceContent)
+	assert.Equal(t, models.ProjectStatusReady, saved.Status)
+
+	var wechatPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	assert.False(t, wechatPub.Enabled)
+	assert.Equal(t, models.PublicationStatusDisabled, wechatPub.Status)
+
+	var zhihuPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	assert.True(t, zhihuPub.Enabled)
+	assert.Equal(t, models.PublicationStatusAdapted, zhihuPub.Status)
+	assert.Empty(t, zhihuPub.ErrorMessage)
+	assert.Empty(t, zhihuPub.PublishURL)
+	assert.Nil(t, zhihuPub.PublishedAt)
+
+	var bilibiliPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&bilibiliPub, "project_id = ? AND platform = ?", project.ID, "bilibili").Error)
+	assert.True(t, bilibiliPub.Enabled)
+	assert.Equal(t, models.PublicationStatusPending, bilibiliPub.Status)
+
+	_, err = s.UpdateProject(project.ID, stranger.ID, dto.UpdateProjectRequest{
+		Title:         "Not allowed",
+		SourceContent: "content",
+		Platforms:     []string{"wechat"},
+	})
+	assert.ErrorIs(t, err, services.ErrForbidden)
 }
 
 func TestGetProjectPublications(t *testing.T) {

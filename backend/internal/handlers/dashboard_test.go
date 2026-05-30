@@ -230,6 +230,62 @@ func TestUserDashboardHandlerCreateProject(t *testing.T) {
 	require.Equal(t, "wechat", resp.Publications[0].Platform)
 }
 
+func TestUserDashboardHandlerGetAndUpdateProject(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Draft title",
+		SourceContent: "<p>Draft body</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusPublished,
+	}).Error)
+
+	getContext, getRecorder := newHandlerTestContext(e, http.MethodGet, "/api/user/dashboard/projects/"+project.ID.String())
+	getContext.SetParamNames("id")
+	getContext.SetParamValues(project.ID.String())
+	setContextUser(getContext, user.ID)
+
+	require.NoError(t, handler.GetMyProject(getContext))
+	require.Equal(t, http.StatusOK, getRecorder.Code)
+
+	var detail dto.ProjectDetail
+	require.NoError(t, json.Unmarshal(getRecorder.Body.Bytes(), &detail))
+	require.Equal(t, project.ID, detail.ID)
+	require.Equal(t, "<p>Draft body</p>", detail.SourceContent)
+
+	updateRequest := httptest.NewRequest(
+		http.MethodPut,
+		"/api/user/dashboard/projects/"+project.ID.String(),
+		strings.NewReader(`{"title":"Updated title","source_content":"<p>Updated body</p>","summary":"Updated","platforms":["zhihu"]}`),
+	)
+	updateRequest.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	updateRecorder := httptest.NewRecorder()
+	updateContext := e.NewContext(updateRequest, updateRecorder)
+	updateContext.SetParamNames("id")
+	updateContext.SetParamValues(project.ID.String())
+	setContextUser(updateContext, user.ID)
+
+	require.NoError(t, handler.UpdateProject(updateContext))
+	require.Equal(t, http.StatusOK, updateRecorder.Code)
+
+	require.NoError(t, json.Unmarshal(updateRecorder.Body.Bytes(), &detail))
+	require.Equal(t, "Updated title", detail.Title)
+	require.Equal(t, "<p>Updated body</p>", detail.SourceContent)
+	require.Len(t, detail.Publications, 2)
+}
+
 func TestUserDashboardHandlerGetProjectPublicationsReturnsForbidden(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)

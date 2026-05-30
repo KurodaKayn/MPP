@@ -36,6 +36,14 @@ type CreateProjectRequest struct {
 	Platforms     []string `json:"platforms"`
 }
 
+type UpdateProjectRequest struct {
+	Title         string   `json:"title"`
+	SourceContent string   `json:"source_content"`
+	Summary       string   `json:"summary,omitempty"`
+	CoverImageURL string   `json:"cover_image_url,omitempty"`
+	Platforms     []string `json:"platforms"`
+}
+
 type PublicationSummary struct {
 	ID         uuid.UUID `json:"id"`
 	Platform   string    `json:"platform"`
@@ -52,6 +60,17 @@ type ProjectListItem struct {
 	CreatedAt    time.Time            `json:"created_at"`
 	UpdatedAt    time.Time            `json:"updated_at"`
 	Publications []PublicationSummary `json:"publications"`
+}
+
+type ProjectDetail struct {
+	ID            uuid.UUID            `json:"id"`
+	UserID        uuid.UUID            `json:"user_id"`
+	Title         string               `json:"title"`
+	SourceContent string               `json:"source_content"`
+	Status        string               `json:"status"`
+	CreatedAt     time.Time            `json:"created_at"`
+	UpdatedAt     time.Time            `json:"updated_at"`
+	Publications  []PublicationSummary `json:"publications"`
 }
 
 type PublicationDetail struct {
