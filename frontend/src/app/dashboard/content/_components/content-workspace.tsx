@@ -80,7 +80,6 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           isPublishing={contentPage.isPublishing}
           selectedPlatforms={contentPage.selectedPlatforms}
           onOpenXPostIntent={contentPage.openXPostIntent}
-          onSelectedPlatformsChange={contentPage.setSelectedPlatforms}
           onPublish={contentPage.publish}
           publishLabel={contentPage.isEditing ? "保存并发布" : "一键发布"}
         />
