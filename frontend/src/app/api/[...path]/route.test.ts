@@ -99,6 +99,8 @@ describe("api proxy route", () => {
     const forwardedHeaders = init?.headers as Headers;
     expect(forwardedHeaders.get("authorization")).toBe("Bearer raw-token");
     expect(forwardedHeaders.get("x-client")).toBe("web");
+    expect(forwardedHeaders.get("x-forwarded-host")).toBe("frontend.local");
+    expect(forwardedHeaders.get("x-forwarded-proto")).toBe("http");
     expect(forwardedHeaders.has("connection")).toBe(false);
     expect(forwardedHeaders.has("host")).toBe(false);
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import {
@@ -21,6 +22,8 @@ import { WechatConnectionCheckCard } from "./_components/wechat-connection-check
 import { XAccountCard } from "./_components/x-account-card";
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [account, setAccount] = useState<WechatAccount | null>(null);
   const [testResult, setTestResult] =
     useState<WechatConnectionTestResult | null>(null);
@@ -40,6 +43,7 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false);
   const [xSaving, setXSaving] = useState(false);
   const [xTesting, setXTesting] = useState(false);
+  const xOAuthStatus = searchParams.get("x_oauth");
 
   useEffect(() => {
     let cancelled = false;
@@ -76,6 +80,23 @@ export default function SettingsPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (xOAuthStatus === "connected") {
+      toast.success("X 授权成功", {
+        description: "账号已连接，正在更新设置。",
+      });
+      router.replace("/dashboard/settings");
+      return;
+    }
+
+    if (xOAuthStatus === "failed") {
+      toast.error("X 授权失败", {
+        description: "请重新点击授权按钮。",
+      });
+      router.replace("/dashboard/settings");
+    }
+  }, [router, xOAuthStatus]);
 
   const canSubmit = useMemo(() => {
     return Boolean(
