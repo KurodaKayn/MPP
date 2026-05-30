@@ -20,7 +20,7 @@ def proxy(src, dst):
 def handle(client):
     remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        remote.connect(('127.0.0.1', 9222))
+        remote.connect(('127.0.0.1', 9223))
     except:
         client.close()
         return
@@ -30,9 +30,9 @@ def handle(client):
 def main():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(('0.0.0.0', 9223))
+    s.bind(('0.0.0.0', 9222))
     s.listen(5)
-    print("Python CDP Proxy listening on 0.0.0.0:9223 forwarding to 127.0.0.1:9222")
+    print("Python CDP Proxy listening on 0.0.0.0:9222 forwarding to 127.0.0.1:9223")
     sys.stdout.flush()
     while True:
         c, _ = s.accept()

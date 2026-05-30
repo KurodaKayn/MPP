@@ -27,8 +27,11 @@ func NewDockerManager() (*DockerManager, error) {
 	return &DockerManager{cli: cli}, nil
 }
 
-func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID string) (containerID string, containerIP string, cdpPort, streamPort int, err error) {
+func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID string, adapterLoginURL string) (containerID string, containerIP string, cdpPort, streamPort int, err error) {
 	imageName := "mpp-browser-runtime"
+	
+	fixedCDPPort := 9222
+	fixedStreamPort := 6080
 
 	config := &container.Config{
 		Image: imageName,
@@ -38,19 +41,38 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 		},
 		Env: []string{
 			"RESOLUTION=1366x768x24",
+			"LOGIN_URL=" + adapterLoginURL,
 		},
 	}
 
 	hostConfig := &container.HostConfig{
-		PublishAllPorts: true,
+		PortBindings: nat.PortMap{
+			"9222/tcp": []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: fmt.Sprintf("%d", fixedCDPPort)}}, 
+			"6080/tcp": []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: fmt.Sprintf("%d", fixedStreamPort)}},
+		},
 		Resources: container.Resources{
 			Memory:   1024 * 1024 * 1024,
 			NanoCPUs: 1000000000,
 		},
 	}
 
+	// Important: We must remove any existing container using these ports first
+	// We'll search for any container with our prefix or using our ports
 	containerName := "mpp-session-" + sessionID
+	
+	// Clean up previous attempts to avoid "port already allocated"
 	m.cli.ContainerRemove(ctx, containerName, types.ContainerRemoveOptions{Force: true})
+	
+	// Also clean up any other container that might be holding the ports
+	containers, _ := m.cli.ContainerList(ctx, types.ContainerListOptions{All: true})
+	for _, c := range containers {
+		for _, name := range c.Names {
+			if strings.Contains(name, "mpp-session") {
+				m.cli.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{Force: true})
+				break
+			}
+		}
+	}
 
 	resp, err := m.cli.ContainerCreate(ctx, config, hostConfig, nil, nil, containerName)
 	if err != nil {
@@ -61,53 +83,25 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 		return "", "", 0, 0, fmt.Errorf("failed to start container: %w", err)
 	}
 
-	var ports nat.PortMap
-	var inspectErr error
-	var containerIPAddr string
+	// Fixed ports don't need a retry loop for discovery, but we wait for health
+	time.Sleep(5 * time.Second)
 
-	for i := 0; i < 10; i++ {
-		time.Sleep(1 * time.Second)
-		json, err := m.cli.ContainerInspect(ctx, resp.ID)
-		if err != nil {
-			inspectErr = err
-			continue
-		}
+	json, err := m.cli.ContainerInspect(ctx, resp.ID)
+	if err != nil {
+		return "", "", 0, 0, fmt.Errorf("failed to inspect container: %w", err)
+	}
 
-		ports = json.NetworkSettings.Ports
-		if len(ports["9222/tcp"]) > 0 && len(ports["6080/tcp"]) > 0 {
-			containerIPAddr = json.NetworkSettings.IPAddress
-			if containerIPAddr == "" {
-				for _, net := range json.NetworkSettings.Networks {
-					containerIPAddr = net.IPAddress
-					break
-				}
-			}
-			inspectErr = nil
+	containerIPAddr := json.NetworkSettings.IPAddress
+	if containerIPAddr == "" {
+		for _, net := range json.NetworkSettings.Networks {
+			containerIPAddr = net.IPAddress
 			break
 		}
-		inspectErr = fmt.Errorf("ports not yet assigned by docker (attempt %d/10)", i+1)
 	}
 
-	if inspectErr != nil {
-		logBody, _ := m.cli.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true, Tail: "20"})
-		containerLogs := "could not retrieve logs"
-		if logBody != nil {
-			defer logBody.Close()
-			content, _ := io.ReadAll(logBody)
-			containerLogs = string(content)
-		}
-		return "", "", 0, 0, fmt.Errorf("%v. Logs: %s", inspectErr, containerLogs)
-	}
+	log.Printf("Started container %s with FIXED PORTS: CDP=%d, Stream=%d", resp.ID[:12], fixedCDPPort, fixedStreamPort)
 
-	cdpPortStr := ports["9222/tcp"][0].HostPort
-	streamPortStr := ports["6080/tcp"][0].HostPort
-
-	fmt.Sscanf(cdpPortStr, "%d", &cdpPort)
-	fmt.Sscanf(streamPortStr, "%d", &streamPort)
-
-	log.Printf("Started container %s with RANDOM PORTS: CDP=%d, Stream=%d", resp.ID[:12], cdpPort, streamPort)
-
-	return resp.ID, containerIPAddr, cdpPort, streamPort, nil
+	return resp.ID, containerIPAddr, fixedCDPPort, fixedStreamPort, nil
 }
 
 func (m *DockerManager) StopContainer(ctx context.Context, id string) error {
