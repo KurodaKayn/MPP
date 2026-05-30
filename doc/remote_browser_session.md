@@ -48,7 +48,7 @@ Preferred MVP: **one browser container per connection session**.
 7. `browser-worker` polls login state through CDP.
 8. When required cookies exist, backend stores sanitized encrypted cookie JSON through the cookie store.
 9. Backend marks platform account `connected`.
-10. Backend stops browser container after success or TTL expiry.
+10. Backend asks `browser-worker` to stop the browser container after success or TTL expiry.
 
 ## Session States
 
@@ -57,7 +57,7 @@ Preferred MVP: **one browser container per connection session**.
 | `pending` | Session record created. Container not ready. |
 | `ready` | Browser stream available. User can interact. |
 | `login_detected` | Required cookies or account marker found. |
-| `capturing` | Backend reading cookies/profile metadata. |
+| `capturing` | Cookie/profile capture is in progress. |
 | `connected` | Cookies saved. Account usable. |
 | `expired` | TTL ended before login. |
 | `failed` | Container, CDP, or validation error. |
@@ -136,9 +136,16 @@ Response:
   "session_id": "uuid",
   "status": "pending",
   "stream_url": "/api/user/dashboard/browser-sessions/uuid/stream?token=...",
+  "stream_token_expires_at": "2026-05-30T11:50:00Z",
   "expires_at": "2026-05-30T12:00:00Z"
 }
 ```
+
+Rules:
+
+- Return `409 Conflict` if the user already has an active session for the same platform.
+- Return `400 Bad Request` if the platform has no remote browser adapter.
+- Generate a fresh stream token on session creation.
 
 ### Get Session
 
@@ -151,9 +158,19 @@ Response:
   "session_id": "uuid",
   "platform": "douyin",
   "status": "ready",
+  "stream_url": "/api/user/dashboard/browser-sessions/uuid/stream?token=...",
+  "stream_token_expires_at": "2026-05-30T11:50:00Z",
+  "expires_at": "2026-05-30T12:00:00Z",
   "message": "Waiting for login"
 }
 ```
+
+Rules:
+
+- Return only sessions owned by the authenticated user.
+- Include `stream_url` only while status is `ready`, `login_detected`, or `capturing`.
+- If the previous stream token was consumed or expired, rotate it and return a new `stream_url`.
+- Return `410 Gone` for expired sessions.
 
 ### Complete Session
 
@@ -161,11 +178,200 @@ Response:
 
 Backend validates required cookies. Frontend may call this after user clicks `I have signed in`.
 
+Response:
+
+```json
+{
+  "session_id": "uuid",
+  "platform": "douyin",
+  "status": "connected",
+  "account": {
+    "username": "creator name",
+    "avatar_url": ""
+  },
+  "message": "Connected"
+}
+```
+
+Rules:
+
+- Transition `ready` or `login_detected` to `capturing`.
+- Ask `browser-worker` to capture cookies and account profile.
+- Save only normalized encrypted cookies through `CookieStore.Save`.
+- Mark the platform account `connected` only after required cookies validate.
+- Return `422 Unprocessable Entity` when login cannot be detected yet.
+
 ### Cancel Session
 
 `DELETE /api/user/dashboard/browser-sessions/:id`
 
-Stops container and marks session `expired` or `failed`.
+Stops the worker session and marks the session `expired` or `failed`.
+
+Response:
+
+```json
+{
+  "session_id": "uuid",
+  "status": "expired"
+}
+```
+
+Rules:
+
+- Stop the worker session if it is still running.
+- Consume any outstanding stream token.
+- Keep completed sessions as audit records; do not delete rows in the request path.
+
+### Stream
+
+`GET /api/user/dashboard/browser-sessions/:id/stream?token=...`
+
+This endpoint upgrades to WebSocket and proxies noVNC traffic to the worker-owned stream endpoint.
+
+Rules:
+
+- Require normal user authentication and stream token validation.
+- Token must be bound to session ID, user ID, platform, and `stream` purpose.
+- Token is consumed on successful WebSocket upgrade.
+- Backend must strip the token before proxying to `browser-worker`.
+- Raw VNC and CDP endpoints are never returned to the browser.
+- Return `401` for unauthenticated requests, `403` for owner mismatch, and `410` for consumed or expired tokens.
+
+## Stream Token Contract
+
+Use an opaque random token, not a JWT.
+
+```go
+type StreamToken struct {
+    Token     string
+    TokenHash string
+    ExpiresAt time.Time
+}
+```
+
+Generation and storage:
+
+- Generate at least 32 random bytes and encode with unpadded URL-safe base64.
+- Store only `SHA-256(token)` or `HMAC-SHA-256(token, STREAM_TOKEN_HASH_KEY)` in `remote_browser_sessions.connect_token_hash`.
+- Set token TTL to `min(5 minutes, session.expires_at - now)`.
+- Never log token values or include them in worker requests.
+
+Consumption:
+
+- Compare token hashes in constant time.
+- Reject expired or already consumed tokens.
+- Clear `connect_token_hash` after a successful WebSocket upgrade.
+- For reconnect, the frontend calls `GET /api/user/dashboard/browser-sessions/:id` and receives a rotated token if the session is still active.
+
+## Browser Worker Contract
+
+The worker API is internal only. It can be implemented as HTTP/gRPC or as an in-process Go interface for early development, but the payload shape should stay stable.
+
+### Start Worker Session
+
+`POST /internal/browser-sessions`
+
+Request:
+
+```json
+{
+  "session_id": "uuid",
+  "user_id": "uuid",
+  "platform": "douyin",
+  "login_url": "https://creator.douyin.com/creator-micro/home",
+  "allowed_domains": [
+    {
+      "host": "creator.douyin.com",
+      "match": "exact",
+      "schemes": ["https"],
+      "purpose": "creator"
+    }
+  ],
+  "ttl_seconds": 900,
+  "viewport": {
+    "width": 1365,
+    "height": 900
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "worker_session_ref": "worker-session-id",
+  "status": "ready",
+  "container_id": "container-id",
+  "cdp_endpoint_ref": "private-cdp-ref",
+  "stream_endpoint_ref": "private-stream-ref",
+  "started_at": "2026-05-30T11:45:00Z",
+  "expires_at": "2026-05-30T12:00:00Z"
+}
+```
+
+### Get Worker Session
+
+`GET /internal/browser-sessions/:worker_session_ref`
+
+Response:
+
+```json
+{
+  "worker_session_ref": "worker-session-id",
+  "status": "ready",
+  "current_url": "https://creator.douyin.com/creator-micro/home",
+  "login_detected": false,
+  "missing_cookies": ["sessionid"],
+  "message": "Waiting for login"
+}
+```
+
+### Capture Worker Session
+
+`POST /internal/browser-sessions/:worker_session_ref/capture`
+
+Response:
+
+```json
+{
+  "status": "login_detected",
+  "cookies": [
+    {
+      "name": "sessionid",
+      "value": "...",
+      "domain": ".douyin.com",
+      "path": "/",
+      "expires": 1780000000,
+      "secure": true,
+      "httpOnly": true,
+      "sameSite": "None"
+    }
+  ],
+  "account": {
+    "platform_user_id": "",
+    "username": "creator name",
+    "avatar_url": ""
+  }
+}
+```
+
+Rules:
+
+- Capture cookies with CDP network APIs, not `document.cookie`.
+- Return only cookies accepted by the platform adapter.
+- Do not return raw CDP endpoint details.
+- If required cookies are missing, return `status: "ready"` and `missing_cookies`.
+
+### Stop Worker Session
+
+`DELETE /internal/browser-sessions/:worker_session_ref`
+
+Rules:
+
+- Stop the container.
+- Delete the browser profile directory.
+- Release worker-side resources even if backend session state update fails.
+- Treat repeated stop calls as idempotent.
 
 ## Platform Adapter Contract
 
@@ -184,12 +390,111 @@ type RemoteBrowserPlatformAdapter interface {
 
 `AllowedDomains` must include real login dependencies such as first-party login hosts, QR-code endpoints, captcha domains, and required static/CDN domains. It is not enough to validate only the initial navigation URL.
 
+Shared types:
+
+```go
+type DomainRule struct {
+    Host    string   `json:"host"`
+    Match   string   `json:"match"` // "exact" or "suffix"
+    Schemes []string `json:"schemes"`
+    Purpose string   `json:"purpose"`
+}
+
+type CookieRequirement struct {
+    Name           string   `json:"name"`
+    DomainSuffixes []string `json:"domain_suffixes"`
+    Required       bool     `json:"required"`
+    Preserve       bool     `json:"preserve"`
+}
+
+type RemoteLoginState struct {
+    LoggedIn       bool     `json:"logged_in"`
+    Status         string   `json:"status"`
+    CurrentURL     string   `json:"current_url"`
+    MissingCookies []string `json:"missing_cookies"`
+    Message        string   `json:"message"`
+}
+
+type RemoteAccountProfile struct {
+    PlatformUserID string `json:"platform_user_id"`
+    Username       string `json:"username"`
+    AvatarURL      string `json:"avatar_url"`
+}
+```
+
+Domain matching:
+
+- `exact` matches only the exact host.
+- `suffix` matches the exact host or a dot-boundary subdomain. For example, `douyin.com` matches `douyin.com` and `creator.douyin.com`, but not `evil-douyin.com`.
+- Only `https` should be allowed for platform traffic unless an adapter explicitly documents why `http` is required.
+
 Example requirements:
 
 | Platform | Login URL | Required Signal |
 | --- | --- | --- |
 | Douyin | `https://creator.douyin.com/creator-micro/home` | creator page reachable plus required session cookies present |
 | Zhihu | `https://www.zhihu.com/signin` | user avatar/account endpoint reachable plus required session cookies present |
+
+## Douyin MVP Adapter
+
+This adapter replaces the current manual cookie copy flow. The required cookie names are based on the existing publishing guide and must be verified with a real login smoke test before release.
+
+### Login URL
+
+`https://creator.douyin.com/creator-micro/home`
+
+### Required Cookies
+
+| Name | Domain suffix | Required | Notes |
+| --- | --- | --- | --- |
+| `sessionid` | `.douyin.com` | Yes | Primary authenticated session cookie. |
+| `sid_guard` | `.douyin.com` | Yes | Session guard cookie. Reject when expired. |
+| `passport_csrf_token` | `.douyin.com` | Yes | Required by Douyin web/auth flows. |
+
+Optional cookies may be preserved when captured from allowed Douyin domains, but must not be used as the login success condition unless the adapter is updated with evidence from a failing smoke test.
+
+### Allowed Domains
+
+Initial MVP allowlist:
+
+```json
+[
+  { "host": "douyin.com", "match": "suffix", "schemes": ["https"], "purpose": "first-party web and auth" },
+  { "host": "douyinpic.com", "match": "suffix", "schemes": ["https"], "purpose": "images and avatars" },
+  { "host": "douyinstatic.com", "match": "suffix", "schemes": ["https"], "purpose": "static assets" },
+  { "host": "douyincdn.com", "match": "suffix", "schemes": ["https"], "purpose": "static assets" },
+  { "host": "byteimg.com", "match": "suffix", "schemes": ["https"], "purpose": "static assets" },
+  { "host": "bytegoofy.com", "match": "suffix", "schemes": ["https"], "purpose": "frontend bundles" },
+  { "host": "snssdk.com", "match": "suffix", "schemes": ["https"], "purpose": "captcha and verification" },
+  { "host": "bytedance.net", "match": "suffix", "schemes": ["https"], "purpose": "verification and static dependencies" }
+]
+```
+
+Rules:
+
+- Start narrow and expand only from captured failed-login traces.
+- Never allow arbitrary `*.com` or URL substring matching.
+- Block link-local metadata IP ranges and private service networks even when DNS resolves through an allowed host.
+- Log blocked hostnames without query strings or cookie headers.
+
+### Login Detection
+
+The adapter reports `login_detected` only when all conditions are true:
+
+- Current URL host suffix-matches `douyin.com`.
+- Current URL path is under `/creator-micro/` or the browser can navigate there without redirecting to login.
+- `sessionid`, `sid_guard`, and `passport_csrf_token` exist on an accepted Douyin domain.
+- Required cookies are not expired.
+
+If the user is on captcha, QR scan, or MFA screens, keep the session `ready` until TTL expires. Do not mark `failed` unless CDP, container, or adapter validation itself fails.
+
+### Account Extraction
+
+For MVP, account metadata is best-effort:
+
+- Prefer a creator-profile endpoint or visible creator name in the creator shell when available.
+- If extraction fails but required cookies validate, save the account as `Connected Douyin account` with empty `avatar_url`.
+- Never block cookie save only because profile metadata is unavailable.
 
 ## Browser Container
 
@@ -236,6 +541,22 @@ Resource limits:
 
 Capture with CDP from controlled browser context after login. Include `HttpOnly` cookies. Do not use `document.cookie`.
 
+Cookie store interface:
+
+```go
+type CookieStore interface {
+    Save(ctx context.Context, userID uuid.UUID, platform string, cookies []Cookie, profile RemoteAccountProfile) error
+    Load(ctx context.Context, userID uuid.UUID, platform string) ([]Cookie, error)
+    Delete(ctx context.Context, userID uuid.UUID, platform string) error
+}
+```
+
+Errors:
+
+- `ErrCookieEncryptionKeyMissing`: `COOKIE_ENCRYPTION_KEY` is not configured.
+- `ErrCookieValidationFailed`: required cookies are missing, expired, or outside accepted domains.
+- `ErrCookieNotFound`: no saved cookies exist for the user/platform.
+
 Normalize before storage:
 
 - keep only required platform domains
@@ -247,6 +568,7 @@ Implementation boundary:
 
 - `CookieStore.Save(userID, platform, cookies)` normalizes and encrypts before updating `PlatformAccount.Cookies`.
 - `CookieStore.Load(userID, platform)` decrypts and returns validated cookie arrays.
+- `CookieStore.Delete(userID, platform)` clears cookies, status, last test metadata, and profile metadata on disconnect.
 - Existing publishers should receive decrypted cookie arrays through service code. They should not parse encrypted `PlatformAccount.Cookies` directly.
 
 Refresh strategy:
