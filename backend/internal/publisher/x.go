@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	stdhtml "html"
+	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
@@ -14,6 +16,9 @@ import (
 )
 
 const xCharacterLimit = 280
+const xURLWeight = 23
+
+var xURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
 
 type XPublisher struct{}
 
@@ -61,7 +66,7 @@ func (x *XPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPub
 	if text == "" {
 		return "", "", fmt.Errorf("x post text is empty")
 	}
-	if countRunes(text) > xCharacterLimit {
+	if xWeightedLength(text) > xCharacterLimit {
 		return "", "", fmt.Errorf("x post exceeds %d characters", xCharacterLimit)
 	}
 
@@ -114,22 +119,63 @@ func buildXPostText(title, body string, limit int) string {
 	default:
 		text = body
 	}
-	return truncateRunesWithEllipsis(text, limit)
+	return truncateXTextWithEllipsis(text, limit)
 }
 
-func truncateRunesWithEllipsis(value string, limit int) string {
-	runes := []rune(strings.TrimSpace(value))
-	if len(runes) <= limit {
-		return string(runes)
+func truncateXTextWithEllipsis(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if xWeightedLength(value) <= limit {
+		return value
 	}
-	if limit <= 3 {
-		return string(runes[:limit])
+
+	suffix := "..."
+	budget := limit - xWeightedLength(suffix)
+	if budget <= 0 {
+		return truncateXTextByRuneWeight(value, limit)
 	}
-	return strings.TrimSpace(string(runes[:limit-3])) + "..."
+
+	return strings.TrimSpace(truncateXTextByRuneWeight(value, budget)) + suffix
 }
 
-func countRunes(value string) int {
-	return len([]rune(value))
+func truncateXTextByRuneWeight(value string, limit int) string {
+	var builder strings.Builder
+	used := 0
+	for _, r := range value {
+		weight := xRuneWeight(r)
+		if used+weight > limit {
+			break
+		}
+		builder.WriteRune(r)
+		used += weight
+	}
+	return builder.String()
+}
+
+func xWeightedLength(value string) int {
+	length := 0
+	last := 0
+	for _, match := range xURLPattern.FindAllStringIndex(value, -1) {
+		length += xWeightedSegmentLength(value[last:match[0]])
+		length += xURLWeight
+		last = match[1]
+	}
+	length += xWeightedSegmentLength(value[last:])
+	return length
+}
+
+func xWeightedSegmentLength(value string) int {
+	length := 0
+	for _, r := range value {
+		length += xRuneWeight(r)
+	}
+	return length
+}
+
+func xRuneWeight(r rune) int {
+	if r <= unicode.MaxASCII || unicode.Is(unicode.Latin, r) {
+		return 1
+	}
+	return 2
 }
 
 func htmlToText(source string) string {
