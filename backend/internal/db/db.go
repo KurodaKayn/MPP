@@ -50,6 +50,7 @@ func migrate(database *gorm.DB) error {
 		&models.PlatformAccount{},
 		&models.Project{},
 		&models.ProjectPlatformPublication{},
+		&models.PlatformAccount{},
 	)
 }
 

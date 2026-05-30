@@ -47,6 +47,9 @@ func setupTestDB() *gorm.DB {
 		status TEXT NOT NULL DEFAULT 'untested',
 		credentials TEXT NOT NULL DEFAULT '{}',
 		metadata TEXT NOT NULL DEFAULT '{}',
+		cookies TEXT NOT NULL DEFAULT '[]',
+		config TEXT NOT NULL DEFAULT '{}',
+		avatar_url TEXT,
 		last_tested_at DATETIME,
 		last_test_error TEXT,
 		created_at DATETIME,
@@ -98,7 +101,7 @@ func (f *fakePlatformPublisher) AdaptContent(project *models.Project) ([]byte, e
 	return nil, nil
 }
 
-func (f *fakePlatformPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication) (string, string, error) {
+func (f *fakePlatformPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
 	f.config = append(datatypes.JSON(nil), pub.Config...)
 	return "remote-id", "https://example.com/published", nil
 }
@@ -391,6 +394,42 @@ func TestGetProjectPublications(t *testing.T) {
 	// Stranger gets Forbidden
 	_, errStranger := s.GetProjectPublications(p.ID, &u2.ID)
 	assert.ErrorIs(t, errStranger, services.ErrForbidden)
+}
+
+func TestBatchPublishProject(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	u := models.User{Username: "tester"}
+	db.Create(&u)
+
+	p := models.Project{UserID: u.ID, Title: "p", SourceContent: "c", Status: models.ProjectStatusDraft}
+	db.Create(&p)
+
+	// Create publications for multiple platforms
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: p.ID,
+		Platform:  "wechat",
+		Status:    models.PublicationStatusPending,
+		Config:    datatypes.JSON(`{"app_id": "test", "app_secret": "test"}`),
+	})
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: p.ID,
+		Platform:  "zhihu",
+		Status:    models.PublicationStatusPending,
+	})
+
+	// Test batch publish
+	platforms := []string{"wechat", "zhihu"}
+	results, err := s.BatchPublishProject(p.ID, platforms, &u.ID)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(results))
+	
+	// Check results
+	for _, platform := range platforms {
+		assert.Contains(t, results, platform)
+	}
 }
 
 func TestWechatAccountSettingsSaveMasksSecret(t *testing.T) {

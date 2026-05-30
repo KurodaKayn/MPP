@@ -8,6 +8,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
@@ -17,7 +18,29 @@ import (
 	"gorm.io/gorm"
 )
 
-// ...
+func (s *DashboardService) BatchPublishProject(projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID) (map[string]map[string]interface{}, error) {
+	results := make(map[string]map[string]interface{})
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for _, platform := range platforms {
+		wg.Add(1)
+		go func(p string) {
+			defer wg.Done()
+			resp, err := s.PublishProject(projectID, p, scopeUserID)
+			mu.Lock()
+			if err != nil {
+				results[p] = map[string]interface{}{"status": "error", "message": err.Error()}
+			} else {
+				results[p] = resp
+			}
+			mu.Unlock()
+		}(platform)
+	}
+
+	wg.Wait()
+	return results, nil
+}
 
 func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
 	// 1. Check ownership
@@ -45,11 +68,18 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 		return nil, err
 	}
 
-	// 4. Execute Publish
-	// Note: We use pub.AdaptedContent. If empty, you might want to sync from proj.SourceContent first.
-	remoteID, publishURL, err := p.Publish(context.Background(), &pub)
+	// 4. Get Platform Account (for Cookies/Session)
+	var account models.PlatformAccount
+	if err := s.db.Where("user_id = ? AND platform = ?", *scopeUserID, platform).First(&account).Error; err != nil {
+		// Non-blocking: some publishers might not need a pre-stored account (using config instead)
+		// but headless ones usually do.
+	}
 
-	// 5. Update DB
+	// 5. Execute Publish
+	// Note: We use pub.AdaptedContent. If empty, you might want to sync from proj.SourceContent first.
+	remoteID, publishURL, err := p.Publish(context.Background(), &pub, &account)
+
+	// 6. Update DB
 	status := models.PublicationStatusPublished
 	errMsg := ""
 	if err != nil {

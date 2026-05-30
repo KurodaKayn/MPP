@@ -35,8 +35,8 @@ const (
 )
 
 type User struct {
-	ID               uuid.UUID `gorm:"type:uuid;primaryKey"`
-	Username         string    `gorm:"not null"`
+	ID               uuid.UUID         `gorm:"type:uuid;primaryKey"`
+	Username         string            `gorm:"not null"`
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	Projects         []Project         `gorm:"foreignKey:UserID"`
@@ -78,8 +78,11 @@ type PlatformAccount struct {
 	Platform      string         `gorm:"not null;uniqueIndex:idx_platform_accounts_user_platform;index:idx_platform_accounts_platform_status"`
 	Name          string         `gorm:"not null"`
 	Status        string         `gorm:"not null;default:'untested';index:idx_platform_accounts_platform_status"`
-	Credentials   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	Metadata      datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	Cookies       datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"` // From feature branch
+	Credentials   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From main branch
+	Metadata      datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From main branch
+	Config        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From feature branch
+	AvatarURL     string         // From feature branch
 	LastTestedAt  *time.Time
 	LastTestError string
 	CreatedAt     time.Time
@@ -108,9 +111,9 @@ func (p *ProjectPlatformPublication) BeforeCreate(tx *gorm.DB) (err error) {
 	return
 }
 
-func (p *PlatformAccount) BeforeCreate(tx *gorm.DB) (err error) {
-	if p.ID == uuid.Nil {
-		p.ID = uuid.New()
+func (pa *PlatformAccount) BeforeCreate(tx *gorm.DB) (err error) {
+	if pa.ID == uuid.Nil {
+		pa.ID = uuid.New()
 	}
 	return
 }
