@@ -40,3 +40,45 @@ type WechatConnectionTestResponse struct {
 	IPWhitelist RequirementStatus `json:"ip_whitelist"`
 	AccountAuth RequirementStatus `json:"account_auth"`
 }
+
+type XAccountResponse struct {
+	Platform             string            `json:"platform"`
+	APIKey               string            `json:"api_key,omitempty"`
+	Username             string            `json:"username,omitempty"`
+	HasAPISecret         bool              `json:"has_api_secret"`
+	HasAccessToken       bool              `json:"has_access_token"`
+	HasAccessTokenSecret bool              `json:"has_access_token_secret"`
+	Status               string            `json:"status"`
+	LastTestedAt         *time.Time        `json:"last_tested_at,omitempty"`
+	LastTestError        string            `json:"last_test_error,omitempty"`
+	UpdatedAt            *time.Time        `json:"updated_at,omitempty"`
+	AccountAuth          RequirementStatus `json:"account_auth"`
+	PublishAccess        RequirementStatus `json:"publish_access"`
+}
+
+type UpsertXAccountRequest struct {
+	APIKey            string `json:"api_key"`
+	APISecret         string `json:"api_secret"`
+	AccessToken       string `json:"access_token"`
+	AccessTokenSecret string `json:"access_token_secret"`
+	Username          string `json:"username"`
+}
+
+type TestXAccountRequest struct {
+	APIKey            string `json:"api_key"`
+	APISecret         string `json:"api_secret"`
+	AccessToken       string `json:"access_token"`
+	AccessTokenSecret string `json:"access_token_secret"`
+}
+
+type XConnectionTestResponse struct {
+	Connected     bool              `json:"connected"`
+	Status        string            `json:"status"`
+	Message       string            `json:"message"`
+	TestedAt      time.Time         `json:"tested_at"`
+	UserID        string            `json:"user_id,omitempty"`
+	Username      string            `json:"username,omitempty"`
+	Name          string            `json:"name,omitempty"`
+	AccountAuth   RequirementStatus `json:"account_auth"`
+	PublishAccess RequirementStatus `json:"publish_access"`
+}
