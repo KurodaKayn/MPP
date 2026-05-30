@@ -10,6 +10,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/target"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -118,37 +119,73 @@ func main() {
 			var ctx context.Context
 			var cancel func()
 			
-			// Initial delay to let Chromium stabilize
-			time.Sleep(5 * time.Second)
+			// Wait for Chromium to write the DevToolsActivePort file
+			time.Sleep(3 * time.Second)
+
+			var browserUUID string
+			for i := 0; i < 5; i++ {
+				uuid, err := dm.GetBrowserUUID(context.Background(), containerID)
+				if err == nil && uuid != "" {
+					browserUUID = uuid
+					break
+				}
+				time.Sleep(1 * time.Second)
+			}
+
+			if browserUUID == "" {
+				log.Printf("CRITICAL: Failed to read browser UUID from container")
+				return
+			}
+
+			// Construct the exact websocket URL to bypass Chromium's HTTP Host check on /json/version
+			wsURL := fmt.Sprintf("ws://127.0.0.1:%d/devtools/browser/%s", cdpPort, browserUUID)
+			log.Printf("Attempting direct CDP connection to: %s", wsURL)
 
 			// Retry loop for CDP connection
-			allocatorURL := fmt.Sprintf("http://127.0.0.1:%d", cdpPort)
-			
-			for i := 0; i < 10; i++ {
-				allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), allocatorURL)
-				ctx, cancel = chromedp.NewContext(allocCtx)
+			for i := 0; i < 5; i++ {
+				// Use direct websocket connection instead of RemoteAllocator HTTP fetch
+				allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), wsURL)
+				
+				// Find existing targets to avoid creating a new hidden tab
+				infos, err := chromedp.Targets(allocCtx)
+				if err == nil && len(infos) > 0 {
+					var targetID string
+					for _, info := range infos {
+						if info.Type == "page" {
+							targetID = string(info.TargetID)
+							break
+						}
+					}
+					if targetID != "" {
+						ctx, cancel = chromedp.NewContext(allocCtx, chromedp.WithTargetID(target.ID(targetID)))
+					} else {
+						ctx, cancel = chromedp.NewContext(allocCtx)
+					}
+				} else {
+					ctx, cancel = chromedp.NewContext(allocCtx)
+				}
 				
 				// Attempt a simple run to test connection
-				err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+				err = chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
 					return nil
 				}))
 				
 				if err == nil {
-					log.Printf("Successfully connected to CDP at %s", allocatorURL)
+					log.Printf("Successfully connected to CDP at %s", wsURL)
 					break
 				}
 				
-				log.Printf("Waiting for CDP at %s (attempt %d/10)... error: %v", allocatorURL, i+1, err)
+				log.Printf("Waiting for CDP at %s (attempt %d/5)... error: %v", wsURL, i+1, err)
 				cancel()
-				if i == 9 {
-					log.Printf("CRITICAL: Failed to connect to CDP after 10 attempts")
+				if i == 4 {
+					log.Printf("CRITICAL: Failed to connect to CDP after 5 attempts")
 					return
 				}
-				time.Sleep(3 * time.Second)
+				time.Sleep(2 * time.Second)
 			}
 
 			if err := SetupInterception(ctx, req.AllowedDomains); err != nil {
-				log.Printf("Failed to setup interception for %s: %v", allocatorURL, err)
+				log.Printf("Failed to setup interception for %s: %v", wsURL, err)
 			}
 			
 			chromedp.Run(ctx, chromedp.Navigate(req.LoginURL))
