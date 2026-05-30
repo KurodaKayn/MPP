@@ -78,6 +78,9 @@ func main() {
 	userGroup.GET("/settings/wechat/account", userDashboardHandler.GetWechatAccount)
 	userGroup.PUT("/settings/wechat/account", userDashboardHandler.SaveWechatAccount)
 	userGroup.POST("/settings/wechat/test", userDashboardHandler.TestWechatAccount)
+	userGroup.GET("/settings/x/account", userDashboardHandler.GetXAccount)
+	userGroup.PUT("/settings/x/account", userDashboardHandler.SaveXAccount)
+	userGroup.POST("/settings/x/test", userDashboardHandler.TestXAccount)
 
 	// AI Proxy example
 	e.POST("/api/ai/calibrate", func(c echo.Context) error {

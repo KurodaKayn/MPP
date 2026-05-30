@@ -38,6 +38,9 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 	if err := s.applySavedWechatCredentialsToPublication(proj.UserID, &pub); err != nil {
 		return nil, err
 	}
+	if err := s.applySavedXCredentialsToPublication(proj.UserID, &pub); err != nil {
+		return nil, err
+	}
 
 	// 3. Get Publisher from factory
 	p, err := publisher.Factory.GetPublisher(platform)
@@ -76,6 +79,7 @@ var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_tok
 var allowedProjectPlatforms = map[string]struct{}{
 	"bilibili":    {},
 	"wechat":      {},
+	"x":           {},
 	"xiaohongshu": {},
 	"zhihu":       {},
 }
@@ -87,17 +91,25 @@ func sanitizeUserFacingErrorMessage(message string) string {
 type DashboardService struct {
 	db           *gorm.DB
 	wechatTester WechatConnectionTester
+	xTester      XConnectionTester
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
-	return NewDashboardServiceWithWechatTester(db, WechatAPITester{})
+	return NewDashboardServiceWithPlatformTesters(db, WechatAPITester{}, XAPITester{})
 }
 
 func NewDashboardServiceWithWechatTester(db *gorm.DB, tester WechatConnectionTester) *DashboardService {
+	return NewDashboardServiceWithPlatformTesters(db, tester, XAPITester{})
+}
+
+func NewDashboardServiceWithPlatformTesters(db *gorm.DB, tester WechatConnectionTester, xTester XConnectionTester) *DashboardService {
 	if tester == nil {
 		tester = WechatAPITester{}
 	}
-	return &DashboardService{db: db, wechatTester: tester}
+	if xTester == nil {
+		xTester = XAPITester{}
+	}
+	return &DashboardService{db: db, wechatTester: tester, xTester: xTester}
 }
 
 func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
@@ -570,7 +582,7 @@ func (s *DashboardService) GetProjectPublications(projectID uuid.UUID, scopeUser
 
 func filterConfig(raw map[string]interface{}) map[string]interface{} {
 	safe := make(map[string]interface{})
-	allowedKeys := []string{"title", "tags", "cover_image", "topics", "category", "original_declaration"}
+	allowedKeys := []string{"title", "tags", "cover_image", "topics", "category", "original_declaration", "username"}
 	for _, key := range allowedKeys {
 		if val, ok := raw[key]; ok {
 			safe[key] = val
