@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/pkg/html"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/pkg/media"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/pkg/wechat"
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/html"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/media"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/wechat"
 )
 
 type WechatPublisher struct{}

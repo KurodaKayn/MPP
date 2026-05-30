@@ -10,9 +10,9 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/dto"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/publisher"
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )

@@ -6,9 +6,9 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/dto"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/middleware"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
