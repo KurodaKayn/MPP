@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { ContentEditor } from "@/components/dashboard/content/content-editor";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import { ContentPageHeader } from "./content-page-header";
 import { ContentPrepublishPanel } from "./content-prepublish-panel";
 import { ContentPublishBar } from "./content-publish-bar";
@@ -13,8 +15,11 @@ type ContentWorkspaceProps = {
   projectId?: string;
 };
 
+type ContentView = "editor" | "preview";
+
 export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
   const contentPage = useContentPageController(projectId);
+  const [contentView, setContentView] = useState<ContentView>("editor");
 
   if (contentPage.isLoading) {
     return (
@@ -41,26 +46,35 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         onSave={contentPage.isEditing ? contentPage.save : undefined}
       />
 
-      <Tabs defaultValue="editor" className="w-full">
-        <TabsList>
-          <TabsTrigger value="editor">编辑</TabsTrigger>
-          <TabsTrigger value="preview">预览</TabsTrigger>
-        </TabsList>
-        <TabsContent value="editor" className="mt-4">
+      {contentView === "editor" ? (
+        <div>
           <ContentEditor
             title={contentPage.title}
             content={contentPage.content}
             onTitleChange={contentPage.setTitle}
             onContentChange={contentPage.setContent}
+            viewSwitcher={
+              <ContentViewSwitcher
+                value={contentView}
+                onValueChange={setContentView}
+              />
+            }
           />
-        </TabsContent>
-        <TabsContent value="preview" className="mt-4">
+        </div>
+      ) : (
+        <div>
           <PlatformPreview
             title={contentPage.title}
             content={contentPage.content}
+            viewSwitcher={
+              <ContentViewSwitcher
+                value={contentView}
+                onValueChange={setContentView}
+              />
+            }
           />
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
 
       <ContentPrepublishPanel
         title={contentPage.title}
@@ -84,6 +98,37 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           publishLabel={contentPage.isEditing ? "保存并发布" : "一键发布"}
         />
       </div>
+    </div>
+  );
+}
+
+function ContentViewSwitcher({
+  onValueChange,
+  value,
+}: {
+  onValueChange: (value: ContentView) => void;
+  value: ContentView;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border bg-muted p-0.5">
+      {[
+        ["editor", "编辑"],
+        ["preview", "预览"],
+      ].map(([itemValue, label]) => (
+        <Button
+          key={itemValue}
+          type="button"
+          size="sm"
+          variant={value === itemValue ? "default" : "ghost"}
+          className={cn(
+            "h-7 rounded-md px-3 text-xs",
+            value !== itemValue && "text-muted-foreground",
+          )}
+          onClick={() => onValueChange(itemValue as ContentView)}
+        >
+          {label}
+        </Button>
+      ))}
     </div>
   );
 }

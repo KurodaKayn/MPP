@@ -15,6 +15,7 @@ import type { ContentValue } from "@/lib/content/types";
 type PlatformPreviewProps = {
   title: string;
   content: ContentValue;
+  viewSwitcher?: React.ReactNode;
 };
 
 function PlatformTabLabel({ icon, label }: { icon: string; label: string }) {
@@ -33,7 +34,11 @@ function PlatformTabLabel({ icon, label }: { icon: string; label: string }) {
   );
 }
 
-export function PlatformPreview({ title, content }: PlatformPreviewProps) {
+export function PlatformPreview({
+  title,
+  content,
+  viewSwitcher,
+}: PlatformPreviewProps) {
   const hasBodyContent = Boolean(content.text.trim() || content.firstImageSrc);
   const previewContent = (
     <div
@@ -50,7 +55,10 @@ export function PlatformPreview({ title, content }: PlatformPreviewProps) {
             <CardTitle>预览</CardTitle>
             <CardDescription>预览在不同平台的适配效果</CardDescription>
           </div>
-          <Eye className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center gap-3">
+            {viewSwitcher}
+            <Eye className="h-4 w-4 text-muted-foreground" />
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex-1">
