@@ -2,7 +2,6 @@ package publisher
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -38,12 +37,12 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	// 暂时固定图片路径进行测试
 	localImagePath := `D:\multi-plantform-poster\backend\Assets\132461906_p0_master1200.jpg`
 
-	// 1. 在 Go 后端读取图片并转为 Base64 (备用方案)
-	imgData, err := os.ReadFile(localImagePath)
+	// 1. 在 Go 后端读取图片 (确保文件存在)
+	info, err := os.Stat(localImagePath)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to read local image: %w", err)
+		return "", "", fmt.Errorf("failed to find local image: %w", err)
 	}
-	imgBase64 := base64.StdEncoding.EncodeToString(imgData)
+	_ = info
 
 	// Setup headless browser with account cookies
 	browserCtx, cancel := SetupBrowser(ctx, account.Cookies)
