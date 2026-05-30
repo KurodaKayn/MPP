@@ -25,11 +25,19 @@ frontend/.vercel
 frontend/*.tsbuildinfo
 frontend/next-env.d.ts
 
+# IDEs
+.idea/
+.vscode/
+
 # Backend (Go)
 backend/bin/
 backend/vendor/
 backend/mpp-backend
+backend/main.exe
 backend/tmp
+# backend/Assets/ is ignored by default, but we allow the compressed test image
+backend/Assets/*
+!backend/Assets/132461906_p0_master1200.jpg
 
 # AI Service (Python/uv)
 ai-service/__pycache__/
