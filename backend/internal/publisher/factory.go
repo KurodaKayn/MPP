@@ -33,4 +33,5 @@ func init() {
 	// Register default publishers
 	Factory.Register("wechat", &WechatPublisher{})
 	Factory.Register("zhihu", &ZhihuPublisher{})
+	Factory.Register("douyin", &DouyinPublisher{})
 }
