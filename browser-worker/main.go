@@ -2,15 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/chromedp/chromedp"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/target"
+	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -119,31 +120,49 @@ func main() {
 			var ctx context.Context
 			var cancel func()
 			
-			// Wait for Chromium to write the DevToolsActivePort file
-			time.Sleep(3 * time.Second)
+			// Initial delay to let Chromium stabilize
+			time.Sleep(5 * time.Second)
 
-			var browserUUID string
-			for i := 0; i < 5; i++ {
-				uuid, err := dm.GetBrowserUUID(context.Background(), containerID)
-				if err == nil && uuid != "" {
-					browserUUID = uuid
-					break
+			var wsURL string
+			
+			// Manually fetch the WebSocket URL to bypass Host header restrictions
+			for i := 0; i < 10; i++ {
+				reqURL := fmt.Sprintf("http://127.0.0.1:%d/json/version", cdpPort)
+				httpReq, _ := http.NewRequest("GET", reqURL, nil)
+				// Spoof Host header so Chromium accepts the connection
+				httpReq.Host = "localhost"
+
+				client := &http.Client{Timeout: 2 * time.Second}
+				resp, err := client.Do(httpReq)
+				if err == nil && resp.StatusCode == http.StatusOK {
+					var result struct {
+						WebSocketDebuggerUrl string `json:"webSocketDebuggerUrl"`
+					}
+					if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && result.WebSocketDebuggerUrl != "" {
+						import "net/url"
+						u, _ := url.Parse(result.WebSocketDebuggerUrl)
+						u.Host = fmt.Sprintf("127.0.0.1:%d", cdpPort)
+						wsURL = u.String()
+						resp.Body.Close()
+						break
+					}
+					resp.Body.Close()
 				}
-				time.Sleep(1 * time.Second)
+				
+				log.Printf("Waiting for /json/version on %s (attempt %d/10)... error: %v", reqURL, i+1, err)
+				time.Sleep(2 * time.Second)
 			}
 
-			if browserUUID == "" {
-				log.Printf("CRITICAL: Failed to read browser UUID from container")
+			if wsURL == "" {
+				log.Printf("CRITICAL: Failed to get WebSocket URL from Chromium")
 				return
 			}
+			
+			log.Printf("Successfully obtained WebSocket URL: %s", wsURL)
 
-			// Construct the exact websocket URL to bypass Chromium's HTTP Host check on /json/version
-			wsURL := fmt.Sprintf("ws://127.0.0.1:%d/devtools/browser/%s", cdpPort, browserUUID)
-			log.Printf("Attempting direct CDP connection to: %s", wsURL)
-
-			// Retry loop for CDP connection
+			// Retry loop for CDP connection using the direct WebSocket URL
 			for i := 0; i < 5; i++ {
-				// Use direct websocket connection instead of RemoteAllocator HTTP fetch
+				// Use direct websocket connection
 				allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), wsURL)
 				
 				// Find existing targets to avoid creating a new hidden tab
@@ -175,10 +194,10 @@ func main() {
 					break
 				}
 				
-				log.Printf("Waiting for CDP at %s (attempt %d/5)... error: %v", wsURL, i+1, err)
+				log.Printf("Waiting for CDP connection (attempt %d/5)... error: %v", i+1, err)
 				cancel()
 				if i == 4 {
-					log.Printf("CRITICAL: Failed to connect to CDP after 5 attempts")
+					log.Printf("CRITICAL: Failed to connect to CDP websocket after 5 attempts")
 					return
 				}
 				time.Sleep(2 * time.Second)
