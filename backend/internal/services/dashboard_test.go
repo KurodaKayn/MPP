@@ -720,6 +720,61 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	assert.Equal(t, "Title", config["title"])
 }
 
+func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &fakePlatformPublisher{}
+	publisher.Factory.Register("x", fakePublisher)
+	defer publisher.Factory.Register("x", &publisher.XPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"api_key":"stale","api_secret":"stale","access_token":"stale","access_token_secret":"stale","title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"text":"ready"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+	require.NoError(t, db.Create(&models.PlatformAccount{
+		UserID:   user.ID,
+		Platform: "x",
+		Name:     "X",
+		Status:   models.PlatformAccountStatusConnected,
+		Credentials: datatypes.JSON(`{
+			"auth_type":"oauth2",
+			"oauth2_access_token":"oauth2-access",
+			"oauth2_refresh_token":"oauth2-refresh",
+			"username":"creator"
+		}`),
+		Metadata: datatypes.JSON(`{"username":"creator"}`),
+	}).Error)
+
+	result, err := s.PublishProject(project.ID, "x", &user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+
+	var config map[string]interface{}
+	require.NoError(t, json.Unmarshal(fakePublisher.config, &config))
+	assert.Equal(t, "oauth2", config["auth_type"])
+	assert.Equal(t, "oauth2-access", config["oauth2_access_token"])
+	assert.Equal(t, "oauth2-refresh", config["oauth2_refresh_token"])
+	assert.Equal(t, "creator", config["username"])
+	assert.NotContains(t, config, "api_key")
+	assert.NotContains(t, config, "api_secret")
+	assert.NotContains(t, config, "access_token")
+	assert.NotContains(t, config, "access_token_secret")
+	assert.Equal(t, "Title", config["title"])
+}
+
 func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
