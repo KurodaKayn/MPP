@@ -43,6 +43,12 @@ func main() {
 	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
 	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
 
+	// Remote Browser Session (New)
+	workerClient := publisher.NewMockBrowserWorkerClient()
+	cookieStore := publisher.NewCookieStore(db.DB)
+	browserSessionService := services.NewBrowserSessionService(db.DB, workerClient, cookieStore)
+	browserSessionHandler := handlers.NewBrowserSessionHandler(browserSessionService)
+
 	e := echo.New()
 
 	// Middleware
@@ -83,6 +89,12 @@ func main() {
 	userGroup.PUT("/settings/x/account", userDashboardHandler.SaveXAccount)
 	userGroup.POST("/settings/x/test", userDashboardHandler.TestXAccount)
 	userGroup.GET("/settings/x/oauth2/start", userDashboardHandler.StartXOAuth2)
+
+	// Remote Browser Session Routes
+	userGroup.POST("/settings/platforms/:platform/browser-session", browserSessionHandler.StartSession)
+	userGroup.GET("/browser-sessions/:id", browserSessionHandler.GetSession)
+	userGroup.POST("/browser-sessions/:id/complete", browserSessionHandler.CompleteSession)
+	userGroup.DELETE("/browser-sessions/:id", browserSessionHandler.CancelSession)
 
 	// AI Proxy example
 	e.POST("/api/ai/calibrate", func(c echo.Context) error {
