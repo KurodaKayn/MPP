@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
-import type { ContentValue } from "@/lib/content/types";
+import { emptyContentValue, type ContentValue } from "@/lib/content/types";
 import {
   createDashboardProject,
   getDashboardProject,
@@ -45,6 +45,7 @@ export function useContentPageController(projectId?: string) {
     isPublishing,
     isSaving,
     isSyncingPrepublish,
+    loadedProjectId,
     prepublishDrafts,
     resetForCreate,
     selectedPlatforms,
@@ -54,15 +55,20 @@ export function useContentPageController(projectId?: string) {
     setIsPublishing,
     setIsSaving,
     setIsSyncingPrepublish,
+    setLoadedProjectId,
     setPrepublishDrafts,
     setSelectedPlatforms,
     setTitle,
     title,
   } = useContentPageStore();
   const publishBarRef = useRef<HTMLDivElement>(null);
+  const isRouteContentLoaded = projectId
+    ? loadedProjectId === projectId
+    : loadedProjectId === null;
+  const isPageLoading = isLoading || !isRouteContentLoaded;
   const hasBodyContent = Boolean(content.text.trim() || content.firstImageSrc);
   const hasRequiredContent = Boolean(
-    !isLoading && title.trim() && hasBodyContent,
+    !isPageLoading && title.trim() && hasBodyContent,
   );
   const canPublish = Boolean(
     hasRequiredContent && selectedPlatforms.length > 0,
@@ -97,7 +103,17 @@ export function useContentPageController(projectId?: string) {
           ),
         );
         setPrepublishDrafts({});
+        setLoadedProjectId(targetProjectId);
       } catch (requestError) {
+        if (cancelled) {
+          return;
+        }
+
+        setTitle("");
+        setContent(emptyContentValue);
+        setSelectedPlatforms([]);
+        setPrepublishDrafts({});
+        setLoadedProjectId(targetProjectId);
         toast.error("无法加载项目内容", {
           description:
             requestError instanceof Error
@@ -379,7 +395,7 @@ export function useContentPageController(projectId?: string) {
     canPublish,
     content,
     isEditing: Boolean(projectId),
-    isLoading,
+    isLoading: isPageLoading,
     isOpeningXPostIntent,
     isPublishing,
     isSaving,
