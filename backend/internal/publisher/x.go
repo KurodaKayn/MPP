@@ -57,9 +57,12 @@ type XConfig struct {
 }
 
 type xAdaptedContent struct {
-	Format  string `json:"format"`
-	Summary string `json:"summary"`
-	Text    string `json:"text"`
+	SchemaVersion  int         `json:"schema_version"`
+	Format         string      `json:"format"`
+	Summary        string      `json:"summary"`
+	SourceRevision string      `json:"source_revision"`
+	GeneratedBy    GeneratedBy `json:"generated_by"`
+	Text           string      `json:"text"`
 }
 
 func (x *XPublisher) ValidateConfig(config []byte) error {
@@ -72,11 +75,9 @@ func (x *XPublisher) ValidateConfig(config []byte) error {
 
 func (x *XPublisher) AdaptContent(project *models.Project) ([]byte, error) {
 	text := buildXPostText(project.Title, htmlToText(project.SourceContent), xCharacterLimit)
-	return json.Marshal(xAdaptedContent{
-		Format:  "text",
-		Summary: text,
-		Text:    text,
-	})
+	content := systemAdaptedContent(project, "text", "x-text-adapter", text)
+	content.Text = text
+	return json.Marshal(content)
 }
 
 func BuildXPostIntentURL(raw []byte) (string, error) {
