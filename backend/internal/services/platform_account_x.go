@@ -18,6 +18,11 @@ import (
 
 const xPlatform = "x"
 
+const (
+	xAuthTypeOAuth1 = "oauth1"
+	xAuthTypeOAuth2 = "oauth2"
+)
+
 type XConnectionTester interface {
 	Test(ctx context.Context, credentials pkgx.Credentials) dto.XConnectionTestResponse
 }
@@ -25,11 +30,16 @@ type XConnectionTester interface {
 type XAPITester struct{}
 
 type xCredentials struct {
-	APIKey            string `json:"api_key"`
-	APISecret         string `json:"api_secret"`
-	AccessToken       string `json:"access_token"`
-	AccessTokenSecret string `json:"access_token_secret"`
-	Username          string `json:"username,omitempty"`
+	AuthType           string     `json:"auth_type,omitempty"`
+	APIKey             string     `json:"api_key"`
+	APISecret          string     `json:"api_secret"`
+	AccessToken        string     `json:"access_token"`
+	AccessTokenSecret  string     `json:"access_token_secret"`
+	Username           string     `json:"username,omitempty"`
+	OAuth2AccessToken  string     `json:"oauth2_access_token,omitempty"`
+	OAuth2RefreshToken string     `json:"oauth2_refresh_token,omitempty"`
+	OAuth2ExpiresAt    *time.Time `json:"oauth2_expires_at,omitempty"`
+	OAuth2Scope        string     `json:"oauth2_scope,omitempty"`
 }
 
 type xMetadata struct {
@@ -63,6 +73,7 @@ func (s *DashboardService) GetXAccount(userID uuid.UUID) (*dto.XAccountResponse,
 
 func (s *DashboardService) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccountRequest) (*dto.XAccountResponse, error) {
 	incoming := xCredentials{
+		AuthType:          xAuthTypeOAuth1,
 		APIKey:            strings.TrimSpace(req.APIKey),
 		APISecret:         strings.TrimSpace(req.APISecret),
 		AccessToken:       strings.TrimSpace(req.AccessToken),
@@ -243,6 +254,7 @@ func (s *DashboardService) applySavedXCredentialsToPublication(userID uuid.UUID,
 func emptyXAccountResponse() dto.XAccountResponse {
 	return dto.XAccountResponse{
 		Platform:      xPlatform,
+		AuthType:      xAuthTypeOAuth2,
 		Status:        "unconfigured",
 		AccountAuth:   unknownXAccountAuthHint(),
 		PublishAccess: unknownXPublishAccessHint(),
@@ -262,11 +274,14 @@ func accountToXResponse(account *models.PlatformAccount) (dto.XAccountResponse, 
 	updatedAt := account.UpdatedAt
 	return dto.XAccountResponse{
 		Platform:             account.Platform,
+		AuthType:             credentials.authType(),
 		APIKey:               credentials.APIKey,
+		ExpiresAt:            credentials.OAuth2ExpiresAt,
 		Username:             username,
 		HasAPISecret:         credentials.APISecret != "",
 		HasAccessToken:       credentials.AccessToken != "",
 		HasAccessTokenSecret: credentials.AccessTokenSecret != "",
+		HasOAuth2Refresh:     credentials.OAuth2RefreshToken != "",
 		Status:               account.Status,
 		LastTestedAt:         account.LastTestedAt,
 		LastTestError:        account.LastTestError,
@@ -290,11 +305,16 @@ func parseXCredentials(raw datatypes.JSON) (xCredentials, error) {
 
 func mergeXCredentials(existing, incoming xCredentials) xCredentials {
 	merged := xCredentials{
-		APIKey:            firstNonEmpty(incoming.APIKey, existing.APIKey),
-		APISecret:         firstNonEmpty(incoming.APISecret, existing.APISecret),
-		AccessToken:       firstNonEmpty(incoming.AccessToken, existing.AccessToken),
-		AccessTokenSecret: firstNonEmpty(incoming.AccessTokenSecret, existing.AccessTokenSecret),
-		Username:          firstNonEmpty(incoming.Username, existing.Username),
+		AuthType:           firstNonEmpty(incoming.AuthType, existing.AuthType),
+		APIKey:             firstNonEmpty(incoming.APIKey, existing.APIKey),
+		APISecret:          firstNonEmpty(incoming.APISecret, existing.APISecret),
+		AccessToken:        firstNonEmpty(incoming.AccessToken, existing.AccessToken),
+		AccessTokenSecret:  firstNonEmpty(incoming.AccessTokenSecret, existing.AccessTokenSecret),
+		Username:           firstNonEmpty(incoming.Username, existing.Username),
+		OAuth2AccessToken:  existing.OAuth2AccessToken,
+		OAuth2RefreshToken: existing.OAuth2RefreshToken,
+		OAuth2ExpiresAt:    existing.OAuth2ExpiresAt,
+		OAuth2Scope:        existing.OAuth2Scope,
 	}
 	if xCredentialIdentityChanged(existing, incoming) && incoming.Username == "" {
 		merged.Username = ""
@@ -326,6 +346,21 @@ func (c xCredentials) clientCredentials() pkgx.Credentials {
 		APISecret:         c.APISecret,
 		AccessToken:       c.AccessToken,
 		AccessTokenSecret: c.AccessTokenSecret,
+	}
+}
+
+func (c xCredentials) authType() string {
+	switch c.AuthType {
+	case xAuthTypeOAuth1, xAuthTypeOAuth2:
+		return c.AuthType
+	default:
+		if c.OAuth2AccessToken != "" {
+			return xAuthTypeOAuth2
+		}
+		if c.APIKey != "" || c.AccessToken != "" {
+			return xAuthTypeOAuth1
+		}
+		return xAuthTypeOAuth2
 	}
 }
 
