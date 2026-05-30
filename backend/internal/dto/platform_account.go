@@ -43,11 +43,14 @@ type WechatConnectionTestResponse struct {
 
 type XAccountResponse struct {
 	Platform             string            `json:"platform"`
+	AuthType             string            `json:"auth_type"`
 	APIKey               string            `json:"api_key,omitempty"`
+	ExpiresAt            *time.Time        `json:"expires_at,omitempty"`
 	Username             string            `json:"username,omitempty"`
 	HasAPISecret         bool              `json:"has_api_secret"`
 	HasAccessToken       bool              `json:"has_access_token"`
 	HasAccessTokenSecret bool              `json:"has_access_token_secret"`
+	HasOAuth2Refresh     bool              `json:"has_oauth2_refresh"`
 	Status               string            `json:"status"`
 	LastTestedAt         *time.Time        `json:"last_tested_at,omitempty"`
 	LastTestError        string            `json:"last_test_error,omitempty"`

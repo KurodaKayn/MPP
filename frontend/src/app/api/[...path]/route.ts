@@ -53,11 +53,16 @@ function applyAuthorizationFromCookie(request: NextRequest, headers: Headers) {
 
 function createForwardedHeaders(request: NextRequest) {
   const headers = new Headers(request.headers);
+  const forwardedHost =
+    request.headers.get("host")?.trim() || request.nextUrl.host;
+  const forwardedProto = request.nextUrl.protocol.replace(/:$/, "");
 
   for (const header of hopByHopHeaders) {
     headers.delete(header);
   }
   headers.delete("host");
+  headers.set("x-forwarded-host", forwardedHost);
+  headers.set("x-forwarded-proto", forwardedProto || "http");
   applyAuthorizationFromCookie(request, headers);
 
   return headers;

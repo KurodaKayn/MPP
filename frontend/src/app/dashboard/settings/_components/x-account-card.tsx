@@ -8,7 +8,6 @@ import {
   Card,
   CardAction,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -85,7 +84,6 @@ export function XAccountCard({
         <CardTitle className="flex items-center gap-2">
           <KeyRound className="size-4" />X
         </CardTitle>
-        <CardDescription>OAuth 2.0 / OAuth 1.0a</CardDescription>
         <CardAction>
           <Badge variant="outline">Official API</Badge>
         </CardAction>

@@ -58,6 +58,7 @@ func main() {
 	if mockLoginEnabled() {
 		e.POST("/api/auth/mock-login", authHandler.MockLogin)
 	}
+	e.GET("/api/user/dashboard/settings/x/oauth2/callback", userDashboardHandler.CompleteXOAuth2)
 
 	// Admin APIs (In a real app, protect this with an Admin Auth middleware)
 	adminGroup := e.Group("/api/admin/dashboard")
@@ -81,6 +82,7 @@ func main() {
 	userGroup.GET("/settings/x/account", userDashboardHandler.GetXAccount)
 	userGroup.PUT("/settings/x/account", userDashboardHandler.SaveXAccount)
 	userGroup.POST("/settings/x/test", userDashboardHandler.TestXAccount)
+	userGroup.GET("/settings/x/oauth2/start", userDashboardHandler.StartXOAuth2)
 
 	// AI Proxy example
 	e.POST("/api/ai/calibrate", func(c echo.Context) error {

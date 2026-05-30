@@ -3,18 +3,66 @@ package services_test
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"testing"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
+
+type fakeXOAuth2Provider struct {
+	authConfig       pkgx.OAuth2Config
+	authState        string
+	authChallenge    string
+	exchangeCode     string
+	exchangeVerifier string
+	refreshConfig    pkgx.OAuth2Config
+	refreshToken     string
+	token            pkgx.OAuth2Token
+	user             pkgx.User
+}
+
+func (f *fakeXOAuth2Provider) AuthorizationURL(config pkgx.OAuth2Config, state, codeChallenge string) (string, error) {
+	f.authConfig = config
+	f.authState = state
+	f.authChallenge = codeChallenge
+
+	endpoint := url.URL{
+		Scheme: "https",
+		Host:   "x.example.com",
+		Path:   "/i/oauth2/authorize",
+	}
+	query := endpoint.Query()
+	query.Set("state", state)
+	query.Set("code_challenge", codeChallenge)
+	endpoint.RawQuery = query.Encode()
+	return endpoint.String(), nil
+}
+
+func (f *fakeXOAuth2Provider) Exchange(ctx context.Context, config pkgx.OAuth2Config, code, codeVerifier string) (pkgx.OAuth2Token, error) {
+	f.exchangeCode = code
+	f.exchangeVerifier = codeVerifier
+	return f.token, nil
+}
+
+func (f *fakeXOAuth2Provider) Refresh(ctx context.Context, config pkgx.OAuth2Config, refreshToken string) (pkgx.OAuth2Token, error) {
+	f.refreshConfig = config
+	f.refreshToken = refreshToken
+	return f.token, nil
+}
+
+func (f *fakeXOAuth2Provider) Me(ctx context.Context, accessToken string) (pkgx.User, error) {
+	return f.user, nil
+}
 
 func setupTestDB() *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -425,7 +473,7 @@ func TestBatchPublishProject(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(results))
-	
+
 	// Check results
 	for _, platform := range platforms {
 		assert.Contains(t, results, platform)
@@ -572,6 +620,69 @@ func TestXAccountSettingsClearsUsernameAndMetadataWhenCredentialsChange(t *testi
 	assert.Empty(t, metadata["username"])
 }
 
+func TestXOAuth2FlowStoresConnectedAccount(t *testing.T) {
+	t.Setenv("X_OAUTH2_CLIENT_ID", "client-id")
+	t.Setenv("X_OAUTH2_CLIENT_SECRET", "client-secret")
+
+	db := setupTestDB()
+	expiresAt := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
+	provider := &fakeXOAuth2Provider{
+		token: pkgx.OAuth2Token{
+			AccessToken:  "oauth2-access",
+			RefreshToken: "oauth2-refresh",
+			Scope:        "tweet.read tweet.write users.read offline.access",
+			ExpiresAt:    expiresAt,
+		},
+		user: pkgx.User{
+			ID:       "x-user-id",
+			Name:     "Creator",
+			Username: "creator",
+		},
+	}
+	s := services.NewDashboardServiceWithXOAuth2Provider(db, provider)
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	authURL, err := s.StartXOAuth2(user.ID, "https://app.example.com/api/user/dashboard/settings/x/oauth2/callback")
+	require.NoError(t, err)
+	require.NotEmpty(t, provider.authState)
+	require.NotEmpty(t, provider.authChallenge)
+	assert.Equal(t, "client-id", provider.authConfig.ClientID)
+	assert.Equal(t, "client-secret", provider.authConfig.ClientSecret)
+
+	parsedAuthURL, err := url.Parse(authURL)
+	require.NoError(t, err)
+	state := parsedAuthURL.Query().Get("state")
+	require.NotEmpty(t, state)
+
+	resp, err := s.CompleteXOAuth2(context.Background(), state, "auth-code")
+	require.NoError(t, err)
+
+	assert.Equal(t, "auth-code", provider.exchangeCode)
+	assert.NotEmpty(t, provider.exchangeVerifier)
+	assert.Equal(t, "oauth2", resp.AuthType)
+	assert.Equal(t, "creator", resp.Username)
+	assert.True(t, resp.HasOAuth2Refresh)
+	assert.Equal(t, models.PlatformAccountStatusConnected, resp.Status)
+	require.NotNil(t, resp.ExpiresAt)
+	assert.Equal(t, expiresAt, *resp.ExpiresAt)
+
+	var account models.PlatformAccount
+	require.NoError(t, db.First(&account, "user_id = ? AND platform = ?", user.ID, "x").Error)
+
+	var credentials map[string]string
+	require.NoError(t, json.Unmarshal(account.Credentials, &credentials))
+	assert.Equal(t, "oauth2", credentials["auth_type"])
+	assert.Equal(t, "oauth2-access", credentials["oauth2_access_token"])
+	assert.Equal(t, "oauth2-refresh", credentials["oauth2_refresh_token"])
+
+	var metadata map[string]string
+	require.NoError(t, json.Unmarshal(account.Metadata, &metadata))
+	assert.Equal(t, "creator", metadata["username"])
+	assert.Equal(t, "x-user-id", metadata["user_id"])
+}
+
 func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
@@ -611,6 +722,140 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	assert.Equal(t, "wx-saved", config["app_id"])
 	assert.Equal(t, "saved-secret", config["app_secret"])
 	assert.Equal(t, "Title", config["title"])
+}
+
+func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &fakePlatformPublisher{}
+	publisher.Factory.Register("x", fakePublisher)
+	defer publisher.Factory.Register("x", &publisher.XPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"api_key":"stale","api_secret":"stale","access_token":"stale","access_token_secret":"stale","title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"text":"ready"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+	require.NoError(t, db.Create(&models.PlatformAccount{
+		UserID:   user.ID,
+		Platform: "x",
+		Name:     "X",
+		Status:   models.PlatformAccountStatusConnected,
+		Credentials: datatypes.JSON(`{
+			"auth_type":"oauth2",
+			"oauth2_access_token":"oauth2-access",
+			"oauth2_refresh_token":"oauth2-refresh",
+			"username":"creator"
+		}`),
+		Metadata: datatypes.JSON(`{"username":"creator"}`),
+	}).Error)
+
+	result, err := s.PublishProject(project.ID, "x", &user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+
+	var config map[string]interface{}
+	require.NoError(t, json.Unmarshal(fakePublisher.config, &config))
+	assert.Equal(t, "oauth2", config["auth_type"])
+	assert.Equal(t, "oauth2-access", config["oauth2_access_token"])
+	assert.Equal(t, "oauth2-refresh", config["oauth2_refresh_token"])
+	assert.Equal(t, "creator", config["username"])
+	assert.NotContains(t, config, "api_key")
+	assert.NotContains(t, config, "api_secret")
+	assert.NotContains(t, config, "access_token")
+	assert.NotContains(t, config, "access_token_secret")
+	assert.Equal(t, "Title", config["title"])
+}
+
+func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
+	t.Setenv("X_OAUTH2_CLIENT_ID", "client-id")
+	t.Setenv("X_OAUTH2_CLIENT_SECRET", "client-secret")
+
+	db := setupTestDB()
+	refreshedExpiresAt := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
+	provider := &fakeXOAuth2Provider{
+		token: pkgx.OAuth2Token{
+			AccessToken:  "new-oauth2-access",
+			RefreshToken: "new-oauth2-refresh",
+			Scope:        "tweet.read tweet.write users.read offline.access",
+			ExpiresAt:    refreshedExpiresAt,
+		},
+	}
+	s := services.NewDashboardServiceWithXOAuth2Provider(db, provider)
+	fakePublisher := &fakePlatformPublisher{}
+	publisher.Factory.Register("x", fakePublisher)
+	defer publisher.Factory.Register("x", &publisher.XPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"text":"ready"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	expiredAt := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	credentials, err := json.Marshal(map[string]interface{}{
+		"auth_type":            "oauth2",
+		"oauth2_access_token":  "old-oauth2-access",
+		"oauth2_refresh_token": "oauth2-refresh",
+		"oauth2_expires_at":    expiredAt,
+		"username":             "creator",
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&models.PlatformAccount{
+		UserID:      user.ID,
+		Platform:    "x",
+		Name:        "X",
+		Status:      models.PlatformAccountStatusConnected,
+		Credentials: datatypes.JSON(credentials),
+		Metadata:    datatypes.JSON(`{"username":"creator"}`),
+	}).Error)
+
+	result, err := s.PublishProject(project.ID, "x", &user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Equal(t, "oauth2-refresh", provider.refreshToken)
+	assert.Equal(t, "client-id", provider.refreshConfig.ClientID)
+	assert.Equal(t, "client-secret", provider.refreshConfig.ClientSecret)
+	assert.Empty(t, provider.refreshConfig.RedirectURI)
+
+	var config map[string]interface{}
+	require.NoError(t, json.Unmarshal(fakePublisher.config, &config))
+	assert.Equal(t, "oauth2", config["auth_type"])
+	assert.Equal(t, "new-oauth2-access", config["oauth2_access_token"])
+	assert.Equal(t, "new-oauth2-refresh", config["oauth2_refresh_token"])
+	assert.Equal(t, "creator", config["username"])
+
+	var account models.PlatformAccount
+	require.NoError(t, db.First(&account, "user_id = ? AND platform = ?", user.ID, "x").Error)
+	var savedCredentials map[string]interface{}
+	require.NoError(t, json.Unmarshal(account.Credentials, &savedCredentials))
+	assert.Equal(t, "new-oauth2-access", savedCredentials["oauth2_access_token"])
+	assert.Equal(t, "new-oauth2-refresh", savedCredentials["oauth2_refresh_token"])
+	assert.Equal(t, "tweet.read tweet.write users.read offline.access", savedCredentials["oauth2_scope"])
 }
 
 func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
