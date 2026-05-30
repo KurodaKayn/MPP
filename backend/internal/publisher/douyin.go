@@ -3,7 +3,7 @@ package publisher
 import (
 	"context"
 	"fmt"
-	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -33,15 +33,8 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 		content = "这是来自 Go 后端的自动化抖音图文分发测试。#自动化 #Golang"
 	}
 
-	// 暂时固定图片路径进行测试
-	localImagePath := `D:\multi-plantform-poster\backend\Assets\132461906_p0_master1200.jpg`
-
-	// 1. 在 Go 后端读取图片 (确保文件存在)
-	info, err := os.Stat(localImagePath)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to find local image: %w", err)
-	}
-	_ = info
+	// 使用相对路径，确保在不同环境下都能运行
+	localImagePath := filepath.Join("backend", "Assets", "132461906_p0_master1200.jpg")
 
 	// Setup headless browser with account cookies
 	browserCtx, cancel := SetupBrowser(ctx, account.Cookies)
@@ -52,7 +45,7 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 
 	var publishURL string
 	
-	err = chromedp.Run(publishCtx,
+	err := chromedp.Run(publishCtx,
 		// 1. 进入核心上传页
 		chromedp.Navigate("https://creator.douyin.com/creator-micro/content/upload?default-tab=3"),
 		chromedp.Sleep(5*time.Second),

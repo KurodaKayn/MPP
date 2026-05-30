@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -30,12 +31,13 @@ func (z *ZhihuPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfor
 	title := "重构测试：模拟 Ctrl+V 直接粘贴图片"
 	content := "这是一段长正文内容，用于测试模拟 Ctrl+V 直接粘贴本地图片的功能。这种方式不需要点开繁琐的工具栏和浮窗，而是像人类操作一样，将图片数据注入剪贴板并派发粘贴事件。"
 	
-	localImagePath := `D:\multi-plantform-poster\backend\Assets\132461906_p0_master1200.jpg`
+	// 使用相对路径，确保在不同环境下都能运行
+	localImagePath := filepath.Join("backend", "Assets", "132461906_p0_master1200.jpg")
 
 	// 1. 在 Go 后端读取图片并转为 Base64
 	imgData, err := os.ReadFile(localImagePath)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to read local image: %w", err)
+		return "", "", fmt.Errorf("failed to read local image from %s: %w", localImagePath, err)
 	}
 	imgBase64 := base64.StdEncoding.EncodeToString(imgData)
 
