@@ -83,6 +83,41 @@ export type WechatConnectionTestResult = {
   account_auth: RequirementStatus;
 };
 
+export type XAccount = {
+  platform: "x";
+  api_key?: string;
+  username?: string;
+  has_api_secret: boolean;
+  has_access_token: boolean;
+  has_access_token_secret: boolean;
+  status: "unconfigured" | "untested" | "connected" | "failed";
+  last_tested_at?: string;
+  last_test_error?: string;
+  updated_at?: string;
+  account_auth: RequirementStatus;
+  publish_access: RequirementStatus;
+};
+
+export type SaveXAccountInput = {
+  api_key?: string;
+  api_secret?: string;
+  access_token?: string;
+  access_token_secret?: string;
+  username?: string;
+};
+
+export type XConnectionTestResult = {
+  connected: boolean;
+  status: "connected" | "failed";
+  message: string;
+  tested_at: string;
+  user_id?: string;
+  username?: string;
+  name?: string;
+  account_auth: RequirementStatus;
+  publish_access: RequirementStatus;
+};
+
 export type ProjectListItem = {
   id: string;
   user_id: string;
@@ -229,6 +264,27 @@ export function saveWechatAccount(input: SaveWechatAccountInput) {
 export function testWechatConnection(input: SaveWechatAccountInput) {
   return fetchDashboard<WechatConnectionTestResult>(
     "/api/user/dashboard/settings/wechat/test",
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
+}
+
+export function getXAccount() {
+  return fetchDashboard<XAccount>("/api/user/dashboard/settings/x/account");
+}
+
+export function saveXAccount(input: SaveXAccountInput) {
+  return fetchDashboard<XAccount>("/api/user/dashboard/settings/x/account", {
+    body: JSON.stringify(input),
+    method: "PUT",
+  });
+}
+
+export function testXConnection(input: SaveXAccountInput) {
+  return fetchDashboard<XConnectionTestResult>(
+    "/api/user/dashboard/settings/x/test",
     {
       body: JSON.stringify(input),
       method: "POST",
