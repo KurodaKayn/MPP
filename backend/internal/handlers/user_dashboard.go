@@ -3,7 +3,9 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
@@ -11,6 +13,11 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
+)
+
+const (
+	xOAuth2RedirectURLEnv = "X_OAUTH2_REDIRECT_URL"
+	frontendBaseURLEnv    = "FRONTEND_BASE_URL"
 )
 
 type UserDashboardHandler struct {
@@ -332,4 +339,65 @@ func (h *UserDashboardHandler) TestXAccount(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) StartXOAuth2(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	authURL, err := h.dashboardService.StartXOAuth2(userID, xOAuth2RedirectURI(c))
+	if err != nil {
+		if errors.Is(err, services.ErrXOAuth2NotConfigured) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	return c.Redirect(http.StatusFound, authURL)
+}
+
+func (h *UserDashboardHandler) CompleteXOAuth2(c echo.Context) error {
+	if c.QueryParam("error") != "" {
+		return c.Redirect(http.StatusFound, xOAuth2SettingsRedirectURL("failed"))
+	}
+
+	_, err := h.dashboardService.CompleteXOAuth2(
+		c.Request().Context(),
+		c.QueryParam("state"),
+		c.QueryParam("code"),
+	)
+	if err != nil {
+		return c.Redirect(http.StatusFound, xOAuth2SettingsRedirectURL("failed"))
+	}
+	return c.Redirect(http.StatusFound, xOAuth2SettingsRedirectURL("connected"))
+}
+
+func xOAuth2RedirectURI(c echo.Context) string {
+	if redirectURI := strings.TrimSpace(os.Getenv(xOAuth2RedirectURLEnv)); redirectURI != "" {
+		return redirectURI
+	}
+
+	proto := strings.TrimSpace(c.Request().Header.Get("X-Forwarded-Proto"))
+	if proto == "" {
+		if c.Request().TLS != nil {
+			proto = "https"
+		} else {
+			proto = "http"
+		}
+	}
+
+	host := strings.TrimSpace(c.Request().Header.Get("X-Forwarded-Host"))
+	if host == "" {
+		host = c.Request().Host
+	}
+	return proto + "://" + host + "/api/user/dashboard/settings/x/oauth2/callback"
+}
+
+func xOAuth2SettingsRedirectURL(status string) string {
+	path := "/dashboard/settings?x_oauth=" + status
+	if baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv(frontendBaseURLEnv)), "/"); baseURL != "" {
+		return baseURL + path
+	}
+	return path
 }
