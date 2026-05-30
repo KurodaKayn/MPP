@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
@@ -21,7 +21,7 @@ import { WechatAccountCard } from "./_components/wechat-account-card";
 import { WechatConnectionCheckCard } from "./_components/wechat-connection-check-card";
 import { XAccountCard } from "./_components/x-account-card";
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [account, setAccount] = useState<WechatAccount | null>(null);
@@ -343,5 +343,13 @@ export default function SettingsPage() {
         />
       </div>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense>
+      <SettingsPageContent />
+    </Suspense>
   );
 }
