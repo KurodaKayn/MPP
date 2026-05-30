@@ -76,7 +76,7 @@ type PlatformAccount struct {
 	ID            uuid.UUID      `gorm:"type:uuid;primaryKey"`
 	UserID        uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:idx_platform_accounts_user_platform"`
 	Platform      string         `gorm:"not null;uniqueIndex:idx_platform_accounts_user_platform;index:idx_platform_accounts_platform_status"`
-	Name          string         `gorm:"not null"`
+	Username      string         `gorm:"not null;default:''"`
 	Status        string         `gorm:"not null;default:'untested';index:idx_platform_accounts_platform_status"`
 	Cookies       datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"` // From feature branch
 	Credentials   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From main branch

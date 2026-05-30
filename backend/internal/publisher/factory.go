@@ -34,4 +34,5 @@ func init() {
 	Factory.Register("wechat", &WechatPublisher{})
 	Factory.Register("x", &XPublisher{})
 	Factory.Register("zhihu", &ZhihuPublisher{})
+	Factory.Register("douyin", &DouyinPublisher{})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
@@ -17,11 +18,21 @@ type BrowserAction func(ctx context.Context) error
 // SetupBrowser initializes a chromedp context with optional cookies
 func SetupBrowser(ctx context.Context, cookiesJSON []byte) (context.Context, context.CancelFunc) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.ExecPath(`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`),
-		chromedp.Flag("headless", false), // 显式设置为 false，这样会弹出浏览器窗口
 		chromedp.NoFirstRun,
 		chromedp.NoDefaultBrowserCheck,
 	)
+
+	// Use CHROME_BIN environment variable if provided, otherwise let chromedp find the browser
+	if browserPath := os.Getenv("CHROME_BIN"); browserPath != "" {
+		opts = append(opts, chromedp.ExecPath(browserPath))
+	} else if browserPath := os.Getenv("BROWSER_BIN"); browserPath != "" {
+		opts = append(opts, chromedp.ExecPath(browserPath))
+	}
+
+	// Disable headless mode for visual debugging if HEADLESS=false is set
+	if os.Getenv("HEADLESS") == "false" {
+		opts = append(opts, chromedp.Flag("headless", false))
+	}
 
 	allocCtx, _ := chromedp.NewExecAllocator(ctx, opts...)
 

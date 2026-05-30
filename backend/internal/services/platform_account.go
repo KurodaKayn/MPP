@@ -89,7 +89,7 @@ func (s *DashboardService) UpsertWechatAccount(userID uuid.UUID, req dto.UpsertW
 		account = models.PlatformAccount{
 			UserID:      userID,
 			Platform:    wechatPlatform,
-			Name:        "微信公众号",
+			Username:    "微信公众号",
 			Credentials: credentials,
 			Metadata:    datatypes.JSON([]byte(`{}`)),
 			Status:      models.PlatformAccountStatusUntested,
@@ -97,13 +97,14 @@ func (s *DashboardService) UpsertWechatAccount(userID uuid.UUID, req dto.UpsertW
 		err = s.db.Create(&account).Error
 	} else {
 		err = s.db.Model(&account).Updates(map[string]interface{}{
-			"name":            "微信公众号",
+			"username":        "微信公众号",
 			"credentials":     credentials,
 			"status":          models.PlatformAccountStatusUntested,
 			"last_tested_at":  nil,
 			"last_test_error": "",
 		}).Error
 	}
+
 	if err != nil {
 		return nil, err
 	}
