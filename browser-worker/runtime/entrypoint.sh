@@ -23,11 +23,15 @@ echo "Starting websockify (noVNC) on port $STREAM_PORT..."
 websockify --web /usr/share/novnc/ $STREAM_PORT localhost:$VNC_PORT &
 
 echo "Starting Chromium with CDP on port $CDP_PORT..."
-# Note: --no-sandbox is required for running in some Docker environments without elevated privileges
+# EXTREMELY IMPORTANT: --remote-allow-origins=* must be set
+# --no-sandbox and --headless=new can also help stability if UI is not strictly needed, 
+# but here we WANT the UI for the user.
 chromium \
     --no-sandbox \
+    --disable-setuid-sandbox \
     --remote-debugging-address=0.0.0.0 \
     --remote-debugging-port=$CDP_PORT \
+    --remote-allow-origins=* \
     --user-data-dir=$BROWSER_PROFILE \
     --no-first-run \
     --no-default-browser-check \

@@ -71,6 +71,7 @@ type WorkerSession struct {
 	UserID            uuid.UUID
 	Platform          string
 	Status            string
+	ContainerID       string
 	CDPEndpointRef    string
 	StreamEndpointRef string
 	ExpiresAt         time.Time
@@ -107,10 +108,54 @@ func main() {
 		}
 
 		// 1. Start Docker Container
-		containerID, cdpPort, streamPort, err := dm.StartBrowserContainer(c.Request().Context(), req.SessionID.String())
+		containerID, _, cdpPort, streamPort, err := dm.StartBrowserContainer(c.Request().Context(), req.SessionID.String())
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to start browser: %v", err))
 		}
+
+		// 2. Setup Security Interception (CDP)
+		// Instead of ws://localhost:9222 which tries to query /json/version via HTTP and fails host verification,
+		// we construct the exact websocket URL if possible, or use a custom allocator that skips the version check.
+		cdpEndpoint := fmt.Sprintf("ws://127.0.0.1:%d", cdpPort)
+		go func() {
+			var ctx context.Context
+			var cancel func()
+			
+			// Initial delay to let Chromium stabilize
+			time.Sleep(5 * time.Second)
+
+			// Retry loop for CDP connection
+			for i := 0; i < 10; i++ {
+				// Use 127.0.0.1 explicitly to match the binding in docker.go
+				allocatorURL := fmt.Sprintf("http://127.0.0.1:%d", cdpPort)
+				allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), allocatorURL)
+				ctx, cancel = chromedp.NewContext(allocCtx)
+				
+				// Attempt a simple run to test connection
+				err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+					return nil
+				}))
+				
+				if err == nil {
+					log.Printf("Successfully connected to CDP at %s", allocatorURL)
+					break
+				}
+				
+				log.Printf("Waiting for CDP at %s (attempt %d/10)... error: %v", allocatorURL, i+1, err)
+				cancel()
+				if i == 9 {
+					log.Printf("CRITICAL: Failed to connect to CDP after 10 attempts")
+					return
+				}
+				time.Sleep(3 * time.Second)
+			}
+
+			if err := SetupInterception(ctx, req.AllowedDomains); err != nil {
+				log.Printf("Failed to setup interception for %s: %v", cdpEndpoint, err)
+			}
+			
+			chromedp.Run(ctx, chromedp.Navigate(req.LoginURL))
+		}()
 
 		ref := uuid.NewString()
 		now := time.Now()
