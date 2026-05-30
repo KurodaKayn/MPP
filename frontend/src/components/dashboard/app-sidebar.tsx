@@ -17,22 +17,20 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { dashboardRoutes } from "@/lib/dashboard/navigation";
 
 const data = {
   navMain: [
     {
-      title: "概览",
-      url: "/dashboard",
+      ...dashboardRoutes.overview,
       icon: LayoutDashboard,
     },
     {
-      title: "内容创作",
-      url: "/dashboard/content",
+      ...dashboardRoutes.content,
       icon: PlusCircle,
     },
     {
-      title: "我的内容",
-      url: "/dashboard/posts",
+      ...dashboardRoutes.posts,
       icon: FileText,
     },
   ],
@@ -51,7 +49,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <SidebarMenuButton
               size="lg"
               render={(buttonProps) => (
-                <Link href="/dashboard" {...buttonProps}>
+                <Link href={dashboardRoutes.overview.url} {...buttonProps}>
                   <div className="flex items-center">
                     <Image
                       src="/icons/mpp-with-name.svg"
@@ -91,7 +89,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               size="lg"
               tooltip="设置"
               render={(buttonProps) => (
-                <Link href="/dashboard/settings" {...buttonProps}>
+                <Link href={dashboardRoutes.settings.url} {...buttonProps}>
                   <Avatar className="h-8 w-8 rounded-lg">
                     <AvatarFallback className="rounded-lg">
                       {initials}

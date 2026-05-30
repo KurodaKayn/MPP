@@ -4,14 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
-  ExternalLink,
-  Loader2,
+  Pencil,
   RefreshCw,
-  Send,
   XCircle,
 } from "lucide-react";
 import Image from "next/image";
-import { toast } from "sonner";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,10 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import {
   getDashboardProjects,
-  getProjectPublications,
-  publishProject,
   type ProjectListItem,
-  type PublicationDetail,
 } from "@/lib/dashboard/api";
 
 const statusLabels: Record<string, string> = {
@@ -55,6 +50,8 @@ const statusVariants: Record<
   ready: "secondary",
 };
 
+type PublicationSummary = ProjectListItem["publications"][number];
+
 function getPlatform(platform: string) {
   return PLATFORM_TABS.find((item) => item.value === platform);
 }
@@ -80,39 +77,67 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function PlatformName({ platform }: { platform: string }) {
+function PlatformIcon({ platform }: { platform: string }) {
   const metadata = getPlatform(platform);
 
+  if (!metadata) {
+    return (
+      <span
+        aria-label={platform}
+        className="flex size-7 items-center justify-center rounded-md border bg-muted text-[10px] font-semibold uppercase text-muted-foreground"
+      >
+        {platform.slice(0, 2)}
+      </span>
+    );
+  }
+
   return (
-    <span className="inline-flex min-w-0 items-center gap-2">
-      {metadata ? (
-        <Image
-          src={metadata.icon}
-          alt=""
-          width={18}
-          height={18}
-          aria-hidden="true"
-          className="size-[18px] shrink-0"
-        />
-      ) : null}
-      <span className="truncate">{metadata?.label ?? platform}</span>
+    <span
+      className="flex size-7 items-center justify-center rounded-md border bg-background"
+      title={metadata.label}
+    >
+      <Image
+        src={metadata.icon}
+        alt={metadata.label}
+        width={18}
+        height={18}
+        className="size-[18px]"
+      />
     </span>
   );
 }
 
-function getContentSummary(publication: PublicationDetail) {
-  const summary = publication.adapted_content?.summary;
-
-  return typeof summary === "string" && summary.trim()
-    ? summary
-    : "暂无适配摘要";
+function PlatformIconRow({
+  label,
+  publications,
+}: {
+  label: string;
+  publications: PublicationSummary[];
+}) {
+  return (
+    <div className="grid grid-cols-[4.75rem_minmax(0,1fr)] items-center gap-3 text-sm">
+      <div className="whitespace-nowrap text-muted-foreground">{label}:</div>
+      <div className="flex min-h-7 flex-wrap items-center gap-2">
+        {publications.length > 0 ? (
+          publications.map((publication) => (
+            <PlatformIcon
+              key={`${publication.id}-${publication.platform}`}
+              platform={publication.platform}
+            />
+          ))
+        ) : (
+          <span className="text-xs text-muted-foreground">暂无</span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function ProjectSkeleton() {
   return (
-    <div className="space-y-3">
-      {Array.from({ length: 3 }).map((_, index) => (
-        <Skeleton key={index} className="h-36 w-full" />
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <Skeleton key={index} className="h-56 w-full" />
       ))}
     </div>
   );
@@ -120,12 +145,8 @@ function ProjectSkeleton() {
 
 export default function PostsPage() {
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
-  const [publicationsByProject, setPublicationsByProject] = useState<
-    Record<string, PublicationDetail[]>
-  >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [publishingKey, setPublishingKey] = useState("");
 
   const loadPosts = async () => {
     setLoading(true);
@@ -133,20 +154,7 @@ export default function PostsPage() {
 
     try {
       const projectsResponse = await getDashboardProjects(20);
-      const publicationResponses = await Promise.all(
-        projectsResponse.items.map((project) =>
-          getProjectPublications(project.id),
-        ),
-      );
-      const nextPublications = Object.fromEntries(
-        publicationResponses.map((response) => [
-          response.project_id,
-          response.items,
-        ]),
-      );
-
       setProjects(projectsResponse.items);
-      setPublicationsByProject(nextPublications);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -163,53 +171,25 @@ export default function PostsPage() {
   }, []);
 
   const publicationTotals = useMemo(() => {
-    const items = Object.values(publicationsByProject).flat();
+    const items = projects.flatMap((project) => project.publications);
 
     return {
-      failed: items.filter((item) => item.status === "failed").length,
-      published: items.filter((item) => item.status === "published").length,
-      total: items.length,
+      failed: items.filter((item) => item.enabled && item.status === "failed")
+        .length,
+      published: items.filter(
+        (item) => item.enabled && item.status === "published",
+      ).length,
+      total: items.filter((item) => item.enabled).length,
     };
-  }, [publicationsByProject]);
-
-  const handlePublish = async (projectId: string, platform: string) => {
-    const key = `${projectId}:${platform}`;
-    setPublishingKey(key);
-
-    try {
-      const result = await publishProject(projectId, platform);
-      const refreshed = await getProjectPublications(projectId);
-
-      setPublicationsByProject((current) => ({
-        ...current,
-        [projectId]: refreshed.items,
-      }));
-
-      if (result.status === "failed") {
-        toast.error("发布失败", {
-          description: result.error_message || "平台返回失败状态。",
-        });
-      } else {
-        toast.success("发布完成", {
-          description: "平台记录已更新。",
-        });
-      }
-    } catch (requestError) {
-      toast.error("发布请求失败", {
-        description:
-          requestError instanceof Error ? requestError.message : "请稍后重试。",
-      });
-    } finally {
-      setPublishingKey("");
-    }
-  };
+  }, [projects]);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
+          <h2 className="text-3xl font-bold tracking-tight">我的内容</h2>
           <p className="text-muted-foreground">
-            查看各平台适配状态，并触发后端发布流程。
+            以项目卡片查看发布结果，并继续编辑已有内容。
           </p>
         </div>
         <Button
@@ -246,7 +226,7 @@ export default function PostsPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">已发布渠道</CardTitle>
+            <CardTitle className="text-sm font-medium">发布成功</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2 text-2xl font-bold">
             {loading ? (
@@ -261,7 +241,7 @@ export default function PostsPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">失败渠道</CardTitle>
+            <CardTitle className="text-sm font-medium">发布失败</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2 text-2xl font-bold">
             {loading ? (
@@ -283,14 +263,22 @@ export default function PostsPage() {
           暂无内容数据
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projects.map((project) => {
-            const publications = publicationsByProject[project.id] ?? [];
+            const enabledPublications = project.publications.filter(
+              (publication) => publication.enabled,
+            );
+            const publishedPublications = enabledPublications.filter(
+              (publication) => publication.status === "published",
+            );
+            const failedPublications = enabledPublications.filter(
+              (publication) => publication.status === "failed",
+            );
 
             return (
-              <Card key={project.id}>
-                <CardHeader className="gap-2">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <Card key={project.id} className="flex min-h-56 flex-col">
+                <CardHeader className="gap-3">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <CardTitle className="truncate text-lg">
                         {project.title}
@@ -302,98 +290,32 @@ export default function PostsPage() {
                     <StatusBadge status={project.status} />
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="overflow-hidden rounded-md border">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/50 text-left text-muted-foreground">
-                        <tr>
-                          <th className="px-4 py-3 font-medium">渠道</th>
-                          <th className="hidden px-4 py-3 font-medium md:table-cell">
-                            适配摘要
-                          </th>
-                          <th className="px-4 py-3 font-medium">状态</th>
-                          <th className="hidden px-4 py-3 font-medium lg:table-cell">
-                            最近发布
-                          </th>
-                          <th className="px-4 py-3 text-right font-medium">
-                            操作
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {publications.map((publication) => {
-                          const key = `${project.id}:${publication.platform}`;
-                          const disabled =
-                            !publication.enabled || publishingKey === key;
-
-                          return (
-                            <tr key={publication.id} className="border-t">
-                              <td className="max-w-32 px-4 py-3 font-medium">
-                                <PlatformName platform={publication.platform} />
-                              </td>
-                              <td className="hidden max-w-0 px-4 py-3 md:table-cell">
-                                <div className="truncate text-muted-foreground">
-                                  {getContentSummary(publication)}
-                                </div>
-                                {publication.error_message ? (
-                                  <div className="mt-1 truncate text-xs text-destructive">
-                                    {publication.error_message}
-                                  </div>
-                                ) : null}
-                              </td>
-                              <td className="px-4 py-3">
-                                <StatusBadge status={publication.status} />
-                              </td>
-                              <td className="hidden whitespace-nowrap px-4 py-3 text-muted-foreground lg:table-cell">
-                                {formatDate(publication.published_at)}
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="flex justify-end gap-2">
-                                  {publication.publish_url ? (
-                                    <Button
-                                      type="button"
-                                      size="icon"
-                                      variant="outline"
-                                      title="打开发布链接"
-                                      nativeButton={false}
-                                      render={(buttonProps) => (
-                                        <a
-                                          href={publication.publish_url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          {...buttonProps}
-                                        >
-                                          <ExternalLink className="h-4 w-4" />
-                                        </a>
-                                      )}
-                                    />
-                                  ) : null}
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    onClick={() =>
-                                      void handlePublish(
-                                        project.id,
-                                        publication.platform,
-                                      )
-                                    }
-                                    disabled={disabled}
-                                  >
-                                    {publishingKey === key ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                      <Send className="h-4 w-4" />
-                                    )}
-                                    发布
-                                  </Button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                <CardContent className="flex flex-1 flex-col justify-between gap-5">
+                  <div className="space-y-3">
+                    <PlatformIconRow
+                      label="发布成功"
+                      publications={publishedPublications}
+                    />
+                    <PlatformIconRow
+                      label="发布失败"
+                      publications={failedPublications}
+                    />
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-center"
+                    nativeButton={false}
+                    render={(buttonProps) => (
+                      <Link
+                        href={`/dashboard/content/${project.id}`}
+                        {...buttonProps}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        编辑
+                      </Link>
+                    )}
+                  />
                 </CardContent>
               </Card>
             );

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -30,6 +30,15 @@ export function ContentEditor({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const savedRangeRef = useRef<Range | null>(null);
   const hasBodyContent = Boolean(content.text.trim() || content.firstImageSrc);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || editor.innerHTML === content.html) {
+      return;
+    }
+
+    editor.innerHTML = content.html;
+  }, [content.html]);
 
   const syncContentState = () => {
     const editor = editorRef.current;

@@ -9,27 +9,26 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-
-const routeMap: Record<string, string> = {
-  "/dashboard": "概览",
-  "/dashboard/content": "内容创作",
-  "/dashboard/posts": "我的内容",
-  "/dashboard/settings": "设置",
-};
+import {
+  dashboardRoutes,
+  getDashboardPageTitle,
+} from "@/lib/dashboard/navigation";
 
 export function DashboardBreadcrumb() {
   const pathname = usePathname();
-  const currentPageTitle = routeMap[pathname] || "概览";
+  const pageTitle = getDashboardPageTitle(pathname);
 
   return (
     <Breadcrumb>
       <BreadcrumbList>
         <BreadcrumbItem className="hidden md:block">
-          <BreadcrumbLink href="/dashboard">控制台</BreadcrumbLink>
+          <BreadcrumbLink href={dashboardRoutes.overview.url}>
+            控制台
+          </BreadcrumbLink>
         </BreadcrumbItem>
         <BreadcrumbSeparator className="hidden md:block" />
         <BreadcrumbItem>
-          <BreadcrumbPage>{currentPageTitle}</BreadcrumbPage>
+          <BreadcrumbPage>{pageTitle}</BreadcrumbPage>
         </BreadcrumbItem>
       </BreadcrumbList>
     </Breadcrumb>

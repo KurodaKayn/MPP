@@ -11,6 +11,7 @@ type ContentPublishBarProps = {
   isPublishing: boolean;
   onPublish: () => void;
   onSelectedPlatformsChange: (platforms: PublishPlatform[]) => void;
+  publishLabel?: string;
   selectedPlatforms: PublishPlatform[];
 };
 
@@ -19,6 +20,7 @@ export function ContentPublishBar({
   isPublishing,
   onPublish,
   onSelectedPlatformsChange,
+  publishLabel = "一键发布",
   selectedPlatforms,
 }: ContentPublishBarProps) {
   const selectedSet = new Set(selectedPlatforms);
@@ -72,7 +74,7 @@ export function ContentPublishBar({
           ) : (
             <Send className="h-4 w-4" />
           )}
-          一键发布
+          {publishLabel}
         </Button>
       </div>
 
