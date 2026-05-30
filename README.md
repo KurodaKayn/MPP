@@ -1,7 +1,7 @@
 # MPP: multi-plantform-poster
 
 <p align="center">
-  <img src="doc/assests/mpp-with-white-name.svg" alt="MPP logo" width="360" />
+  <img src="doc/assests/mpp-with-name-white.svg" alt="MPP logo" width="360" />
   <br>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="License" />
 </p>
