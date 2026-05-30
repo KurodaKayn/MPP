@@ -7,10 +7,13 @@ import {
   getDashboardProjects,
   getDashboardStats,
   getProjectPublications,
+  getXAccount,
   getWechatAccount,
   publishProject,
+  saveXAccount,
   saveWechatAccount,
   testWechatConnection,
+  testXConnection,
   updateDashboardProject,
 } from "./api";
 
@@ -360,6 +363,115 @@ describe("dashboard api client", () => {
         body: JSON.stringify({
           app_id: "wx-app",
           app_secret: "wx-secret",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("fetches and updates the X account settings", async () => {
+    const account = {
+      account_auth: {
+        message: "账号凭证已通过",
+        status: "passed",
+        title: "账号凭证已通过",
+      },
+      api_key: "x-api-key",
+      has_access_token: true,
+      has_access_token_secret: true,
+      has_api_secret: true,
+      platform: "x",
+      publish_access: {
+        message: "发布前请确认 X App 开启 Read and write 用户权限。",
+        status: "unknown",
+        title: "等待测试",
+      },
+      status: "untested",
+      username: "creator",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(account));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getXAccount()).resolves.toEqual(account);
+    await expect(
+      saveXAccount({
+        access_token: "x-access-token",
+        access_token_secret: "x-access-secret",
+        api_key: "x-api-key",
+        api_secret: "x-api-secret",
+        username: "creator",
+      }),
+    ).resolves.toEqual(account);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/user/dashboard/settings/x/account",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/user/dashboard/settings/x/account",
+      expect.objectContaining({
+        body: JSON.stringify({
+          access_token: "x-access-token",
+          access_token_secret: "x-access-secret",
+          api_key: "x-api-key",
+          api_secret: "x-api-secret",
+          username: "creator",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "PUT",
+      }),
+    );
+  });
+
+  it("posts X connection test credentials", async () => {
+    const result = {
+      account_auth: {
+        message: "已连接 @creator。",
+        status: "passed",
+        title: "账号凭证已通过",
+      },
+      connected: true,
+      message: "连接成功",
+      name: "Creator",
+      publish_access: {
+        message:
+          "测试会校验账号身份；实际发布还要求 X App 具备 Read and write 权限。",
+        status: "warning",
+        title: "需确认写入权限",
+      },
+      status: "connected",
+      tested_at: "2026-05-29T12:00:00Z",
+      user_id: "123",
+      username: "creator",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(result));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      testXConnection({
+        access_token: "x-access-token",
+        access_token_secret: "x-access-secret",
+        api_key: "x-api-key",
+        api_secret: "x-api-secret",
+      }),
+    ).resolves.toEqual(result);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/settings/x/test",
+      expect.objectContaining({
+        body: JSON.stringify({
+          access_token: "x-access-token",
+          access_token_secret: "x-access-secret",
+          api_key: "x-api-key",
+          api_secret: "x-api-secret",
         }),
         credentials: "same-origin",
         headers: expect.any(Headers),
