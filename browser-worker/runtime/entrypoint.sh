@@ -38,7 +38,6 @@ chromium \
     --no-first-run \
     --no-default-browser-check \
     --disable-gpu \
-    --disable-software-rasterizer \
     --disable-dev-shm-usage \
     --disable-web-security \
     --ignore-certificate-errors \
