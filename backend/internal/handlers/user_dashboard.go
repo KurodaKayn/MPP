@@ -275,3 +275,61 @@ func (h *UserDashboardHandler) TestWechatAccount(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, resp)
 }
+
+func (h *UserDashboardHandler) GetXAccount(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	resp, err := h.dashboardService.GetXAccount(userID)
+	if err != nil {
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) SaveXAccount(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	req := new(dto.UpsertXAccountRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.dashboardService.UpsertXAccount(userID, *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidPlatformAccount) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) TestXAccount(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	req := new(dto.TestXAccountRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.dashboardService.TestXAccount(userID, *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidPlatformAccount) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}

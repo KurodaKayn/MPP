@@ -32,5 +32,6 @@ var Factory = NewPublisherFactory()
 func init() {
 	// Register default publishers
 	Factory.Register("wechat", &WechatPublisher{})
+	Factory.Register("x", &XPublisher{})
 	Factory.Register("zhihu", &ZhihuPublisher{})
 }
