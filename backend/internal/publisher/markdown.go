@@ -139,7 +139,7 @@ func (r *markdownRenderer) renderElement(node *nethtml.Node) {
 	case "pre":
 		r.ensureBlankLine()
 		r.buf.WriteString("```\n")
-		r.buf.WriteString(strings.TrimSpace(markdownText(node)))
+		r.buf.WriteString(trimOuterNewlines(preformattedText(node)))
 		r.buf.WriteString("\n```")
 		r.ensureBlankLine()
 	case "br":
@@ -192,6 +192,26 @@ func markdownText(node *nethtml.Node) string {
 	}
 	walk(node)
 	return strings.Join(strings.Fields(buf.String()), " ")
+}
+
+func preformattedText(node *nethtml.Node) string {
+	var buf strings.Builder
+	var walk func(*nethtml.Node)
+	walk = func(current *nethtml.Node) {
+		if current.Type == nethtml.TextNode {
+			buf.WriteString(current.Data)
+			return
+		}
+		for child := current.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(node)
+	return buf.String()
+}
+
+func trimOuterNewlines(value string) string {
+	return strings.Trim(value, "\n\r")
 }
 
 func attrValue(node *nethtml.Node, name string) string {
