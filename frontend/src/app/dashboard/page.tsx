@@ -264,6 +264,7 @@ export default function DashboardPage() {
               type="button"
               variant="outline"
               size="sm"
+              nativeButton={false}
               render={(buttonProps) => (
                 <Link href="/dashboard/posts" {...buttonProps}>
                   <ExternalLink className="h-4 w-4" />
