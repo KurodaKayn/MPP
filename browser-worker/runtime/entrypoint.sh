@@ -24,15 +24,15 @@ echo "Starting websockify (noVNC) on port $STREAM_PORT..."
 cp /usr/share/novnc/vnc.html /usr/share/novnc/index.html || true
 websockify --web /usr/share/novnc/ $STREAM_PORT localhost:$VNC_PORT &
 
-echo "Starting Chromium with CDP on port $CDP_PORT..."
+echo "Starting Python CDP Proxy on port $CDP_PORT (internally 9222)..."
+python3 /proxy.py &
 
 # By passing the wrapper script to ensure arguments are parsed correctly
 # EXTREMELY IMPORTANT: --remote-allow-origins=* must be set
 /usr/lib/chromium/chromium \
     --no-sandbox \
     --disable-setuid-sandbox \
-    --remote-debugging-address=0.0.0.0 \
-    --remote-debugging-port=$CDP_PORT \
+    --remote-debugging-port=9222 \
     --remote-allow-origins=* \
     --user-data-dir=$BROWSER_PROFILE \
     --no-first-run \

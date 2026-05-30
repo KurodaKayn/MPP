@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y \
     novnc \
     procps \
     curl \
-    socat \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,8 +34,9 @@ WORKDIR /home/browser
 
 # Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
+COPY proxy.py /proxy.py
 RUN chmod +x /entrypoint.sh
-RUN chown -R browser:browser /home/browser
+RUN chown -R browser:browser /home/browser /proxy.py
 
 # Switch to non-root user
 USER browser
