@@ -44,6 +44,15 @@ type UpdateProjectRequest struct {
 	Platforms     []string `json:"platforms"`
 }
 
+type SyncActor struct {
+	Type string `json:"type"`
+}
+
+type SyncPrepublishRequest struct {
+	Platforms []string  `json:"platforms"`
+	Actor     SyncActor `json:"actor"`
+}
+
 type PublicationSummary struct {
 	ID         uuid.UUID `json:"id"`
 	Platform   string    `json:"platform"`

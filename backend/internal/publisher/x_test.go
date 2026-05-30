@@ -2,6 +2,7 @@ package publisher
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -67,6 +68,33 @@ func TestBuildXPostIntentURLUsesAdaptedText(t *testing.T) {
 	}
 	if got := parsed.Query().Get("text"); got != "hello x & \u4e2d\u6587" {
 		t.Fatalf("expected text query to round-trip, got %q", got)
+	}
+}
+
+func TestXPublisherAdaptContentUsesUnifiedSchema(t *testing.T) {
+	content, err := (&XPublisher{}).AdaptContent(&models.Project{
+		Title:         "Title",
+		SourceContent: "<p>Hello <strong>X</strong></p>",
+	})
+	if err != nil {
+		t.Fatalf("expected x content to adapt, got %v", err)
+	}
+
+	var adapted AdaptedContent
+	if err := json.Unmarshal(content, &adapted); err != nil {
+		t.Fatalf("expected adapted content json, got %v", err)
+	}
+	if adapted.SchemaVersion != 1 {
+		t.Fatalf("expected schema version 1, got %d", adapted.SchemaVersion)
+	}
+	if adapted.Format != "text" {
+		t.Fatalf("expected text format, got %q", adapted.Format)
+	}
+	if adapted.GeneratedBy.ID != "x-text-adapter" {
+		t.Fatalf("expected x adapter id, got %q", adapted.GeneratedBy.ID)
+	}
+	if adapted.Text != "Title\n\nHello X" {
+		t.Fatalf("expected title and body text, got %q", adapted.Text)
 	}
 }
 

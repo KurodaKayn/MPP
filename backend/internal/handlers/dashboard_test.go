@@ -321,6 +321,54 @@ func TestUserDashboardHandlerGetProjectPublicationsReturnsForbidden(t *testing.T
 	require.Equal(t, "forbidden", resp.Error.Code)
 }
 
+func TestUserDashboardHandlerSyncProjectPrepublish(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Sync title",
+		SourceContent: "<p>Hello <strong>sync</strong></p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "zhihu",
+		Enabled:   true,
+		Status:    models.PublicationStatusPending,
+		Config:    []byte(`{"title":"Sync title"}`),
+	}).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/projects/"+project.ID.String()+"/prepublish/sync",
+		strings.NewReader(`{"platforms":["zhihu"],"actor":{"type":"system"}}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(project.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.SyncProjectPrepublish(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp dto.ProjectPublicationsResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, project.ID, resp.ProjectID)
+	require.Len(t, resp.Items, 1)
+	require.Equal(t, "zhihu", resp.Items[0].Platform)
+	require.Equal(t, models.PublicationStatusAdapted, resp.Items[0].Status)
+	require.Equal(t, "markdown", resp.Items[0].AdaptedContent["format"])
+	require.Contains(t, resp.Items[0].AdaptedContent["markdown"], "**sync**")
+}
+
 func TestUserDashboardHandlerPublishProjectRejectsDisabledPublication(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)

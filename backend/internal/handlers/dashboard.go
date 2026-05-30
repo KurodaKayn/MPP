@@ -71,7 +71,8 @@ func (h *DashboardHandler) GetProjectPublications(c echo.Context) error {
 	}
 
 	// Admin view: no scope
-	resp, err := h.dashboardService.GetProjectPublications(projectID, nil)
+	includeContent := c.QueryParam("include_content") == "true"
+	resp, err := h.dashboardService.GetProjectPublications(projectID, nil, includeContent)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")

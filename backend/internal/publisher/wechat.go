@@ -34,10 +34,14 @@ func (w *WechatPublisher) ValidateConfig(config []byte) error {
 }
 
 func (w *WechatPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	return json.Marshal(map[string]string{
-		"format": "html",
-		"html":   project.SourceContent,
-	})
+	content := systemAdaptedContent(
+		project,
+		"html",
+		"wechat-html-adapter",
+		htmlToText(project.SourceContent),
+	)
+	content.HTML = project.SourceContent
+	return json.Marshal(content)
 }
 
 func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {

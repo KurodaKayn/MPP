@@ -75,6 +75,7 @@ func main() {
 	userGroup.GET("/projects/:id", userDashboardHandler.GetMyProject)
 	userGroup.PUT("/projects/:id", userDashboardHandler.UpdateProject)
 	userGroup.GET("/projects/:id/publications", userDashboardHandler.GetMyProjectPublications)
+	userGroup.POST("/projects/:id/prepublish/sync", userDashboardHandler.SyncProjectPrepublish)
 	userGroup.POST("/projects/:id/publish", userDashboardHandler.PublishProject)
 	userGroup.GET("/settings/wechat/account", userDashboardHandler.GetWechatAccount)
 	userGroup.PUT("/settings/wechat/account", userDashboardHandler.SaveWechatAccount)
