@@ -104,6 +104,7 @@ func (s *DashboardService) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccou
 		err = s.db.Model(&account).Updates(map[string]interface{}{
 			"name":            "X",
 			"credentials":     credentials,
+			"metadata":        datatypes.JSON([]byte(`{}`)),
 			"status":          models.PlatformAccountStatusUntested,
 			"last_tested_at":  nil,
 			"last_test_error": "",
@@ -288,13 +289,28 @@ func parseXCredentials(raw datatypes.JSON) (xCredentials, error) {
 }
 
 func mergeXCredentials(existing, incoming xCredentials) xCredentials {
-	return xCredentials{
+	merged := xCredentials{
 		APIKey:            firstNonEmpty(incoming.APIKey, existing.APIKey),
 		APISecret:         firstNonEmpty(incoming.APISecret, existing.APISecret),
 		AccessToken:       firstNonEmpty(incoming.AccessToken, existing.AccessToken),
 		AccessTokenSecret: firstNonEmpty(incoming.AccessTokenSecret, existing.AccessTokenSecret),
 		Username:          firstNonEmpty(incoming.Username, existing.Username),
 	}
+	if xCredentialIdentityChanged(existing, incoming) && incoming.Username == "" {
+		merged.Username = ""
+	}
+	return merged
+}
+
+func xCredentialIdentityChanged(existing, incoming xCredentials) bool {
+	return credentialFieldChanged(existing.APIKey, incoming.APIKey) ||
+		credentialFieldChanged(existing.APISecret, incoming.APISecret) ||
+		credentialFieldChanged(existing.AccessToken, incoming.AccessToken) ||
+		credentialFieldChanged(existing.AccessTokenSecret, incoming.AccessTokenSecret)
+}
+
+func credentialFieldChanged(existing, incoming string) bool {
+	return incoming != "" && incoming != existing
 }
 
 func xCredentialsMatch(left, right xCredentials) bool {

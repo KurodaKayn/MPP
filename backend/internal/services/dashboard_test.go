@@ -489,6 +489,50 @@ func TestWechatAccountTestDoesNotPersistUnsavedCredentialsStatus(t *testing.T) {
 	assert.Empty(t, saved.LastTestError)
 }
 
+func TestXAccountSettingsClearsUsernameAndMetadataWhenCredentialsChange(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+
+	_, err := s.UpsertXAccount(user.ID, dto.UpsertXAccountRequest{
+		APIKey:            "x-old-key",
+		APISecret:         "x-old-secret",
+		AccessToken:       "x-old-token",
+		AccessTokenSecret: "x-old-token-secret",
+		Username:          "oldhandle",
+	})
+	assert.NoError(t, err)
+
+	var account models.PlatformAccount
+	assert.NoError(t, db.First(&account, "user_id = ? AND platform = ?", user.ID, "x").Error)
+	assert.NoError(t, db.Model(&account).Update("metadata", datatypes.JSON(`{"username":"oldmeta"}`)).Error)
+
+	_, err = s.UpsertXAccount(user.ID, dto.UpsertXAccountRequest{
+		APIKey:            "x-new-key",
+		APISecret:         "x-new-secret",
+		AccessToken:       "x-new-token",
+		AccessTokenSecret: "x-new-token-secret",
+	})
+	assert.NoError(t, err)
+
+	saved, err := s.GetXAccount(user.ID)
+	assert.NoError(t, err)
+	assert.Empty(t, saved.Username)
+	assert.Equal(t, models.PlatformAccountStatusUntested, saved.Status)
+
+	assert.NoError(t, db.First(&account, "user_id = ? AND platform = ?", user.ID, "x").Error)
+	var credentials map[string]string
+	assert.NoError(t, json.Unmarshal(account.Credentials, &credentials))
+	assert.Equal(t, "x-new-key", credentials["api_key"])
+	assert.Empty(t, credentials["username"])
+
+	var metadata map[string]string
+	assert.NoError(t, json.Unmarshal(account.Metadata, &metadata))
+	assert.Empty(t, metadata["username"])
+}
+
 func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
