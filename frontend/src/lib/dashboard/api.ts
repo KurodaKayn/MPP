@@ -39,6 +39,10 @@ export type PublishResult = {
   error_message?: string;
 };
 
+export type PublishProjectOptions = {
+  mode?: "manual";
+};
+
 export type CreateProjectInput = {
   title: string;
   source_content: string;
@@ -236,11 +240,17 @@ export function getProjectPublications(projectId: string) {
   );
 }
 
-export function publishProject(projectId: string, platform: string) {
+export function publishProject(
+  projectId: string,
+  platform: string,
+  options?: PublishProjectOptions,
+) {
+  const body = options?.mode ? { mode: options.mode, platform } : { platform };
+
   return fetchDashboard<PublishResult>(
     `/api/user/dashboard/projects/${projectId}/publish`,
     {
-      body: JSON.stringify({ platform }),
+      body: JSON.stringify(body),
       method: "POST",
     },
   );
