@@ -529,3 +529,29 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	assert.Equal(t, "saved-secret", config["app_secret"])
 	assert.Equal(t, "Title", config["title"])
 }
+
+func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner"}
+	db.Create(&user)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	db.Create(&project)
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        false,
+		Status:         models.PublicationStatusDisabled,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	})
+
+	_, err := s.PublishProject(project.ID, "wechat", &user.ID)
+	assert.ErrorIs(t, err, services.ErrPublicationDisabled)
+}
