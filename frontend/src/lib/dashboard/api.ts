@@ -47,6 +47,8 @@ export type CreateProjectInput = {
   platforms: string[];
 };
 
+export type UpdateProjectInput = CreateProjectInput;
+
 export type RequirementStatus = {
   status: "passed" | "warning" | "failed" | "unknown";
   title: string;
@@ -89,6 +91,10 @@ export type ProjectListItem = {
   created_at: string;
   updated_at: string;
   publications: PublicationSummary[];
+};
+
+export type ProjectDetail = ProjectListItem & {
+  source_content: string;
 };
 
 export type PaginatedProjects = {
@@ -167,6 +173,25 @@ export function createDashboardProject(input: CreateProjectInput) {
     body: JSON.stringify(input),
     method: "POST",
   });
+}
+
+export function getDashboardProject(projectId: string) {
+  return fetchDashboard<ProjectDetail>(
+    `/api/user/dashboard/projects/${projectId}`,
+  );
+}
+
+export function updateDashboardProject(
+  projectId: string,
+  input: UpdateProjectInput,
+) {
+  return fetchDashboard<ProjectDetail>(
+    `/api/user/dashboard/projects/${projectId}`,
+    {
+      body: JSON.stringify(input),
+      method: "PUT",
+    },
+  );
 }
 
 export function getProjectPublications(projectId: string) {
