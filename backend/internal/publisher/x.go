@@ -53,7 +53,7 @@ func (x *XPublisher) AdaptContent(project *models.Project) ([]byte, error) {
 	})
 }
 
-func (x *XPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication) (string, string, error) {
+func (x *XPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, _ *models.PlatformAccount) (string, string, error) {
 	var cfg XConfig
 	if err := json.Unmarshal(pub.Config, &cfg); err != nil {
 		return "", "", fmt.Errorf("failed to parse x config: %w", err)
