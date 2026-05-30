@@ -12,6 +12,7 @@ import {
   publishProject,
   saveXAccount,
   saveWechatAccount,
+  syncProjectPrepublish,
   testWechatConnection,
   testXConnection,
   updateDashboardProject,
@@ -128,15 +129,61 @@ describe("dashboard api client", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getProjectPublications("project-1")).resolves.toEqual(
-      publications,
-    );
+    await expect(
+      getProjectPublications("project-1", { includeContent: true }),
+    ).resolves.toEqual(publications);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/user/dashboard/projects/project-1/publications",
+      "/api/user/dashboard/projects/project-1/publications?include_content=true",
       expect.objectContaining({
         credentials: "same-origin",
         headers: expect.any(Headers),
+      }),
+    );
+  });
+
+  it("syncs platform prepublish drafts for a project", async () => {
+    const publications = {
+      items: [
+        {
+          adapted_content: {
+            format: "markdown",
+            markdown: "## Body",
+            schema_version: 1,
+          },
+          config: {},
+          created_at: "2026-05-29T12:00:00Z",
+          enabled: true,
+          id: "pub-1",
+          platform: "zhihu",
+          retry_count: 0,
+          status: "adapted",
+          updated_at: "2026-05-29T12:00:00Z",
+        },
+      ],
+      project_id: "project-1",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse(publications),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      syncProjectPrepublish("project-1", {
+        platforms: ["zhihu"],
+      }),
+    ).resolves.toEqual(publications);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/prepublish/sync",
+      expect.objectContaining({
+        body: JSON.stringify({
+          actor: { type: "system" },
+          platforms: ["zhihu"],
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
       }),
     );
   });
