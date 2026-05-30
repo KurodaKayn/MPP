@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 )
 
@@ -38,22 +39,80 @@ func (a *DouyinAdapter) RequiredCookies() []CookieRequirement {
 	}
 }
 
-// DetectLogin and ExtractAccount will be used by the worker or backend via CDP
-func (a *DouyinAdapter) DetectLogin(ctx context.Context) (bool, string, []string, error) {
+// DetectLogin checks if the user has successfully logged in by verifying cookies and URL
+func (a *DouyinAdapter) DetectLogin(ctx context.Context) (RemoteLoginState, error) {
 	var currentURL string
 	if err := chromedp.Run(ctx, chromedp.Location(&currentURL)); err != nil {
-		return false, "", nil, err
+		return RemoteLoginState{}, err
 	}
 
-	// Check if URL is on douyin.com
+	// 1. Check if we are on the creator domain
 	if !strings.Contains(currentURL, "douyin.com") {
-		return false, currentURL, nil, nil
+		return RemoteLoginState{LoggedIn: false, CurrentURL: currentURL, Message: "Waiting for platform navigation"}, nil
 	}
 
-	// Check for required cookies
-	// network.GetCookies().Do(ctx) is needed here, but we are using worker interface for this usually.
-	// For now, let's just implement the logic that validates the cookie list.
-	return false, currentURL, nil, nil
+	// 2. Get all cookies from the browser
+	var chromeCookies []*network.Cookie
+	if err := chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+		var err error
+		chromeCookies, err = network.GetCookies().Do(ctx)
+		return err
+	})); err != nil {
+		return RemoteLoginState{}, err
+	}
+
+	// 3. Map to our internal Cookie type and validate
+	var cookies []Cookie
+	for _, cc := range chromeCookies {
+		cookies = append(cookies, Cookie{
+			Name:   cc.Name,
+			Value:  cc.Value,
+			Domain: cc.Domain,
+			Path:   cc.Path,
+		})
+	}
+
+	ok, missing := ValidateDouyinCookies(cookies)
+	if !ok {
+		return RemoteLoginState{
+			LoggedIn:       false,
+			CurrentURL:     currentURL,
+			MissingCookies: missing,
+			Message:        "Waiting for required login cookies",
+		}, nil
+	}
+
+	return RemoteLoginState{
+		LoggedIn:   true,
+		Status:     "login_detected",
+		CurrentURL: currentURL,
+		Message:    "Login detected successfully",
+	}, nil
+}
+
+// ExtractAccount attempts to get profile info from the page
+func (a *DouyinAdapter) ExtractAccount(ctx context.Context) (RemoteAccountProfile, error) {
+	var username string
+	// Try to extract username from the creator dashboard UI
+	script := `(function() {
+		const nameEl = document.querySelector('.name-G1vOOn') || 
+		               document.querySelector('.user-name') || 
+					   document.querySelector('[class*="user-name"]');
+		return nameEl ? nameEl.innerText : "";
+	})()`
+
+	err := chromedp.Run(ctx, chromedp.Evaluate(script, &username))
+	if err != nil {
+		return RemoteAccountProfile{}, err
+	}
+
+	if username == "" {
+		username = "Connected Douyin Account"
+	}
+
+	return RemoteAccountProfile{
+		Username: username,
+	}, nil
 }
 
 func ValidateDouyinCookies(cookies []Cookie) (bool, []string) {

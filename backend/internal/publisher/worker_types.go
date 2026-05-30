@@ -65,12 +65,3 @@ type BrowserWorkerClient interface {
 	CaptureSession(ctx context.Context, ref string) (*CaptureWorkerSessionResponse, error)
 	StopSession(ctx context.Context, ref string) error
 }
-
-type RemoteBrowserPlatformAdapter interface {
-	Platform() string
-	LoginURL() string
-	AllowedDomains() []DomainRule
-	RequiredCookies() []CookieRequirement
-	// Note: DetectLogin and ExtractAccount will be implemented on the worker side, 
-	// but the backend needs to know about the requirements to tell the worker what to look for.
-}
