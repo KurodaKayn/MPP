@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDashboardProject,
+  getDashboardProject,
   getDashboardProjects,
   getDashboardStats,
   getProjectPublications,
@@ -10,6 +11,7 @@ import {
   publishProject,
   saveWechatAccount,
   testWechatConnection,
+  updateDashboardProject,
 } from "./api";
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
@@ -179,6 +181,77 @@ describe("dashboard api client", () => {
         credentials: "same-origin",
         headers: expect.any(Headers),
         method: "POST",
+      }),
+    );
+  });
+
+  it("fetches a project detail for editing", async () => {
+    const project = {
+      created_at: "2026-05-29T12:00:00Z",
+      id: "project-1",
+      publications: [
+        {
+          enabled: true,
+          id: "pub-1",
+          platform: "wechat",
+          status: "published",
+        },
+      ],
+      source_content: "<p>Body</p>",
+      status: "ready",
+      title: "Existing post",
+      updated_at: "2026-05-29T12:00:00Z",
+      user_id: "user-1",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(project));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getDashboardProject("project-1")).resolves.toEqual(project);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+  });
+
+  it("updates a project with edited content and selected platforms", async () => {
+    const project = {
+      created_at: "2026-05-29T12:00:00Z",
+      id: "project-1",
+      publications: [],
+      source_content: "<p>Updated</p>",
+      status: "ready",
+      title: "Updated post",
+      updated_at: "2026-05-29T12:00:00Z",
+      user_id: "user-1",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(project));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      updateDashboardProject("project-1", {
+        platforms: ["wechat", "zhihu"],
+        source_content: "<p>Updated</p>",
+        summary: "Updated",
+        title: "Updated post",
+      }),
+    ).resolves.toEqual(project);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1",
+      expect.objectContaining({
+        body: JSON.stringify({
+          platforms: ["wechat", "zhihu"],
+          source_content: "<p>Updated</p>",
+          summary: "Updated",
+          title: "Updated post",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "PUT",
       }),
     );
   });
