@@ -10,6 +10,11 @@ export const PLATFORM_TABS = [
     icon: "/icons/platforms/zhihu.svg",
   },
   {
+    value: "x",
+    label: "X",
+    icon: "/icons/platforms/x.svg",
+  },
+  {
     value: "bilibili",
     label: "B站",
     icon: "/icons/platforms/bilibili.svg",

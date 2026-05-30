@@ -86,6 +86,33 @@ export function PlatformPreview({ title, content }: PlatformPreviewProps) {
                     {previewContent}
                   </div>
                 </TabsContent>
+                <TabsContent value="x" className="mt-0">
+                  <div className="rounded-lg border bg-background p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-10 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background">
+                        X
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold">MPP</div>
+                        <div className="text-sm text-muted-foreground">
+                          @mpp
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 whitespace-pre-wrap text-sm leading-6">
+                      {title ? `${title}\n\n` : ""}
+                      {content.text}
+                    </div>
+                    <div className="mt-3 text-xs text-muted-foreground">
+                      {
+                        Array.from(
+                          `${title ? `${title}\n\n` : ""}${content.text}`,
+                        ).length
+                      }
+                      /280
+                    </div>
+                  </div>
+                </TabsContent>
                 <TabsContent value="bilibili" className="mt-0">
                   <div className="space-y-4">
                     <div className="font-bold">动态预览：</div>
