@@ -234,6 +234,10 @@ func (s *DashboardService) applySavedXCredentialsToPublication(userID uuid.UUID,
 
 	switch credentials.authType() {
 	case xAuthTypeOAuth2:
+		credentials, err = s.refreshXOAuth2CredentialsIfNeeded(context.Background(), &account, credentials)
+		if err != nil {
+			return err
+		}
 		if strings.TrimSpace(credentials.OAuth2AccessToken) == "" {
 			return nil
 		}

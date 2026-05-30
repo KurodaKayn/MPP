@@ -99,7 +99,6 @@ func TestOAuth2RefreshUsesClientSecretBasicAuth(t *testing.T) {
 	token, err := OAuth2Config{
 		ClientID:     "client-id",
 		ClientSecret: "client-secret",
-		RedirectURI:  "https://app.example.com/callback",
 		TokenURL:     server.URL,
 	}.Refresh(context.Background(), "refresh-token")
 	require.NoError(t, err)

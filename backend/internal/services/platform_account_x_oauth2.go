@@ -23,6 +23,7 @@ const (
 	xOAuth2ClientSecretEnv = "X_OAUTH2_CLIENT_SECRET"
 	xOAuth2AuthorizeURLEnv = "X_OAUTH2_AUTHORIZE_URL"
 	xOAuth2TokenURLEnv     = "X_OAUTH2_TOKEN_URL"
+	xOAuth2RefreshSkew     = 5 * time.Minute
 	xOAuth2StateTTL        = 10 * time.Minute
 )
 
@@ -208,6 +209,66 @@ func xOAuth2ConfigFromEnv(redirectURI string) (pkgx.OAuth2Config, error) {
 		AuthorizeURL: strings.TrimSpace(os.Getenv(xOAuth2AuthorizeURLEnv)),
 		TokenURL:     strings.TrimSpace(os.Getenv(xOAuth2TokenURLEnv)),
 	}, nil
+}
+
+func xOAuth2RefreshConfigFromEnv() (pkgx.OAuth2Config, error) {
+	clientID := strings.TrimSpace(os.Getenv(xOAuth2ClientIDEnv))
+	if clientID == "" {
+		return pkgx.OAuth2Config{}, fmt.Errorf("%w: X_OAUTH2_CLIENT_ID is required", ErrXOAuth2NotConfigured)
+	}
+
+	return pkgx.OAuth2Config{
+		ClientID:     clientID,
+		ClientSecret: strings.TrimSpace(os.Getenv(xOAuth2ClientSecretEnv)),
+		AuthorizeURL: strings.TrimSpace(os.Getenv(xOAuth2AuthorizeURLEnv)),
+		TokenURL:     strings.TrimSpace(os.Getenv(xOAuth2TokenURLEnv)),
+	}, nil
+}
+
+func shouldRefreshXOAuth2Credentials(credentials xCredentials) bool {
+	if strings.TrimSpace(credentials.OAuth2AccessToken) == "" {
+		return strings.TrimSpace(credentials.OAuth2RefreshToken) != ""
+	}
+	if credentials.OAuth2ExpiresAt == nil {
+		return false
+	}
+	return time.Now().Add(xOAuth2RefreshSkew).After(*credentials.OAuth2ExpiresAt)
+}
+
+func (s *DashboardService) refreshXOAuth2CredentialsIfNeeded(ctx context.Context, account *models.PlatformAccount, credentials xCredentials) (xCredentials, error) {
+	if !shouldRefreshXOAuth2Credentials(credentials) {
+		return credentials, nil
+	}
+	if strings.TrimSpace(credentials.OAuth2RefreshToken) == "" {
+		return credentials, fmt.Errorf("%w: x oauth2 access token expired and refresh token is missing", ErrInvalidPlatformAccount)
+	}
+
+	config, err := xOAuth2RefreshConfigFromEnv()
+	if err != nil {
+		return credentials, err
+	}
+	token, err := s.xOAuth2Provider.Refresh(ctx, config, credentials.OAuth2RefreshToken)
+	if err != nil {
+		return credentials, fmt.Errorf("failed to refresh x oauth2 token: %w", err)
+	}
+
+	credentials.OAuth2AccessToken = token.AccessToken
+	credentials.OAuth2RefreshToken = firstNonEmpty(token.RefreshToken, credentials.OAuth2RefreshToken)
+	if !token.ExpiresAt.IsZero() {
+		expiresAt := token.ExpiresAt
+		credentials.OAuth2ExpiresAt = &expiresAt
+	}
+	credentials.OAuth2Scope = firstNonEmpty(token.Scope, credentials.OAuth2Scope)
+
+	rawCredentials, err := marshalJSON(credentials)
+	if err != nil {
+		return credentials, err
+	}
+	if err := s.db.Model(account).Update("credentials", rawCredentials).Error; err != nil {
+		return credentials, err
+	}
+	account.Credentials = rawCredentials
+	return credentials, nil
 }
 
 func (s *DashboardService) storeXOAuth2State(state string, pending xOAuth2PendingState) {

@@ -110,6 +110,9 @@ func (c OAuth2Config) AuthorizationURL(state, codeChallenge string) (string, err
 func (c OAuth2Config) Exchange(ctx context.Context, code, codeVerifier string) (OAuth2Token, error) {
 	code = strings.TrimSpace(code)
 	codeVerifier = strings.TrimSpace(codeVerifier)
+	if err := c.validate(); err != nil {
+		return OAuth2Token{}, err
+	}
 	if code == "" || codeVerifier == "" {
 		return OAuth2Token{}, fmt.Errorf("%w: code and code_verifier are required", ErrMissingOAuth2Config)
 	}
@@ -125,6 +128,9 @@ func (c OAuth2Config) Exchange(ctx context.Context, code, codeVerifier string) (
 
 func (c OAuth2Config) Refresh(ctx context.Context, refreshToken string) (OAuth2Token, error) {
 	refreshToken = strings.TrimSpace(refreshToken)
+	if err := c.validateClient(); err != nil {
+		return OAuth2Token{}, err
+	}
 	if refreshToken == "" {
 		return OAuth2Token{}, fmt.Errorf("%w: refresh_token is required", ErrMissingOAuth2Credentials)
 	}
@@ -174,6 +180,13 @@ func (c OAuth2Config) validate() error {
 	return nil
 }
 
+func (c OAuth2Config) validateClient() error {
+	if strings.TrimSpace(c.ClientID) == "" {
+		return fmt.Errorf("%w: client_id is required", ErrMissingOAuth2Config)
+	}
+	return nil
+}
+
 func (c OAuth2Config) scopes() []string {
 	if len(c.Scopes) == 0 {
 		return DefaultOAuth2Scopes
@@ -182,7 +195,7 @@ func (c OAuth2Config) scopes() []string {
 }
 
 func (c OAuth2Config) tokenRequest(ctx context.Context, values url.Values) (OAuth2Token, error) {
-	if err := c.validate(); err != nil {
+	if err := c.validateClient(); err != nil {
 		return OAuth2Token{}, err
 	}
 
