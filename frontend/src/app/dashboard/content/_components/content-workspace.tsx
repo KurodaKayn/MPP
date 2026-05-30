@@ -21,8 +21,8 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           <Skeleton className="h-9 w-40" />
           <Skeleton className="h-5 w-80 max-w-full" />
         </div>
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Skeleton className="h-[560px] w-full" />
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+          <Skeleton className="h-[740px] w-full" />
           <Skeleton className="h-[560px] w-full" />
         </div>
       </div>
@@ -39,17 +39,19 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         onSave={contentPage.isEditing ? contentPage.save : undefined}
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
         <ContentEditor
           title={contentPage.title}
           content={contentPage.content}
           onTitleChange={contentPage.setTitle}
           onContentChange={contentPage.setContent}
         />
-        <PlatformPreview
-          title={contentPage.title}
-          content={contentPage.content}
-        />
+        <div className="xl:sticky xl:top-6">
+          <PlatformPreview
+            title={contentPage.title}
+            content={contentPage.content}
+          />
+        </div>
       </div>
 
       <div ref={contentPage.publishBarRef}>
