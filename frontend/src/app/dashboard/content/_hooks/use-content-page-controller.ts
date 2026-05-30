@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import { emptyContentValue, type ContentValue } from "@/lib/content/types";
@@ -16,6 +16,10 @@ import {
   publishContentToPlatforms,
   type PublishPlatform,
 } from "../_lib/publish-content";
+import {
+  type PrepublishDraft,
+  useContentPageStore,
+} from "../_stores/content-page-store";
 
 function isPublishPlatform(platform: string): platform is PublishPlatform {
   return PLATFORM_TABS.some((item) => item.value === platform);
@@ -34,19 +38,37 @@ function contentValueFromSource(sourceContent: string): ContentValue {
 
 export function useContentPageController(projectId?: string) {
   const router = useRouter();
-  const [content, setContent] = useState<ContentValue>(emptyContentValue);
-  const [selectedPlatforms, setSelectedPlatforms] = useState<PublishPlatform[]>(
-    [],
-  );
-  const [title, setTitle] = useState("");
-  const [isLoading, setIsLoading] = useState(Boolean(projectId));
-  const [isOpeningXPostIntent, setIsOpeningXPostIntent] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isPublishing, setIsPublishing] = useState(false);
+  const {
+    content,
+    isLoading,
+    isOpeningXPostIntent,
+    isPublishing,
+    isSaving,
+    isSyncingPrepublish,
+    loadedProjectId,
+    prepublishDrafts,
+    resetForCreate,
+    selectedPlatforms,
+    setContent,
+    setIsLoading,
+    setIsOpeningXPostIntent,
+    setIsPublishing,
+    setIsSaving,
+    setIsSyncingPrepublish,
+    setLoadedProjectId,
+    setPrepublishDrafts,
+    setSelectedPlatforms,
+    setTitle,
+    title,
+  } = useContentPageStore();
   const publishBarRef = useRef<HTMLDivElement>(null);
+  const isRouteContentLoaded = projectId
+    ? loadedProjectId === projectId
+    : loadedProjectId === null;
+  const isPageLoading = isLoading || !isRouteContentLoaded;
   const hasBodyContent = Boolean(content.text.trim() || content.firstImageSrc);
   const hasRequiredContent = Boolean(
-    !isLoading && title.trim() && hasBodyContent,
+    !isPageLoading && title.trim() && hasBodyContent,
   );
   const canPublish = Boolean(
     hasRequiredContent && selectedPlatforms.length > 0,
@@ -56,7 +78,7 @@ export function useContentPageController(projectId?: string) {
 
   useEffect(() => {
     if (!projectId) {
-      setIsLoading(false);
+      resetForCreate();
       return;
     }
 
@@ -80,7 +102,18 @@ export function useContentPageController(projectId?: string) {
               : [],
           ),
         );
+        setPrepublishDrafts({});
+        setLoadedProjectId(targetProjectId);
       } catch (requestError) {
+        if (cancelled) {
+          return;
+        }
+
+        setTitle("");
+        setContent(emptyContentValue);
+        setSelectedPlatforms([]);
+        setPrepublishDrafts({});
+        setLoadedProjectId(targetProjectId);
         toast.error("无法加载项目内容", {
           description:
             requestError instanceof Error
@@ -176,6 +209,40 @@ export function useContentPageController(projectId?: string) {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const syncPrepublish = () => {
+    if (!validateContent()) {
+      return;
+    }
+
+    setIsSyncingPrepublish(true);
+    try {
+      const raw = content.html || content.text;
+      const syncedAt = new Date().toISOString();
+      const nextDrafts = selectedPlatforms.reduce<
+        Partial<Record<PublishPlatform, PrepublishDraft>>
+      >((drafts, platform) => {
+        drafts[platform] = {
+          format:
+            platform === "wechat"
+              ? "html"
+              : platform === "zhihu"
+                ? "markdown"
+                : "text",
+          raw,
+          syncedAt,
+        };
+        return drafts;
+      }, {});
+
+      setPrepublishDrafts(nextDrafts);
+      toast.success("已同步到预发布", {
+        description: "暂未做格式转换，当前内容已复制到各平台草稿。",
+      });
+    } finally {
+      setIsSyncingPrepublish(false);
     }
   };
 
@@ -328,12 +395,14 @@ export function useContentPageController(projectId?: string) {
     canPublish,
     content,
     isEditing: Boolean(projectId),
-    isLoading,
+    isLoading: isPageLoading,
     isOpeningXPostIntent,
     isPublishing,
     isSaving,
+    isSyncingPrepublish,
     openPublishPanel,
     openXPostIntent: () => void openXPostIntent(),
+    prepublishDrafts,
     publish: () => void publish(),
     publishBarRef,
     save: () => void save(),
@@ -341,6 +410,7 @@ export function useContentPageController(projectId?: string) {
     setContent,
     setSelectedPlatforms,
     setTitle,
+    syncPrepublish,
     title,
   };
 }

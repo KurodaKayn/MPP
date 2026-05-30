@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { PLATFORM_TABS, type PlatformTab } from "@/lib/content/platforms";
-import { Check, Loader2, Send } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import Image from "next/image";
 
 type PublishPlatform = PlatformTab["value"];
@@ -13,7 +12,6 @@ type ContentPublishBarProps = {
   isPublishing: boolean;
   onOpenXPostIntent: () => void;
   onPublish: () => void;
-  onSelectedPlatformsChange: (platforms: PublishPlatform[]) => void;
   publishLabel?: string;
   selectedPlatforms: PublishPlatform[];
 };
@@ -25,30 +23,13 @@ export function ContentPublishBar({
   isPublishing,
   onOpenXPostIntent,
   onPublish,
-  onSelectedPlatformsChange,
   publishLabel = "一键发布",
   selectedPlatforms,
 }: ContentPublishBarProps) {
-  const selectedSet = new Set(selectedPlatforms);
-  const allSelected = selectedPlatforms.length === PLATFORM_TABS.length;
   const isBusy = isOpeningXPostIntent || isPublishing;
-
-  const togglePlatform = (platform: PublishPlatform, checked: boolean) => {
-    if (checked) {
-      onSelectedPlatformsChange([...selectedPlatforms, platform]);
-      return;
-    }
-
-    onSelectedPlatformsChange(
-      selectedPlatforms.filter((item) => item !== platform),
-    );
-  };
-
-  const toggleAll = (checked: boolean) => {
-    onSelectedPlatformsChange(
-      checked ? PLATFORM_TABS.map((platform) => platform.value) : [],
-    );
-  };
+  const selectedTabs = PLATFORM_TABS.filter((platform) =>
+    selectedPlatforms.includes(platform.value),
+  );
 
   return (
     <section
@@ -65,15 +46,9 @@ export function ContentPublishBar({
               >
                 自动发布
               </h3>
-              <label className="mt-2 inline-flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={(event) => toggleAll(event.currentTarget.checked)}
-                  className="size-4 rounded border-input accent-primary"
-                />
-                全选平台
-              </label>
+              <p className="mt-1 text-xs text-muted-foreground">
+                使用预发布区块中已选择的平台。
+              </p>
             </div>
             <Button
               type="button"
@@ -91,54 +66,29 @@ export function ContentPublishBar({
             </Button>
           </div>
 
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {PLATFORM_TABS.map((platform) => {
-              const checked = selectedSet.has(platform.value);
-
-              return (
-                <label
+          <div className="mt-4 flex flex-wrap gap-2">
+            {selectedTabs.length > 0 ? (
+              selectedTabs.map((platform) => (
+                <div
                   key={platform.value}
-                  className={cn(
-                    "flex h-14 cursor-pointer items-center gap-3 rounded-lg border px-3 text-sm transition-colors",
-                    checked
-                      ? "border-primary bg-primary/5 text-foreground"
-                      : "border-border bg-background hover:bg-muted/50",
-                  )}
+                  className="flex h-8 items-center gap-2 rounded-md border bg-muted/30 px-2 text-xs font-medium"
                 >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    className="sr-only"
-                    onChange={(event) =>
-                      togglePlatform(
-                        platform.value,
-                        event.currentTarget.checked,
-                      )
-                    }
-                  />
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "flex size-4 shrink-0 items-center justify-center rounded-sm border",
-                      checked
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-input bg-background",
-                    )}
-                  >
-                    {checked ? <Check className="size-3" /> : null}
-                  </span>
                   <Image
                     src={platform.icon}
                     alt=""
-                    width={18}
-                    height={18}
+                    width={16}
+                    height={16}
                     aria-hidden="true"
-                    className="size-[18px] shrink-0"
+                    className="size-4 shrink-0"
                   />
-                  <span className="truncate font-medium">{platform.label}</span>
-                </label>
-              );
-            })}
+                  <span>{platform.label}</span>
+                </div>
+              ))
+            ) : (
+              <div className="text-sm text-muted-foreground">
+                尚未选择发布平台。
+              </div>
+            )}
           </div>
         </div>
 

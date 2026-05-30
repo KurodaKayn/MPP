@@ -1,11 +1,18 @@
 "use client";
 
 import { ContentEditor } from "@/components/dashboard/content/content-editor";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { ContentPageHeader } from "./content-page-header";
+import { ContentPrepublishPanel } from "./content-prepublish-panel";
 import { ContentPublishBar } from "./content-publish-bar";
 import { PlatformPreview } from "./platform-preview";
 import { useContentPageController } from "../_hooks/use-content-page-controller";
+import {
+  type ContentView,
+  useContentPageStore,
+} from "../_stores/content-page-store";
 
 type ContentWorkspaceProps = {
   projectId?: string;
@@ -13,6 +20,7 @@ type ContentWorkspaceProps = {
 
 export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
   const contentPage = useContentPageController(projectId);
+  const { contentView, setContentView } = useContentPageStore();
 
   if (contentPage.isLoading) {
     return (
@@ -21,9 +29,9 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           <Skeleton className="h-9 w-40" />
           <Skeleton className="h-5 w-80 max-w-full" />
         </div>
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+        <div className="space-y-4">
+          <Skeleton className="h-9 w-56" />
           <Skeleton className="h-[740px] w-full" />
-          <Skeleton className="h-[560px] w-full" />
         </div>
       </div>
     );
@@ -39,20 +47,45 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         onSave={contentPage.isEditing ? contentPage.save : undefined}
       />
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
-        <ContentEditor
-          title={contentPage.title}
-          content={contentPage.content}
-          onTitleChange={contentPage.setTitle}
-          onContentChange={contentPage.setContent}
-        />
-        <div className="xl:sticky xl:top-6">
+      {contentView === "editor" ? (
+        <div>
+          <ContentEditor
+            title={contentPage.title}
+            content={contentPage.content}
+            onTitleChange={contentPage.setTitle}
+            onContentChange={contentPage.setContent}
+            viewSwitcher={
+              <ContentViewSwitcher
+                value={contentView}
+                onValueChange={setContentView}
+              />
+            }
+          />
+        </div>
+      ) : (
+        <div>
           <PlatformPreview
             title={contentPage.title}
             content={contentPage.content}
+            viewSwitcher={
+              <ContentViewSwitcher
+                value={contentView}
+                onValueChange={setContentView}
+              />
+            }
           />
         </div>
-      </div>
+      )}
+
+      <ContentPrepublishPanel
+        title={contentPage.title}
+        content={contentPage.content}
+        drafts={contentPage.prepublishDrafts}
+        isSyncing={contentPage.isSyncingPrepublish}
+        selectedPlatforms={contentPage.selectedPlatforms}
+        onSelectedPlatformsChange={contentPage.setSelectedPlatforms}
+        onSync={contentPage.syncPrepublish}
+      />
 
       <div ref={contentPage.publishBarRef}>
         <ContentPublishBar
@@ -62,11 +95,41 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           isPublishing={contentPage.isPublishing}
           selectedPlatforms={contentPage.selectedPlatforms}
           onOpenXPostIntent={contentPage.openXPostIntent}
-          onSelectedPlatformsChange={contentPage.setSelectedPlatforms}
           onPublish={contentPage.publish}
           publishLabel={contentPage.isEditing ? "保存并发布" : "一键发布"}
         />
       </div>
+    </div>
+  );
+}
+
+function ContentViewSwitcher({
+  onValueChange,
+  value,
+}: {
+  onValueChange: (value: ContentView) => void;
+  value: ContentView;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border bg-muted p-0.5">
+      {[
+        ["editor", "编辑"],
+        ["preview", "预览"],
+      ].map(([itemValue, label]) => (
+        <Button
+          key={itemValue}
+          type="button"
+          size="sm"
+          variant={value === itemValue ? "default" : "ghost"}
+          className={cn(
+            "h-7 rounded-md px-3 text-xs",
+            value !== itemValue && "text-muted-foreground",
+          )}
+          onClick={() => onValueChange(itemValue as ContentView)}
+        >
+          {label}
+        </Button>
+      ))}
     </div>
   );
 }

@@ -18,6 +18,7 @@ type ContentEditorProps = {
   content: ContentValue;
   onTitleChange: (title: string) => void;
   onContentChange: (content: ContentValue) => void;
+  viewSwitcher?: React.ReactNode;
 };
 
 export function ContentEditor({
@@ -25,6 +26,7 @@ export function ContentEditor({
   content,
   onTitleChange,
   onContentChange,
+  viewSwitcher,
 }: ContentEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { editor, handleImageSelect, imageCount, setLink } =
@@ -37,7 +39,12 @@ export function ContentEditor({
   return (
     <TooltipProvider>
       <Card className="flex flex-col gap-4 p-4 sm:p-5">
-        <ContentEditorTitle title={title} onTitleChange={onTitleChange} />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <ContentEditorTitle title={title} onTitleChange={onTitleChange} />
+          </div>
+          {viewSwitcher ? <div className="shrink-0">{viewSwitcher}</div> : null}
+        </div>
 
         <ContentEditorDescription
           blockLabel={blockLabel}
@@ -81,7 +88,7 @@ function ContentEditorDescription({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-muted-foreground">
-        像文档一样编写正文，发布前右侧实时预览
+        像文档一样编写正文，发布前可切换到预览查看效果
       </p>
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>{blockLabel}</span>
