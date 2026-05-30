@@ -258,6 +258,7 @@ export function useContentPageController(projectId?: string) {
     setIsSaving(true);
     try {
       await updateDashboardProject(projectId, buildProjectInput());
+      setPrepublishDrafts({});
       toast.success("修改已保存");
     } catch (requestError) {
       toast.error("保存失败", {
