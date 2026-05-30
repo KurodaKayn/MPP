@@ -78,7 +78,7 @@ type WorkerSession struct {
 	CDPEndpointRef    string
 	StreamEndpointRef string
 	ExpiresAt         time.Time
-	// In a real implementation, we'd store the docker container ID here
+	CancelFunc        context.CancelFunc // Added to manage lifecycle
 }
 
 type SessionManager struct {
@@ -116,11 +116,11 @@ func main() {
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to start browser: %v", err))
 		}
 
+		// Create a long-lived session context that persists after this request returns
+		sessCtx, sessCancel := context.WithCancel(context.Background())
+
 		// 2. Setup Security Interception (CDP)
 		go func() {
-			var ctx context.Context
-			var cancel func()
-			
 			// Initial delay to let Chromium stabilize
 			time.Sleep(5 * time.Second)
 
@@ -128,8 +128,14 @@ func main() {
 			
 			// Manually fetch the WebSocket URL to bypass Host header restrictions
 			for i := 0; i < 10; i++ {
+				select {
+				case <-sessCtx.Done():
+					return
+				default:
+				}
+
 				reqURL := fmt.Sprintf("http://127.0.0.1:%d/json/version", cdpPort)
-				httpReq, _ := http.NewRequest("GET", reqURL, nil)
+				httpReq, _ := http.NewRequestWithContext(sessCtx, "GET", reqURL, nil)
 				// Spoof Host header so Chromium accepts the connection
 				httpReq.Host = "localhost"
 
@@ -161,10 +167,19 @@ func main() {
 			log.Printf("Successfully obtained WebSocket URL: %s", wsURL)
 
 			// Retry loop for CDP connection using the direct WebSocket URL
+			var ctx context.Context
+			var cancel func()
 			var targetID string
+
 			for i := 0; i < 5; i++ {
+				select {
+				case <-sessCtx.Done():
+					return
+				default:
+				}
+
 				// Use direct websocket connection
-				allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), wsURL)
+				allocCtx, _ := chromedp.NewRemoteAllocator(sessCtx, wsURL)
 				
 				// Find existing targets to avoid creating a new hidden tab
 				infos, err := chromedp.Targets(allocCtx)
@@ -236,6 +251,7 @@ func main() {
 			CDPEndpointRef:    fmt.Sprintf("ws://localhost:%d", cdpPort),
 			StreamEndpointRef: fmt.Sprintf("http://localhost:%d", streamPort),
 			ExpiresAt:         expiresAt,
+			CancelFunc:        sessCancel,
 		}
 
 		sm.mu.Lock()
@@ -332,8 +348,13 @@ func main() {
 		}
 		sm.mu.Unlock()
 
-		if ok && session.ContainerID != "" {
-			dm.StopContainer(context.Background(), session.ContainerID)
+		if ok {
+			if session.CancelFunc != nil {
+				session.CancelFunc()
+			}
+			if session.ContainerID != "" {
+				dm.StopContainer(context.Background(), session.ContainerID)
+			}
 		}
 
 		return c.NoContent(http.StatusNoContent)
