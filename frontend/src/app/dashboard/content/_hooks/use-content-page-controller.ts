@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
@@ -32,23 +33,26 @@ function contentValueFromSource(sourceContent: string): ContentValue {
 }
 
 export function useContentPageController(projectId?: string) {
+  const router = useRouter();
   const [content, setContent] = useState<ContentValue>(emptyContentValue);
   const [selectedPlatforms, setSelectedPlatforms] = useState<PublishPlatform[]>(
     [],
   );
   const [title, setTitle] = useState("");
   const [isLoading, setIsLoading] = useState(Boolean(projectId));
+  const [isOpeningXPostIntent, setIsOpeningXPostIntent] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const publishBarRef = useRef<HTMLDivElement>(null);
   const hasBodyContent = Boolean(content.text.trim() || content.firstImageSrc);
+  const hasRequiredContent = Boolean(
+    !isLoading && title.trim() && hasBodyContent,
+  );
   const canPublish = Boolean(
-    !isLoading &&
-    title.trim() &&
-    hasBodyContent &&
-    selectedPlatforms.length > 0,
+    hasRequiredContent && selectedPlatforms.length > 0,
   );
   const canSave = Boolean(projectId && canPublish);
+  const canOpenXPostIntent = hasRequiredContent;
 
   useEffect(() => {
     if (!projectId) {
@@ -109,14 +113,7 @@ export function useContentPageController(projectId?: string) {
     });
   };
 
-  const validateContent = () => {
-    if (selectedPlatforms.length === 0) {
-      toast.error("请选择发布平台", {
-        description: "在底部发布渠道中勾选至少一个平台。",
-      });
-      return false;
-    }
-
+  const validateContentFields = () => {
     if (!title.trim() || !hasBodyContent) {
       toast.error("内容不完整", {
         description: "请填写标题和正文后再发布。",
@@ -127,13 +124,41 @@ export function useContentPageController(projectId?: string) {
     return true;
   };
 
-  const buildProjectInput = (): CreateProjectInput => ({
+  const validateContent = () => {
+    if (selectedPlatforms.length === 0) {
+      toast.error("请选择发布平台", {
+        description: "在底部发布渠道中勾选至少一个平台。",
+      });
+      return false;
+    }
+
+    return validateContentFields();
+  };
+
+  const buildProjectInput = (
+    platforms: PublishPlatform[] = selectedPlatforms,
+  ): CreateProjectInput => ({
     cover_image_url: content.firstImageSrc || undefined,
-    platforms: selectedPlatforms,
+    platforms,
     source_content: content.html || content.text,
     summary: content.text,
     title: title.trim(),
   });
+
+  const saveOrCreateProjectForXPostIntent = async () => {
+    const platforms: PublishPlatform[] = selectedPlatforms.includes("x")
+      ? selectedPlatforms
+      : [...selectedPlatforms, "x"];
+    const input = buildProjectInput(platforms);
+
+    if (projectId) {
+      await updateDashboardProject(projectId, input);
+      return { id: projectId, isNew: false };
+    }
+
+    const project = await createDashboardProject(input);
+    return { id: project.id, isNew: true };
+  };
 
   const save = async () => {
     if (!projectId || !validateContent()) {
@@ -192,6 +217,61 @@ export function useContentPageController(projectId?: string) {
     return { failed, succeeded };
   };
 
+  const openXPostIntent = async () => {
+    if (!validateContentFields()) {
+      return;
+    }
+
+    const popup = window.open("about:blank", "_blank");
+    if (popup) {
+      popup.document.title = "Opening X";
+      popup.opener = null;
+    }
+
+    setIsOpeningXPostIntent(true);
+    try {
+      const targetProject = await saveOrCreateProjectForXPostIntent();
+      const result = await publishProject(targetProject.id, "x", {
+        mode: "manual",
+      });
+      if (!result.publish_url) {
+        throw new Error("后端没有返回 X 发帖链接");
+      }
+
+      if (popup) {
+        popup.location.href = result.publish_url;
+      } else {
+        const opened = window.open(
+          result.publish_url,
+          "_blank",
+          "noopener,noreferrer",
+        );
+        if (!opened) {
+          await navigator.clipboard?.writeText(result.publish_url);
+          toast.error("浏览器拦截了新窗口", {
+            description: "X 发帖链接已复制，请粘贴到浏览器打开。",
+          });
+          return;
+        }
+      }
+
+      toast.success("X 发帖窗口已打开", {
+        description: "确认内容后在 X 页面点击 Post。",
+      });
+      if (targetProject.isNew) {
+        router.replace(`/dashboard/content/${targetProject.id}`);
+      }
+    } catch (requestError) {
+      popup?.close();
+      toast.error("无法打开 X 发帖窗口", {
+        description:
+          requestError instanceof Error ? requestError.message : "请稍后重试。",
+      });
+    } finally {
+      setIsOpeningXPostIntent(false);
+    }
+  };
+
   const publish = async () => {
     if (!validateContent()) {
       return;
@@ -244,13 +324,16 @@ export function useContentPageController(projectId?: string) {
 
   return {
     canSave,
+    canOpenXPostIntent,
     canPublish,
     content,
     isEditing: Boolean(projectId),
     isLoading,
+    isOpeningXPostIntent,
     isPublishing,
     isSaving,
     openPublishPanel,
+    openXPostIntent: () => void openXPostIntent(),
     publish: () => void publish(),
     publishBarRef,
     save: () => void save(),
