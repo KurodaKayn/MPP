@@ -16,7 +16,7 @@ import {
   publishContentToPlatforms,
   type PublishPlatform,
 } from "../_lib/publish-content";
-import type { PrepublishDraft } from "../_components/content-prepublish-panel";
+import type { PrepublishDraft } from "../_stores/content-page-store";
 
 function isPublishPlatform(platform: string): platform is PublishPlatform {
   return PLATFORM_TABS.some((item) => item.value === platform);

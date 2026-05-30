@@ -9,15 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PLATFORM_TABS, type PlatformTab } from "@/lib/content/platforms";
 import type { ContentValue } from "@/lib/content/types";
 import { cn } from "@/lib/utils";
+import type {
+  PrepublishDraft,
+  PrepublishFormat,
+} from "../_stores/content-page-store";
 
 type PublishPlatform = PlatformTab["value"];
-type PrepublishFormat = "html" | "markdown" | "text";
-
-export type PrepublishDraft = {
-  format: PrepublishFormat;
-  raw: string;
-  syncedAt: string;
-};
 
 type ContentPrepublishPanelProps = {
   content: ContentValue;
