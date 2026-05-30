@@ -161,6 +161,7 @@ func main() {
 			log.Printf("Successfully obtained WebSocket URL: %s", wsURL)
 
 			// Retry loop for CDP connection using the direct WebSocket URL
+			var targetID string
 			for i := 0; i < 5; i++ {
 				// Use direct websocket connection
 				allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), wsURL)
@@ -168,7 +169,6 @@ func main() {
 				// Find existing targets to avoid creating a new hidden tab
 				infos, err := chromedp.Targets(allocCtx)
 				if err == nil && len(infos) > 0 {
-					var targetID string
 					for _, info := range infos {
 						if info.Type == "page" {
 							targetID = string(info.TargetID)
@@ -208,13 +208,10 @@ func main() {
 			}
 			
 			// Navigate and ENSURE the tab is activated (brought to front)
+			// We use the targetID we found during the connection phase
 			err = chromedp.Run(ctx, 
 				chromedp.Navigate(req.LoginURL),
-				chromedp.ActionFunc(func(ctx context.Context) error {
-					// Get the target ID of the current context and activate it
-					targetID := chromedp.FromContext(ctx).TargetID
-					return target.ActivateTarget(targetID).Do(ctx)
-				}),
+				target.ActivateTarget(target.ID(targetID)),
 			)
 			if err != nil {
 				log.Printf("Failed to navigate or activate: %v", err)
