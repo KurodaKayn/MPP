@@ -57,20 +57,22 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 	if !pub.Enabled || pub.Status == models.PublicationStatusDisabled {
 		return nil, ErrPublicationDisabled
 	}
+
+	// 3. Get Publisher from factory
+	p, err := publisher.Factory.GetPublisher(platform)
+	if err != nil {
+		return nil, err
+	}
 	if pub.Status != models.PublicationStatusAdapted {
-		return nil, ErrPublicationRequiresSync
+		if err := s.adaptPublicationForPublish(&proj, &pub, p); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := s.applySavedWechatCredentialsToPublication(proj.UserID, &pub); err != nil {
 		return nil, err
 	}
 	if err := s.applySavedXCredentialsToPublication(proj.UserID, &pub); err != nil {
-		return nil, err
-	}
-
-	// 3. Get Publisher from factory
-	p, err := publisher.Factory.GetPublisher(platform)
-	if err != nil {
 		return nil, err
 	}
 
@@ -82,7 +84,6 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 	}
 
 	// 5. Execute Publish
-	// Note: We use pub.AdaptedContent. If empty, you might want to sync from proj.SourceContent first.
 	remoteID, publishURL, err := p.Publish(context.Background(), &pub, &account)
 
 	// 6. Update DB
@@ -117,8 +118,14 @@ func (s *DashboardService) CreateXPostIntent(projectID uuid.UUID, scopeUserID *u
 	if !pub.Enabled || pub.Status == models.PublicationStatusDisabled {
 		return nil, ErrPublicationDisabled
 	}
+	p, err := publisher.Factory.GetPublisher("x")
+	if err != nil {
+		return nil, err
+	}
 	if pub.Status != models.PublicationStatusAdapted {
-		return nil, ErrPublicationRequiresSync
+		if err := s.adaptPublicationForPublish(&proj, &pub, p); err != nil {
+			return nil, err
+		}
 	}
 
 	publishURL, err := publisher.BuildXPostIntentURL(pub.AdaptedContent)
@@ -138,6 +145,42 @@ func (s *DashboardService) CreateXPostIntent(projectID uuid.UUID, scopeUserID *u
 		"platform":    "x",
 		"publish_url": publishURL,
 	}, nil
+}
+
+func (s *DashboardService) adaptPublicationForPublish(project *models.Project, pub *models.ProjectPlatformPublication, p publisher.PlatformPublisher) error {
+	adaptedContent, err := p.AdaptContent(project)
+	if err != nil {
+		return err
+	}
+
+	content := pub.AdaptedContent
+	if len(adaptedContent) > 0 {
+		content = datatypes.JSON(adaptedContent)
+	}
+
+	updates := map[string]interface{}{
+		"adapted_content": content,
+		"error_message":   "",
+		"last_attempt_at": nil,
+		"published_at":    nil,
+		"publish_url":     "",
+		"remote_id":       "",
+		"retry_count":     0,
+		"status":          models.PublicationStatusAdapted,
+	}
+	if err := s.db.Model(pub).Updates(updates).Error; err != nil {
+		return err
+	}
+
+	pub.AdaptedContent = content
+	pub.ErrorMessage = ""
+	pub.LastAttemptAt = nil
+	pub.PublishedAt = nil
+	pub.PublishURL = ""
+	pub.RemoteID = ""
+	pub.RetryCount = 0
+	pub.Status = models.PublicationStatusAdapted
+	return nil
 }
 
 var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
