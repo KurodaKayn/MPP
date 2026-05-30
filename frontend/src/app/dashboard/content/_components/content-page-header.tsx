@@ -2,10 +2,12 @@ import { Button } from "@/components/ui/button";
 import { Save, Send } from "lucide-react";
 
 type ContentPageHeaderProps = {
-  onPublish: () => void;
+  onOpenPublishPanel: () => void;
 };
 
-export function ContentPageHeader({ onPublish }: ContentPageHeaderProps) {
+export function ContentPageHeader({
+  onOpenPublishPanel,
+}: ContentPageHeaderProps) {
   return (
     <div className="flex items-center justify-between">
       <div>
@@ -18,8 +20,8 @@ export function ContentPageHeader({ onPublish }: ContentPageHeaderProps) {
         <Button variant="outline">
           <Save className="mr-2 h-4 w-4" /> 保存草稿
         </Button>
-        <Button onClick={onPublish}>
-          <Send className="mr-2 h-4 w-4" /> 一键发布
+        <Button onClick={onOpenPublishPanel}>
+          <Send className="mr-2 h-4 w-4" /> 发布设置
         </Button>
       </div>
     </div>
