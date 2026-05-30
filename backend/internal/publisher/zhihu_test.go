@@ -50,6 +50,25 @@ func TestZhihuPublisher_AdaptContent(t *testing.T) {
 	assert.Contains(t, adapted.Markdown, "![配图](https://example.com/a.png)")
 }
 
+func TestZhihuPublisherAdaptContentPreservesPreformattedCode(t *testing.T) {
+	p := &ZhihuPublisher{}
+	project := &models.Project{
+		Title: "代码示例",
+		SourceContent: `<pre><code>for _, item := range items {
+	if item.Enabled {
+		fmt.Println(item.Platform)
+	}
+}</code></pre>`,
+	}
+
+	content, err := p.AdaptContent(project)
+
+	assert.NoError(t, err)
+	var adapted AdaptedContent
+	assert.NoError(t, json.Unmarshal(content, &adapted))
+	assert.Contains(t, adapted.Markdown, "```\nfor _, item := range items {\n\tif item.Enabled {\n\t\tfmt.Println(item.Platform)\n\t}\n}\n```")
+}
+
 // TestZhihuPublisher_Publish_AccountWithEmptyCookies 验证账号存在但 Cookie 为空时的初始校验
 func TestZhihuPublisher_Publish_AccountWithEmptyCookies(t *testing.T) {
 	// 注意：由于真实的 Publish 会弹出浏览器，这里仅做逻辑占位或 Mock 测试
