@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/dto"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
 	"github.com/kurodakayn/sevenoxcloud-backend/internal/publisher"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -64,8 +66,15 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 }
 
 var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
+var ErrInvalidProject = errors.New("invalid project")
 
 var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
+var allowedProjectPlatforms = map[string]struct{}{
+	"bilibili":    {},
+	"wechat":      {},
+	"xiaohongshu": {},
+	"zhihu":       {},
+}
 
 func sanitizeUserFacingErrorMessage(message string) string {
 	return sensitiveErrorQueryParamPattern.ReplaceAllString(message, "$1=<redacted>")
@@ -129,6 +138,132 @@ func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStats
 	}
 
 	return &stats, nil
+}
+
+func (s *DashboardService) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
+	title := strings.TrimSpace(req.Title)
+	sourceContent := strings.TrimSpace(req.SourceContent)
+	platforms, err := normalizeProjectPlatforms(req.Platforms)
+	if err != nil {
+		return nil, err
+	}
+	if title == "" || sourceContent == "" || len(platforms) == 0 {
+		return nil, ErrInvalidProject
+	}
+
+	project := models.Project{
+		UserID:        userID,
+		Title:         title,
+		SourceContent: sourceContent,
+		Status:        models.ProjectStatusReady,
+	}
+	publications := make([]dto.PublicationSummary, 0, len(platforms))
+
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&project).Error; err != nil {
+			return err
+		}
+
+		for _, platform := range platforms {
+			config, err := defaultPublicationConfig(title, req.Summary, req.CoverImageURL)
+			if err != nil {
+				return err
+			}
+
+			adaptedContent := datatypes.JSON([]byte(`{}`))
+			status := models.PublicationStatusPending
+			if p, err := publisher.Factory.GetPublisher(platform); err == nil {
+				adapted, err := p.AdaptContent(&project)
+				if err != nil {
+					return err
+				}
+				adaptedContent = datatypes.JSON(adapted)
+				status = models.PublicationStatusAdapted
+			}
+
+			publication := models.ProjectPlatformPublication{
+				ProjectID:      project.ID,
+				Platform:       platform,
+				Enabled:        true,
+				Status:         status,
+				Config:         config,
+				AdaptedContent: adaptedContent,
+			}
+			if err := tx.Create(&publication).Error; err != nil {
+				return err
+			}
+
+			publications = append(publications, dto.PublicationSummary{
+				ID:       publication.ID,
+				Platform: platform,
+				Enabled:  publication.Enabled,
+				Status:   publication.Status,
+			})
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return &dto.ProjectListItem{
+		ID:           project.ID,
+		UserID:       project.UserID,
+		Title:        project.Title,
+		Status:       project.Status,
+		CreatedAt:    project.CreatedAt,
+		UpdatedAt:    project.UpdatedAt,
+		Publications: publications,
+	}, nil
+}
+
+func normalizeProjectPlatforms(input []string) ([]string, error) {
+	seen := map[string]struct{}{}
+	platforms := make([]string, 0, len(input))
+
+	for _, raw := range input {
+		platform := strings.TrimSpace(raw)
+		if platform == "" {
+			continue
+		}
+		if _, ok := allowedProjectPlatforms[platform]; !ok {
+			return nil, ErrInvalidProject
+		}
+		if _, ok := seen[platform]; ok {
+			continue
+		}
+		seen[platform] = struct{}{}
+		platforms = append(platforms, platform)
+	}
+
+	return platforms, nil
+}
+
+func defaultPublicationConfig(title, summary, coverImageURL string) (datatypes.JSON, error) {
+	digest := strings.TrimSpace(summary)
+	if digest == "" {
+		digest = title
+	}
+	config := map[string]interface{}{
+		"digest": truncateRunes(digest, 120),
+		"title":  title,
+	}
+	if coverImageURL := strings.TrimSpace(coverImageURL); coverImageURL != "" {
+		config["cover_image_url"] = coverImageURL
+	}
+	payload, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+	return datatypes.JSON(payload), nil
+}
+
+func truncateRunes(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
 }
 
 func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
