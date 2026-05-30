@@ -24,15 +24,15 @@ echo "Starting websockify (noVNC) on port $STREAM_PORT..."
 cp /usr/share/novnc/vnc.html /usr/share/novnc/index.html || true
 websockify --web /usr/share/novnc/ $STREAM_PORT localhost:$VNC_PORT &
 
-echo "Starting Chromium with CDP on port $CDP_PORT (internally 9223)..."
-# Chromium ignores 0.0.0.0 in some environments, so we use socat to proxy it
-socat TCP-LISTEN:$CDP_PORT,fork,bind=0.0.0.0 TCP:127.0.0.1:9223 &
+echo "Starting Chromium with CDP on port $CDP_PORT..."
 
+# By passing the wrapper script to ensure arguments are parsed correctly
 # EXTREMELY IMPORTANT: --remote-allow-origins=* must be set
-chromium \
+/usr/lib/chromium/chromium \
     --no-sandbox \
     --disable-setuid-sandbox \
-    --remote-debugging-port=9223 \
+    --remote-debugging-address=0.0.0.0 \
+    --remote-debugging-port=$CDP_PORT \
     --remote-allow-origins=* \
     --user-data-dir=$BROWSER_PROFILE \
     --no-first-run \
