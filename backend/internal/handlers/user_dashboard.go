@@ -198,6 +198,9 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	// In a real app, this would be an async task/queue
 	resp, err := h.dashboardService.PublishProject(projectID, req.Platform, &userID)
 	if err != nil {
+		if errors.Is(err, services.ErrPublicationDisabled) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
+		}
 		if errors.Is(err, services.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}

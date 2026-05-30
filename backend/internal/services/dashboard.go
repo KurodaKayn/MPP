@@ -31,6 +31,9 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 	if err := s.db.Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
 		return nil, fmt.Errorf("publication record not found for platform: %s", platform)
 	}
+	if !pub.Enabled || pub.Status == models.PublicationStatusDisabled {
+		return nil, ErrPublicationDisabled
+	}
 
 	if err := s.applySavedWechatCredentialsToPublication(proj.UserID, &pub); err != nil {
 		return nil, err
@@ -67,6 +70,7 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 
 var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
 var ErrInvalidProject = errors.New("invalid project")
+var ErrPublicationDisabled = errors.New("publication is disabled")
 
 var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
 var allowedProjectPlatforms = map[string]struct{}{
