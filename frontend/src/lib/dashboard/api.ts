@@ -86,6 +86,7 @@ export type WechatConnectionTestResult = {
 export type XAccount = {
   platform: "x";
   api_key?: string;
+  expires_at?: string;
   username?: string;
   has_api_secret: boolean;
   has_access_token: boolean;
