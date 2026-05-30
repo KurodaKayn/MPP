@@ -892,7 +892,7 @@ func TestCreateXPostIntentReturnsManualPublishURL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "https", parsed.Scheme)
 	assert.Equal(t, "x.com", parsed.Host)
-	assert.Equal(t, "/intent/post", parsed.Path)
+	assert.Equal(t, "/intent/tweet", parsed.Path)
 	assert.Equal(t, "hello x & \u4e2d\u6587", parsed.Query().Get("text"))
 
 	var saved models.ProjectPlatformPublication

@@ -19,7 +19,7 @@ import (
 
 const xCharacterLimit = 280
 const xURLWeight = 23
-const xPostIntentURL = "https://x.com/intent/post"
+const xPostIntentURL = "https://x.com/intent/tweet"
 
 const (
 	xAuthTypeOAuth1 = "oauth1"

@@ -62,7 +62,7 @@ func TestBuildXPostIntentURLUsesAdaptedText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected valid URL, got %v", err)
 	}
-	if parsed.Scheme != "https" || parsed.Host != "x.com" || parsed.Path != "/intent/post" {
+	if parsed.Scheme != "https" || parsed.Host != "x.com" || parsed.Path != "/intent/tweet" {
 		t.Fatalf("unexpected intent URL: %s", intentURL)
 	}
 	if got := parsed.Query().Get("text"); got != "hello x & \u4e2d\u6587" {
