@@ -39,6 +39,14 @@ export type PublishResult = {
   error_message?: string;
 };
 
+export type CreateProjectInput = {
+  title: string;
+  source_content: string;
+  summary?: string;
+  cover_image_url?: string;
+  platforms: string[];
+};
+
 export type RequirementStatus = {
   status: "passed" | "warning" | "failed" | "unknown";
   title: string;
@@ -152,6 +160,13 @@ export function getDashboardProjects(limit = 8) {
   return fetchDashboard<PaginatedProjects>(
     `/api/user/dashboard/projects?${params.toString()}`,
   );
+}
+
+export function createDashboardProject(input: CreateProjectInput) {
+  return fetchDashboard<ProjectListItem>("/api/user/dashboard/projects", {
+    body: JSON.stringify(input),
+    method: "POST",
+  });
 }
 
 export function getProjectPublications(projectId: string) {

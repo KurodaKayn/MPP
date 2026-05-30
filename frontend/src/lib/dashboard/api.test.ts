@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createDashboardProject,
   getDashboardProjects,
   getDashboardStats,
   getProjectPublications,
@@ -131,6 +132,53 @@ describe("dashboard api client", () => {
       expect.objectContaining({
         credentials: "same-origin",
         headers: expect.any(Headers),
+      }),
+    );
+  });
+
+  it("creates a project with selected platforms", async () => {
+    const project = {
+      created_at: "2026-05-29T12:00:00Z",
+      id: "project-1",
+      publications: [
+        {
+          enabled: true,
+          id: "pub-1",
+          platform: "wechat",
+          status: "adapted",
+        },
+      ],
+      status: "ready",
+      title: "New post",
+      updated_at: "2026-05-29T12:00:00Z",
+      user_id: "user-1",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(project));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createDashboardProject({
+        cover_image_url: "data:image/png;base64,aGVsbG8=",
+        platforms: ["wechat"],
+        source_content: "<p>Body</p>",
+        summary: "Body",
+        title: "New post",
+      }),
+    ).resolves.toEqual(project);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects",
+      expect.objectContaining({
+        body: JSON.stringify({
+          cover_image_url: "data:image/png;base64,aGVsbG8=",
+          platforms: ["wechat"],
+          source_content: "<p>Body</p>",
+          summary: "Body",
+          title: "New post",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
       }),
     );
   });

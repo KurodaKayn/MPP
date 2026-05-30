@@ -1,4 +1,4 @@
-module github.com/kurodakayn/sevenoxcloud-backend
+module github.com/kurodakayn/mpp-backend
 
 go 1.26
 

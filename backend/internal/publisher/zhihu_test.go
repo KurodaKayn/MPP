@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/datatypes"
 )

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 type ZhihuPublisher struct{}

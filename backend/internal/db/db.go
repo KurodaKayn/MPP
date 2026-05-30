@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )

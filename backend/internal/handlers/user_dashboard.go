@@ -6,9 +6,9 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/dto"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/middleware"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
@@ -63,6 +63,88 @@ func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) CreateProject(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	req := new(dto.CreateProjectRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.dashboardService.CreateProject(userID, *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "title, source_content and platforms are required")
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusCreated, resp)
+}
+
+func (h *UserDashboardHandler) GetMyProject(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	idParam := c.Param("id")
+	projectID, err := uuid.Parse(idParam)
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+
+	project, err := h.dashboardService.GetProject(projectID, &userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, project)
+}
+
+func (h *UserDashboardHandler) UpdateProject(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	idParam := c.Param("id")
+	projectID, err := uuid.Parse(idParam)
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+
+	req := new(dto.UpdateProjectRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	project, err := h.dashboardService.UpdateProject(projectID, userID, *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "title, source_content and platforms are required")
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, project)
 }
 
 func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
@@ -124,6 +206,9 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	// Single platform fallback
 	resp, err := h.dashboardService.PublishProject(projectID, req.Platform, &userID)
 	if err != nil {
+		if errors.Is(err, services.ErrPublicationDisabled) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
+		}
 		if errors.Is(err, services.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}

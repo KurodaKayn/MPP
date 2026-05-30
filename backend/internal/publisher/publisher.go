@@ -2,7 +2,7 @@ package publisher
 
 import (
 	"context"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 // PlatformPublisher defines the interface for all platform-specific publishing logic

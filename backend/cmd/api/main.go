@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/db"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/handlers"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/middleware"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/db"
+	"github.com/kurodakayn/mpp-backend/internal/handlers"
+	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/services"
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
@@ -70,6 +70,9 @@ func main() {
 	userGroup.Use(echojwt.WithConfig(middleware.GetJWTConfig(jwtSigningKey)))
 	userGroup.GET("/stats", userDashboardHandler.GetMyStats)
 	userGroup.GET("/projects", userDashboardHandler.ListMyProjects)
+	userGroup.POST("/projects", userDashboardHandler.CreateProject)
+	userGroup.GET("/projects/:id", userDashboardHandler.GetMyProject)
+	userGroup.PUT("/projects/:id", userDashboardHandler.UpdateProject)
 	userGroup.GET("/projects/:id/publications", userDashboardHandler.GetMyProjectPublications)
 	userGroup.POST("/projects/:id/publish", userDashboardHandler.PublishProject)
 	userGroup.GET("/settings/wechat/account", userDashboardHandler.GetWechatAccount)

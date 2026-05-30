@@ -11,10 +11,10 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/dto"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/middleware"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/models"
-	"github.com/kurodakayn/sevenoxcloud-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -204,6 +204,91 @@ func TestUserDashboardHandlerListProjectsUsesJWTUserScope(t *testing.T) {
 	require.Equal(t, owner.ID, resp.Items[0].UserID)
 }
 
+func TestUserDashboardHandlerCreateProject(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/projects",
+		strings.NewReader(`{"title":"Post title","source_content":"<p>Body</p>","summary":"Body","platforms":["wechat"]}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.CreateProject(c))
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp dto.ProjectListItem
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "Post title", resp.Title)
+	require.Equal(t, user.ID, resp.UserID)
+	require.Len(t, resp.Publications, 1)
+	require.Equal(t, "wechat", resp.Publications[0].Platform)
+}
+
+func TestUserDashboardHandlerGetAndUpdateProject(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Draft title",
+		SourceContent: "<p>Draft body</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusPublished,
+	}).Error)
+
+	getContext, getRecorder := newHandlerTestContext(e, http.MethodGet, "/api/user/dashboard/projects/"+project.ID.String())
+	getContext.SetParamNames("id")
+	getContext.SetParamValues(project.ID.String())
+	setContextUser(getContext, user.ID)
+
+	require.NoError(t, handler.GetMyProject(getContext))
+	require.Equal(t, http.StatusOK, getRecorder.Code)
+
+	var detail dto.ProjectDetail
+	require.NoError(t, json.Unmarshal(getRecorder.Body.Bytes(), &detail))
+	require.Equal(t, project.ID, detail.ID)
+	require.Equal(t, "<p>Draft body</p>", detail.SourceContent)
+
+	updateRequest := httptest.NewRequest(
+		http.MethodPut,
+		"/api/user/dashboard/projects/"+project.ID.String(),
+		strings.NewReader(`{"title":"Updated title","source_content":"<p>Updated body</p>","summary":"Updated","platforms":["zhihu"]}`),
+	)
+	updateRequest.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	updateRecorder := httptest.NewRecorder()
+	updateContext := e.NewContext(updateRequest, updateRecorder)
+	updateContext.SetParamNames("id")
+	updateContext.SetParamValues(project.ID.String())
+	setContextUser(updateContext, user.ID)
+
+	require.NoError(t, handler.UpdateProject(updateContext))
+	require.Equal(t, http.StatusOK, updateRecorder.Code)
+
+	require.NoError(t, json.Unmarshal(updateRecorder.Body.Bytes(), &detail))
+	require.Equal(t, "Updated title", detail.Title)
+	require.Equal(t, "<p>Updated body</p>", detail.SourceContent)
+	require.Len(t, detail.Publications, 2)
+}
+
 func TestUserDashboardHandlerGetProjectPublicationsReturnsForbidden(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)
@@ -233,6 +318,49 @@ func TestUserDashboardHandlerGetProjectPublicationsReturnsForbidden(t *testing.T
 	var resp dto.ErrorResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, "forbidden", resp.Error.Code)
+}
+
+func TestUserDashboardHandlerPublishProjectRejectsDisabledPublication(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "owner project",
+		SourceContent: "owner content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   false,
+		Status:    models.PublicationStatusDisabled,
+	}).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/projects/"+project.ID.String()+"/publish",
+		strings.NewReader(`{"platform":"wechat"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(project.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.PublishProject(c))
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var resp dto.ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "invalid_request", resp.Error.Code)
+	require.Equal(t, "publication is disabled for this project", resp.Error.Message)
 }
 
 func TestUserDashboardHandlerSavesWechatAccount(t *testing.T) {
