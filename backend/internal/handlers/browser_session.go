@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/proxy"
 	"github.com/kurodakayn/mpp-backend/internal/services"
@@ -26,7 +27,11 @@ func (h *BrowserSessionHandler) StartSession(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
+
 	platform := c.Param("platform")
+	if platform == "" {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "platform is required")
+	}
 
 	resp, err := h.service.StartSession(c.Request().Context(), userID, platform)
 	if err != nil {
@@ -65,29 +70,15 @@ func (h *BrowserSessionHandler) GetSession(c echo.Context) error {
 }
 
 func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
-	// For streaming, we support two auth methods:
-	// 1. JWT (normal user session)
-	// 2. Stream Token (for direct browser/iframe access where headers can't be set)
+	userID, _ := middleware.GetUserIDFromContext(c) // May be nil if coming from public route
 	
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid session id")
 	}
 
-	token := c.QueryParam("token")
-	
-	// If token is missing in query, try to get it from a session-specific cookie
-	// This allows loading sub-resources (js/css) which don't have the token in the URL
-	cookieName := "mpp_st_" + id.String()
-	if token == "" {
-		if cookie, err := c.Cookie(cookieName); err == nil {
-			token = cookie.Value
-		}
-	}
-
-	userID, _ := middleware.GetUserIDFromContext(c)
-
-	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, token)
+	streamToken, proxyPath := streamTokenAndProxyPath(c.QueryParam("token"), c.Param("*"))
+	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken)
 	if err != nil {
 		if err == services.ErrSessionNotFound {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
@@ -98,51 +89,33 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 
-	// If we had a valid token in the query, set/refresh the session cookie
-	if c.QueryParam("token") != "" {
-		c.SetCookie(&http.Cookie{
-			Name:     cookieName,
-			Value:    token,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			MaxAge:   3600, // 1 hour
-		})
-	}
-
 	target, err := url.Parse(endpoint)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", "invalid stream endpoint")
 	}
+	target.Scheme = reverseProxyScheme(target.Scheme)
+	rawQuery := streamProxyRawQuery(c)
 
-	// Use custom WebSocket proxy for noVNC stream
+	// Use custom WebSocket proxy for noVNC stream (e.g. when requesting /websockify)
 	if strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket" {
+		// Update target path with proxy path before proxying
+		target.Path = joinURLPath(target.Path, proxyPath)
+		target.RawQuery = rawQuery
 		return proxy.ProxyWebSocket(c, target)
 	}
 
-	// Fallback to regular proxy for assets (vnc.html, js, css)
-	p := httputil.NewSingleHostReverseProxy(target)
-	originalDirector := p.Director
-	p.Director = func(req *http.Request) {
-		originalDirector(req)
-		// Use the wildcard parameter from Echo to get the sub-path
-		subPath := c.Param("*")
-		
-		// Ensure target path ends without trailing slash for consistent joining
-		targetPath := strings.TrimSuffix(target.Path, "/")
-		
-		if subPath == "" || subPath == "/" {
-			req.URL.Path = targetPath + "/vnc.html"
-		} else {
-			if !strings.HasPrefix(subPath, "/") {
-				subPath = "/" + subPath
-			}
-			req.URL.Path = targetPath + subPath
+	reverseProxy := httputil.NewSingleHostReverseProxy(target)
+	reverseProxy.Director = func(req *http.Request) {
+		req.URL.Scheme = target.Scheme
+		req.URL.Host = target.Host
+		req.URL.Path = joinURLPath(target.Path, proxyPath)
+		if req.URL.Path == "" {
+			req.URL.Path = "/"
 		}
-		// Ensure the Host header and other proxy headers are set correctly
+		req.URL.RawQuery = rawQuery
 		req.Host = target.Host
 	}
-	p.ServeHTTP(c.Response(), c.Request())
+	reverseProxy.ServeHTTP(c.Response(), c.Request())
 	return nil
 }
 
@@ -187,5 +160,51 @@ func (h *BrowserSessionHandler) CancelSession(c echo.Context) error {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 
-	return c.NoContent(http.StatusNoContent)
+	return c.JSON(http.StatusOK, dto.CancelBrowserSessionResponse{
+		SessionID: id,
+		Status:    "expired",
+	})
+}
+
+func streamTokenAndProxyPath(queryToken string, wildcardPath string) (string, string) {
+	wildcardPath = strings.TrimPrefix(wildcardPath, "/")
+	if queryToken != "" {
+		return queryToken, wildcardPath
+	}
+
+	token, proxyPath, hasProxyPath := strings.Cut(wildcardPath, "/")
+	if !hasProxyPath {
+		return token, ""
+	}
+	return token, proxyPath
+}
+
+func streamProxyRawQuery(c echo.Context) string {
+	values := c.QueryParams()
+	values.Del("token")
+	return values.Encode()
+}
+
+func reverseProxyScheme(scheme string) string {
+	switch scheme {
+	case "ws":
+		return "http"
+	case "wss":
+		return "https"
+	default:
+		return scheme
+	}
+}
+
+func joinURLPath(base string, suffix string) string {
+	if suffix == "" {
+		if base == "" {
+			return "/"
+		}
+		return base
+	}
+	if base == "" || base == "/" {
+		return "/" + strings.TrimPrefix(suffix, "/")
+	}
+	return strings.TrimRight(base, "/") + "/" + strings.TrimPrefix(suffix, "/")
 }

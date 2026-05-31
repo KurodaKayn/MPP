@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,6 +24,8 @@ var (
 	ErrSessionNotFound      = errors.New("session not found")
 	ErrInvalidStreamToken   = errors.New("invalid or expired stream token")
 )
+
+const pendingSessionStaleAfter = 2 * time.Minute
 
 type BrowserSessionService struct {
 	db           *gorm.DB
@@ -47,6 +50,50 @@ func (s *BrowserSessionService) RegisterAdapter(a publisher.RemoteBrowserPlatfor
 	s.adapters[a.Platform()] = a
 }
 
+func (s *BrowserSessionService) activeSessionExists(ctx context.Context, userID uuid.UUID, platform string, now time.Time) (bool, error) {
+	var sessions []models.RemoteBrowserSession
+	err := s.db.WithContext(ctx).
+		Where("user_id = ? AND platform = ? AND expires_at > ? AND status IN ?", userID, platform, now, []string{
+			models.BrowserSessionStatusPending,
+			models.BrowserSessionStatusReady,
+			models.BrowserSessionStatusLoginDetected,
+			models.BrowserSessionStatusCapturing,
+		}).
+		Find(&sessions).Error
+	if err != nil {
+		return false, err
+	}
+
+	for i := range sessions {
+		session := &sessions[i]
+		if session.WorkerSessionRef == "" {
+			if session.CreatedAt.Add(pendingSessionStaleAfter).After(now) {
+				return true, nil
+			}
+			if err := s.expireStaleSession(ctx, session, "worker session reference is missing"); err != nil {
+				return false, err
+			}
+			continue
+		}
+		if _, err := s.workerClient.GetSession(ctx, session.WorkerSessionRef); err != nil {
+			if err := s.expireStaleSession(ctx, session, "worker session is unavailable"); err != nil {
+				return false, err
+			}
+			continue
+		}
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (s *BrowserSessionService) expireStaleSession(ctx context.Context, session *models.RemoteBrowserSession, message string) error {
+	return s.db.WithContext(ctx).Model(session).Updates(map[string]interface{}{
+		"status":        models.BrowserSessionStatusExpired,
+		"error_message": message,
+	}).Error
+}
+
 func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UUID, platform string) (*dto.StartBrowserSessionResponse, error) {
 	adapter, ok := s.adapters[platform]
 	if !ok {
@@ -54,16 +101,11 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	}
 
 	// 1. Check for active sessions
-	var count int64
-	s.db.Model(&models.RemoteBrowserSession{}).
-		Where("user_id = ? AND platform = ? AND expires_at > ? AND status IN ?", userID, platform, time.Now(), []string{
-			models.BrowserSessionStatusPending,
-			models.BrowserSessionStatusReady,
-			models.BrowserSessionStatusLoginDetected,
-			models.BrowserSessionStatusCapturing,
-		}).Count(&count)
-
-	if count > 0 {
+	activeSessionExists, err := s.activeSessionExists(ctx, userID, platform, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	if activeSessionExists {
 		return nil, ErrActiveSessionExists
 	}
 
@@ -122,13 +164,11 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 		return nil, err
 	}
 
-	streamURL := fmt.Sprintf("/api/browser-stream/%s/vnc.html?token=%s&path=api/browser-stream/%s/", sessionID, token, sessionID)
-
 	return &dto.StartBrowserSessionResponse{
 		SessionID:            sessionID,
 		Status:               models.BrowserSessionStatusReady,
-		StreamURL:            streamURL,
-		StreamTokenExpiresAt: time.Now().Add(5 * time.Minute),
+		StreamURL:            browserSessionStreamURL(sessionID, token),
+		StreamTokenExpiresAt: streamTokenExpiresAt(expiresAt),
 		ExpiresAt:            expiresAt,
 	}, nil
 }
@@ -156,7 +196,6 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 		Message:   session.ErrorMessage,
 	}
 
-	// Rotated token logic could go here if needed for reconnect
 	return resp, nil
 }
 
@@ -179,7 +218,10 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 		return "", err
 	}
 
-	if time.Now().After(session.ExpiresAt) {
+	if time.Now().After(streamTokenExpiresAt(session.ExpiresAt, session.CreatedAt)) {
+		return "", ErrInvalidStreamToken
+	}
+	if !isStreamableBrowserSessionStatus(session.Status) {
 		return "", ErrInvalidStreamToken
 	}
 
@@ -272,6 +314,35 @@ func (s *BrowserSessionService) CancelSession(ctx context.Context, userID uuid.U
 	return s.db.Model(&session).Updates(map[string]interface{}{
 		"status": models.BrowserSessionStatusExpired,
 	}).Error
+}
+
+func browserSessionStreamURL(sessionID uuid.UUID, token string) string {
+	streamBasePath := fmt.Sprintf(
+		"api/user/dashboard/browser-sessions/%s/stream/%s",
+		sessionID,
+		url.PathEscape(token),
+	)
+	query := url.Values{
+		"autoconnect": {"true"},
+		"path":        {streamBasePath + "/websockify"},
+		"resize":      {"scale"},
+	}
+	return fmt.Sprintf("/%s/vnc.html?%s", streamBasePath, query.Encode())
+}
+
+func streamTokenExpiresAt(sessionExpiresAt time.Time, _ ...time.Time) time.Time {
+	return sessionExpiresAt
+}
+
+func isStreamableBrowserSessionStatus(status string) bool {
+	switch status {
+	case models.BrowserSessionStatusReady,
+		models.BrowserSessionStatusLoginDetected,
+		models.BrowserSessionStatusCapturing:
+		return true
+	default:
+		return false
+	}
 }
 
 func generateStreamToken() (string, string, error) {

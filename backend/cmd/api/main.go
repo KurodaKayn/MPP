@@ -53,6 +53,7 @@ func main() {
 	}
 	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
 	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
+	userDashboardHandler.UseAIContentEditor(services.NewAIServiceClientFromEnv())
 	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
 
 	// Remote Browser Session (New)
@@ -107,9 +108,12 @@ func main() {
 	userGroup.GET("/projects/:id/publications", userDashboardHandler.GetMyProjectPublications)
 	userGroup.POST("/projects/:id/prepublish/sync", userDashboardHandler.SyncProjectPrepublish)
 	userGroup.POST("/projects/:id/publish", userDashboardHandler.PublishProject)
+	userGroup.POST("/ai/content/edit", userDashboardHandler.EditContentWithAI)
+	userGroup.POST("/ai/prepublish/edit", userDashboardHandler.EditPrepublishWithAI)
 	userGroup.GET("/settings/wechat/account", userDashboardHandler.GetWechatAccount)
 	userGroup.PUT("/settings/wechat/account", userDashboardHandler.SaveWechatAccount)
 	userGroup.POST("/settings/wechat/test", userDashboardHandler.TestWechatAccount)
+	userGroup.GET("/settings/douyin/account", userDashboardHandler.GetDouyinAccount)
 	userGroup.GET("/settings/x/account", userDashboardHandler.GetXAccount)
 	userGroup.PUT("/settings/x/account", userDashboardHandler.SaveXAccount)
 	userGroup.POST("/settings/x/test", userDashboardHandler.TestXAccount)
@@ -120,15 +124,6 @@ func main() {
 	userGroup.GET("/browser-sessions/:id", browserSessionHandler.GetSession)
 	userGroup.POST("/browser-sessions/:id/complete", browserSessionHandler.CompleteSession)
 	userGroup.DELETE("/browser-sessions/:id", browserSessionHandler.CancelSession)
-
-	// AI Proxy example
-	e.POST("/api/ai/calibrate", func(c echo.Context) error {
-		// In a real app, this would proxy to the AI service
-		return c.JSON(http.StatusOK, map[string]string{
-			"status":  "pending",
-			"message": "AI calibration endpoint initialized",
-		})
-	})
 
 	port := os.Getenv("PORT")
 	if port == "" {

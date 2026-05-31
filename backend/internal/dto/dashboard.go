@@ -53,6 +53,38 @@ type SyncPrepublishRequest struct {
 	Actor     SyncActor `json:"actor"`
 }
 
+type AIChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type AIEditContentRequest struct {
+	Title        string          `json:"title,omitempty"`
+	Content      string          `json:"content"`
+	Message      string          `json:"message"`
+	Conversation []AIChatMessage `json:"conversation,omitempty"`
+}
+
+type AIEditContentResponse struct {
+	Channel string `json:"channel"`
+	Content string `json:"content"`
+}
+
+type AIEditPrepublishRequest struct {
+	Title          string                 `json:"title,omitempty"`
+	Platform       string                 `json:"platform"`
+	AdaptedContent map[string]interface{} `json:"adapted_content"`
+	Message        string                 `json:"message"`
+	Conversation   []AIChatMessage        `json:"conversation,omitempty"`
+}
+
+type AIEditPrepublishResponse struct {
+	Channel        string                 `json:"channel"`
+	Platform       string                 `json:"platform"`
+	AdaptedContent map[string]interface{} `json:"adapted_content"`
+	Content        string                 `json:"content"`
+}
+
 type PublicationSummary struct {
 	ID         uuid.UUID `json:"id"`
 	Platform   string    `json:"platform"`

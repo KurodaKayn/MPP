@@ -30,6 +30,9 @@ func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *services.BrowserSessionSe
 	require.NoError(t, err)
 
 	worker := publisher.NewMockBrowserWorkerClient()
+	t.Cleanup(func() {
+		require.NoError(t, worker.Close())
+	})
 	store := publisher.NewCookieStore(db)
 	svc := services.NewBrowserSessionService(db, worker, store)
 
@@ -51,12 +54,15 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 
 	streamURL, err := url.Parse(resp.StreamURL)
 	require.NoError(t, err)
-	streamToken := streamURL.Query().Get("token")
+	assert.Empty(t, streamURL.Query().Get("token"))
+	assert.Equal(t, resp.ExpiresAt, resp.StreamTokenExpiresAt)
+	streamToken := streamTokenFromPath(t, streamURL.Path)
 	require.NotEmpty(t, streamToken)
+	assert.Contains(t, streamURL.Query().Get("path"), "/stream/"+streamToken+"/websockify")
 
 	streamEndpoint, err := svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken)
 	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(streamEndpoint, "ws://private-stream/"))
+	assert.True(t, strings.HasPrefix(streamEndpoint, "http://127.0.0.1:"))
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, "bad-token")
 	assert.ErrorIs(t, err, services.ErrInvalidStreamToken)
@@ -131,4 +137,100 @@ func TestBrowserSessionService_StartSessionIgnoresExpiredActiveRows(t *testing.T
 	require.NoError(t, err)
 	assert.Equal(t, models.BrowserSessionStatusReady, resp.Status)
 	assert.NotEqual(t, uuid.Nil, resp.SessionID)
+}
+
+func TestBrowserSessionService_StartSessionExpiresStaleWorkerRows(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	staleSession := models.RemoteBrowserSession{
+		UserID:            userID,
+		Platform:          platform,
+		Status:            models.BrowserSessionStatusReady,
+		WorkerSessionRef:  "worker-stale",
+		StreamEndpointRef: "http://127.0.0.1:9/stream/worker-stale",
+		ConnectTokenHash:  "stale-token",
+		CreatedAt:         time.Now().Add(-2 * time.Minute),
+		ExpiresAt:         time.Now().Add(13 * time.Minute),
+	}
+	require.NoError(t, db.Create(&staleSession).Error)
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.BrowserSessionStatusReady, resp.Status)
+	assert.NotEqual(t, staleSession.ID, resp.SessionID)
+
+	var savedStaleSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedStaleSession, staleSession.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusExpired, savedStaleSession.Status)
+	assert.Equal(t, "worker session is unavailable", savedStaleSession.ErrorMessage)
+}
+
+func TestBrowserSessionService_StartSessionPreservesInFlightPendingRows(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	pendingSession := models.RemoteBrowserSession{
+		UserID:           userID,
+		Platform:         platform,
+		Status:           models.BrowserSessionStatusPending,
+		ConnectTokenHash: "pending-token",
+		CreatedAt:        time.Now(),
+		ExpiresAt:        time.Now().Add(15 * time.Minute),
+	}
+	require.NoError(t, db.Create(&pendingSession).Error)
+
+	_, err := svc.StartSession(context.Background(), userID, platform)
+
+	assert.ErrorIs(t, err, services.ErrActiveSessionExists)
+	var savedPendingSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedPendingSession, pendingSession.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusPending, savedPendingSession.Status)
+	assert.Empty(t, savedPendingSession.ErrorMessage)
+}
+
+func TestBrowserSessionService_StartSessionExpiresOldPendingRows(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	pendingSession := models.RemoteBrowserSession{
+		UserID:           userID,
+		Platform:         platform,
+		Status:           models.BrowserSessionStatusPending,
+		ConnectTokenHash: "pending-token",
+		CreatedAt:        time.Now().Add(-3 * time.Minute),
+		ExpiresAt:        time.Now().Add(12 * time.Minute),
+	}
+	require.NoError(t, db.Create(&pendingSession).Error)
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.BrowserSessionStatusReady, resp.Status)
+	var savedPendingSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedPendingSession, pendingSession.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusExpired, savedPendingSession.Status)
+	assert.Equal(t, "worker session reference is missing", savedPendingSession.ErrorMessage)
+}
+
+func streamTokenFromPath(t *testing.T, path string) string {
+	t.Helper()
+
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	for i, part := range parts {
+		if part == "stream" {
+			require.GreaterOrEqual(t, len(parts), i+3)
+			assert.Equal(t, "vnc.html", parts[i+2])
+			return parts[i+1]
+		}
+	}
+	require.Fail(t, "stream token path segment not found", path)
+	return ""
 }

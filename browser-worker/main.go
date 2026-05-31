@@ -503,6 +503,14 @@ func endpointPort(endpoint string) (int, error) {
 	return port, nil
 }
 
+func workerStreamPath(wildcardPath string) string {
+	wildcardPath = strings.TrimPrefix(wildcardPath, "/")
+	if wildcardPath == "" {
+		return "/"
+	}
+	return "/" + wildcardPath
+}
+
 func validateRequiredCookies(cookies []Cookie, requirements []CookieRequirement) (bool, []string) {
 	var missing []string
 	for _, req := range requirements {
