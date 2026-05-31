@@ -20,7 +20,9 @@ const (
 	publishQueueName         = "mpp:publish:jobs"
 	publishLockKeyPrefix     = "mpp:publish:lock:"
 	publishLockTTL           = 30 * time.Minute
+	publishLockRefreshEvery  = publishLockTTL / 3
 	publishQueueBlockTimeout = 5 * time.Second
+	publishStaleAfter        = 2 * publishLockTTL
 )
 
 var (
@@ -41,6 +43,7 @@ type PublishQueue interface {
 	Dequeue(ctx context.Context) (PublishJob, error)
 	AcquireLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error)
 	LockValue(ctx context.Context, key string) (string, error)
+	RefreshLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error)
 	ReleaseLock(ctx context.Context, key, value string) error
 }
 
@@ -93,6 +96,20 @@ func (q *RedisPublishQueue) LockValue(ctx context.Context, key string) (string, 
 		return "", nil
 	}
 	return value, err
+}
+
+func (q *RedisPublishQueue) RefreshLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
+	const refreshLockScript = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+	return redis.call("PEXPIRE", KEYS[1], ARGV[2])
+end
+return 0
+`
+	result, err := q.client.Eval(ctx, refreshLockScript, []string{key}, value, ttl.Milliseconds()).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
 }
 
 func (q *RedisPublishQueue) ReleaseLock(ctx context.Context, key, value string) error {
@@ -200,15 +217,18 @@ func (s *DashboardService) processPublishJob(ctx context.Context, job PublishJob
 	}
 
 	lockKey := publishLockKey(job.ProjectID, job.Platform)
-	lockValue, err := s.publishQueue.LockValue(ctx, lockKey)
+	locked, err := s.ensurePublishJobLock(ctx, job, lockKey)
 	if err != nil {
-		log.Printf("publish lock read failed for job %s: %v", job.JobID, err)
+		log.Printf("publish lock check failed for job %s: %v", job.JobID, err)
 		return
 	}
-	if lockValue != job.JobID.String() {
+	if !locked {
 		log.Printf("skipping publish job %s because lock is not owned by this job", job.JobID)
 		return
 	}
+
+	stopRefreshing := s.startPublishLockRefresh(ctx, lockKey, job.JobID.String())
+	defer stopRefreshing()
 
 	if _, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID); err != nil {
 		log.Printf("publish job %s failed: %v", job.JobID, err)
@@ -219,6 +239,60 @@ func (s *DashboardService) processPublishJob(ctx context.Context, job PublishJob
 
 	if err := s.publishQueue.ReleaseLock(ctx, lockKey, job.JobID.String()); err != nil {
 		log.Printf("publish lock release failed for job %s: %v", job.JobID, err)
+	}
+}
+
+func (s *DashboardService) ensurePublishJobLock(ctx context.Context, job PublishJob, lockKey string) (bool, error) {
+	lockValue, err := s.publishQueue.LockValue(ctx, lockKey)
+	if err != nil {
+		return false, err
+	}
+	if lockValue == job.JobID.String() {
+		return true, nil
+	}
+	if lockValue != "" {
+		return false, nil
+	}
+
+	stillPublishing, err := s.publicationStillPublishing(job.ProjectID, job.Platform)
+	if err != nil {
+		return false, err
+	}
+	if !stillPublishing {
+		return false, nil
+	}
+
+	return s.publishQueue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
+}
+
+func (s *DashboardService) startPublishLockRefresh(ctx context.Context, lockKey, lockValue string) func() {
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(publishLockRefreshEvery)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-done:
+				return
+			case <-ticker.C:
+				refreshed, err := s.publishQueue.RefreshLock(ctx, lockKey, lockValue, publishLockTTL)
+				if err != nil {
+					log.Printf("publish lock refresh failed for %s: %v", lockKey, err)
+					continue
+				}
+				if !refreshed {
+					log.Printf("publish lock refresh skipped for %s because ownership changed", lockKey)
+					return
+				}
+			}
+		}
+	}()
+
+	return func() {
+		close(done)
 	}
 }
 
@@ -235,6 +309,9 @@ func (s *DashboardService) preparePublishJob(projectID uuid.UUID, platform strin
 	if !pub.Enabled || pub.Status == models.PublicationStatusDisabled {
 		return models.Project{}, models.ProjectPlatformPublication{}, ErrPublicationDisabled
 	}
+	if pub.Status == models.PublicationStatusPublishing && !publicationPublishingStale(pub) {
+		return models.Project{}, models.ProjectPlatformPublication{}, ErrPublicationAlreadyPublishing
+	}
 	if _, err := publisher.Factory.GetPublisher(platform); err != nil {
 		return models.Project{}, models.ProjectPlatformPublication{}, err
 	}
@@ -249,6 +326,21 @@ func (s *DashboardService) preparePublishJob(projectID uuid.UUID, platform strin
 	}
 
 	return project, pub, nil
+}
+
+func (s *DashboardService) publicationStillPublishing(projectID uuid.UUID, platform string) (bool, error) {
+	var pub models.ProjectPlatformPublication
+	if err := s.db.Select("status").Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
+		return false, err
+	}
+	return pub.Status == models.PublicationStatusPublishing, nil
+}
+
+func publicationPublishingStale(pub models.ProjectPlatformPublication) bool {
+	if pub.Status != models.PublicationStatusPublishing || pub.LastAttemptAt == nil {
+		return false
+	}
+	return time.Since(*pub.LastAttemptAt) > publishStaleAfter
 }
 
 func (s *DashboardService) markPublicationQueued(pub *models.ProjectPlatformPublication, queuedAt time.Time) error {
