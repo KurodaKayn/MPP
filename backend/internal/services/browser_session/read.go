@@ -39,23 +39,26 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 			}
 			workerState, workerErr := s.workerClient.GetSession(ctx, state.WorkerSessionRef)
 			if workerErr != nil {
-				nextStatus := models.BrowserSessionStatusFailed
-				message := "worker session is unavailable"
-				if !heartbeatAlive {
-					message = "worker heartbeat missing"
+				now := time.Now()
+				if !heartbeatAlive || now.After(state.ExpiresAt) {
+					nextStatus := models.BrowserSessionStatusFailed
+					message := "worker session is unavailable"
+					if !heartbeatAlive {
+						message = "worker heartbeat missing"
+					}
+					if now.After(state.ExpiresAt) {
+						nextStatus = models.BrowserSessionStatusExpired
+						message = "session expired"
+					}
+					session.Status = nextStatus
+					session.ErrorMessage = message
+					_ = s.db.Model(&session).Updates(map[string]interface{}{
+						"status":             nextStatus,
+						"error_message":      message,
+						"connect_token_hash": "",
+					}).Error
+					_ = s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID, state.WorkerSessionRef)
 				}
-				if time.Now().After(state.ExpiresAt) {
-					nextStatus = models.BrowserSessionStatusExpired
-					message = "session expired"
-				}
-				session.Status = nextStatus
-				session.ErrorMessage = message
-				_ = s.db.Model(&session).Updates(map[string]interface{}{
-					"status":             nextStatus,
-					"error_message":      message,
-					"connect_token_hash": "",
-				}).Error
-				_ = s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID, state.WorkerSessionRef)
 			} else {
 				nextStatus := state.Status
 				if workerState.LoginDetected {
