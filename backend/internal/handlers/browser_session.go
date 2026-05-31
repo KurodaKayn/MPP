@@ -71,14 +71,16 @@ func (h *BrowserSessionHandler) GetSession(c echo.Context) error {
 
 func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	userID, _ := middleware.GetUserIDFromContext(c) // May be nil if coming from public route
-	
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid session id")
 	}
 
 	streamToken, proxyPath := streamTokenAndProxyPath(c.QueryParam("token"), c.Param("*"))
-	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken)
+	isWebSocket := strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket"
+	// Keep the iframe URL stable while noVNC is connected; token expiry limits replay.
+	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken, false)
 	if err != nil {
 		if err == services.ErrSessionNotFound {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
@@ -97,7 +99,7 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	rawQuery := streamProxyRawQuery(c)
 
 	// Use custom WebSocket proxy for noVNC stream (e.g. when requesting /websockify)
-	if strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket" {
+	if isWebSocket {
 		// Update target path with proxy path before proxying
 		target.Path = joinURLPath(target.Path, proxyPath)
 		target.RawQuery = rawQuery
