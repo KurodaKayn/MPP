@@ -74,10 +74,9 @@ func main() {
 	e.Use(echoMiddleware.Logger())
 	e.Use(echoMiddleware.Recover())
 
-	// Remote Browser Stream (Publicly accessible but protected by one-time token internally)
-	// Must be registered before the /api/user/dashboard group to avoid shadowing
-	e.GET("/api/user/dashboard/browser-sessions/:id/stream", browserSessionHandler.StreamSession)
-	e.GET("/api/user/dashboard/browser-sessions/:id/stream/*", browserSessionHandler.StreamSession)
+	// Remote Browser Stream (Protected by one-time token, not JWT)
+	e.GET("/api/browser-stream/:id", browserSessionHandler.StreamSession)
+	e.GET("/api/browser-stream/:id/*", browserSessionHandler.StreamSession)
 
 	// Public Routes
 	e.GET("/ping", func(c echo.Context) error {
