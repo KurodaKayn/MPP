@@ -74,6 +74,11 @@ func main() {
 	e.Use(echoMiddleware.Logger())
 	e.Use(echoMiddleware.Recover())
 
+	// Remote Browser Stream (Publicly accessible but protected by one-time token internally)
+	// Must be registered before the /api/user/dashboard group to avoid shadowing
+	e.GET("/api/user/dashboard/browser-sessions/:id/stream", browserSessionHandler.StreamSession)
+	e.GET("/api/user/dashboard/browser-sessions/:id/stream/*", browserSessionHandler.StreamSession)
+
 	// Public Routes
 	e.GET("/ping", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
@@ -94,6 +99,7 @@ func main() {
 	// User / Personal Center APIs (Protected by JWT)
 	userGroup := e.Group("/api/user/dashboard")
 	userGroup.Use(echojwt.WithConfig(middleware.GetJWTConfig(jwtSigningKey)))
+	
 	userGroup.GET("/stats", userDashboardHandler.GetMyStats)
 	userGroup.GET("/projects", userDashboardHandler.ListMyProjects)
 	userGroup.POST("/projects", userDashboardHandler.CreateProject)
@@ -113,7 +119,6 @@ func main() {
 	// Remote Browser Session Routes
 	userGroup.POST("/settings/platforms/:platform/browser-session", browserSessionHandler.StartSession)
 	userGroup.GET("/browser-sessions/:id", browserSessionHandler.GetSession)
-	userGroup.GET("/browser-sessions/:id/stream", browserSessionHandler.StreamSession)
 	userGroup.POST("/browser-sessions/:id/complete", browserSessionHandler.CompleteSession)
 	userGroup.DELETE("/browser-sessions/:id", browserSessionHandler.CancelSession)
 
