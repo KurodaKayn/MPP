@@ -49,12 +49,12 @@ func (s *Server) createSession(c echo.Context) error {
 	}
 
 	// Start at about:blank so request interception is active before platform navigation.
-	containerID, _, cdpPort, streamPort, err := s.containers.StartBrowserContainer(c.Request().Context(), req.SessionID.String())
+	containerID, containerHost, cdpPort, streamPort, err := s.containers.StartBrowserContainer(c.Request().Context(), req.SessionID.String())
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to start browser: %v", err))
 	}
 
-	wsURL, err := cdp.VersionWebSocketURL(cdpPort)
+	wsURL, err := cdp.VersionWebSocketURL(containerHost, cdpPort)
 	if err != nil {
 		_ = s.containers.StopContainer(context.Background(), containerID)
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to obtain WebSocket URL for security configuration")
@@ -94,7 +94,7 @@ func (s *Server) createSession(c echo.Context) error {
 		ContainerID:       containerID,
 		CDPEndpointRef:    "internal-cdp:" + ref,
 		StreamEndpointRef: "",
-		InternalStreamURL: fmt.Sprintf("http://127.0.0.1:%d", streamPort),
+		InternalStreamURL: fmt.Sprintf("http://%s:%d", containerHost, streamPort),
 		RequiredCookies:   req.RequiredCookies,
 		CreatedAt:         startedAt,
 		ExpiresAt:         expiresAt,
