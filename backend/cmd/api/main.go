@@ -12,6 +12,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/redisclient"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	echojwt "github.com/labstack/echo-jwt/v4"
@@ -54,6 +55,19 @@ func main() {
 	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
 	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
 
+	// Remote Browser Session (New)
+	var workerClient publisher.BrowserWorkerClient
+	workerURL := os.Getenv("BROWSER_WORKER_URL")
+	if workerURL != "" {
+		workerClient = publisher.NewHttpBrowserWorkerClient(workerURL)
+	} else {
+		workerClient = publisher.NewMockBrowserWorkerClient()
+	}
+
+	cookieStore := publisher.NewCookieStore(db.DB)
+	browserSessionService := services.NewBrowserSessionService(db.DB, workerClient, cookieStore)
+	browserSessionHandler := handlers.NewBrowserSessionHandler(browserSessionService)
+
 	e := echo.New()
 
 	// Middleware
@@ -95,6 +109,13 @@ func main() {
 	userGroup.PUT("/settings/x/account", userDashboardHandler.SaveXAccount)
 	userGroup.POST("/settings/x/test", userDashboardHandler.TestXAccount)
 	userGroup.GET("/settings/x/oauth2/start", userDashboardHandler.StartXOAuth2)
+
+	// Remote Browser Session Routes
+	userGroup.POST("/settings/platforms/:platform/browser-session", browserSessionHandler.StartSession)
+	userGroup.GET("/browser-sessions/:id", browserSessionHandler.GetSession)
+	userGroup.GET("/browser-sessions/:id/stream", browserSessionHandler.StreamSession)
+	userGroup.POST("/browser-sessions/:id/complete", browserSessionHandler.CompleteSession)
+	userGroup.DELETE("/browser-sessions/:id", browserSessionHandler.CancelSession)
 
 	// AI Proxy example
 	e.POST("/api/ai/calibrate", func(c echo.Context) error {
