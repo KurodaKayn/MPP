@@ -82,7 +82,9 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         content={contentPage.content}
         drafts={contentPage.prepublishDrafts}
         isSyncing={contentPage.isSyncingPrepublish}
+        onDraftChange={contentPage.updatePrepublishDraft}
         onSync={contentPage.syncPrepublish}
+        projectId={projectId}
       />
 
       <div ref={contentPage.publishBarRef}>

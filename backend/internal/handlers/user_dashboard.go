@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -159,6 +160,74 @@ func (h *UserDashboardHandler) UpdateProject(c echo.Context) error {
 	return c.JSON(http.StatusOK, project)
 }
 
+func (h *UserDashboardHandler) SaveProjectContent(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	idParam := c.Param("id")
+	projectID, err := uuid.Parse(idParam)
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+
+	req := new(dto.SaveProjectContentRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	project, err := h.dashboardService.SaveProjectContent(projectID, userID, *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "title and source_content are required")
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, project)
+}
+
+func (h *UserDashboardHandler) SaveProjectPlatforms(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	idParam := c.Param("id")
+	projectID, err := uuid.Parse(idParam)
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+
+	req := new(dto.SaveProjectPlatformsRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	project, err := h.dashboardService.SaveProjectPlatforms(projectID, userID, *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "valid platforms are required")
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, project)
+}
+
 func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
@@ -221,6 +290,39 @@ func (h *UserDashboardHandler) SyncProjectPrepublish(c echo.Context) error {
 	return c.JSON(http.StatusOK, publications)
 }
 
+func (h *UserDashboardHandler) UpdateProjectPrepublishDraft(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+
+	req := new(dto.UpdatePrepublishDraftRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	publications, err := h.dashboardService.UpdateProjectPrepublishDraft(projectID, userID, c.Param("platform"), *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "valid platform and adapted_content are required")
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project or publication not found")
+		}
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, publications)
+}
+
 func (h *UserDashboardHandler) EditContentWithAI(c echo.Context) error {
 	if _, err := middleware.GetUserIDFromContext(c); err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
@@ -239,6 +341,26 @@ func (h *UserDashboardHandler) EditContentWithAI(c echo.Context) error {
 		return sendAIEditError(c, err)
 	}
 	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) StreamEditContentWithAI(c echo.Context) error {
+	if _, err := middleware.GetUserIDFromContext(c); err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	if h.aiContentEditor == nil {
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+	}
+
+	req := new(dto.AIEditContentRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	stream, err := h.aiContentEditor.StreamEditContent(c.Request().Context(), *req)
+	if err != nil {
+		return sendAIEditError(c, err)
+	}
+	return writeAIStream(c, stream)
 }
 
 func (h *UserDashboardHandler) EditPrepublishWithAI(c echo.Context) error {
@@ -261,6 +383,26 @@ func (h *UserDashboardHandler) EditPrepublishWithAI(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+func (h *UserDashboardHandler) StreamEditPrepublishWithAI(c echo.Context) error {
+	if _, err := middleware.GetUserIDFromContext(c); err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	if h.aiContentEditor == nil {
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+	}
+
+	req := new(dto.AIEditPrepublishRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	stream, err := h.aiContentEditor.StreamEditPrepublish(c.Request().Context(), *req)
+	if err != nil {
+		return sendAIEditError(c, err)
+	}
+	return writeAIStream(c, stream)
+}
+
 func sendAIEditError(c echo.Context, err error) error {
 	if errors.Is(err, services.ErrInvalidAIEditRequest) {
 		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
@@ -269,6 +411,41 @@ func sendAIEditError(c echo.Context, err error) error {
 		return sendError(c, http.StatusBadGateway, "ai_unavailable", err.Error())
 	}
 	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+}
+
+func writeAIStream(c echo.Context, stream *services.AIServiceStream) error {
+	if stream == nil || stream.Body == nil {
+		return sendError(c, http.StatusBadGateway, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+	}
+	defer stream.Body.Close()
+
+	contentType := strings.TrimSpace(stream.ContentType)
+	if contentType == "" {
+		contentType = "text/markdown; charset=utf-8"
+	}
+
+	resp := c.Response()
+	resp.Header().Set(echo.HeaderContentType, contentType)
+	resp.Header().Set(echo.HeaderCacheControl, "no-cache")
+	resp.Header().Set("X-Accel-Buffering", "no")
+	resp.WriteHeader(http.StatusOK)
+
+	buffer := make([]byte, 1024)
+	for {
+		n, readErr := stream.Body.Read(buffer)
+		if n > 0 {
+			if _, err := resp.Write(buffer[:n]); err != nil {
+				return err
+			}
+			resp.Flush()
+		}
+		if errors.Is(readErr, io.EOF) {
+			return nil
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
 }
 
 func (h *UserDashboardHandler) PublishProject(c echo.Context) error {

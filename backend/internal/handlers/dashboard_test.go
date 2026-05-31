@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -97,11 +98,13 @@ func setContextUser(c echo.Context, userID uuid.UUID) {
 }
 
 type fakeAIContentEditor struct {
-	contentReq     dto.AIEditContentRequest
-	contentResp    *dto.AIEditContentResponse
-	prepublishReq  dto.AIEditPrepublishRequest
-	prepublishResp *dto.AIEditPrepublishResponse
-	err            error
+	contentReq       dto.AIEditContentRequest
+	contentResp      *dto.AIEditContentResponse
+	contentStream    *services.AIServiceStream
+	prepublishReq    dto.AIEditPrepublishRequest
+	prepublishResp   *dto.AIEditPrepublishResponse
+	prepublishStream *services.AIServiceStream
+	err              error
 }
 
 func (f *fakeAIContentEditor) EditContent(ctx context.Context, req dto.AIEditContentRequest) (*dto.AIEditContentResponse, error) {
@@ -112,12 +115,28 @@ func (f *fakeAIContentEditor) EditContent(ctx context.Context, req dto.AIEditCon
 	return f.contentResp, nil
 }
 
+func (f *fakeAIContentEditor) StreamEditContent(ctx context.Context, req dto.AIEditContentRequest) (*services.AIServiceStream, error) {
+	f.contentReq = req
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.contentStream, nil
+}
+
 func (f *fakeAIContentEditor) EditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*dto.AIEditPrepublishResponse, error) {
 	f.prepublishReq = req
 	if f.err != nil {
 		return nil, f.err
 	}
 	return f.prepublishResp, nil
+}
+
+func (f *fakeAIContentEditor) StreamEditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*services.AIServiceStream, error) {
+	f.prepublishReq = req
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.prepublishStream, nil
 }
 
 func TestDashboardHandlerListProjectsNormalizesPagination(t *testing.T) {
@@ -315,6 +334,112 @@ func TestUserDashboardHandlerGetAndUpdateProject(t *testing.T) {
 	require.Len(t, detail.Publications, 2)
 }
 
+func TestUserDashboardHandlerSaveProjectContentPreservesPrepublishDraft(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Draft title",
+		SourceContent: "<p>Draft body</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "zhihu",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: []byte(`{"format":"markdown","markdown":"AI draft"}`),
+	}).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/user/dashboard/projects/"+project.ID.String()+"/content",
+		strings.NewReader(`{"title":"Updated title","source_content":"<p>Updated body</p>","summary":"Updated"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(project.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.SaveProjectContent(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var detail dto.ProjectDetail
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &detail))
+	require.Equal(t, "Updated title", detail.Title)
+	require.Equal(t, "<p>Updated body</p>", detail.SourceContent)
+
+	var publication models.ProjectPlatformPublication
+	require.NoError(t, db.First(&publication, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	require.Equal(t, models.PublicationStatusAdapted, publication.Status)
+	require.JSONEq(t, `{"format":"markdown","markdown":"AI draft"}`, string(publication.AdaptedContent))
+}
+
+func TestUserDashboardHandlerSaveProjectPlatformsPreservesSelectedDrafts(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Draft title",
+		SourceContent: "<p>Draft body</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: []byte(`{"format":"html","html":"Wechat draft"}`),
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "zhihu",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: []byte(`{"format":"markdown","markdown":"Zhihu AI draft"}`),
+	}).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/user/dashboard/projects/"+project.ID.String()+"/platforms",
+		strings.NewReader(`{"platforms":["zhihu"]}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(project.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.SaveProjectPlatforms(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var wechat models.ProjectPlatformPublication
+	require.NoError(t, db.First(&wechat, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	require.False(t, wechat.Enabled)
+	require.Equal(t, models.PublicationStatusDisabled, wechat.Status)
+
+	var zhihu models.ProjectPlatformPublication
+	require.NoError(t, db.First(&zhihu, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	require.True(t, zhihu.Enabled)
+	require.Equal(t, models.PublicationStatusAdapted, zhihu.Status)
+	require.JSONEq(t, `{"format":"markdown","markdown":"Zhihu AI draft"}`, string(zhihu.AdaptedContent))
+}
+
 func TestUserDashboardHandlerGetProjectPublicationsReturnsForbidden(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)
@@ -394,6 +519,57 @@ func TestUserDashboardHandlerSyncProjectPrepublish(t *testing.T) {
 	require.Contains(t, resp.Items[0].AdaptedContent["markdown"], "**sync**")
 }
 
+func TestUserDashboardHandlerUpdateProjectPrepublishDraft(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Draft title",
+		SourceContent: "<p>Draft</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "zhihu",
+		Enabled:        true,
+		Status:         models.PublicationStatusPublished,
+		AdaptedContent: []byte(`{"format":"markdown","markdown":"# Old"}`),
+		RemoteID:       "remote-id",
+		PublishURL:     "https://example.com/post",
+		RetryCount:     3,
+	}).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/api/user/dashboard/projects/"+project.ID.String()+"/prepublish/zhihu",
+		strings.NewReader(`{"adapted_content":{"format":"markdown","markdown":"## Updated"}}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id", "platform")
+	c.SetParamValues(project.ID.String(), "zhihu")
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.UpdateProjectPrepublishDraft(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp dto.ProjectPublicationsResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Items, 1)
+	require.Equal(t, models.PublicationStatusAdapted, resp.Items[0].Status)
+	require.Equal(t, "## Updated", resp.Items[0].AdaptedContent["markdown"])
+	require.Empty(t, resp.Items[0].PublishURL)
+	require.Empty(t, resp.Items[0].RemoteID)
+	require.Zero(t, resp.Items[0].RetryCount)
+}
+
 func TestUserDashboardHandlerEditContentWithAI(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)
@@ -429,6 +605,39 @@ func TestUserDashboardHandlerEditContentWithAI(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, "content", resp.Channel)
 	require.Equal(t, "<p>Sharper draft</p>", resp.Content)
+}
+
+func TestUserDashboardHandlerStreamsContentWithAI(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	aiEditor := &fakeAIContentEditor{
+		contentStream: &services.AIServiceStream{
+			Body:        io.NopCloser(strings.NewReader("streamed markdown")),
+			ContentType: "text/markdown; charset=utf-8",
+		},
+	}
+	handler.UseAIContentEditor(aiEditor)
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/ai/content/edit/stream",
+		strings.NewReader(`{"content":"Draft","message":"Edit"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.StreamEditContentWithAI(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get(echo.HeaderContentType))
+	require.Equal(t, "streamed markdown", rec.Body.String())
+	require.Equal(t, "Draft", aiEditor.contentReq.Content)
+	require.Equal(t, "Edit", aiEditor.contentReq.Message)
 }
 
 func TestUserDashboardHandlerEditPrepublishWithAI(t *testing.T) {

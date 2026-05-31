@@ -9,8 +9,10 @@ def build_edit_content_messages(request: EditContentRequest) -> list[BaseMessage
         SystemMessage(
             content=(
                 "You are an editorial assistant for multi-platform posts. "
-                "Rewrite only the supplied content according to the user's latest request. "
+                "Create or rewrite content according to the user's latest request. "
                 "Preserve the original language and meaningful formatting. "
+                "If current content is provided, edit it instead of starting over unless asked. "
+                "If current content is empty, draft new content from the user request. "
                 "If the content is HTML, return valid edited HTML only. "
                 "Do not add explanations, markdown fences, or commentary."
             )
@@ -19,9 +21,9 @@ def build_edit_content_messages(request: EditContentRequest) -> list[BaseMessage
         HumanMessage(
             content=(
                 f"Title: {request.title}\n\n"
-                f"Current content:\n{request.content}\n\n"
+                f"Current content:\n{request.content or '(empty)'}\n\n"
                 f"User request:\n{request.message}\n\n"
-                "Return only the edited content."
+                "Return only the generated or edited content."
             )
         ),
     ]

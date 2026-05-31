@@ -14,14 +14,19 @@ import {
   getXAccount,
   getWechatAccount,
   publishProject,
+  saveDashboardProjectContent,
+  saveDashboardProjectPlatforms,
   saveXAccount,
   saveWechatAccount,
   startBrowserSession,
+  streamAIContentEdit,
+  streamAIPrepublishEdit,
   syncProjectPrepublish,
   waitForProjectPublications,
   testWechatConnection,
   testXConnection,
   updateDashboardProject,
+  updateProjectPrepublishDraft,
 } from "./api";
 import type { ProjectPublications } from "./api";
 
@@ -30,6 +35,23 @@ function jsonResponse(body: unknown, init?: ResponseInit) {
     headers: { "content-type": "application/json" },
     ...init,
   });
+}
+
+function textStreamResponse(chunks: string[], init?: ResponseInit) {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(new TextEncoder().encode(chunk));
+        }
+        controller.close();
+      },
+    }),
+    {
+      headers: { "content-type": "text/markdown" },
+      ...init,
+    },
+  );
 }
 
 describe("dashboard api client", () => {
@@ -191,6 +213,136 @@ describe("dashboard api client", () => {
         credentials: "same-origin",
         headers: expect.any(Headers),
         method: "POST",
+      }),
+    );
+  });
+
+  it("streams AI content edit chunks", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      textStreamResponse(["hello ", "**world**"]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const chunks: string[] = [];
+
+    await expect(
+      streamAIContentEdit(
+        {
+          content: "hello world",
+          message: "bold world",
+          title: "Draft",
+        },
+        {
+          onChunk: (chunk) => chunks.push(chunk),
+        },
+      ),
+    ).resolves.toBe("hello **world**");
+
+    expect(chunks).toEqual(["hello ", "**world**"]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/ai/content/edit/stream",
+      expect.objectContaining({
+        body: JSON.stringify({
+          content: "hello world",
+          message: "bold world",
+          title: "Draft",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("surfaces empty AI content streams as errors", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => textStreamResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      streamAIContentEdit({
+        content: "",
+        message: "write a hello world example",
+        title: "Draft",
+      }),
+    ).rejects.toThrow("AI 没有返回内容");
+  });
+
+  it("streams AI prepublish edit chunks", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      textStreamResponse(["## ", "Draft"]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      streamAIPrepublishEdit({
+        adapted_content: {
+          format: "markdown",
+          markdown: "# Draft",
+        },
+        message: "make it level two",
+        platform: "zhihu",
+        title: "Draft",
+      }),
+    ).resolves.toBe("## Draft");
+
+    const [path, init] = fetchMock.mock.calls[0];
+    expect(path).toBe("/api/user/dashboard/ai/prepublish/edit/stream");
+    expect(init?.body).toBe(
+      JSON.stringify({
+        adapted_content: {
+          format: "markdown",
+          markdown: "# Draft",
+        },
+        message: "make it level two",
+        platform: "zhihu",
+        title: "Draft",
+      }),
+    );
+  });
+
+  it("updates a platform prepublish draft", async () => {
+    const publications = {
+      items: [
+        {
+          adapted_content: {
+            format: "markdown",
+            markdown: "## Updated",
+          },
+          config: {},
+          created_at: "2026-05-29T12:00:00Z",
+          enabled: true,
+          id: "pub-1",
+          platform: "zhihu",
+          retry_count: 0,
+          status: "adapted",
+          updated_at: "2026-05-29T12:00:00Z",
+        },
+      ],
+      project_id: "project-1",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse(publications),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      updateProjectPrepublishDraft("project-1", "zhihu", {
+        adapted_content: {
+          format: "markdown",
+          markdown: "## Updated",
+        },
+      }),
+    ).resolves.toEqual(publications);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/prepublish/zhihu",
+      expect.objectContaining({
+        body: JSON.stringify({
+          adapted_content: {
+            format: "markdown",
+            markdown: "## Updated",
+          },
+        }),
+        method: "PUT",
       }),
     );
   });
@@ -359,6 +511,83 @@ describe("dashboard api client", () => {
         credentials: "same-origin",
         headers: expect.any(Headers),
         method: "PUT",
+      }),
+    );
+  });
+
+  it("saves project content without touching selected platforms", async () => {
+    const project = {
+      created_at: "2026-05-29T12:00:00Z",
+      id: "project-1",
+      publications: [],
+      source_content: "<p>Updated</p>",
+      status: "ready",
+      title: "Updated post",
+      updated_at: "2026-05-29T12:00:00Z",
+      user_id: "user-1",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(project));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      saveDashboardProjectContent("project-1", {
+        source_content: "<p>Updated</p>",
+        summary: "Updated",
+        title: "Updated post",
+      }),
+    ).resolves.toEqual(project);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/content",
+      expect.objectContaining({
+        body: JSON.stringify({
+          source_content: "<p>Updated</p>",
+          summary: "Updated",
+          title: "Updated post",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "PATCH",
+      }),
+    );
+  });
+
+  it("saves project platform selections without touching content", async () => {
+    const project = {
+      created_at: "2026-05-29T12:00:00Z",
+      id: "project-1",
+      publications: [
+        {
+          enabled: true,
+          id: "pub-1",
+          platform: "zhihu",
+          status: "adapted",
+        },
+      ],
+      source_content: "<p>Updated</p>",
+      status: "ready",
+      title: "Updated post",
+      updated_at: "2026-05-29T12:00:00Z",
+      user_id: "user-1",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(project));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      saveDashboardProjectPlatforms("project-1", {
+        platforms: ["zhihu"],
+      }),
+    ).resolves.toEqual(project);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/platforms",
+      expect.objectContaining({
+        body: JSON.stringify({
+          platforms: ["zhihu"],
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "PATCH",
       }),
     );
   });

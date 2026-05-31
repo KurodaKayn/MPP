@@ -10,6 +10,8 @@ import {
   getDashboardProject,
   getProjectPublications,
   publishProject,
+  saveDashboardProjectContent,
+  saveDashboardProjectPlatforms,
   syncProjectPrepublish,
   updateDashboardProject,
   waitForProjectPublications,
@@ -247,6 +249,16 @@ export function useContentPageController(projectId?: string) {
     title: title.trim(),
   });
 
+  const buildProjectContentInput = () => {
+    const input = buildProjectInput();
+    return {
+      cover_image_url: input.cover_image_url,
+      source_content: input.source_content,
+      summary: input.summary,
+      title: input.title,
+    };
+  };
+
   const saveOrCreateProjectForXPostIntent = async () => {
     const platforms: PublishPlatform[] = selectedPlatforms.includes("x")
       ? selectedPlatforms
@@ -316,12 +328,26 @@ export function useContentPageController(projectId?: string) {
     }
   };
 
+  const updatePrepublishDraft = (
+    platform: PublishPlatform,
+    draft: PrepublishDraft,
+  ) => {
+    setPrepublishDrafts({
+      ...prepublishDrafts,
+      [platform]: draft,
+    });
+  };
+
   const publishExistingProject = async () => {
     if (!projectId) {
       return;
     }
 
-    await updateDashboardProject(projectId, buildProjectInput());
+    await saveDashboardProjectContent(projectId, buildProjectContentInput());
+    await saveDashboardProjectPlatforms(projectId, {
+      platforms: selectedPlatforms,
+    });
+
     const results = await Promise.allSettled(
       selectedPlatforms.map(async (platform) => {
         const result = await publishProject(projectId, platform);
@@ -525,5 +551,6 @@ export function useContentPageController(projectId?: string) {
     },
     syncPrepublish,
     title,
+    updatePrepublishDraft,
   };
 }

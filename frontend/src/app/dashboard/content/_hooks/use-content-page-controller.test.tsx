@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   refresh: vi.fn(),
   replace: vi.fn(),
+  saveDashboardProjectContent: vi.fn(),
+  saveDashboardProjectPlatforms: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
   syncProjectPrepublish: vi.fn(),
@@ -30,6 +32,8 @@ vi.mock("@/lib/dashboard/api", () => ({
   getDashboardProject: mocks.getDashboardProject,
   getProjectPublications: mocks.getProjectPublications,
   publishProject: mocks.publishProject,
+  saveDashboardProjectContent: mocks.saveDashboardProjectContent,
+  saveDashboardProjectPlatforms: mocks.saveDashboardProjectPlatforms,
   syncProjectPrepublish: mocks.syncProjectPrepublish,
   updateDashboardProject: mocks.updateDashboardProject,
   waitForProjectPublications: mocks.waitForProjectPublications,
@@ -93,6 +97,8 @@ describe("useContentPageController", () => {
     mocks.push.mockReset();
     mocks.replace.mockReset();
     mocks.refresh.mockReset();
+    mocks.saveDashboardProjectContent.mockReset();
+    mocks.saveDashboardProjectPlatforms.mockReset();
     mocks.toastError.mockReset();
     mocks.toastSuccess.mockReset();
     mocks.syncProjectPrepublish.mockReset();
@@ -276,7 +282,10 @@ describe("useContentPageController", () => {
       ],
       project_id: "project-1",
     });
-    mocks.updateDashboardProject.mockResolvedValue({
+    mocks.saveDashboardProjectContent.mockResolvedValue({
+      id: "project-1",
+    });
+    mocks.saveDashboardProjectPlatforms.mockResolvedValue({
       id: "project-1",
     });
     mocks.publishProject.mockResolvedValue({
@@ -330,14 +339,29 @@ describe("useContentPageController", () => {
       await view.getController().publish();
     });
 
-    expect(mocks.updateDashboardProject).toHaveBeenCalledWith("project-1", {
-      cover_image_url: undefined,
-      platforms: ["zhihu"],
-      source_content: "<p>Rendered body</p>",
-      summary: "Rendered body",
-      title: "Post title",
-    });
+    expect(mocks.saveDashboardProjectContent).toHaveBeenCalledWith(
+      "project-1",
+      {
+        cover_image_url: undefined,
+        source_content: "<p>Rendered body</p>",
+        summary: "Rendered body",
+        title: "Post title",
+      },
+    );
+    expect(mocks.saveDashboardProjectPlatforms).toHaveBeenCalledWith(
+      "project-1",
+      {
+        platforms: ["zhihu"],
+      },
+    );
+    expect(mocks.updateDashboardProject).not.toHaveBeenCalled();
     expect(mocks.publishProject).toHaveBeenCalledWith("project-1", "zhihu");
+    expect(
+      mocks.saveDashboardProjectContent.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.publishProject.mock.invocationCallOrder[0]);
+    expect(
+      mocks.saveDashboardProjectPlatforms.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.publishProject.mock.invocationCallOrder[0]);
     expect(mocks.waitForProjectPublications).toHaveBeenCalledWith("project-1", [
       "zhihu",
     ]);

@@ -68,6 +68,12 @@ export type CreateProjectInput = {
 
 export type UpdateProjectInput = CreateProjectInput;
 
+export type SaveProjectContentInput = Omit<CreateProjectInput, "platforms">;
+
+export type SaveProjectPlatformsInput = {
+  platforms: string[];
+};
+
 export type GetProjectPublicationsOptions = {
   includeContent?: boolean;
 };
@@ -84,6 +90,35 @@ export type SyncPrepublishInput = {
   actor?: {
     type: "system";
   };
+};
+
+export type UpdatePrepublishDraftInput = {
+  adapted_content: AdaptedContent;
+};
+
+export type AIChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type AIEditContentStreamInput = {
+  title?: string;
+  content: string;
+  message: string;
+  conversation?: AIChatMessage[];
+};
+
+export type AIEditPrepublishStreamInput = {
+  title?: string;
+  platform: string;
+  adapted_content: AdaptedContent;
+  message: string;
+  conversation?: AIChatMessage[];
+};
+
+export type AITextStreamOptions = {
+  onChunk?: (chunk: string, accumulated: string) => void;
+  signal?: AbortSignal;
 };
 
 export type RequirementStatus = {
@@ -279,6 +314,79 @@ async function fetchDashboard<T>(
   return response.json() as Promise<T>;
 }
 
+async function streamDashboardText(
+  path: string,
+  body: unknown,
+  options: AITextStreamOptions = {},
+) {
+  const headers = new Headers({
+    Accept: "text/markdown, text/plain, application/json",
+    "Content-Type": "application/json",
+  });
+  const token = getStoredAuthToken();
+
+  if (token) {
+    headers.set("Authorization", formatBearerToken(token));
+  }
+
+  const response = await fetch(path, {
+    body: JSON.stringify(body),
+    credentials: "same-origin",
+    headers,
+    method: "POST",
+    signal: options.signal,
+  });
+
+  if (!response.ok) {
+    let message = `请求失败 (${response.status})`;
+
+    try {
+      const errorBody = (await response.json()) as ApiErrorResponse;
+      message =
+        errorBody.error?.message ||
+        errorBody.error?.code ||
+        errorBody.message ||
+        message;
+    } catch {
+      // Keep the HTTP status fallback when the backend does not return JSON.
+    }
+
+    throw new Error(message);
+  }
+
+  if (!response.body) {
+    const text = await response.text();
+    options.onChunk?.(text, text);
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let accumulated = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      const trailing = decoder.decode();
+      if (trailing) {
+        accumulated += trailing;
+        options.onChunk?.(trailing, accumulated);
+      }
+      if (!accumulated.trim()) {
+        throw new Error("AI 没有返回内容，请换个说法再试。");
+      }
+      return accumulated;
+    }
+
+    const chunk = decoder.decode(value, { stream: true });
+    if (!chunk) {
+      continue;
+    }
+    accumulated += chunk;
+    options.onChunk?.(chunk, accumulated);
+  }
+}
+
 export function getDashboardStats() {
   return fetchDashboard<DashboardStats>("/api/user/dashboard/stats");
 }
@@ -316,6 +424,32 @@ export function updateDashboardProject(
     {
       body: JSON.stringify(input),
       method: "PUT",
+    },
+  );
+}
+
+export function saveDashboardProjectContent(
+  projectId: string,
+  input: SaveProjectContentInput,
+) {
+  return fetchDashboard<ProjectDetail>(
+    `/api/user/dashboard/projects/${projectId}/content`,
+    {
+      body: JSON.stringify(input),
+      method: "PATCH",
+    },
+  );
+}
+
+export function saveDashboardProjectPlatforms(
+  projectId: string,
+  input: SaveProjectPlatformsInput,
+) {
+  return fetchDashboard<ProjectDetail>(
+    `/api/user/dashboard/projects/${projectId}/platforms`,
+    {
+      body: JSON.stringify(input),
+      method: "PATCH",
     },
   );
 }
@@ -389,6 +523,42 @@ export function syncProjectPrepublish(
       }),
       method: "POST",
     },
+  );
+}
+
+export function updateProjectPrepublishDraft(
+  projectId: string,
+  platform: string,
+  input: UpdatePrepublishDraftInput,
+) {
+  return fetchDashboard<ProjectPublications>(
+    `/api/user/dashboard/projects/${projectId}/prepublish/${encodeURIComponent(platform)}`,
+    {
+      body: JSON.stringify(input),
+      method: "PUT",
+    },
+  );
+}
+
+export function streamAIContentEdit(
+  input: AIEditContentStreamInput,
+  options?: AITextStreamOptions,
+) {
+  return streamDashboardText(
+    "/api/user/dashboard/ai/content/edit/stream",
+    input,
+    options,
+  );
+}
+
+export function streamAIPrepublishEdit(
+  input: AIEditPrepublishStreamInput,
+  options?: AITextStreamOptions,
+) {
+  return streamDashboardText(
+    "/api/user/dashboard/ai/prepublish/edit/stream",
+    input,
+    options,
   );
 }
 

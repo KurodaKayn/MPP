@@ -2,6 +2,7 @@ import ImageExtension from "@tiptap/extension-image";
 import LinkExtension from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
+import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 
 type ContentEditorExtensionOptions = {
@@ -53,5 +54,6 @@ export function createContentEditorExtensions({
       placeholder: "在这里开始创作...",
       emptyEditorClass: emptyEditorClassName,
     }),
+    Markdown,
   ];
 }
