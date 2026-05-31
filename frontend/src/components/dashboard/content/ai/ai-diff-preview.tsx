@@ -52,7 +52,7 @@ function buildDiffFile(previousValue: string, nextValue: string) {
     return null;
   }
 
-  const patch = createTwoFilesPatch(
+  const patch = createGitPatch(
     "before.md",
     "after.md",
     normalizeDiffText(previousValue),
@@ -63,8 +63,52 @@ function buildDiffFile(previousValue: string, nextValue: string) {
       context: 4,
     },
   );
-  const files = parseDiff(patch, { nearbySequences: "zip" }) as FileData[];
-  return files[0] ?? null;
+  try {
+    const files = parseDiff(patch, { nearbySequences: "zip" }) as FileData[];
+    return files[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function createGitPatch(
+  previousFileName: string,
+  nextFileName: string,
+  previousValue: string,
+  nextValue: string,
+  previousHeader: string,
+  nextHeader: string,
+  options: { context: number },
+) {
+  const patch = createTwoFilesPatch(
+    previousFileName,
+    nextFileName,
+    previousValue,
+    nextValue,
+    previousHeader,
+    nextHeader,
+    options,
+  );
+  const body = patch
+    .replace(/^=+\n/, "")
+    .replace(
+      new RegExp(`^--- ${escapeRegExp(previousFileName)}\\t.*$`, "m"),
+      `--- a/${previousFileName}`,
+    )
+    .replace(
+      new RegExp(`^\\+\\+\\+ ${escapeRegExp(nextFileName)}\\t.*$`, "m"),
+      `+++ b/${nextFileName}`,
+    );
+
+  return [
+    `diff --git a/${previousFileName} b/${nextFileName}`,
+    "index 0000000..1111111 100644",
+    body,
+  ].join("\n");
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function normalizeDiffText(value: string) {
