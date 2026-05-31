@@ -10,15 +10,15 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/proxy"
-	"github.com/kurodakayn/mpp-backend/internal/services"
+	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/labstack/echo/v4"
 )
 
 type BrowserSessionHandler struct {
-	service *services.BrowserSessionService
+	service *browsersession.BrowserSessionService
 }
 
-func NewBrowserSessionHandler(service *services.BrowserSessionService) *BrowserSessionHandler {
+func NewBrowserSessionHandler(service *browsersession.BrowserSessionService) *BrowserSessionHandler {
 	return &BrowserSessionHandler{service: service}
 }
 
@@ -35,10 +35,10 @@ func (h *BrowserSessionHandler) StartSession(c echo.Context) error {
 
 	resp, err := h.service.StartSession(c.Request().Context(), userID, platform)
 	if err != nil {
-		if err == services.ErrActiveSessionExists {
+		if err == browsersession.ErrActiveSessionExists {
 			return sendError(c, http.StatusConflict, "conflict", err.Error())
 		}
-		if err == services.ErrPlatformNotSupported {
+		if err == browsersession.ErrPlatformNotSupported {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -60,7 +60,7 @@ func (h *BrowserSessionHandler) GetSession(c echo.Context) error {
 
 	resp, err := h.service.GetSession(c.Request().Context(), userID, id)
 	if err != nil {
-		if err == services.ErrSessionNotFound {
+		if err == browsersession.ErrSessionNotFound {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -71,19 +71,21 @@ func (h *BrowserSessionHandler) GetSession(c echo.Context) error {
 
 func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	userID, _ := middleware.GetUserIDFromContext(c) // May be nil if coming from public route
-	
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid session id")
 	}
 
 	streamToken, proxyPath := streamTokenAndProxyPath(c.QueryParam("token"), c.Param("*"))
-	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken)
+	isWebSocket := strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket"
+	// Keep the iframe URL stable while noVNC is connected; token expiry limits replay.
+	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken, false)
 	if err != nil {
-		if err == services.ErrSessionNotFound {
+		if err == browsersession.ErrSessionNotFound {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
 		}
-		if err == services.ErrInvalidStreamToken {
+		if err == browsersession.ErrInvalidStreamToken {
 			return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -97,7 +99,7 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	rawQuery := streamProxyRawQuery(c)
 
 	// Use custom WebSocket proxy for noVNC stream (e.g. when requesting /websockify)
-	if strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket" {
+	if isWebSocket {
 		// Update target path with proxy path before proxying
 		target.Path = joinURLPath(target.Path, proxyPath)
 		target.RawQuery = rawQuery
@@ -132,7 +134,7 @@ func (h *BrowserSessionHandler) CompleteSession(c echo.Context) error {
 
 	resp, err := h.service.CompleteSession(c.Request().Context(), userID, id)
 	if err != nil {
-		if err == services.ErrSessionNotFound {
+		if err == browsersession.ErrSessionNotFound {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
 		}
 		// Assuming 422 for login not detected yet as per design
@@ -154,7 +156,7 @@ func (h *BrowserSessionHandler) CancelSession(c echo.Context) error {
 	}
 
 	if err := h.service.CancelSession(c.Request().Context(), userID, id); err != nil {
-		if err == services.ErrSessionNotFound {
+		if err == browsersession.ErrSessionNotFound {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())

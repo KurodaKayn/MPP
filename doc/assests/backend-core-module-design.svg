@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720" role="img">
+
+  <style>
+    text { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #111827; }
+    .title { font-size: 24px; font-weight: 700; }
+    .subtitle { font-size: 13px; fill: #6b7280; }
+    .section-title { font-size: 14px; font-weight: 700; }
+    .node-title { font-size: 14px; font-weight: 700; }
+    .node-line { font-size: 12px; fill: #6b7280; }
+    .edge-label { font-size: 11px; font-weight: 600; fill: #374151; }
+    .section { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.4; stroke-dasharray: 7 5; }
+    .node { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.5; }
+    .blue { fill: #eff6ff; stroke: #bfdbfe; }
+    .green { fill: #f0fdf4; stroke: #bbf7d0; }
+    .purple { fill: #faf5ff; stroke: #e9d5ff; }
+    .orange { fill: #fff7ed; stroke: #fed7aa; }
+    .teal { fill: #f0fdfa; stroke: #99f6e4; }
+    .red { fill: #fef2f2; stroke: #fecaca; }
+    .gray { fill: #f9fafb; stroke: #d1d5db; }
+    .request { stroke: #2563eb; stroke-width: 2.2; fill: none; marker-end: url(#arrow-blue); }
+    .data { stroke: #16a34a; stroke-width: 2.2; fill: none; marker-end: url(#arrow-green); }
+    .async { stroke: #dc2626; stroke-width: 2.2; fill: none; stroke-dasharray: 7 5; marker-end: url(#arrow-red); }
+    .ai { stroke: #9333ea; stroke-width: 2.2; fill: none; marker-end: url(#arrow-purple); }
+    .browser { stroke: #ea580c; stroke-width: 2.2; fill: none; marker-end: url(#arrow-orange); }
+    .muted { stroke: #9ca3af; stroke-width: 1.8; fill: none; marker-end: url(#arrow-gray); }
+  </style>
+
+
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/></marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/></marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/></marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/></marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#ea580c"/></marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#9ca3af"/></marker>
+  </defs>
+
+  <rect width="1280" height="720" fill="#ffffff"/>
+  <text x="40" y="44" class="title">Backend Core Module Design</text>
+  <text x="40" y="68" class="subtitle">Echo bootstrapping, handlers, services, worker queues, and persistence responsibilities.</text>
+  <rect x="40" y="105" width="300" height="545" rx="14" class="section"/>
+  <text x="62" y="135" class="section-title">Bootstrap and routing</text>
+  <rect x="380" y="105" width="300" height="545" rx="14" class="section"/>
+  <text x="402" y="135" class="section-title">HTTP handlers</text>
+  <rect x="720" y="105" width="300" height="545" rx="14" class="section"/>
+  <text x="742" y="135" class="section-title">Domain services</text>
+  <rect x="1060" y="105" width="180" height="545" rx="14" class="section"/>
+  <text x="1082" y="135" class="section-title">Stores</text>
+  <rect x="70" y="155" width="240" height="130" rx="10" class="node blue"/>
+  <image href="icons/go.svg" xlink:href="icons/go.svg" x="94" y="173" width="26" height="26"/>
+  <text x="94" y="213" class="node-title">cmd/api main</text>
+  <text x="94" y="235" class="node-line">Load env and DB</text>
+  <text x="94" y="253" class="node-line">Wire services and handlers</text>
+  <text x="94" y="271" class="node-line">Start Echo server</text>
+  <rect x="70" y="300" width="240" height="110" rx="10" class="node teal"/>
+  <text x="94" y="331" class="node-title">Echo router</text>
+  <text x="94" y="353" class="node-line">Public routes</text>
+  <text x="94" y="371" class="node-line">Admin dashboard group</text>
+  <text x="94" y="389" class="node-line">JWT user dashboard group</text>
+  <rect x="410" y="150" width="240" height="110" rx="10" class="node green"/>
+  <text x="434" y="181" class="node-title">UserDashboardHandler</text>
+  <text x="434" y="203" class="node-line">Project CRUD</text>
+  <text x="434" y="221" class="node-line">Prepublish endpoints</text>
+  <text x="434" y="239" class="node-line">AI stream proxy</text>
+  <rect x="410" y="300" width="240" height="100" rx="10" class="node orange"/>
+  <text x="434" y="331" class="node-title">Account handlers</text>
+  <text x="434" y="353" class="node-line">WeChat credentials</text>
+  <text x="434" y="371" class="node-line">X OAuth2 callback</text>
+  <text x="434" y="389" class="node-line">Browser session routes</text>
+  <rect x="410" y="440" width="240" height="100" rx="10" class="node purple"/>
+  <text x="434" y="471" class="node-title">BrowserSessionHandler</text>
+  <text x="434" y="493" class="node-line">Start, complete, cancel</text>
+  <text x="434" y="511" class="node-line">HTTP and WebSocket proxy</text>
+  <text x="434" y="529" class="node-line">One-time stream token</text>
+  <rect x="750" y="150" width="240" height="120" rx="10" class="node green"/>
+  <text x="774" y="181" class="node-title">DashboardService</text>
+  <text x="774" y="203" class="node-line">Ownership checks</text>
+  <text x="774" y="221" class="node-line">Projects and publications</text>
+  <text x="774" y="239" class="node-line">Prepublish sync</text>
+  <text x="774" y="257" class="node-line">Publish orchestration</text>
+  <rect x="750" y="315" width="240" height="130" rx="10" class="node red"/>
+  <image href="icons/redis.svg" xlink:href="icons/redis.svg" x="774" y="333" width="26" height="26"/>
+  <text x="774" y="373" class="node-title">Publish worker loop</text>
+  <text x="774" y="395" class="node-line">Redis BLPOP jobs</text>
+  <text x="774" y="413" class="node-line">Lock refresh / release</text>
+  <text x="774" y="431" class="node-line">Status and retry updates</text>
+  <rect x="750" y="465" width="240" height="105" rx="10" class="node purple"/>
+  <text x="774" y="496" class="node-title">BrowserSessionService</text>
+  <text x="774" y="518" class="node-line">Session lifecycle</text>
+  <text x="774" y="536" class="node-line">Worker client calls</text>
+  <text x="774" y="554" class="node-line">CookieStore boundary</text>
+  <rect x="1085" y="165" width="130" height="130" rx="10" class="node green"/>
+  <image href="icons/postgresql.svg" xlink:href="icons/postgresql.svg" x="1109" y="183" width="26" height="26"/>
+  <text x="1109" y="223" class="node-title">PostgreSQL</text>
+  <text x="1109" y="245" class="node-line">GORM models</text>
+  <text x="1109" y="263" class="node-line">Migrations</text>
+  <text x="1109" y="281" class="node-line">Seed data</text>
+  <rect x="1085" y="360" width="130" height="130" rx="10" class="node red"/>
+  <image href="icons/redis.svg" xlink:href="icons/redis.svg" x="1109" y="378" width="26" height="26"/>
+  <text x="1109" y="418" class="node-title">Redis</text>
+  <text x="1109" y="440" class="node-line">Publish queue</text>
+  <text x="1109" y="458" class="node-line">Locks</text>
+  <text x="1109" y="476" class="node-line">OAuth2 state</text>
+  <path d="M310 205 L410 205" class="request"/>
+  <rect x="334" y="178" width="58" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="344" y="194" class="edge-label">HTTP</text>
+  <path d="M310 355 L410 355" class="request"/>
+  <rect x="326" y="330" width="97" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="336" y="346" class="edge-label">route group</text>
+  <path d="M650 205 L750 205" class="request"/>
+  <rect x="662" y="178" width="111" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="672" y="194" class="edge-label">service calls</text>
+  <path d="M650 350 L750 505" class="browser"/>
+  <rect x="654" y="408" width="97" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="664" y="424" class="edge-label">session ops</text>
+  <path d="M990 210 L1085 220" class="data"/>
+  <rect x="1000" y="194" width="62" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="1010" y="210" class="edge-label">models</text>
+  <path d="M990 368 L1085 418" class="async"/>
+  <rect x="1000" y="370" width="90" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="1010" y="386" class="edge-label">queue/lock</text>
+  <path d="M870 270 L870 315" class="async"/>
+  <rect x="890" y="284" width="62" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="900" y="300" class="edge-label">worker</text>
+</svg>

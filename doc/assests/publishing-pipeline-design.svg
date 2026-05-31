@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720" role="img">
+
+  <style>
+    text { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #111827; }
+    .title { font-size: 24px; font-weight: 700; }
+    .subtitle { font-size: 13px; fill: #6b7280; }
+    .section-title { font-size: 14px; font-weight: 700; }
+    .node-title { font-size: 14px; font-weight: 700; }
+    .node-line { font-size: 12px; fill: #6b7280; }
+    .edge-label { font-size: 11px; font-weight: 600; fill: #374151; }
+    .section { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.4; stroke-dasharray: 7 5; }
+    .node { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.5; }
+    .blue { fill: #eff6ff; stroke: #bfdbfe; }
+    .green { fill: #f0fdf4; stroke: #bbf7d0; }
+    .purple { fill: #faf5ff; stroke: #e9d5ff; }
+    .orange { fill: #fff7ed; stroke: #fed7aa; }
+    .teal { fill: #f0fdfa; stroke: #99f6e4; }
+    .red { fill: #fef2f2; stroke: #fecaca; }
+    .gray { fill: #f9fafb; stroke: #d1d5db; }
+    .request { stroke: #2563eb; stroke-width: 2.2; fill: none; marker-end: url(#arrow-blue); }
+    .data { stroke: #16a34a; stroke-width: 2.2; fill: none; marker-end: url(#arrow-green); }
+    .async { stroke: #dc2626; stroke-width: 2.2; fill: none; stroke-dasharray: 7 5; marker-end: url(#arrow-red); }
+    .ai { stroke: #9333ea; stroke-width: 2.2; fill: none; marker-end: url(#arrow-purple); }
+    .browser { stroke: #ea580c; stroke-width: 2.2; fill: none; marker-end: url(#arrow-orange); }
+    .muted { stroke: #9ca3af; stroke-width: 1.8; fill: none; marker-end: url(#arrow-gray); }
+  </style>
+
+
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/></marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/></marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/></marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/></marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#ea580c"/></marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#9ca3af"/></marker>
+  </defs>
+
+  <rect width="1280" height="720" fill="#ffffff"/>
+  <text x="40" y="44" class="title">Publishing Pipeline Module Design</text>
+  <text x="40" y="68" class="subtitle">Prepublish adaptation, Redis-backed asynchronous publishing, platform adapters, and status updates.</text>
+  <rect x="40" y="105" width="1200" height="545" rx="14" class="section"/>
+  <text x="62" y="135" class="section-title">Project publication lifecycle</text>
+  <rect x="70" y="190" width="160" height="100" rx="10" class="node blue"/>
+  <text x="94" y="221" class="node-title">Source Project</text>
+  <text x="94" y="243" class="node-line">title</text>
+  <text x="94" y="261" class="node-line">source_content</text>
+  <text x="94" y="279" class="node-line">selected platforms</text>
+  <rect x="280" y="190" width="170" height="100" rx="10" class="node green"/>
+  <text x="304" y="221" class="node-title">Prepublish Sync</text>
+  <text x="304" y="243" class="node-line">choose platforms</text>
+  <text x="304" y="261" class="node-line">call adapters</text>
+  <text x="304" y="279" class="node-line">store drafts</text>
+  <rect x="500" y="190" width="170" height="100" rx="10" class="node teal"/>
+  <text x="524" y="221" class="node-title">Adapted Draft</text>
+  <text x="524" y="243" class="node-line">format JSON</text>
+  <text x="524" y="261" class="node-line">source_revision</text>
+  <text x="524" y="279" class="node-line">generated_by</text>
+  <rect x="720" y="190" width="170" height="100" rx="10" class="node orange"/>
+  <text x="744" y="221" class="node-title">Publish Request</text>
+  <text x="744" y="243" class="node-line">manual or batch</text>
+  <text x="744" y="261" class="node-line">scope user check</text>
+  <text x="744" y="279" class="node-line">mode support</text>
+  <rect x="945" y="150" width="170" height="125" rx="10" class="node red"/>
+  <image href="icons/redis.svg" xlink:href="icons/redis.svg" x="969" y="168" width="26" height="26"/>
+  <text x="969" y="208" class="node-title">Redis Queue</text>
+  <text x="969" y="230" class="node-line">job payload</text>
+  <text x="969" y="248" class="node-line">per publication lock</text>
+  <text x="969" y="266" class="node-line">worker loop</text>
+  <rect x="945" y="300" width="170" height="110" rx="10" class="node gray"/>
+  <text x="969" y="331" class="node-title">Direct Publish</text>
+  <text x="969" y="353" class="node-line">fallback path</text>
+  <text x="969" y="371" class="node-line">no Redis client</text>
+  <text x="969" y="389" class="node-line">same service call</text>
+  <rect x="720" y="405" width="170" height="125" rx="10" class="node orange"/>
+  <text x="744" y="436" class="node-title">PublisherFactory</text>
+  <text x="744" y="458" class="node-line">wechat</text>
+  <text x="744" y="476" class="node-line">x</text>
+  <text x="744" y="494" class="node-line">zhihu</text>
+  <text x="744" y="512" class="node-line">douyin</text>
+  <rect x="500" y="405" width="170" height="110" rx="10" class="node purple"/>
+  <text x="524" y="436" class="node-title">PlatformPublisher</text>
+  <text x="524" y="458" class="node-line">ValidateConfig</text>
+  <text x="524" y="476" class="node-line">AdaptContent</text>
+  <text x="524" y="494" class="node-line">Publish</text>
+  <rect x="280" y="405" width="170" height="110" rx="10" class="node blue"/>
+  <text x="304" y="436" class="node-title">External Platform</text>
+  <text x="304" y="458" class="node-line">API publish</text>
+  <text x="304" y="476" class="node-line">headless browser</text>
+  <text x="304" y="494" class="node-line">manual intent</text>
+  <rect x="70" y="405" width="160" height="125" rx="10" class="node green"/>
+  <text x="94" y="436" class="node-title">Publication Row</text>
+  <text x="94" y="458" class="node-line">status</text>
+  <text x="94" y="476" class="node-line">remote_id</text>
+  <text x="94" y="494" class="node-line">publish_url</text>
+  <text x="94" y="512" class="node-line">error_message</text>
+  <path d="M230 240 L280 240" class="request"/>
+  <rect x="238" y="158" width="111" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="248" y="174" class="edge-label">create/update</text>
+  <path d="M450 240 L500 240" class="data"/>
+  <rect x="462" y="158" width="58" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="472" y="174" class="edge-label">adapt</text>
+  <path d="M670 240 L720 240" class="request"/>
+  <rect x="680" y="158" width="69" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="690" y="174" class="edge-label">publish</text>
+  <path d="M890 225 L945 196" class="async"/>
+  <rect x="900" y="182" width="69" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="910" y="198" class="edge-label">enqueue</text>
+  <path d="M890 255 L945 345" class="request"/>
+  <rect x="900" y="302" width="76" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="910" y="318" class="edge-label">fallback</text>
+  <path d="M1030 275 L1030 300" class="async"/>
+  <rect x="1044" y="269" width="69" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="1054" y="285" class="edge-label">dequeue</text>
+  <path d="M945 350 L890 450" class="request"/>
+  <rect x="896" y="389" width="69" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="906" y="405" class="edge-label">run job</text>
+  <path d="M720 460 L670 460" class="request"/>
+  <rect x="680" y="536" width="62" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="690" y="552" class="edge-label">lookup</text>
+  <path d="M500 460 L450 460" class="browser"/>
+  <rect x="458" y="536" width="69" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="468" y="552" class="edge-label">publish</text>
+  <path d="M280 460 L230 460" class="data"/>
+  <rect x="236" y="536" width="104" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="246" y="552" class="edge-label">write status</text>
+</svg>

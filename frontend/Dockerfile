@@ -1,3 +1,5 @@
+ARG FRONTEND_BASE_URL=http://127.0.0.1:3000
+
 FROM node:20-alpine AS base
 
 # Install pnpm
@@ -21,13 +23,17 @@ CMD ["sh", "-c", "pnpm install --frozen-lockfile --config.confirmModulesPurge=fa
 
 FROM base AS builder
 WORKDIR /app
+ARG FRONTEND_BASE_URL
+ENV FRONTEND_BASE_URL=$FRONTEND_BASE_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm run build
 
 FROM base AS runner
 WORKDIR /app
+ARG FRONTEND_BASE_URL
 ENV NODE_ENV=production
+ENV FRONTEND_BASE_URL=$FRONTEND_BASE_URL
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static

@@ -37,6 +37,23 @@ services:
         - action: rebuild
           path: ../backend/go.sum
 
+  browser-worker:
+    build:
+      target: dev
+    environment:
+      APP_ENV: development
+    volumes:
+      - ../browser-worker:/app
+      - browser_worker_go_cache:/go/pkg/mod
+      - browser_worker_go_build_cache:/root/.cache/go-build
+      - /var/run/docker.sock:/var/run/docker.sock
+    develop:
+      watch:
+        - action: rebuild
+          path: ../browser-worker/go.mod
+        - action: rebuild
+          path: ../browser-worker/go.sum
+
   ai-service:
     build:
       target: dev
@@ -56,5 +73,7 @@ volumes:
   frontend_next:
   backend_go_cache:
   backend_go_build_cache:
+  browser_worker_go_cache:
+  browser_worker_go_build_cache:
   ai_service_venv:
   ai_service_uv_cache:

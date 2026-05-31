@@ -3,6 +3,7 @@ module github.com/kurodakayn/mpp-backend
 go 1.26
 
 require (
+	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc
 	github.com/chromedp/chromedp v0.15.1
 	github.com/glebarez/sqlite v1.11.0
@@ -48,6 +49,7 @@ require (
 	github.com/rogpeppe/go-internal v1.15.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
