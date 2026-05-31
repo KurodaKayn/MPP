@@ -31,7 +31,7 @@ const workflowSteps = [
   },
   {
     title: "生成平台草稿",
-    description: "为公众号、知乎、X、B站、小红书维护独立的适配稿。",
+    description: "为公众号、知乎、X、抖音维护独立的适配稿。",
     icon: Workflow,
   },
   {
@@ -276,7 +276,7 @@ export default function Home() {
                 multi-platform poster
               </h1>
               <p className="mt-6 max-w-2xl text-lg leading-8 text-[#3f4d46]">
-                从一篇原始内容出发，统一管理公众号、知乎、X、B站和小红书的草稿适配、发布准备、状态追踪与
+                从一篇原始内容出发，统一管理公众号、知乎、X、抖音的草稿适配、发布准备、状态追踪与
                 AI 编辑。
               </p>
 

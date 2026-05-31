@@ -121,36 +121,25 @@ export function PlatformPreview({
                     </div>
                   </div>
                 </TabsContent>
-                <TabsContent value="bilibili" className="mt-0">
+                <TabsContent value="douyin" className="mt-0">
                   <div className="space-y-4">
-                    <div className="font-bold">动态预览：</div>
-                    <div className="p-3 bg-muted rounded-lg whitespace-pre-wrap">
-                      {title ? `#${title}#\n` : ""}
-                      {content.text}
-                    </div>
-                    {content.firstImageSrc ? previewContent : null}
-                  </div>
-                </TabsContent>
-                <TabsContent value="xiaohongshu" className="mt-0">
-                  <div className="space-y-4">
-                    <div className="aspect-square bg-muted rounded-lg flex items-center justify-center overflow-hidden">
+                    <div className="font-bold">{title}</div>
+                    <div className="aspect-[9/16] max-h-[420px] overflow-hidden rounded-lg bg-muted flex items-center justify-center">
                       {content.firstImageSrc ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={content.firstImageSrc}
                           alt="首图预览"
-                          className="h-full w-full object-cover"
+                          className="h-full w-full object-contain"
                         />
                       ) : (
-                        <span className="text-muted-foreground">首图预览</span>
+                        <span className="text-muted-foreground">
+                          图文/视频封面预览
+                        </span>
                       )}
                     </div>
-                    <div className="font-bold">{title}</div>
-                    <div className="whitespace-pre-wrap">
+                    <div className="rounded-lg border bg-background p-3 whitespace-pre-wrap">
                       {content.text}
-                      <div className="text-blue-500 mt-2">
-                        #内容发布 #效率工具
-                      </div>
                     </div>
                   </div>
                 </TabsContent>

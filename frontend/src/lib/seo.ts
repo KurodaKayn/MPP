@@ -28,7 +28,7 @@ export const siteConfig = {
     "AI 内容编辑",
     "公众号发布",
     "知乎发布",
-    "小红书发布",
+    "抖音发布",
   ],
   indexableRoutes: [
     {

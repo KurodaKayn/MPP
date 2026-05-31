@@ -68,7 +68,7 @@ describe("publishContentToPlatforms", () => {
           html: "<p>Body</p>",
           text: "Body",
         },
-        platforms: ["wechat", "bilibili"],
+        platforms: ["wechat", "douyin"],
         title: "Post title",
       },
       {
@@ -78,12 +78,12 @@ describe("publishContentToPlatforms", () => {
     );
 
     expect(publishProject).toHaveBeenCalledWith("project-1", "wechat");
-    expect(publishProject).toHaveBeenCalledWith("project-1", "bilibili");
+    expect(publishProject).toHaveBeenCalledWith("project-1", "douyin");
     expect(result.succeeded).toEqual(["wechat"]);
     expect(result.failed).toEqual([
       {
         message: "no publisher registered",
-        platform: "bilibili",
+        platform: "douyin",
       },
     ]);
   });

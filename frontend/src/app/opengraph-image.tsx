@@ -88,7 +88,7 @@ export default function Image() {
         </div>
 
         <div style={{ display: "flex", gap: 14 }}>
-          {["公众号", "知乎", "X", "B站", "小红书"].map((platform) => (
+          {["公众号", "知乎", "X", "抖音"].map((platform) => (
             <div
               key={platform}
               style={{

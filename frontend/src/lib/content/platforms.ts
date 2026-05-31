@@ -15,14 +15,9 @@ export const PLATFORM_TABS = [
     icon: "/icons/platforms/x.svg",
   },
   {
-    value: "bilibili",
-    label: "B站",
-    icon: "/icons/platforms/bilibili.svg",
-  },
-  {
-    value: "xiaohongshu",
-    label: "小红书",
-    icon: "/icons/platforms/xiaohongshu.svg",
+    value: "douyin",
+    label: "抖音",
+    icon: "/icons/platforms/douyin.svg",
   },
 ] as const;
 

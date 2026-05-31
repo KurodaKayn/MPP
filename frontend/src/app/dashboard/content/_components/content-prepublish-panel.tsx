@@ -35,10 +35,9 @@ type ContentPrepublishPanelProps = {
 };
 
 const platformFormats: Record<PublishPlatform, PrepublishFormat> = {
-  bilibili: "text",
+  douyin: "text",
   wechat: "html",
   x: "text",
-  xiaohongshu: "text",
   zhihu: "markdown",
 };
 
@@ -152,7 +151,7 @@ export function ContentPrepublishPanel({
       </CardHeader>
 
       <CardContent className="space-y-5">
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {PLATFORM_TABS.map((platform) => {
             const isActive = activePlatform === platform.value;
 
