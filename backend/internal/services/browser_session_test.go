@@ -29,6 +29,14 @@ func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *services.BrowserSessionSe
 	)
 	require.NoError(t, err)
 
+	// Create the partial unique index as in production
+	err = db.Exec(`
+		CREATE UNIQUE INDEX ux_remote_browser_sessions_active_user_platform
+		ON remote_browser_sessions (user_id, platform)
+		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
+	`).Error
+	require.NoError(t, err)
+
 	worker := publisher.NewMockBrowserWorkerClient()
 	t.Cleanup(func() {
 		require.NoError(t, worker.Close())
@@ -58,7 +66,7 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	assert.Equal(t, resp.ExpiresAt, resp.StreamTokenExpiresAt)
 	streamToken := streamTokenFromPath(t, streamURL.Path)
 	require.NotEmpty(t, streamToken)
-	assert.Contains(t, streamURL.Query().Get("path"), "/stream/"+streamToken+"/websockify")
+	assert.Contains(t, streamURL.Query().Get("path"), "/"+streamToken+"/websockify")
 
 	streamEndpoint, err := svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken)
 	require.NoError(t, err)
@@ -225,10 +233,9 @@ func streamTokenFromPath(t *testing.T, path string) string {
 
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	for i, part := range parts {
-		if part == "stream" {
-			require.GreaterOrEqual(t, len(parts), i+3)
-			assert.Equal(t, "vnc.html", parts[i+2])
-			return parts[i+1]
+		if part == "browser-stream" {
+			require.GreaterOrEqual(t, len(parts), i+2)
+			return parts[i+2]
 		}
 	}
 	require.Fail(t, "stream token path segment not found", path)
