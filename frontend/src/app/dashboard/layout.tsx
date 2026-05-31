@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { DashboardBreadcrumb } from "@/components/dashboard/dashboard-breadcrumb";
@@ -7,6 +8,14 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+
+export const metadata: Metadata = {
+  title: "控制台",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default function DashboardLayout({
   children,
