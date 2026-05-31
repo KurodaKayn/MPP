@@ -383,6 +383,63 @@ func TestUserDashboardHandlerSaveProjectContentPreservesPrepublishDraft(t *testi
 	require.JSONEq(t, `{"format":"markdown","markdown":"AI draft"}`, string(publication.AdaptedContent))
 }
 
+func TestUserDashboardHandlerSaveProjectPlatformsPreservesSelectedDrafts(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Draft title",
+		SourceContent: "<p>Draft body</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: []byte(`{"format":"html","html":"Wechat draft"}`),
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "zhihu",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: []byte(`{"format":"markdown","markdown":"Zhihu AI draft"}`),
+	}).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/user/dashboard/projects/"+project.ID.String()+"/platforms",
+		strings.NewReader(`{"platforms":["zhihu"]}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(project.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.SaveProjectPlatforms(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var wechat models.ProjectPlatformPublication
+	require.NoError(t, db.First(&wechat, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	require.False(t, wechat.Enabled)
+	require.Equal(t, models.PublicationStatusDisabled, wechat.Status)
+
+	var zhihu models.ProjectPlatformPublication
+	require.NoError(t, db.First(&zhihu, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	require.True(t, zhihu.Enabled)
+	require.Equal(t, models.PublicationStatusAdapted, zhihu.Status)
+	require.JSONEq(t, `{"format":"markdown","markdown":"Zhihu AI draft"}`, string(zhihu.AdaptedContent))
+}
+
 func TestUserDashboardHandlerGetProjectPublicationsReturnsForbidden(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)
