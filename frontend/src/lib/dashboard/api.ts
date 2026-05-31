@@ -86,6 +86,10 @@ export type SyncPrepublishInput = {
   };
 };
 
+export type UpdatePrepublishDraftInput = {
+  adapted_content: AdaptedContent;
+};
+
 export type AIChatMessage = {
   role: "user" | "assistant";
   content: string;
@@ -483,6 +487,20 @@ export function syncProjectPrepublish(
         platforms: input.platforms,
       }),
       method: "POST",
+    },
+  );
+}
+
+export function updateProjectPrepublishDraft(
+  projectId: string,
+  platform: string,
+  input: UpdatePrepublishDraftInput,
+) {
+  return fetchDashboard<ProjectPublications>(
+    `/api/user/dashboard/projects/${projectId}/prepublish/${encodeURIComponent(platform)}`,
+    {
+      body: JSON.stringify(input),
+      method: "PUT",
     },
   );
 }
