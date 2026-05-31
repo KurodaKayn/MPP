@@ -22,10 +22,15 @@ const (
 
 type UserDashboardHandler struct {
 	dashboardService *services.DashboardService
+	aiContentEditor  services.AIContentEditor
 }
 
 func NewUserDashboardHandler(s *services.DashboardService) *UserDashboardHandler {
 	return &UserDashboardHandler{dashboardService: s}
+}
+
+func (h *UserDashboardHandler) UseAIContentEditor(editor services.AIContentEditor) {
+	h.aiContentEditor = editor
 }
 
 func (h *UserDashboardHandler) GetMyStats(c echo.Context) error {
@@ -214,6 +219,56 @@ func (h *UserDashboardHandler) SyncProjectPrepublish(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, publications)
+}
+
+func (h *UserDashboardHandler) EditContentWithAI(c echo.Context) error {
+	if _, err := middleware.GetUserIDFromContext(c); err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	if h.aiContentEditor == nil {
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+	}
+
+	req := new(dto.AIEditContentRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.aiContentEditor.EditContent(c.Request().Context(), *req)
+	if err != nil {
+		return sendAIEditError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) EditPrepublishWithAI(c echo.Context) error {
+	if _, err := middleware.GetUserIDFromContext(c); err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	if h.aiContentEditor == nil {
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+	}
+
+	req := new(dto.AIEditPrepublishRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.aiContentEditor.EditPrepublish(c.Request().Context(), *req)
+	if err != nil {
+		return sendAIEditError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func sendAIEditError(c echo.Context, err error) error {
+	if errors.Is(err, services.ErrInvalidAIEditRequest) {
+		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+	}
+	if errors.Is(err, services.ErrAIServiceUnavailable) {
+		return sendError(c, http.StatusBadGateway, "ai_unavailable", err.Error())
+	}
+	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 }
 
 func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
