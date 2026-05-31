@@ -1,42 +1,57 @@
 import socket
 import threading
-import select
 import sys
 
-def proxy(src, dst):
+def pipe(src, dst):
     try:
         while True:
-            r, _, _ = select.select([src, dst], [], [])
-            for s in r:
-                data = s.recv(8192)
-                if not data: return
-                (dst if s is src else src).sendall(data)
+            data = src.recv(8192)
+            if not data:
+                break
+            dst.sendall(data)
     except:
         pass
     finally:
-        src.close()
-        dst.close()
+        try:
+            src.close()
+        except:
+            pass
+        try:
+            dst.close()
+        except:
+            pass
 
 def handle(client):
     remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         remote.connect(('127.0.0.1', 9223))
-    except:
+    except Exception as e:
+        print(f"Proxy error: Failed to connect to Chromium: {e}")
+        sys.stdout.flush()
         client.close()
         return
-    threading.Thread(target=proxy, args=(client, remote), daemon=True).start()
-    proxy(remote, client)
+    
+    # Start two unidirectional pipes
+    threading.Thread(target=pipe, args=(client, remote), daemon=True).start()
+    pipe(remote, client)
 
 def main():
+    # Use port 9222 as defined in entrypoint.sh/Dockerfile
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(('0.0.0.0', 9222))
-    s.listen(5)
+    s.listen(10)
     print("Python CDP Proxy listening on 0.0.0.0:9222 forwarding to 127.0.0.1:9223")
     sys.stdout.flush()
     while True:
-        c, _ = s.accept()
-        threading.Thread(target=handle, args=(c,), daemon=True).start()
+        try:
+            c, addr = s.accept()
+            threading.Thread(target=handle, args=(c,), daemon=True).start()
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            print(f"Accept error: {e}")
+            sys.stdout.flush()
 
 if __name__ == '__main__':
     main()
