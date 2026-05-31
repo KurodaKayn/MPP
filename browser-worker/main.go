@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/storage"
 	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
@@ -40,9 +39,10 @@ type RemoteAccountProfile struct {
 }
 
 type CaptureWorkerSessionResponse struct {
-	Status  string               `json:"status"`
-	Cookies []Cookie             `json:"cookies"`
-	Account RemoteAccountProfile `json:"account"`
+	Status         string               `json:"status"`
+	Cookies        []Cookie             `json:"cookies"`
+	MissingCookies []string             `json:"missing_cookies,omitempty"`
+	Account        RemoteAccountProfile `json:"account"`
 }
 
 type DomainRule struct {
@@ -67,6 +67,10 @@ type StartWorkerSessionRequest struct {
 	AllowedDomains  []DomainRule        `json:"allowed_domains"`
 	RequiredCookies []CookieRequirement `json:"required_cookies"`
 	TTLSeconds      int                 `json:"ttl_seconds"`
+	Viewport        struct {
+		Width  int `json:"width"`
+		Height int `json:"height"`
+	} `json:"viewport"`
 }
 
 type StartWorkerSessionResponse struct {
@@ -90,7 +94,12 @@ type WorkerSession struct {
 	StreamEndpointRef string
 	InternalStreamURL string
 	RequiredCookies   []CookieRequirement
+	CreatedAt         time.Time
 	ExpiresAt         time.Time
+	BrowserContext    context.Context
+	CDPMu             sync.Mutex
+	StateCancel       context.CancelFunc
+	StateStore        *RedisStateStore
 	CancelFunc        context.CancelFunc
 }
 
@@ -139,6 +148,11 @@ func main() {
 	}
 
 	sm := NewSessionManager()
+	stateStore, err := NewRedisStateStoreFromEnv(context.Background())
+	if err != nil {
+		log.Fatalf("Failed to initialize Redis state store: %v", err)
+	}
+	defer stateStore.Close()
 
 	e.POST("/internal/browser-sessions", func(c echo.Context) error {
 		var req StartWorkerSessionRequest
@@ -146,8 +160,8 @@ func main() {
 			return err
 		}
 
-		// 1. Start Docker Container with Login URL
-		containerID, _, cdpPort, streamPort, err := dm.StartBrowserContainer(c.Request().Context(), req.SessionID.String(), req.LoginURL)
+		// Start at about:blank so request interception is active before platform navigation.
+		containerID, _, cdpPort, streamPort, err := dm.StartBrowserContainer(c.Request().Context(), req.SessionID.String())
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to start browser: %v", err))
 		}
@@ -186,40 +200,49 @@ func main() {
 
 		allocCtx, allocCancel := chromedp.NewRemoteAllocator(context.Background(), wsURL)
 		browserCtx, browserCancel := chromedp.NewContext(allocCtx)
-		_ = browserCtx
-		/*
 		if err := SetupInterception(browserCtx, req.AllowedDomains); err != nil {
 			browserCancel()
 			allocCancel()
 			_ = dm.StopContainer(context.Background(), containerID)
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to configure browser isolation: %v", err))
 		}
-		*/
+		if err := chromedp.Run(browserCtx, chromedp.Navigate(req.LoginURL)); err != nil {
+			browserCancel()
+			allocCancel()
+			_ = dm.StopContainer(context.Background(), containerID)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to navigate to login page: %v", err))
+		}
 
 		ttl := time.Duration(req.TTLSeconds) * time.Second
 		if ttl <= 0 {
 			ttl = 15 * time.Minute
 		}
-		expiresAt := time.Now().Add(ttl)
+		startedAt := time.Now()
+		expiresAt := startedAt.Add(ttl)
+		ref := uuid.NewString()
 
 		workerSession := &WorkerSession{
-			ID:                uuid.NewString(),
+			ID:                ref,
 			SessionID:         req.SessionID,
 			UserID:            req.UserID,
 			Platform:          req.Platform,
 			Status:            "ready",
 			ContainerID:       containerID,
-			CDPEndpointRef:    fmt.Sprintf("ws://localhost:%d", cdpPort),
+			CDPEndpointRef:    "internal-cdp:" + ref,
 			StreamEndpointRef: "",
 			InternalStreamURL: fmt.Sprintf("http://127.0.0.1:%d", streamPort),
 			RequiredCookies:   req.RequiredCookies,
+			CreatedAt:         startedAt,
 			ExpiresAt:         expiresAt,
+			BrowserContext:    browserCtx,
+			StateStore:        stateStore,
 			CancelFunc: func() {
 				browserCancel()
 				allocCancel()
 			},
 		}
 		workerSession.StreamEndpointRef = fmt.Sprintf("/internal/browser-sessions/%s/stream", workerSession.ID)
+		workerSession.StateCancel = startSessionStateLoop(context.Background(), workerSession)
 
 		sm.put(workerSession)
 		time.AfterFunc(ttl, func() {
@@ -236,7 +259,7 @@ func main() {
 			ContainerID:       workerSession.ContainerID,
 			CDPEndpointRef:    workerSession.CDPEndpointRef,
 			StreamEndpointRef: workerSession.StreamEndpointRef,
-			StartedAt:         time.Now(),
+			StartedAt:         startedAt,
 			ExpiresAt:         workerSession.ExpiresAt,
 		})
 	})
@@ -247,11 +270,11 @@ func main() {
 		if !ok {
 			return echo.NewHTTPError(http.StatusNotFound, "session not found")
 		}
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"worker_session_ref": ref,
-			"status":             session.Status,
-			"expires_at":         session.ExpiresAt,
-		})
+		state, err := detectAndSaveSessionState(c.Request().Context(), session)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+		return c.JSON(http.StatusOK, state)
 	})
 
 	e.Any("/internal/browser-sessions/:ref/stream", browserStreamHandler(sm, dm))
@@ -266,74 +289,46 @@ func main() {
 
 		log.Printf("Capture triggered for session %s (container %s)", ref, session.ContainerID)
 
-		// 1. Obtain current WebSocket URL via manual HTTP fetch
-		cdpPort := 9222 
-		wsURL, err := browserWebSocketURL(cdpPort)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to reach Chromium for capture: %v", err))
-		}
-
-		log.Printf("Capture: Connecting to CDP at %s", wsURL)
-
-		allocCtx, _ := chromedp.NewRemoteAllocator(context.Background(), wsURL)
-		ctx, cancel := chromedp.NewContext(allocCtx)
-		defer cancel()
-
-		var chromeCookies []*network.Cookie
-		var username string
-
-		err = chromedp.Run(ctx,
-			chromedp.ActionFunc(func(ctx context.Context) error {
-				var err error
-				// Use storage.GetCookies to get ALL cookies from the browser instance
-				allCookies, err := storage.GetCookies().Do(ctx)
-				if err != nil {
-					return err
-				}
-				// Map storage.Cookie to network.Cookie (compatible fields)
-				for _, sc := range allCookies {
-					chromeCookies = append(chromeCookies, &network.Cookie{
-						Name:     sc.Name,
-						Value:    sc.Value,
-						Domain:   sc.Domain,
-						Path:     sc.Path,
-						Expires:  sc.Expires,
-						Size:     sc.Size,
-						HTTPOnly: sc.HTTPOnly,
-						Secure:   sc.Secure,
-						Session:  sc.Session,
-					})
-				}
-				return nil
-			}),
-			chromedp.ActionFunc(func(ctx context.Context) error {
-				script := `(function() {
-					const nameEl = document.querySelector('.name-G1vOOn') || 
-					               document.querySelector('.user-name') || 
-								   document.querySelector('[class*="user-name"]');
-					return nameEl ? nameEl.innerText : "";
-				})()`
-				_ = chromedp.Evaluate(script, &username).Do(ctx)
-				return nil
-			}),
-		)
-
+		currentURL, cookies, username, err := readBrowserSnapshot(c.Request().Context(), session, true)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("CDP capture failed: %v", err))
 		}
 
-		var cookies []Cookie
-		for _, cc := range chromeCookies {
-			cookies = append(cookies, Cookie{
-				Name: cc.Name, Value: cc.Value, Domain: cc.Domain, Path: cc.Path,
-				Expires: cc.Expires, Secure: cc.Secure, HttpOnly: cc.HTTPOnly,
+		preservedCookies := filterPreservedCookies(cookies, session.RequiredCookies)
+		ok, missing := validateRequiredCookies(preservedCookies, session.RequiredCookies)
+		if !ok {
+			state := WorkerSessionState{
+				WorkerSessionRef: ref,
+				Status:           "ready",
+				CurrentURL:       currentURL,
+				MissingCookies:   missing,
+				Message:          "Waiting for required login cookies",
+				ExpiresAt:        session.ExpiresAt,
+			}
+			session.Status = state.Status
+			_ = session.StateStore.SaveLiveSession(c.Request().Context(), session, state)
+			return c.JSON(http.StatusOK, CaptureWorkerSessionResponse{
+				Status:         "ready",
+				MissingCookies: missing,
 			})
 		}
+		if username == "" {
+			username = defaultAccountUsername(session.Platform)
+		}
 
-		// Force 'login_detected' as requested, since calling complete implies login success
+		state := WorkerSessionState{
+			WorkerSessionRef: ref,
+			Status:           "login_detected",
+			CurrentURL:       currentURL,
+			LoginDetected:    true,
+			Message:          "Login detected successfully",
+			ExpiresAt:        session.ExpiresAt,
+		}
+		session.Status = state.Status
+		_ = session.StateStore.SaveLiveSession(c.Request().Context(), session, state)
 		return c.JSON(http.StatusOK, CaptureWorkerSessionResponse{
-			Status:  "login_detected",
-			Cookies: cookies,
+			Status:  state.Status,
+			Cookies: preservedCookies,
 			Account: RemoteAccountProfile{
 				Username: username,
 			},
@@ -397,7 +392,122 @@ func browserStreamHandler(sm *SessionManager, dm *DockerManager) echo.HandlerFun
 	}
 }
 
+func startSessionStateLoop(ctx context.Context, session *WorkerSession) context.CancelFunc {
+	loopCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		ticker := time.NewTicker(browserSessionHeartbeatRefresh)
+		defer ticker.Stop()
+
+		for {
+			state, err := detectAndSaveSessionState(loopCtx, session)
+			if err != nil {
+				state = WorkerSessionState{
+					WorkerSessionRef: session.ID,
+					Status:           "failed",
+					Message:          err.Error(),
+					ExpiresAt:        session.ExpiresAt,
+				}
+				session.Status = state.Status
+				_ = session.StateStore.SaveLiveSession(loopCtx, session, state)
+			}
+			_ = session.StateStore.RefreshHeartbeat(loopCtx, session)
+
+			select {
+			case <-loopCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	return cancel
+}
+
+func detectAndSaveSessionState(ctx context.Context, session *WorkerSession) (WorkerSessionState, error) {
+	currentURL, cookies, _, err := readBrowserSnapshot(ctx, session, false)
+	if err != nil {
+		return WorkerSessionState{}, err
+	}
+
+	ok, missing := validateRequiredCookies(cookies, session.RequiredCookies)
+	status := "ready"
+	message := "Waiting for required login cookies"
+	if ok {
+		status = "login_detected"
+		message = "Login detected successfully"
+	}
+
+	state := WorkerSessionState{
+		WorkerSessionRef: session.ID,
+		Status:           status,
+		CurrentURL:       currentURL,
+		LoginDetected:    ok,
+		MissingCookies:   missing,
+		Message:          message,
+		ExpiresAt:        session.ExpiresAt,
+	}
+	session.Status = status
+	if err := session.StateStore.SaveLiveSession(ctx, session, state); err != nil {
+		return WorkerSessionState{}, err
+	}
+	return state, nil
+}
+
+func readBrowserSnapshot(ctx context.Context, session *WorkerSession, includeAccount bool) (string, []Cookie, string, error) {
+	session.CDPMu.Lock()
+	defer session.CDPMu.Unlock()
+
+	var currentURL string
+	var cookies []Cookie
+	var username string
+
+	actions := []chromedp.Action{
+		chromedp.Location(&currentURL),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			chromeCookies, err := storage.GetCookies().Do(ctx)
+			if err != nil {
+				return err
+			}
+			for _, cc := range chromeCookies {
+				cookies = append(cookies, Cookie{
+					Name:     cc.Name,
+					Value:    cc.Value,
+					Domain:   cc.Domain,
+					Path:     cc.Path,
+					Expires:  cc.Expires,
+					Secure:   cc.Secure,
+					HttpOnly: cc.HTTPOnly,
+				})
+			}
+			return nil
+		}),
+	}
+	if includeAccount {
+		actions = append(actions, chromedp.ActionFunc(func(ctx context.Context) error {
+			script := `(function() {
+				const nameEl = document.querySelector('.name-G1vOOn') ||
+				               document.querySelector('.user-name') ||
+				               document.querySelector('[class*="user-name"]') ||
+				               document.querySelector('.AppHeader-profileAvatar') ||
+				               document.querySelector('.ProfileHeader-name');
+				return nameEl ? (nameEl.alt || nameEl.innerText || "") : "";
+			})()`
+			_ = chromedp.Evaluate(script, &username).Do(ctx)
+			return nil
+		}))
+	}
+
+	if err := chromedp.Run(session.BrowserContext, actions...); err != nil {
+		return "", nil, "", err
+	}
+
+	return currentURL, cookies, username, nil
+}
+
 func cleanupSession(ctx context.Context, dm *DockerManager, session *WorkerSession) {
+	if session.StateCancel != nil {
+		session.StateCancel()
+	}
+	_ = session.StateStore.DeleteHeartbeat(ctx, session.ID)
 	if session.CancelFunc != nil {
 		session.CancelFunc()
 	}
@@ -537,17 +647,68 @@ func workerStreamPath(wildcardPath string) string {
 	return "/" + wildcardPath
 }
 
+func filterPreservedCookies(cookies []Cookie, requirements []CookieRequirement) []Cookie {
+	filtered := make([]Cookie, 0, len(cookies))
+	seen := make(map[string]int)
+	for _, cookie := range cookies {
+		if cookie.Name == "" || cookie.Value == "" || !cookiePreserved(cookie, requirements) {
+			continue
+		}
+		if cookie.Path == "" {
+			cookie.Path = "/"
+		}
+		key := strings.ToLower(cookie.Name + "\x00" + cookie.Domain + "\x00" + cookie.Path)
+		if existing, ok := seen[key]; ok {
+			filtered[existing] = cookie
+			continue
+		}
+		seen[key] = len(filtered)
+		filtered = append(filtered, cookie)
+	}
+	return filtered
+}
+
+func defaultAccountUsername(platform string) string {
+	switch platform {
+	case "douyin":
+		return "Connected Douyin account"
+	case "zhihu":
+		return "Connected Zhihu account"
+	default:
+		return "Connected account"
+	}
+}
+
+func cookiePreserved(cookie Cookie, requirements []CookieRequirement) bool {
+	for _, req := range requirements {
+		if !req.Required && !req.Preserve {
+			continue
+		}
+		if cookie.Name != req.Name {
+			continue
+		}
+		for _, suffix := range req.DomainSuffixes {
+			if domainMatches(cookie.Domain, suffix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func validateRequiredCookies(cookies []Cookie, requirements []CookieRequirement) (bool, []string) {
 	var missing []string
+	hasRequired := false
 	for _, req := range requirements {
 		if !req.Required {
 			continue
 		}
+		hasRequired = true
 		if !hasRequiredCookie(cookies, req) {
 			missing = append(missing, req.Name)
 		}
 	}
-	return len(missing) == 0, missing
+	return hasRequired && len(missing) == 0, missing
 }
 
 func hasRequiredCookie(cookies []Cookie, req CookieRequirement) bool {

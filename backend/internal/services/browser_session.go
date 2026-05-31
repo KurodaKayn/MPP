@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,11 +35,12 @@ const (
 	browserSessionRedisGrace = 1 * time.Minute
 	streamTokenMaxTTL        = 5 * time.Minute
 
-	browserSessionActiveKeyPrefix     = "mpp:browser:active:"
-	browserSessionKeyPrefix           = "mpp:browser:session:"
-	browserSessionStreamTokenPrefix   = "mpp:browser:stream-token:"
-	browserSessionStreamCurrentPrefix = "mpp:browser:stream-current:"
-	browserSessionCleanupKey          = "mpp:browser:cleanup"
+	browserSessionActiveKeyPrefix       = "mpp:browser:active:"
+	browserSessionKeyPrefix             = "mpp:browser:session:"
+	browserSessionStreamTokenPrefix     = "mpp:browser:stream-token:"
+	browserSessionStreamCurrentPrefix   = "mpp:browser:stream-current:"
+	browserSessionWorkerHeartbeatPrefix = "mpp:browser:worker-heartbeat:"
+	browserSessionCleanupKey            = "mpp:browser:cleanup"
 )
 
 type browserSessionLiveState struct {
@@ -161,7 +163,7 @@ func (s *BrowserSessionService) expireSupersededActiveRows(ctx context.Context, 
 		}).Error
 }
 
-func (s *BrowserSessionService) cleanupRedisSession(ctx context.Context, userID uuid.UUID, platform string, sessionID uuid.UUID) error {
+func (s *BrowserSessionService) cleanupRedisSession(ctx context.Context, userID uuid.UUID, platform string, sessionID uuid.UUID, workerSessionRef string) error {
 	if s.redisClient == nil {
 		return nil
 	}
@@ -172,6 +174,9 @@ func (s *BrowserSessionService) cleanupRedisSession(ctx context.Context, userID 
 		return err
 	}
 	if err := s.deleteRedisLiveSession(ctx, sessionID); err != nil {
+		return err
+	}
+	if err := s.deleteRedisWorkerHeartbeat(ctx, workerSessionRef); err != nil {
 		return err
 	}
 	return s.removeRedisCleanupMember(ctx, sessionID)
@@ -195,6 +200,10 @@ func browserSessionStreamTokenKeyPrefixFor(sessionID uuid.UUID) string {
 
 func browserSessionStreamCurrentKey(sessionID uuid.UUID) string {
 	return browserSessionStreamCurrentPrefix + sessionID.String()
+}
+
+func browserSessionWorkerHeartbeatKey(workerSessionRef string) string {
+	return browserSessionWorkerHeartbeatPrefix + workerSessionRef
 }
 
 func browserSessionLiveTTL(expiresAt time.Time) time.Duration {
@@ -266,6 +275,21 @@ func (s *BrowserSessionService) deleteRedisLiveSession(ctx context.Context, sess
 		return nil
 	}
 	return s.redisClient.Del(ctx, browserSessionKey(sessionID)).Err()
+}
+
+func (s *BrowserSessionService) redisWorkerHeartbeatAlive(ctx context.Context, workerSessionRef string) (bool, error) {
+	if s.redisClient == nil || workerSessionRef == "" {
+		return true, nil
+	}
+	exists, err := s.redisClient.Exists(ctx, browserSessionWorkerHeartbeatKey(workerSessionRef)).Result()
+	return exists > 0, err
+}
+
+func (s *BrowserSessionService) deleteRedisWorkerHeartbeat(ctx context.Context, workerSessionRef string) error {
+	if s.redisClient == nil || workerSessionRef == "" {
+		return nil
+	}
+	return s.redisClient.Del(ctx, browserSessionWorkerHeartbeatKey(workerSessionRef)).Err()
 }
 
 func (s *BrowserSessionService) removeRedisCleanupMember(ctx context.Context, sessionID uuid.UUID) error {
@@ -448,7 +472,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	}
 
 	if err := s.db.Create(session).Error; err != nil {
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID)
+		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, "")
 		return nil, err
 	}
 	if err := s.saveRedisLiveSession(ctx, browserSessionLiveState{
@@ -459,7 +483,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 		CreatedAt: now,
 		ExpiresAt: expiresAt,
 	}); err != nil {
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID)
+		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, "")
 		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}
@@ -481,7 +505,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	if err != nil {
 		// Update status to failed
 		s.db.Model(session).Update("status", models.BrowserSessionStatusFailed)
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID)
+		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, "")
 		return nil, fmt.Errorf("worker failed to create session: %w", err)
 	}
 
@@ -495,7 +519,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	}).Error
 	if err != nil {
 		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID)
+		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, resp.WorkerSessionRef)
 		return nil, err
 	}
 	session.Status = models.BrowserSessionStatusReady
@@ -517,7 +541,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 		ExpiresAt:         expiresAt,
 	}); err != nil {
 		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID)
+		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, resp.WorkerSessionRef)
 		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}
@@ -525,13 +549,13 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	tokenExpiresAt, err := s.rotateRedisStreamToken(ctx, sessionID, userID, platform, tokenHash, expiresAt)
 	if err != nil {
 		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID)
+		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, resp.WorkerSessionRef)
 		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}
 	if err := s.db.Model(session).Update("connect_token_expires_at", tokenExpiresAt).Error; err != nil {
 		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID)
+		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, resp.WorkerSessionRef)
 		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}
@@ -567,7 +591,30 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 		session.ExpiresAt = state.ExpiresAt
 
 		if state.WorkerSessionRef != "" && !isTerminalBrowserSessionStatus(state.Status) {
-			if workerState, err := s.workerClient.GetSession(ctx, state.WorkerSessionRef); err == nil {
+			heartbeatAlive, err := s.redisWorkerHeartbeatAlive(ctx, state.WorkerSessionRef)
+			if err != nil {
+				return nil, err
+			}
+			workerState, workerErr := s.workerClient.GetSession(ctx, state.WorkerSessionRef)
+			if workerErr != nil {
+				nextStatus := models.BrowserSessionStatusFailed
+				message := "worker session is unavailable"
+				if !heartbeatAlive {
+					message = "worker heartbeat missing"
+				}
+				if time.Now().After(state.ExpiresAt) {
+					nextStatus = models.BrowserSessionStatusExpired
+					message = "session expired"
+				}
+				session.Status = nextStatus
+				session.ErrorMessage = message
+				_ = s.db.Model(&session).Updates(map[string]interface{}{
+					"status":             nextStatus,
+					"error_message":      message,
+					"connect_token_hash": "",
+				}).Error
+				_ = s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID, state.WorkerSessionRef)
+			} else {
 				nextStatus := state.Status
 				if workerState.LoginDetected {
 					nextStatus = models.BrowserSessionStatusLoginDetected
@@ -749,6 +796,10 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 	}
 
 	if captureResp.Status != "login_detected" {
+		message := "login not detected yet"
+		if len(captureResp.MissingCookies) > 0 {
+			message = "missing required cookies: " + strings.Join(captureResp.MissingCookies, ", ")
+		}
 		s.db.Model(&session).Update("status", models.BrowserSessionStatusReady)
 		_ = s.saveRedisLiveSession(ctx, browserSessionLiveState{
 			SessionID:         session.ID,
@@ -759,10 +810,11 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 			ContainerID:       session.ContainerID,
 			CDPEndpointRef:    session.CDPEndpointRef,
 			StreamEndpointRef: session.StreamEndpointRef,
+			Message:           message,
 			CreatedAt:         session.CreatedAt,
 			ExpiresAt:         session.ExpiresAt,
 		})
-		return nil, fmt.Errorf("login not detected yet")
+		return nil, errors.New(message)
 	}
 
 	// 3. Save cookies via CookieStore
@@ -798,7 +850,7 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 
 	// 5. Stop worker
 	s.workerClient.StopSession(ctx, session.WorkerSessionRef)
-	_ = s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID)
+	_ = s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID, session.WorkerSessionRef)
 
 	return &dto.CompleteBrowserSessionResponse{
 		SessionID: id,
@@ -824,7 +876,7 @@ func (s *BrowserSessionService) CancelSession(ctx context.Context, userID uuid.U
 	if session.WorkerSessionRef != "" {
 		s.workerClient.StopSession(ctx, session.WorkerSessionRef)
 	}
-	_ = s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID)
+	_ = s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID, session.WorkerSessionRef)
 
 	return s.db.Model(&session).Updates(map[string]interface{}{
 		"status":             models.BrowserSessionStatusExpired,
@@ -885,7 +937,7 @@ func (s *BrowserSessionService) cleanupExpiredSession(ctx context.Context, sessi
 		return err
 	}
 	if isTerminalBrowserSessionStatus(session.Status) {
-		return s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID)
+		return s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID, session.WorkerSessionRef)
 	}
 	if session.WorkerSessionRef != "" {
 		_ = s.workerClient.StopSession(ctx, session.WorkerSessionRef)
@@ -897,7 +949,7 @@ func (s *BrowserSessionService) cleanupExpiredSession(ctx context.Context, sessi
 	}).Error; err != nil {
 		return err
 	}
-	return s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID)
+	return s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID, session.WorkerSessionRef)
 }
 
 func browserSessionStreamURL(sessionID uuid.UUID, token string) string {

@@ -30,6 +30,9 @@ func TestIsDomainAllowed(t *testing.T) {
 		{"https://douyin.com.evil.com", false}, // Wrong suffix
 		{"https://sub.exact.com", false},       // Exact match required
 		{"https://google.com", false},          // Not in list
+		{"https://127.0.0.1", false},           // Localhost IP literal
+		{"https://169.254.169.254", false},     // Link-local metadata IP literal
+		{"https://10.0.0.10", false},           // Private service-network IP literal
 		{"invalid-url", false},                 // Invalid format
 	}
 
@@ -68,4 +71,23 @@ func TestValidateRequiredCookies(t *testing.T) {
 	}, requirements)
 	assert.False(t, ok)
 	assert.ElementsMatch(t, []string{"sessionid", "sid_guard"}, missing)
+}
+
+func TestFilterPreservedCookies(t *testing.T) {
+	requirements := []CookieRequirement{
+		{Name: "sessionid", DomainSuffixes: []string{".douyin.com"}, Required: true, Preserve: true},
+		{Name: "sid_guard", DomainSuffixes: []string{".douyin.com"}, Required: true, Preserve: true},
+	}
+
+	filtered := filterPreservedCookies([]Cookie{
+		{Name: "sessionid", Value: "session", Domain: ".douyin.com"},
+		{Name: "sid_guard", Value: "guard", Domain: "creator.douyin.com"},
+		{Name: "unrelated", Value: "value", Domain: ".douyin.com"},
+		{Name: "sessionid", Value: "evil", Domain: "douyin.com.evil.test"},
+	}, requirements)
+
+	assert.Equal(t, []Cookie{
+		{Name: "sessionid", Value: "session", Domain: ".douyin.com", Path: "/"},
+		{Name: "sid_guard", Value: "guard", Domain: "creator.douyin.com", Path: "/"},
+	}, filtered)
 }

@@ -55,9 +55,10 @@ type GetWorkerSessionResponse struct {
 }
 
 type CaptureWorkerSessionResponse struct {
-	Status  string               `json:"status"`
-	Cookies []Cookie             `json:"cookies"`
-	Account RemoteAccountProfile `json:"account"`
+	Status         string               `json:"status"`
+	Cookies        []Cookie             `json:"cookies"`
+	MissingCookies []string             `json:"missing_cookies,omitempty"`
+	Account        RemoteAccountProfile `json:"account"`
 }
 
 type BrowserWorkerClient interface {

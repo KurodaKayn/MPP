@@ -27,7 +27,7 @@ func NewDockerManager() (*DockerManager, error) {
 	return &DockerManager{cli: cli}, nil
 }
 
-func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID string, adapterLoginURL string) (containerID string, containerIP string, cdpPort, streamPort int, err error) {
+func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID string) (containerID string, containerIP string, cdpPort, streamPort int, err error) {
 	imageName := "mpp-browser-runtime"
 
 	config := &container.Config{
@@ -38,14 +38,14 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 		},
 		Env: []string{
 			"RESOLUTION=1366x768x24",
-			"LOGIN_URL=" + adapterLoginURL,
+			"LOGIN_URL=about:blank",
 		},
 	}
 
 	hostConfig := &container.HostConfig{
 		PortBindings: nat.PortMap{
-			"9222/tcp": []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: "9222"}},
-			"6080/tcp": []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: "6080"}},
+			"9222/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
+			"6080/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
 		},
 		Resources: container.Resources{
 			Memory:   1024 * 1024 * 1024,
@@ -70,8 +70,23 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 	// Wait for services to start inside the container
 	time.Sleep(5 * time.Second)
 
-	// Since we use fixed ports, we return them directly
-	return resp.ID, "127.0.0.1", 9222, 6080, nil
+	inspect, err := m.cli.ContainerInspect(ctx, resp.ID)
+	if err != nil {
+		_ = m.StopContainer(context.Background(), resp.ID)
+		return "", "", 0, 0, fmt.Errorf("failed to inspect container ports: %w", err)
+	}
+	cdpPort, err = mappedHostPort(inspect.NetworkSettings.Ports, "9222/tcp")
+	if err != nil {
+		_ = m.StopContainer(context.Background(), resp.ID)
+		return "", "", 0, 0, err
+	}
+	streamPort, err = mappedHostPort(inspect.NetworkSettings.Ports, "6080/tcp")
+	if err != nil {
+		_ = m.StopContainer(context.Background(), resp.ID)
+		return "", "", 0, 0, err
+	}
+
+	return resp.ID, "127.0.0.1", cdpPort, streamPort, nil
 }
 
 func mappedHostPort(ports nat.PortMap, port string) (int, error) {
