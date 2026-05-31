@@ -23,7 +23,8 @@ User signs in inside an isolated remote Chromium session. The backend reads cook
 | Visual remote access | noVNC + websockify + x11vnc, or KasmVNC | Browser UI streams to user's web page without extension. |
 | Virtual display | Xvfb | Runs visible Chromium inside headless server/container. |
 | Session manager | Separate `browser-worker` service | Creates browser sessions, tracks TTL, stops containers, and owns CDP connectivity. Backend API remains a thin authenticated coordinator. |
-| Queue / locking | PostgreSQL first; Redis later if needed | Prevents multiple live sessions per user/platform with a partial unique index. |
+| Live session state | Redis | Active sessions are short-lived and TTL-bound. Redis should own live status, active-session locks, stream tokens, heartbeats, and cleanup indexes. |
+| Durable records | PostgreSQL | Stores audit/history rows, final session status, and platform account data. It is not the primary active-session lock. |
 | Secret storage | Encrypted cookie store over `PlatformAccount.Cookies` | Existing model has cookie JSON, but encryption/decryption must sit behind a service boundary before MVP stores real cookies. |
 | Reverse proxy | Existing frontend API proxy / Nginx / Caddy | Routes session WebSocket and HTTP control endpoints without exposing raw CDP or VNC ports. |
 
@@ -36,19 +37,22 @@ Preferred MVP: **one browser container per connection session**.
 ## User Flow
 
 1. User clicks `Connect` on a platform card.
-2. Backend creates `remote_browser_sessions` row with `pending` status.
-3. Backend asks `browser-worker` to start a browser container with:
+2. Backend acquires `mpp:browser:active:{user_id}:{platform}` with Redis `SET NX EX`.
+3. Backend creates a durable `remote_browser_sessions` audit row with `pending` status.
+4. Backend writes `mpp:browser:session:{session_id}` live state to Redis with the session TTL.
+5. Backend asks `browser-worker` to start a browser container with:
    - isolated user data directory
    - adapter network policy, not only an initial allowlist URL
    - CDP endpoint reachable only by `browser-worker` on a private network
    - VNC/WebSocket endpoint reachable only through the authenticated backend stream proxy
-4. Frontend opens remote browser modal.
-5. Chromium navigates to platform login page.
-6. User logs in or scans official QR code.
-7. `browser-worker` polls login state through CDP.
-8. When required cookies exist, backend stores sanitized encrypted cookie JSON through the cookie store.
-9. Backend marks platform account `connected`.
-10. Backend asks `browser-worker` to stop the browser container after success or TTL expiry.
+6. Backend stores worker refs in Redis and PostgreSQL, then generates a Redis-backed stream token.
+7. Frontend opens remote browser modal.
+8. Chromium navigates to platform login page.
+9. User logs in or scans official QR code.
+10. `browser-worker` polls login state through CDP and updates Redis live state.
+11. When required cookies exist, backend stores sanitized encrypted cookie JSON through the cookie store.
+12. Backend marks platform account `connected`.
+13. Backend asks `browser-worker` to stop the browser container after success, cancel, or TTL expiry, then releases Redis session keys.
 
 ## Session States
 
@@ -63,7 +67,9 @@ Preferred MVP: **one browser container per connection session**.
 | `failed` | Container, CDP, or validation error. |
 | `revoked` | User disconnected account. Cookies deleted. |
 
-## Data Model
+## Durable Data Model
+
+PostgreSQL keeps a durable audit trail and final status. Redis is the source of truth for active locks, live status, stream tokens, and TTL-driven cleanup.
 
 Add table:
 
@@ -77,7 +83,6 @@ CREATE TABLE remote_browser_sessions (
   container_id text NOT NULL DEFAULT '',
   cdp_endpoint_ref text NOT NULL DEFAULT '',
   stream_endpoint_ref text NOT NULL DEFAULT '',
-  connect_token_hash text NOT NULL,
   error_message text NOT NULL DEFAULT '',
   created_at timestamptz NOT NULL,
   expires_at timestamptz NOT NULL,
@@ -86,11 +91,30 @@ CREATE TABLE remote_browser_sessions (
 
 CREATE INDEX idx_remote_browser_sessions_user_platform
 ON remote_browser_sessions (user_id, platform, status);
-
-CREATE UNIQUE INDEX ux_remote_browser_sessions_active_user_platform
-ON remote_browser_sessions (user_id, platform)
-WHERE status IN ('pending', 'ready', 'login_detected', 'capturing');
 ```
+
+Do not rely on a PostgreSQL partial unique index for active-session locking. Use Redis `SET NX EX` so stale locks expire automatically and active checks stay fast.
+
+## Redis Live State
+
+Use the same Redis client style already used by publish queues and OAuth state. Keys should be namespaced and should never contain raw cookies or token values.
+
+| Key | Type | TTL | Purpose |
+| --- | --- | --- | --- |
+| `mpp:browser:active:{user_id}:{platform}` | string `session_id` | session TTL + small grace | One active session per user/platform. Acquired with `SET NX EX`; released by compare-and-delete Lua. |
+| `mpp:browser:session:{session_id}` | hash or JSON string | session TTL + grace | Live status, owner, platform, worker refs, current URL, missing cookies, error message, and expiry. |
+| `mpp:browser:stream-token:{session_id}:{token_hash}` | JSON string | `min(5 minutes, session remaining)` | Single-use stream token metadata: user ID, platform, purpose, and issued time. |
+| `mpp:browser:stream-current:{session_id}` | string `token_hash` | same as stream token | Optional pointer used to rotate/revoke the latest unconsumed token. |
+| `mpp:browser:cleanup` | sorted set | none | `session_id` scored by `expires_at` for deterministic cleanup sweeps. Do not rely only on keyspace notifications. |
+| `mpp:browser:worker-heartbeat:{worker_session_ref}` | string | 30-60 seconds | Detect worker/container loss before the session TTL expires. |
+
+Redis ownership rules:
+
+- Redis owns active-session conflict checks, stream-token lifecycle, live status, worker heartbeat, and cleanup scheduling.
+- PostgreSQL owns durable audit history and final queryable records.
+- `browser-worker` owns actual container/CDP state.
+- Cookie payloads are captured through CDP and immediately passed to `CookieStore.Save`; do not persist raw cookies in Redis.
+- Every Redis lock value must include the `session_id`; release/refresh locks only when the stored value still matches the caller.
 
 Reuse `platform_accounts.cookies` for saved cookies, but do not let publishers or handlers read raw storage directly. Add a cookie-store boundary that decrypts, validates, and returns normalized cookie arrays.
 
@@ -134,7 +158,7 @@ Response:
 ```json
 {
   "session_id": "uuid",
-  "status": "pending",
+  "status": "ready",
   "stream_url": "/api/user/dashboard/browser-sessions/uuid/stream?token=...",
   "stream_token_expires_at": "2026-05-30T11:50:00Z",
   "expires_at": "2026-05-30T12:00:00Z"
@@ -143,9 +167,12 @@ Response:
 
 Rules:
 
-- Return `409 Conflict` if the user already has an active session for the same platform.
+- Return `409 Conflict` if Redis already has `mpp:browser:active:{user_id}:{platform}`.
 - Return `400 Bad Request` if the platform has no remote browser adapter.
-- Generate a fresh stream token on session creation.
+- Create the PostgreSQL audit row only after the Redis active lock is acquired.
+- If worker startup fails, mark the audit row `failed` and release the Redis active lock with compare-and-delete.
+- Generate the first stream token in Redis when the worker stream endpoint is ready.
+- The response may return `pending` for asynchronous startup or `ready` for synchronous MVP startup. Include `stream_url` only when the stream token exists.
 
 ### Get Session
 
@@ -168,9 +195,10 @@ Response:
 Rules:
 
 - Return only sessions owned by the authenticated user.
+- Read live status from Redis first. Fall back to PostgreSQL only for terminal or already-expired sessions.
 - Include `stream_url` only while status is `ready`, `login_detected`, or `capturing`.
-- If the previous stream token was consumed or expired, rotate it and return a new `stream_url`.
-- Return `410 Gone` for expired sessions.
+- If the previous stream token was consumed or expired, rotate it in Redis and return a new `stream_url`.
+- Return `410 Gone` when the Redis session is gone because it expired. Terminal audit states such as `connected`, `failed`, or `revoked` may return `200 OK` without `stream_url`.
 
 ### Complete Session
 
@@ -219,7 +247,9 @@ Response:
 Rules:
 
 - Stop the worker session if it is still running.
-- Consume any outstanding stream token.
+- Delete outstanding stream token keys and `mpp:browser:stream-current:{session_id}`.
+- Release `mpp:browser:active:{user_id}:{platform}` by compare-and-delete.
+- Remove `mpp:browser:session:{session_id}` and its cleanup sorted-set member.
 - Keep completed sessions as audit records; do not delete rows in the request path.
 
 ### Stream
@@ -232,7 +262,7 @@ Rules:
 
 - Require normal user authentication and stream token validation.
 - Token must be bound to session ID, user ID, platform, and `stream` purpose.
-- Token is consumed on successful WebSocket upgrade.
+- Token is consumed from Redis on successful WebSocket upgrade using `GETDEL` or a Lua compare-and-delete script.
 - Backend must strip the token before proxying to `browser-worker`.
 - Raw VNC and CDP endpoints are never returned to the browser.
 - Return `401` for unauthenticated requests, `403` for owner mismatch, and `410` for consumed or expired tokens.
@@ -252,20 +282,30 @@ type StreamToken struct {
 Generation and storage:
 
 - Generate at least 32 random bytes and encode with unpadded URL-safe base64.
-- Store only `SHA-256(token)` or `HMAC-SHA-256(token, STREAM_TOKEN_HASH_KEY)` in `remote_browser_sessions.connect_token_hash`.
+- Store only `SHA-256(token)` or `HMAC-SHA-256(token, STREAM_TOKEN_HASH_KEY)` in Redis under `mpp:browser:stream-token:{session_id}:{token_hash}`.
+- Store token metadata as JSON: `session_id`, `user_id`, `platform`, `purpose: "stream"`, `issued_at`, and `expires_at`.
 - Set token TTL to `min(5 minutes, session.expires_at - now)`.
 - Never log token values or include them in worker requests.
 
 Consumption:
 
 - Compare token hashes in constant time.
-- Reject expired or already consumed tokens.
-- Clear `connect_token_hash` after a successful WebSocket upgrade.
+- Reject expired or already consumed tokens by reading Redis, not PostgreSQL.
+- Consume the Redis token key only after authentication and just before/while accepting the WebSocket upgrade.
+- Clear `mpp:browser:stream-current:{session_id}` when the consumed hash matches the current pointer.
 - For reconnect, the frontend calls `GET /api/user/dashboard/browser-sessions/:id` and receives a rotated token if the session is still active.
+- Token rotation should delete the previous current token key when it is still unconsumed. Use a Lua script so the current pointer and token key change atomically.
 
 ## Browser Worker Contract
 
 The worker API is internal only. It can be implemented as HTTP/gRPC or as an in-process Go interface for early development, but the payload shape should stay stable.
+
+Redis responsibilities:
+
+- Backend creates the session Redis keys before calling the worker.
+- Worker updates `mpp:browser:session:{session_id}` with `status`, `current_url`, `login_detected`, `missing_cookies`, and `message` while polling CDP.
+- Worker refreshes `mpp:browser:worker-heartbeat:{worker_session_ref}` while the container is alive.
+- Backend cleanup sweeps `mpp:browser:cleanup` and calls `DELETE /internal/browser-sessions/:worker_session_ref` for expired sessions. The worker may also self-expire, but backend cleanup is the source of deterministic recovery.
 
 ### Start Worker Session
 
@@ -285,6 +325,14 @@ Request:
       "match": "exact",
       "schemes": ["https"],
       "purpose": "creator"
+    }
+  ],
+  "required_cookies": [
+    {
+      "name": "sessionid",
+      "domain_suffixes": [".douyin.com"],
+      "required": true,
+      "preserve": true
     }
   ],
   "ttl_seconds": 900,
@@ -326,6 +374,12 @@ Response:
 }
 ```
 
+Rules:
+
+- Return fresh CDP-derived state when available.
+- Also write that state to `mpp:browser:session:{session_id}` so normal frontend polling does not need to call the worker every time.
+- If the worker heartbeat is missing or the container is gone, backend should mark the Redis session and PostgreSQL audit row `failed` or `expired` depending on whether the TTL elapsed.
+
 ### Capture Worker Session
 
 `POST /internal/browser-sessions/:worker_session_ref/capture`
@@ -361,6 +415,7 @@ Rules:
 - Return only cookies accepted by the platform adapter.
 - Do not return raw CDP endpoint details.
 - If required cookies are missing, return `status: "ready"` and `missing_cookies`.
+- Do not store captured cookies in Redis. The backend should pass them directly into `CookieStore.Save` after validation.
 
 ### Stop Worker Session
 
@@ -370,7 +425,7 @@ Rules:
 
 - Stop the container.
 - Delete the browser profile directory.
-- Release worker-side resources even if backend session state update fails.
+- Release worker-side resources even if Redis or PostgreSQL session state update fails.
 - Treat repeated stop calls as idempotent.
 
 ## Platform Adapter Contract
@@ -522,10 +577,24 @@ Resource limits:
 - Session TTL: `10` to `15` minutes
 - One active session per user/platform
 
+## Redis Cleanup Flow
+
+Redis key expiration removes stale live metadata, but cleanup must still stop containers and update durable audit rows.
+
+1. On start, add `session_id` to `mpp:browser:cleanup` with score `expires_at_unix_ms`.
+2. A backend cleanup loop periodically reads due members with `ZRANGEBYSCORE`.
+3. For each due session, read `mpp:browser:session:{session_id}`. If Redis already evicted it, fall back to the PostgreSQL audit row to recover `worker_session_ref`.
+4. Mark PostgreSQL `remote_browser_sessions.status = expired` unless the session already completed, failed, or was revoked.
+5. Delete stream-token keys, the active lock, the live session key, heartbeat key, and the cleanup sorted-set member using compare-and-delete where ownership matters.
+6. If backend crashes, Redis TTLs release locks automatically; the cleanup sorted set lets the next backend instance find containers that still need explicit stop calls.
+
 ## Security Requirements
 
 - Require authenticated user for every session endpoint.
 - Generate single-use stream token. TTL less than session TTL.
+- Store active stream tokens only as SHA-256/HMAC-SHA-256 hashes in Redis, never as raw token strings.
+- Use Redis compare-and-delete Lua scripts for lock release so one session cannot release another session's lock.
+- Do not store raw cookies, profile screenshots, or CDP payloads in Redis.
 - Never expose raw CDP URL to frontend.
 - Never expose raw VNC port publicly.
 - Store cookies encrypted at rest in Phase 1.
@@ -614,8 +683,10 @@ Failure messages:
 
 ### Phase 1: MVP
 
-- Add `remote_browser_sessions` table.
-- Add partial unique index for one active session per user/platform.
+- Add `remote_browser_sessions` PostgreSQL audit table.
+- Add Redis-backed browser session store for live state, active-session locks, stream tokens, worker heartbeats, and cleanup indexes.
+- Use Redis `SET NX EX` for one active session per user/platform.
+- Use Redis single-use stream tokens with 5-minute max TTL and atomic consume/rotation.
 - Add encrypted cookie store over `PlatformAccount.Cookies`.
 - Add `browser-worker` session manager interface.
 - Add Docker image for remote browser runtime.
@@ -626,14 +697,15 @@ Failure messages:
 - Add settings modal with noVNC iframe.
 - Save encrypted cookies into `PlatformAccount.Cookies`.
 - Reuse existing Douyin publisher with cookie-store-loaded cookies.
+- Add cleanup loop that drains `mpp:browser:cleanup`, stops expired worker sessions, and releases Redis locks.
 
 ### Phase 2: Hardening
 
-- Add session cleanup worker.
 - Add per-session resource limits.
 - Add audit logs.
 - Add adapter tests with mocked CDP.
 - Add reconnect-required status in UI.
+- Add Redis metrics/alerts for active sessions, cleanup lag, token-consume failures, and worker heartbeat loss.
 
 ### Phase 3: More Platforms
 
@@ -649,8 +721,9 @@ Failure messages:
 | noVNC vs KasmVNC | Use noVNC for MVP. Switch to KasmVNC only if performance or mobile input is poor. |
 | Browser worker location | Separate `browser-worker` service. Keep backend API thin and reuse the worker for publishing later if local backend Chromium becomes unreliable. |
 | Cookie encryption | Application-level AES-GCM using `COOKIE_ENCRYPTION_KEY`, implemented in Phase 1 before storing real platform cookies. |
+| Active session coordination | Redis owns live locks, stream tokens, TTL state, and cleanup indexes. PostgreSQL is durable history only. |
 | Container orchestration | Docker Compose for dev; Kubernetes Jobs/Pods for production. |
-| Session persistence | Persist cookies only. Delete browser profile after connect. |
+| Session persistence | Persist cookies and audit rows only. Redis live state expires; browser profiles are deleted after connect, cancel, or TTL. |
 
 ## Acceptance Criteria
 
