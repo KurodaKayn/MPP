@@ -1,5 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { PLATFORM_TABS, type PlatformTab } from "@/lib/content/platforms";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { Loader2, Send } from "lucide-react";
 import Image from "next/image";
 
@@ -8,10 +15,12 @@ type PublishPlatform = PlatformTab["value"];
 type ContentPublishBarProps = {
   canOpenXPostIntent: boolean;
   canPublish: boolean;
+  canSelectPlatforms: boolean;
   isOpeningXPostIntent: boolean;
   isPublishing: boolean;
   onOpenXPostIntent: () => void;
   onPublish: () => void;
+  onSelectedPlatformsChange: (platforms: PublishPlatform[]) => void;
   publishLabel?: string;
   selectedPlatforms: PublishPlatform[];
 };
@@ -19,17 +28,32 @@ type ContentPublishBarProps = {
 export function ContentPublishBar({
   canOpenXPostIntent,
   canPublish,
+  canSelectPlatforms,
   isOpeningXPostIntent,
   isPublishing,
   onOpenXPostIntent,
   onPublish,
+  onSelectedPlatformsChange,
   publishLabel = "一键发布",
   selectedPlatforms,
 }: ContentPublishBarProps) {
   const isBusy = isOpeningXPostIntent || isPublishing;
-  const selectedTabs = PLATFORM_TABS.filter((platform) =>
-    selectedPlatforms.includes(platform.value),
-  );
+  const selectedSet = new Set(selectedPlatforms);
+
+  const togglePlatform = (platform: PublishPlatform, checked: boolean) => {
+    if (!canSelectPlatforms) {
+      return;
+    }
+
+    if (checked) {
+      onSelectedPlatformsChange([...selectedPlatforms, platform]);
+      return;
+    }
+
+    onSelectedPlatformsChange(
+      selectedPlatforms.filter((item) => item !== platform),
+    );
+  };
 
   return (
     <section
@@ -47,7 +71,7 @@ export function ContentPublishBar({
                 自动发布
               </h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                使用预发布区块中已选择的平台。
+                在这里勾选需要进入自动发布流程的平台。
               </p>
             </div>
             <Button
@@ -66,37 +90,72 @@ export function ContentPublishBar({
             </Button>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {selectedTabs.length > 0 ? (
-              selectedTabs.map((platform) => (
-                <div
-                  key={platform.value}
-                  className="flex h-8 items-center gap-2 rounded-md border bg-muted/30 px-2 text-xs font-medium"
-                >
-                  <Image
-                    src={platform.icon}
-                    alt=""
-                    width={16}
-                    height={16}
-                    aria-hidden="true"
-                    className="size-4 shrink-0"
-                  />
-                  <span>{platform.label}</span>
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-muted-foreground">
-                尚未选择发布平台。
-              </div>
-            )}
-          </div>
+          <TooltipProvider>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              {PLATFORM_TABS.map((platform) => {
+                const checked = selectedSet.has(platform.value);
+                const card = (
+                  <label
+                    key={platform.value}
+                    className={cn(
+                      "flex h-14 items-center gap-3 rounded-lg border px-3 text-sm transition-colors",
+                      canSelectPlatforms
+                        ? "cursor-pointer"
+                        : "cursor-not-allowed opacity-60",
+                      checked
+                        ? "border-primary bg-primary/5 text-foreground"
+                        : "border-border bg-background hover:bg-muted/50",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={!canSelectPlatforms}
+                      className="size-4 rounded border-input accent-primary"
+                      onChange={(event) =>
+                        togglePlatform(
+                          platform.value,
+                          event.currentTarget.checked,
+                        )
+                      }
+                    />
+                    <Image
+                      src={platform.icon}
+                      alt=""
+                      width={18}
+                      height={18}
+                      aria-hidden="true"
+                      className="size-[18px] shrink-0"
+                    />
+                    <span className="truncate font-medium">
+                      {platform.label}
+                    </span>
+                  </label>
+                );
+
+                if (canSelectPlatforms) {
+                  return card;
+                }
+
+                return (
+                  <Tooltip key={platform.value}>
+                    <TooltipTrigger render={<div />}>{card}</TooltipTrigger>
+                    <TooltipContent>
+                      请先填写标题和正文内容，再选择自动发布平台。
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </TooltipProvider>
         </div>
 
         <div className="border-t pt-4">
           <h3 className="text-sm font-semibold">手动发布</h3>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
             <Button
               type="button"
+              size="lg"
               variant="outline"
               onClick={onOpenXPostIntent}
               disabled={!canOpenXPostIntent || isBusy}

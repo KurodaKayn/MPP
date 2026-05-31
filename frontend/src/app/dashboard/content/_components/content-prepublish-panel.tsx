@@ -2,7 +2,7 @@
 
 import { Loader2, RefreshCw } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -21,7 +21,6 @@ type ContentPrepublishPanelProps = {
   drafts: Partial<Record<PublishPlatform, PrepublishDraft>>;
   isSyncing: boolean;
   onSync: (platforms?: PublishPlatform[]) => void;
-  selectedPlatforms: PublishPlatform[];
   title: string;
 };
 
@@ -73,27 +72,14 @@ export function ContentPrepublishPanel({
   drafts,
   isSyncing,
   onSync,
-  selectedPlatforms,
   title,
 }: ContentPrepublishPanelProps) {
-  const selectedSet = new Set(selectedPlatforms);
   const hasSourceContent = Boolean(
     content.text.trim() || content.firstImageSrc,
   );
   const [activePlatform, setActivePlatform] = useState<PublishPlatform>(
-    selectedPlatforms[0] ?? PLATFORM_TABS[0].value,
+    PLATFORM_TABS[0].value,
   );
-
-  useEffect(() => {
-    if (selectedPlatforms.length === 0) {
-      setActivePlatform(PLATFORM_TABS[0].value);
-      return;
-    }
-
-    if (!selectedSet.has(activePlatform)) {
-      setActivePlatform(selectedPlatforms[0]);
-    }
-  }, [activePlatform, selectedPlatforms, selectedSet]);
 
   const activatePlatform = (platform: PublishPlatform) => {
     setActivePlatform(platform);
@@ -115,16 +101,11 @@ export function ContentPrepublishPanel({
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Button
               type="button"
+              size="lg"
               variant="outline"
-              onClick={() =>
-                onSync(
-                  selectedSet.has(activePlatform)
-                    ? [activePlatform]
-                    : [...selectedPlatforms, activePlatform],
-                )
-              }
+              onClick={() => onSync([activePlatform])}
               disabled={!hasSourceContent}
-              className="w-full sm:w-auto"
+              className="h-9 w-full justify-center sm:w-48"
             >
               {isSyncing ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -135,11 +116,12 @@ export function ContentPrepublishPanel({
             </Button>
             <Button
               type="button"
+              size="lg"
               onClick={() =>
                 onSync(PLATFORM_TABS.map((platform) => platform.value))
               }
               disabled={!hasSourceContent}
-              className="w-full sm:w-auto"
+              className="h-9 w-full justify-center sm:w-48"
             >
               {isSyncing ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -155,7 +137,6 @@ export function ContentPrepublishPanel({
       <CardContent className="space-y-5">
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
           {PLATFORM_TABS.map((platform) => {
-            const isSelected = selectedSet.has(platform.value);
             const isActive = activePlatform === platform.value;
 
             return (
@@ -166,10 +147,8 @@ export function ContentPrepublishPanel({
                 className={cn(
                   "flex h-14 items-center gap-3 rounded-lg border px-3 text-left text-sm transition-colors",
                   isActive
-                    ? "border-primary bg-primary/8 text-foreground shadow-sm"
-                    : isSelected
-                      ? "border-primary/40 bg-primary/5 text-foreground"
-                      : "border-border bg-background hover:bg-muted/50",
+                    ? "border-foreground/50 bg-muted text-foreground shadow-sm"
+                    : "border-border bg-background hover:bg-muted/50",
                 )}
               >
                 <Image

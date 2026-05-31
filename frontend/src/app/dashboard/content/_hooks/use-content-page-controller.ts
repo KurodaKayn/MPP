@@ -121,6 +121,7 @@ export function useContentPageController(projectId?: string) {
     selectedPlatforms.length > 0 &&
     hasSyncedSelectedPlatforms,
   );
+  const canSelectPlatforms = hasRequiredContent;
   const canSave = Boolean(
     projectId && hasRequiredContent && selectedPlatforms.length > 0,
   );
@@ -455,6 +456,7 @@ export function useContentPageController(projectId?: string) {
     canSave,
     canOpenXPostIntent,
     canPublish,
+    canSelectPlatforms,
     content,
     isEditing: Boolean(projectId),
     isLoading: isPageLoading,
