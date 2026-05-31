@@ -23,7 +23,7 @@ const statusVariant: Record<
   untested: "secondary",
 };
 
-export function SettingsPageHeader({
+export function AuthPageHeader({
   connectedCount,
   status,
   totalCount,

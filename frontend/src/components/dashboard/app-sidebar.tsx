@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { LayoutDashboard, FileText, Settings, PlusCircle } from "lucide-react";
+import {
+  LayoutDashboard,
+  FileText,
+  Settings,
+  PlusCircle,
+  Key,
+} from "lucide-react";
+
 import Image from "next/image";
 import Link from "next/link";
 
@@ -32,6 +39,10 @@ const data = {
     {
       ...dashboardRoutes.posts,
       icon: FileText,
+    },
+    {
+      ...dashboardRoutes.auth,
+      icon: Key,
     },
   ],
 };

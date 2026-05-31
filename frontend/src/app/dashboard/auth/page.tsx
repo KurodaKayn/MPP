@@ -23,14 +23,14 @@ import {
   type XAccount,
   type XConnectionTestResult,
 } from "@/lib/dashboard/api";
-import { SettingsPageHeader } from "./_components/settings-page-header";
+import { AuthPageHeader } from "./_components/auth-page-header";
 import { WechatAccountCard } from "./_components/wechat-account-card";
 import { WechatConnectionCheckCard } from "./_components/wechat-connection-check-card";
 import { DouyinAccountCard } from "./_components/douyin-account-card";
 import { RemoteBrowserSessionModal } from "./_components/remote-browser-session-modal";
 import { XAccountCard } from "./_components/x-account-card";
 
-function SettingsPageContent() {
+function AuthPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [account, setAccount] = useState<WechatAccount | null>(null);
@@ -403,8 +403,8 @@ function SettingsPageContent() {
   };
 
   return (
-    <div className="flex max-w-6xl flex-col gap-4">
-      <SettingsPageHeader
+    <div className="mx-auto w-full flex max-w-6xl flex-col gap-4">
+      <AuthPageHeader
         connectedCount={connectedCount}
         status={aggregateStatus}
         totalCount={3}
@@ -531,10 +531,10 @@ function SettingsPageContent() {
   );
 }
 
-export default function SettingsPage() {
+export default function AuthPage() {
   return (
     <Suspense>
-      <SettingsPageContent />
+      <AuthPageContent />
     </Suspense>
   );
 }

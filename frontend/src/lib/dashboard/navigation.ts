@@ -1,4 +1,8 @@
 export const dashboardRoutes = {
+  auth: {
+    title: "平台授权",
+    url: "/dashboard/auth",
+  },
   content: {
     title: "内容创作",
     url: "/dashboard/content",
@@ -21,6 +25,7 @@ export const dashboardMainNavItems = [
   dashboardRoutes.overview,
   dashboardRoutes.content,
   dashboardRoutes.posts,
+  dashboardRoutes.auth,
 ] as const;
 
 export function getDashboardPageTitle(pathname: string) {
