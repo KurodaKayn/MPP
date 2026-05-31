@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
@@ -108,4 +109,26 @@ func TestBrowserSessionService_UnsupportedPlatform(t *testing.T) {
 	_, svc, _ := setupBrowserSessionTest(t)
 	_, err := svc.StartSession(context.Background(), uuid.New(), "invalid-platform")
 	assert.ErrorIs(t, err, services.ErrPlatformNotSupported)
+}
+
+func TestBrowserSessionService_StartSessionIgnoresExpiredActiveRows(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	require.NoError(t, db.Create(&models.RemoteBrowserSession{
+		UserID:           userID,
+		Platform:         platform,
+		Status:           models.BrowserSessionStatusReady,
+		ConnectTokenHash: "expired-token",
+		CreatedAt:        time.Now().Add(-30 * time.Minute),
+		ExpiresAt:        time.Now().Add(-15 * time.Minute),
+	}).Error)
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.BrowserSessionStatusReady, resp.Status)
+	assert.NotEqual(t, uuid.Nil, resp.SessionID)
 }
