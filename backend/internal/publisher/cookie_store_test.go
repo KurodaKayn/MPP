@@ -23,7 +23,7 @@ func TestCookieStore(t *testing.T) {
 	userID := uuid.New()
 	platform := "douyin"
 	encryptionKey := "12345678901234567890123456789012" // 32 bytes
-	
+
 	t.Run("Missing Encryption Key", func(t *testing.T) {
 		t.Setenv("COOKIE_ENCRYPTION_KEY", "")
 		err := store.Save(context.Background(), userID, platform, []Cookie{}, RemoteAccountProfile{})
@@ -40,6 +40,15 @@ func TestCookieStore(t *testing.T) {
 		t.Setenv("COOKIE_ENCRYPTION_KEY", encryptionKey)
 		cookies := []Cookie{
 			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/", Secure: true, HttpOnly: true},
+			{Name: "sid_guard", Value: "guard-value", Domain: "creator.douyin.com", Path: "/", Secure: true, HttpOnly: true},
+			{Name: "passport_csrf_token", Value: "csrf-value", Domain: ".douyin.com", Path: "/", Secure: true},
+			{Name: "ignored", Value: "tracking-value", Domain: ".douyin.com", Path: "/"},
+			{Name: "sessionid", Value: "evil-value", Domain: "douyin.com.evil.test", Path: "/"},
+		}
+		expectedCookies := []Cookie{
+			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/", Secure: true, HttpOnly: true},
+			{Name: "sid_guard", Value: "guard-value", Domain: "creator.douyin.com", Path: "/", Secure: true, HttpOnly: true},
+			{Name: "passport_csrf_token", Value: "csrf-value", Domain: ".douyin.com", Path: "/", Secure: true},
 		}
 		profile := RemoteAccountProfile{
 			Username:  "testuser",
@@ -62,26 +71,39 @@ func TestCookieStore(t *testing.T) {
 		// Test Load
 		loadedCookies, err := store.Load(context.Background(), userID, platform)
 		assert.NoError(t, err)
-		assert.Equal(t, cookies, loadedCookies)
+		assert.Equal(t, expectedCookies, loadedCookies)
 
 		// Test Delete
 		err = store.Delete(context.Background(), userID, platform)
 		assert.NoError(t, err)
-		
+
 		_, err = store.Load(context.Background(), userID, platform)
 		assert.ErrorIs(t, err, ErrCookieNotFound)
 	})
 
 	t.Run("Decryption Failure with Wrong Key", func(t *testing.T) {
 		t.Setenv("COOKIE_ENCRYPTION_KEY", encryptionKey)
-		cookies := []Cookie{{Name: "test", Value: "val"}}
-		err := store.Save(context.Background(), userID, "wrong-key-test", cookies, RemoteAccountProfile{})
+		wrongKeyUserID := uuid.New()
+		cookies := []Cookie{
+			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/"},
+			{Name: "sid_guard", Value: "guard-value", Domain: ".douyin.com", Path: "/"},
+			{Name: "passport_csrf_token", Value: "csrf-value", Domain: ".douyin.com", Path: "/"},
+		}
+		err := store.Save(context.Background(), wrongKeyUserID, "douyin", cookies, RemoteAccountProfile{})
 		assert.NoError(t, err)
 
 		// Change key
 		t.Setenv("COOKIE_ENCRYPTION_KEY", "another-32-byte-key-012345678901")
-		_, err = store.Load(context.Background(), userID, "wrong-key-test")
+		_, err = store.Load(context.Background(), wrongKeyUserID, "douyin")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to decrypt cookies")
+	})
+
+	t.Run("Rejects Missing Required Cookies", func(t *testing.T) {
+		t.Setenv("COOKIE_ENCRYPTION_KEY", encryptionKey)
+		err := store.Save(context.Background(), userID, "douyin", []Cookie{
+			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/"},
+		}, RemoteAccountProfile{})
+		assert.ErrorIs(t, err, ErrCookieValidationFailed)
 	})
 }

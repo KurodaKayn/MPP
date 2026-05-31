@@ -1,11 +1,36 @@
-package publisher
+package session
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+type Cookie struct {
+	Name     string  `json:"name"`
+	Value    string  `json:"value"`
+	Domain   string  `json:"domain"`
+	Path     string  `json:"path"`
+	Expires  float64 `json:"expires"`
+	Secure   bool    `json:"secure"`
+	HttpOnly bool    `json:"httpOnly"`
+	SameSite string  `json:"sameSite"`
+}
+
+type RemoteAccountProfile struct {
+	PlatformUserID string `json:"platform_user_id"`
+	Username       string `json:"username"`
+	AvatarURL      string `json:"avatar_url"`
+}
+
+type CaptureWorkerSessionResponse struct {
+	Status         string               `json:"status"`
+	Cookies        []Cookie             `json:"cookies"`
+	MissingCookies []string             `json:"missing_cookies,omitempty"`
+	Account        RemoteAccountProfile `json:"account"`
+}
 
 type DomainRule struct {
 	Host    string   `json:"host"`
@@ -45,25 +70,22 @@ type StartWorkerSessionResponse struct {
 	ExpiresAt         time.Time `json:"expires_at"`
 }
 
-type GetWorkerSessionResponse struct {
-	WorkerSessionRef string   `json:"worker_session_ref"`
-	Status           string   `json:"status"`
-	CurrentURL       string   `json:"current_url"`
-	LoginDetected    bool     `json:"login_detected"`
-	MissingCookies   []string `json:"missing_cookies"`
-	Message          string   `json:"message"`
-}
-
-type CaptureWorkerSessionResponse struct {
-	Status         string               `json:"status"`
-	Cookies        []Cookie             `json:"cookies"`
-	MissingCookies []string             `json:"missing_cookies,omitempty"`
-	Account        RemoteAccountProfile `json:"account"`
-}
-
-type BrowserWorkerClient interface {
-	CreateSession(ctx context.Context, req StartWorkerSessionRequest) (*StartWorkerSessionResponse, error)
-	GetSession(ctx context.Context, ref string) (*GetWorkerSessionResponse, error)
-	CaptureSession(ctx context.Context, ref string) (*CaptureWorkerSessionResponse, error)
-	StopSession(ctx context.Context, ref string) error
+type WorkerSession struct {
+	ID                string
+	SessionID         uuid.UUID
+	UserID            uuid.UUID
+	Platform          string
+	Status            string
+	ContainerID       string
+	CDPEndpointRef    string
+	StreamEndpointRef string
+	InternalStreamURL string
+	RequiredCookies   []CookieRequirement
+	CreatedAt         time.Time
+	ExpiresAt         time.Time
+	BrowserContext    context.Context
+	CDPMu             sync.Mutex
+	StateCancel       context.CancelFunc
+	StateStore        *RedisStateStore
+	CancelFunc        context.CancelFunc
 }

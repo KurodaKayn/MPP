@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -55,7 +57,12 @@ func (s *CookieStore) Save(ctx context.Context, userID uuid.UUID, platform strin
 		return ErrCookieEncryptionKeyInvalid
 	}
 
-	plaintext, err := json.Marshal(cookies)
+	normalizedCookies, err := NormalizePlatformCookies(platform, cookies)
+	if err != nil {
+		return err
+	}
+
+	plaintext, err := json.Marshal(normalizedCookies)
 	if err != nil {
 		return fmt.Errorf("failed to marshal cookies: %w", err)
 	}
@@ -132,7 +139,7 @@ func (s *CookieStore) Load(ctx context.Context, userID uuid.UUID, platform strin
 		// Fallback for non-encrypted cookies if any (from old version)
 		var cookies []Cookie
 		if err := json.Unmarshal(account.Cookies, &cookies); err == nil {
-			return cookies, nil
+			return NormalizePlatformCookies(platform, cookies)
 		}
 		return nil, fmt.Errorf("failed to unmarshal envelope: %w", err)
 	}
@@ -160,7 +167,7 @@ func (s *CookieStore) Load(ctx context.Context, userID uuid.UUID, platform strin
 		return nil, fmt.Errorf("failed to unmarshal decrypted cookies: %w", err)
 	}
 
-	return cookies, nil
+	return NormalizePlatformCookies(platform, cookies)
 }
 
 func (s *CookieStore) Delete(ctx context.Context, userID uuid.UUID, platform string) error {
@@ -172,6 +179,107 @@ func (s *CookieStore) Delete(ctx context.Context, userID uuid.UUID, platform str
 			"username":   "",
 			"avatar_url": "",
 		}).Error
+}
+
+func NormalizePlatformCookies(platform string, cookies []Cookie) ([]Cookie, error) {
+	requirements := cookieRequirementsForPlatform(platform)
+	if len(requirements) == 0 {
+		return nil, ErrCookieValidationFailed
+	}
+
+	now := time.Now()
+	normalized := make([]Cookie, 0, len(cookies))
+	seen := make(map[string]int)
+	for _, cookie := range cookies {
+		if cookie.Name == "" || cookie.Value == "" || cookieExpired(cookie, now) {
+			continue
+		}
+		if !preserveCookie(cookie, requirements) {
+			continue
+		}
+		if cookie.Path == "" {
+			cookie.Path = "/"
+		}
+		key := strings.ToLower(cookie.Name + "\x00" + cookie.Domain + "\x00" + cookie.Path)
+		if existing, ok := seen[key]; ok {
+			normalized[existing] = cookie
+			continue
+		}
+		seen[key] = len(normalized)
+		normalized = append(normalized, cookie)
+	}
+
+	if missingRequiredCookies(normalized, requirements, now) {
+		return nil, ErrCookieValidationFailed
+	}
+	return normalized, nil
+}
+
+func cookieRequirementsForPlatform(platform string) []CookieRequirement {
+	switch platform {
+	case "douyin":
+		return (&DouyinAdapter{}).RequiredCookies()
+	case "zhihu":
+		return (&ZhihuAdapter{}).RequiredCookies()
+	default:
+		return nil
+	}
+}
+
+func preserveCookie(cookie Cookie, requirements []CookieRequirement) bool {
+	for _, req := range requirements {
+		if !req.Required && !req.Preserve {
+			continue
+		}
+		if cookieMatchesRequirement(cookie, req) {
+			return true
+		}
+	}
+	return false
+}
+
+func missingRequiredCookies(cookies []Cookie, requirements []CookieRequirement, now time.Time) bool {
+	for _, req := range requirements {
+		if !req.Required {
+			continue
+		}
+		found := false
+		for _, cookie := range cookies {
+			if cookieExpired(cookie, now) {
+				continue
+			}
+			if cookieMatchesRequirement(cookie, req) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return true
+		}
+	}
+	return false
+}
+
+func cookieMatchesRequirement(cookie Cookie, req CookieRequirement) bool {
+	if cookie.Name != req.Name || cookie.Value == "" {
+		return false
+	}
+	for _, suffix := range req.DomainSuffixes {
+		if cookieDomainMatches(cookie.Domain, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func cookieExpired(cookie Cookie, now time.Time) bool {
+	return cookie.Expires > 0 && !time.Unix(int64(cookie.Expires), 0).After(now)
+}
+
+func cookieDomainMatches(domain, suffix string) bool {
+	domain = strings.TrimPrefix(strings.ToLower(domain), ".")
+	suffix = strings.TrimPrefix(strings.ToLower(suffix), ".")
+	return domain == suffix || strings.HasSuffix(domain, "."+suffix)
 }
 
 func encrypt(plaintext []byte, key []byte) (ciphertext []byte, nonce []byte, err error) {

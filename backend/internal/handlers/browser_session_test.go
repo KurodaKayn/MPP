@@ -16,7 +16,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
-	"github.com/kurodakayn/mpp-backend/internal/services"
+	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,7 +40,7 @@ func setupBrowserSessionHandlerTest(t *testing.T) (*echo.Echo, *handlers.Browser
 		require.NoError(t, worker.Close())
 	})
 	store := publisher.NewCookieStore(db)
-	svc := services.NewBrowserSessionService(db, worker, store)
+	svc := browsersession.NewBrowserSessionService(db, worker, store)
 	h := handlers.NewBrowserSessionHandler(svc)
 
 	return e, h, db

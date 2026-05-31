@@ -78,7 +78,10 @@ func (m *MockBrowserWorkerClient) CaptureSession(ctx context.Context, ref string
 	return &CaptureWorkerSessionResponse{
 		Status: "login_detected",
 		Cookies: []Cookie{
-			{Name: "sessionid", Value: "mock-value", Domain: ".example.com"},
+			{Name: "sessionid", Value: "mock-session", Domain: ".douyin.com", Path: "/", Secure: true, HttpOnly: true},
+			{Name: "sid_guard", Value: "mock-guard", Domain: ".douyin.com", Path: "/", Secure: true, HttpOnly: true},
+			{Name: "passport_csrf_token", Value: "mock-csrf", Domain: ".douyin.com", Path: "/", Secure: true},
+			{Name: "z_c0", Value: "mock-zhihu-session", Domain: ".zhihu.com", Path: "/", Secure: true, HttpOnly: true},
 		},
 		Account: RemoteAccountProfile{
 			Username: "Mock User",

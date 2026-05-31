@@ -15,6 +15,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/redisclient"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
@@ -66,7 +67,7 @@ func main() {
 	}
 
 	cookieStore := publisher.NewCookieStore(db.DB)
-	browserSessionService := services.NewBrowserSessionService(db.DB, workerClient, cookieStore)
+	browserSessionService := browsersession.NewBrowserSessionService(db.DB, workerClient, cookieStore)
 	if redisClient != nil {
 		browserSessionService.UseRedis(redisClient)
 		browserSessionService.StartCleanupWorker(context.Background())
