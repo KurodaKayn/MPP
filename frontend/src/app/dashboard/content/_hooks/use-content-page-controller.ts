@@ -248,6 +248,16 @@ export function useContentPageController(projectId?: string) {
     title: title.trim(),
   });
 
+  const buildProjectContentInput = () => {
+    const input = buildProjectInput();
+    return {
+      cover_image_url: input.cover_image_url,
+      source_content: input.source_content,
+      summary: input.summary,
+      title: input.title,
+    };
+  };
+
   const saveOrCreateProjectForXPostIntent = async () => {
     const platforms: PublishPlatform[] = selectedPlatforms.includes("x")
       ? selectedPlatforms
@@ -332,8 +342,7 @@ export function useContentPageController(projectId?: string) {
       return;
     }
 
-    const { platforms: _platforms, ...contentInput } = buildProjectInput();
-    await saveDashboardProjectContent(projectId, contentInput);
+    await saveDashboardProjectContent(projectId, buildProjectContentInput());
 
     const results = await Promise.allSettled(
       selectedPlatforms.map(async (platform) => {
