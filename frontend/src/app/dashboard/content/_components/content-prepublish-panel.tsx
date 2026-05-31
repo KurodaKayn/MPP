@@ -3,11 +3,19 @@
 import { Loader2, RefreshCw } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
+import { toast } from "sonner";
+import { AIEditAssistant } from "@/components/dashboard/content/ai/ai-edit-assistant";
+import { AIMarkdownPreview } from "@/components/dashboard/content/ai/ai-markdown-preview";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PLATFORM_TABS, type PlatformTab } from "@/lib/content/platforms";
 import type { ContentValue } from "@/lib/content/types";
+import {
+  streamAIPrepublishEdit,
+  updateProjectPrepublishDraft,
+  type AdaptedContent,
+} from "@/lib/dashboard/api";
 import { cn } from "@/lib/utils";
 import type {
   PrepublishDraft,
@@ -21,6 +29,8 @@ type ContentPrepublishPanelProps = {
   drafts: Partial<Record<PublishPlatform, PrepublishDraft>>;
   isSyncing: boolean;
   onSync: (platforms?: PublishPlatform[]) => void;
+  onDraftChange: (platform: PublishPlatform, draft: PrepublishDraft) => void;
+  projectId?: string;
   title: string;
 };
 
@@ -62,7 +72,11 @@ function renderPreview(draft: PrepublishDraft, title: string) {
   return (
     <article className="space-y-4 whitespace-pre-wrap text-sm leading-6">
       {title ? <h2 className="text-lg font-semibold">{title}</h2> : null}
-      <div>{draft.raw}</div>
+      {draft.format === "markdown" ? (
+        <AIMarkdownPreview markdown={draft.raw} />
+      ) : (
+        <div>{draft.raw}</div>
+      )}
     </article>
   );
 }
@@ -71,7 +85,9 @@ export function ContentPrepublishPanel({
   content,
   drafts,
   isSyncing,
+  onDraftChange,
   onSync,
+  projectId,
   title,
 }: ContentPrepublishPanelProps) {
   const hasSourceContent = Boolean(
@@ -87,6 +103,7 @@ export function ContentPrepublishPanel({
 
   const activeDraft = drafts[activePlatform];
   const expectedFormat = platformFormats[activePlatform];
+  const canUseAI = Boolean(projectId && activeDraft);
 
   return (
     <Card>
@@ -191,6 +208,47 @@ export function ContentPrepublishPanel({
               </div>
             </div>
 
+            <AIEditAssistant
+              title="AI 编辑预发布"
+              source={activeDraft?.raw ?? ""}
+              format={activeDraft?.format ?? expectedFormat}
+              disabled={!canUseAI}
+              onGenerate={(message, onChunk, signal) => {
+                if (!activeDraft) {
+                  throw new Error("请先同步该平台草稿");
+                }
+                return streamAIPrepublishEdit(
+                  {
+                    adapted_content: adaptedContentFromDraft(activeDraft),
+                    message,
+                    platform: activePlatform,
+                    title,
+                  },
+                  {
+                    onChunk,
+                    signal,
+                  },
+                );
+              }}
+              onApply={async (proposal) => {
+                if (!projectId || !activeDraft) {
+                  throw new Error("请先同步该平台草稿");
+                }
+                await updateProjectPrepublishDraft(projectId, activePlatform, {
+                  adapted_content: adaptedContentFromDraft(
+                    activeDraft,
+                    proposal,
+                  ),
+                });
+                onDraftChange(activePlatform, {
+                  ...activeDraft,
+                  raw: proposal,
+                  syncedAt: new Date().toISOString(),
+                });
+                toast.success("AI 修改已保存到预发布");
+              }}
+            />
+
             <div className="grid gap-4 xl:grid-cols-2">
               <section className="space-y-2">
                 <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -224,4 +282,18 @@ export function ContentPrepublishPanel({
       </CardContent>
     </Card>
   );
+}
+
+function adaptedContentFromDraft(
+  draft: PrepublishDraft,
+  raw = draft.raw,
+): AdaptedContent {
+  return {
+    format: draft.format,
+    [draft.format]: raw,
+    source_revision: new Date().toISOString(),
+    generated_by: {
+      type: "ai-editor",
+    },
+  };
 }
