@@ -4,7 +4,7 @@ This document expands the high-level architecture with module-level design notes
 
 ## 1. Overall Architecture
 
-![MPP Overall Architecture](./assests/project-overall-architecture.png)
+![MPP Overall Architecture](./assests/moudule-architecture/project-overall-architecture.png)
 
 MPP is a multi-platform publishing workspace. Its core job is to turn one source project into platform-ready drafts, execute publishing work, track status, connect platform accounts, and support AI-assisted editing from one dashboard.
 
@@ -19,7 +19,7 @@ The system is organized into six major module groups:
 
 ## 2. Frontend Workspace
 
-![Frontend Module Design](./assests/frontend-module-design.png)
+![Frontend Module Design](./assests/moudule-architecture/frontend-module-design.png)
 
 The frontend workspace turns user actions into predictable dashboard state. It does not own persistence rules or platform publishing rules. Instead, it presents workflows and communicates through a narrow dashboard API boundary.
 
@@ -56,7 +56,7 @@ Extension notes:
 
 ## 3. Backend Core
 
-![Backend Core Module Design](./assests/backend-core-module-design.png)
+![Backend Core Module Design](./assests/moudule-architecture/backend-core-module-design.png)
 
 The backend core is the business orchestration layer. It receives authenticated dashboard requests, enforces user scope, coordinates domain services, and owns the transition from user intent to persistent state.
 
@@ -94,7 +94,7 @@ Extension notes:
 
 ## 4. Publishing Pipeline
 
-![Publishing Pipeline Module Design](./assests/publishing-pipeline-design.png)
+![Publishing Pipeline Module Design](./assests/moudule-architecture/publishing-pipeline-design.png)
 
 The publishing pipeline converts one source project into platform-specific publication records. Each platform can have its own adapted content, configuration, status, remote ID, publish URL, and error information.
 
@@ -135,7 +135,7 @@ Extension notes:
 
 ## 5. AI Editing
 
-![AI Editing Module Design](./assests/ai-editing-module-design.png)
+![AI Editing Module Design](./assests/moudule-architecture/ai-editing-module-design.png)
 
 The AI editing module provides streaming rewrite support for source content and platform-specific drafts. It separates generation from persistence: the AI service returns a proposal, and the user decides whether that proposal should update the current workspace state.
 
@@ -173,7 +173,7 @@ Extension notes:
 
 ## 6. Remote Browser Session
 
-![Remote Browser Session Module Design](./assests/remote-browser-module-design.png)
+![Remote Browser Session Module Design](./assests/moudule-architecture/remote-browser-module-design.png)
 
 The remote browser session module supports platforms that require cookie-based login or browser-only account connection. Users sign in inside an isolated browser container, while the system controls session lifecycle, stream access, cookie capture, and account persistence.
 
@@ -214,7 +214,7 @@ Extension notes:
 
 ## 7. Data and Infrastructure
 
-![Data and Infrastructure Module Design](./assests/data-infra-module-design.png)
+![Data and Infrastructure Module Design](./assests/moudule-architecture/data-infra-module-design.png)
 
 The data and infrastructure module explains how runtime services are connected and which layer owns each kind of state.
 
