@@ -2,16 +2,19 @@ package services_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -45,6 +48,28 @@ func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *services.BrowserSessionSe
 	svc := services.NewBrowserSessionService(db, worker, store)
 
 	return db, svc, worker
+}
+
+func setupBrowserSessionRedis(t *testing.T, svc *services.BrowserSessionService) *redis.Client {
+	t.Helper()
+
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+	svc.UseRedis(client)
+	return client
+}
+
+func setRedisLiveSession(t *testing.T, client *redis.Client, state map[string]interface{}, ttl time.Duration) {
+	t.Helper()
+
+	sessionID, ok := state["session_id"].(string)
+	require.True(t, ok)
+	payload, err := json.Marshal(state)
+	require.NoError(t, err)
+	require.NoError(t, client.Set(context.Background(), "mpp:browser:session:"+sessionID, payload, ttl).Err())
 }
 
 func TestBrowserSessionService_FullLifecycle(t *testing.T) {
@@ -271,6 +296,72 @@ func TestBrowserSessionService_StartSessionExpiresOldPendingRows(t *testing.T) {
 	require.NoError(t, db.First(&savedPendingSession, pendingSession.ID).Error)
 	assert.Equal(t, models.BrowserSessionStatusExpired, savedPendingSession.Status)
 	assert.Equal(t, "worker session reference is missing", savedPendingSession.ErrorMessage)
+}
+
+func TestBrowserSessionService_StartSessionRecoversStaleRedisActiveLock(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	client := setupBrowserSessionRedis(t, svc)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	staleSession := models.RemoteBrowserSession{
+		UserID:            userID,
+		Platform:          platform,
+		Status:            models.BrowserSessionStatusReady,
+		WorkerSessionRef:  "worker-stale",
+		StreamEndpointRef: "http://127.0.0.1:9/stream/worker-stale",
+		ConnectTokenHash:  "stale-token",
+		CreatedAt:         time.Now().Add(-2 * time.Minute),
+		ExpiresAt:         time.Now().Add(13 * time.Minute),
+	}
+	require.NoError(t, db.Create(&staleSession).Error)
+	require.NoError(t, client.Set(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform, staleSession.ID.String(), time.Hour).Err())
+	setRedisLiveSession(t, client, map[string]interface{}{
+		"session_id":          staleSession.ID.String(),
+		"user_id":             userID.String(),
+		"platform":            platform,
+		"status":              models.BrowserSessionStatusReady,
+		"worker_session_ref":  staleSession.WorkerSessionRef,
+		"stream_endpoint_ref": staleSession.StreamEndpointRef,
+		"created_at":          staleSession.CreatedAt,
+		"expires_at":          staleSession.ExpiresAt,
+	}, time.Hour)
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.BrowserSessionStatusReady, resp.Status)
+	assert.NotEqual(t, staleSession.ID, resp.SessionID)
+
+	activeSessionID, err := client.Get(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Result()
+	require.NoError(t, err)
+	assert.Equal(t, resp.SessionID.String(), activeSessionID)
+	assert.Equal(t, int64(0), client.Exists(context.Background(), "mpp:browser:session:"+staleSession.ID.String()).Val())
+
+	var savedStaleSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedStaleSession, staleSession.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusExpired, savedStaleSession.Status)
+	assert.Equal(t, "worker heartbeat missing", savedStaleSession.ErrorMessage)
+	assert.Empty(t, savedStaleSession.ConnectTokenHash)
+}
+
+func TestBrowserSessionService_StartSessionPreservesReachableRedisActiveLock(t *testing.T) {
+	_, svc, _ := setupBrowserSessionTest(t)
+	client := setupBrowserSessionRedis(t, svc)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+	require.NoError(t, err)
+
+	_, err = svc.StartSession(context.Background(), userID, platform)
+
+	assert.ErrorIs(t, err, services.ErrActiveSessionExists)
+	activeSessionID, err := client.Get(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Result()
+	require.NoError(t, err)
+	assert.Equal(t, resp.SessionID.String(), activeSessionID)
 }
 
 func streamTokenFromPath(t *testing.T, path string) string {
