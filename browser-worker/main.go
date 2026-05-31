@@ -227,35 +227,8 @@ e.GET("/internal/browser-sessions/:ref", func(c echo.Context) error {
 	})
 })
 
-	e.Any("/internal/browser-sessions/:ref/stream", func(c echo.Context) error {
-		ref := c.Param("ref")
-		session, ok := sm.get(ref)
-		if !ok {
-			return echo.NewHTTPError(http.StatusNotFound, "session not found")
-		}
-
-		targetURL, err := url.Parse(session.InternalStreamURL)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "invalid stream endpoint")
-		}
-
-		// Use custom WebSocket proxy logic here as well
-		if strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket" {
-			// For worker, we can use a simpler version since it's local
-			return proxyWebSocket(c, targetURL)
-		}
-
-		proxy := httputil.NewSingleHostReverseProxy(targetURL)
-		proxy.Director = func(req *http.Request) {
-			req.URL.Scheme = targetURL.Scheme
-			req.URL.Host = targetURL.Host
-			req.URL.Path = "/"
-			req.URL.RawQuery = c.Request().URL.RawQuery
-			req.Host = targetURL.Host
-		}
-		proxy.ServeHTTP(c.Response(), c.Request())
-		return nil
-	})
+	e.Any("/internal/browser-sessions/:ref/stream", browserStreamHandler(sm, dm))
+	e.Any("/internal/browser-sessions/:ref/stream/*", browserStreamHandler(sm, dm))
 
 	e.POST("/internal/browser-sessions/:ref/capture", func(c echo.Context) error {
 		ref := c.Param("ref")
@@ -345,6 +318,46 @@ e.GET("/internal/browser-sessions/:ref", func(c echo.Context) error {
 	})
 
 	e.Logger.Fatal(e.Start(":8081"))
+}
+
+func browserStreamHandler(sm *SessionManager, dm *DockerManager) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ref := c.Param("ref")
+		session, ok := sm.get(ref)
+		if !ok {
+			return echo.NewHTTPError(http.StatusNotFound, "session not found")
+		}
+
+		targetURL, err := url.Parse(session.InternalStreamURL)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "invalid stream endpoint")
+		}
+
+		// Use custom WebSocket proxy logic
+		if strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket" {
+			return proxyWebSocket(c, targetURL)
+		}
+
+		proxy := httputil.NewSingleHostReverseProxy(targetURL)
+		proxy.Director = func(req *http.Request) {
+			req.URL.Scheme = targetURL.Scheme
+			req.URL.Host = targetURL.Host
+			// Correctly map the subpath from the wildcard
+			subPath := c.Param("*")
+			if subPath == "" {
+				req.URL.Path = "/"
+			} else {
+				if !strings.HasPrefix(subPath, "/") {
+					subPath = "/" + subPath
+				}
+				req.URL.Path = subPath
+			}
+			req.URL.RawQuery = c.Request().URL.RawQuery
+			req.Host = targetURL.Host
+		}
+		proxy.ServeHTTP(c.Response(), c.Request())
+		return nil
+	}
 }
 
 func cleanupSession(ctx context.Context, dm *DockerManager, session *WorkerSession) {
