@@ -9,6 +9,7 @@ import {
   completeBrowserSession,
   getBrowserSession,
   getDouyinAccount,
+  getZhihuAccount,
   getXAccount,
   getWechatAccount,
   saveWechatAccount,
@@ -18,6 +19,7 @@ import {
   testXConnection,
   type BrowserSession,
   type DouyinAccount,
+  type ZhihuAccount,
   type WechatAccount,
   type WechatConnectionTestResult,
   type XAccount,
@@ -27,6 +29,7 @@ import { AuthPageHeader } from "./_components/auth-page-header";
 import { WechatAccountCard } from "./_components/wechat-account-card";
 import { WechatConnectionCheckCard } from "./_components/wechat-connection-check-card";
 import { DouyinAccountCard } from "./_components/douyin-account-card";
+import { ZhihuAccountCard } from "./_components/zhihu-account-card";
 import { RemoteBrowserSessionModal } from "./_components/remote-browser-session-modal";
 import { XAccountCard } from "./_components/x-account-card";
 
@@ -40,6 +43,7 @@ function AuthPageContent() {
   const [douyinAccount, setDouyinAccount] = useState<DouyinAccount | null>(
     null,
   );
+  const [zhihuAccount, setZhihuAccount] = useState<ZhihuAccount | null>(null);
   const [browserSession, setBrowserSession] = useState<BrowserSession | null>(
     null,
   );
@@ -62,6 +66,8 @@ function AuthPageContent() {
   const [xTesting, setXTesting] = useState(false);
   const [douyinConnecting, setDouyinConnecting] = useState(false);
   const [douyinCompleting, setDouyinCompleting] = useState(false);
+  const [zhihuConnecting, setZhihuConnecting] = useState(false);
+  const [zhihuCompleting, setZhihuCompleting] = useState(false);
   const xOAuthStatus = searchParams.get("x_oauth");
 
   useEffect(() => {
@@ -69,11 +75,13 @@ function AuthPageContent() {
 
     async function loadAccounts() {
       try {
-        const [wechatResponse, xResponse, douyinResponse] = await Promise.all([
-          getWechatAccount(),
-          getXAccount(),
-          getDouyinAccount(),
-        ]);
+        const [wechatResponse, xResponse, douyinResponse, zhihuResponse] =
+          await Promise.all([
+            getWechatAccount(),
+            getXAccount(),
+            getDouyinAccount(),
+            getZhihuAccount(),
+          ]);
         if (cancelled) {
           return;
         }
@@ -81,6 +89,7 @@ function AuthPageContent() {
         setAppID(wechatResponse.app_id ?? "");
         setXAccount(xResponse);
         setDouyinAccount(douyinResponse);
+        setZhihuAccount(zhihuResponse);
         setXAPIKey(xResponse.api_key ?? "");
         setXUsername(xResponse.username ?? "");
       } catch (error) {
@@ -206,21 +215,25 @@ function AuthPageContent() {
     currentXTestError = xTestResult.connected ? undefined : xTestResult.message;
   }
   const currentDouyinStatus = douyinAccount?.status ?? "unconfigured";
+  const currentZhihuStatus = zhihuAccount?.status ?? "unconfigured";
   const connectedCount = [
     currentStatus,
     currentXStatus,
     currentDouyinStatus,
+    currentZhihuStatus,
   ].filter((status) => status === "connected").length;
   const aggregateStatus =
     connectedCount > 0
       ? "connected"
       : currentStatus === "failed" ||
           currentXStatus === "failed" ||
-          currentDouyinStatus === "failed"
+          currentDouyinStatus === "failed" ||
+          currentZhihuStatus === "failed"
         ? "failed"
         : currentStatus === "untested" ||
             currentXStatus === "untested" ||
-            currentDouyinStatus === "untested"
+            currentDouyinStatus === "untested" ||
+            currentZhihuStatus === "untested"
           ? "untested"
           : "unconfigured";
 
@@ -402,12 +415,83 @@ function AuthPageContent() {
     }
   };
 
+  const handleConnectZhihu = async () => {
+    setZhihuConnecting(true);
+    setBrowserError(undefined);
+    try {
+      const session = await startBrowserSession("zhihu");
+      setBrowserSession({
+        expires_at: session.expires_at,
+        platform: "zhihu",
+        session_id: session.session_id,
+        status: session.status,
+        stream_token_expires_at: session.stream_token_expires_at,
+        stream_url: session.stream_url,
+      });
+      setBrowserStreamURL(session.stream_url);
+      toast.success("远程浏览器已启动", {
+        description: "请在弹窗中完成知乎登录。",
+      });
+    } catch (error) {
+      toast.error("无法启动知乎连接", {
+        description: error instanceof Error ? error.message : "请稍后再试。",
+      });
+    } finally {
+      setZhihuConnecting(false);
+    }
+  };
+
+  const handleCompleteZhihu = async () => {
+    if (!browserSession) {
+      return;
+    }
+
+    setZhihuCompleting(true);
+    setBrowserError(undefined);
+    try {
+      const result = await completeBrowserSession(browserSession.session_id);
+      const account = await getZhihuAccount();
+      setZhihuAccount(account);
+      setBrowserSession(null);
+      setBrowserStreamURL(undefined);
+      toast.success("知乎账号已连接", {
+        description: result.account.username || "Cookie 已安全保存。",
+      });
+    } catch (error) {
+      setBrowserError(
+        error instanceof Error ? error.message : "还没有检测到登录状态。",
+      );
+    } finally {
+      setZhihuCompleting(false);
+    }
+  };
+
+  const handleCancelZhihu = async () => {
+    const sessionID = browserSession?.session_id;
+    setBrowserSession(null);
+    setBrowserStreamURL(undefined);
+    setBrowserError(undefined);
+
+    if (!sessionID) {
+      return;
+    }
+
+    try {
+      await cancelBrowserSession(sessionID);
+    } catch (error) {
+      toast.error("取消远程会话失败", {
+        description:
+          error instanceof Error ? error.message : "浏览器会话可能已经结束。",
+      });
+    }
+  };
+
   return (
     <div className="mx-auto w-full flex max-w-6xl flex-col gap-4">
       <AuthPageHeader
         connectedCount={connectedCount}
         status={aggregateStatus}
-        totalCount={3}
+        totalCount={4}
       />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
@@ -472,6 +556,34 @@ function AuthPageContent() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <ZhihuAccountCard
+          account={zhihuAccount}
+          connecting={zhihuConnecting}
+          loading={loading}
+          onConnect={handleConnectZhihu}
+        />
+
+        <WechatConnectionCheckCard
+          lastTestedAt={zhihuAccount?.updated_at}
+          ipHint={{
+            message:
+              "知乎使用隔离 Chromium 登录，不需要手工复制 Cookie 或输入密码到 MPP 表单。",
+            status: zhihuAccount?.status === "connected" ? "passed" : "unknown",
+            title: "远程浏览器连接",
+          }}
+          authHint={{
+            message:
+              zhihuAccount?.status === "connected"
+                ? "已保存加密 Cookie，发布时会在服务边界解密后交给发布器。"
+                : "点击连接后在官方页面完成扫码或登录。",
+            status: zhihuAccount?.status === "connected" ? "passed" : "unknown",
+            title: "Cookie 发布凭据",
+          }}
+          testError={zhihuAccount?.last_test_error}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
         <XAccountCard
           account={xAccount}
           accessToken={xAccessToken}
@@ -517,14 +629,26 @@ function AuthPageContent() {
 
       {browserSession ? (
         <RemoteBrowserSessionModal
-          completing={douyinCompleting}
+          completing={
+            browserSession.platform === "zhihu"
+              ? zhihuCompleting
+              : douyinCompleting
+          }
           error={browserError}
           expiresAt={browserSession.expires_at}
-          platformLabel="抖音"
+          platformLabel={browserSession.platform === "zhihu" ? "知乎" : "抖音"}
           status={browserSession.status}
           streamURL={browserStreamURL}
-          onCancel={handleCancelDouyin}
-          onComplete={handleCompleteDouyin}
+          onCancel={
+            browserSession.platform === "zhihu"
+              ? handleCancelZhihu
+              : handleCancelDouyin
+          }
+          onComplete={
+            browserSession.platform === "zhihu"
+              ? handleCompleteZhihu
+              : handleCompleteDouyin
+          }
         />
       ) : null}
     </div>
