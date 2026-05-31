@@ -32,7 +32,6 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(`CREATE TABLE users (
 		id TEXT PRIMARY KEY,
 		username TEXT NOT NULL UNIQUE,
-		password TEXT NOT NULL,
 		role TEXT NOT NULL DEFAULT 'user',
 		created_at DATETIME,
 		updated_at DATETIME

@@ -88,7 +88,6 @@ func main() {
 	if mockLoginEnabled() {
 		e.POST("/api/auth/mock-login", authHandler.MockLogin)
 	}
-	e.POST("/api/auth/register", authHandler.Register)
 	e.POST("/api/auth/login", authHandler.Login)
 	e.GET("/api/user/dashboard/settings/x/oauth2/callback", userDashboardHandler.CompleteXOAuth2)
 
