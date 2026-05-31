@@ -139,6 +139,36 @@ func TestBrowserSessionService_StartSessionIgnoresExpiredActiveRows(t *testing.T
 	assert.NotEqual(t, uuid.Nil, resp.SessionID)
 }
 
+func TestBrowserSessionService_StartSessionExpiresStaleWorkerRows(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	staleSession := models.RemoteBrowserSession{
+		UserID:            userID,
+		Platform:          platform,
+		Status:            models.BrowserSessionStatusReady,
+		WorkerSessionRef:  "worker-stale",
+		StreamEndpointRef: "http://127.0.0.1:9/stream/worker-stale",
+		ConnectTokenHash:  "stale-token",
+		CreatedAt:         time.Now().Add(-2 * time.Minute),
+		ExpiresAt:         time.Now().Add(13 * time.Minute),
+	}
+	require.NoError(t, db.Create(&staleSession).Error)
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.BrowserSessionStatusReady, resp.Status)
+	assert.NotEqual(t, staleSession.ID, resp.SessionID)
+
+	var savedStaleSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedStaleSession, staleSession.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusExpired, savedStaleSession.Status)
+	assert.Equal(t, "worker session is unavailable", savedStaleSession.ErrorMessage)
+}
+
 func streamTokenFromPath(t *testing.T, path string) string {
 	t.Helper()
 

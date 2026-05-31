@@ -48,6 +48,47 @@ func (s *BrowserSessionService) RegisterAdapter(a publisher.RemoteBrowserPlatfor
 	s.adapters[a.Platform()] = a
 }
 
+func (s *BrowserSessionService) activeSessionExists(ctx context.Context, userID uuid.UUID, platform string, now time.Time) (bool, error) {
+	var sessions []models.RemoteBrowserSession
+	err := s.db.WithContext(ctx).
+		Where("user_id = ? AND platform = ? AND expires_at > ? AND status IN ?", userID, platform, now, []string{
+			models.BrowserSessionStatusPending,
+			models.BrowserSessionStatusReady,
+			models.BrowserSessionStatusLoginDetected,
+			models.BrowserSessionStatusCapturing,
+		}).
+		Find(&sessions).Error
+	if err != nil {
+		return false, err
+	}
+
+	for i := range sessions {
+		session := &sessions[i]
+		if session.WorkerSessionRef == "" {
+			if err := s.expireStaleSession(ctx, session, "worker session reference is missing"); err != nil {
+				return false, err
+			}
+			continue
+		}
+		if _, err := s.workerClient.GetSession(ctx, session.WorkerSessionRef); err != nil {
+			if err := s.expireStaleSession(ctx, session, "worker session is unavailable"); err != nil {
+				return false, err
+			}
+			continue
+		}
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (s *BrowserSessionService) expireStaleSession(ctx context.Context, session *models.RemoteBrowserSession, message string) error {
+	return s.db.WithContext(ctx).Model(session).Updates(map[string]interface{}{
+		"status":        models.BrowserSessionStatusExpired,
+		"error_message": message,
+	}).Error
+}
+
 func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UUID, platform string) (*dto.StartBrowserSessionResponse, error) {
 	adapter, ok := s.adapters[platform]
 	if !ok {
@@ -55,16 +96,11 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	}
 
 	// 1. Check for active sessions
-	var count int64
-	s.db.Model(&models.RemoteBrowserSession{}).
-		Where("user_id = ? AND platform = ? AND expires_at > ? AND status IN ?", userID, platform, time.Now(), []string{
-			models.BrowserSessionStatusPending,
-			models.BrowserSessionStatusReady,
-			models.BrowserSessionStatusLoginDetected,
-			models.BrowserSessionStatusCapturing,
-		}).Count(&count)
-
-	if count > 0 {
+	activeSessionExists, err := s.activeSessionExists(ctx, userID, platform, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	if activeSessionExists {
 		return nil, ErrActiveSessionExists
 	}
 
