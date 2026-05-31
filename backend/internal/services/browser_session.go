@@ -122,7 +122,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 		return nil, err
 	}
 
-	streamURL := fmt.Sprintf("/api/user/dashboard/browser-sessions/%s/stream?token=%s", sessionID, token)
+	streamURL := fmt.Sprintf("/api/browser-stream/%s/vnc.html?token=%s&path=api/browser-stream/%s/", sessionID, token, sessionID)
 
 	return &dto.StartBrowserSessionResponse{
 		SessionID:            sessionID,
