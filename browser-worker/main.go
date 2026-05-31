@@ -347,6 +347,13 @@ func browserStreamHandler(sm *SessionManager, dm *DockerManager) echo.HandlerFun
 		}
 
 		if strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket" {
+			subPath := c.Param("*")
+			if subPath != "" {
+				if !strings.HasPrefix(subPath, "/") {
+					subPath = "/" + subPath
+				}
+				targetURL.Path = subPath
+			}
 			return proxyWebSocket(c, targetURL)
 		}
 

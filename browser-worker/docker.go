@@ -44,8 +44,8 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 
 	hostConfig := &container.HostConfig{
 		PortBindings: nat.PortMap{
-			"9222/tcp": []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: "9222"}},
-			"6080/tcp": []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: "6080"}},
+			"9222/tcp": []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: "9222"}},
+			"6080/tcp": []nat.PortBinding{{HostIP: "127.0.0.1", HostPort: "6080"}},
 		},
 		Resources: container.Resources{
 			Memory:   1024 * 1024 * 1024,
@@ -55,17 +55,8 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 
 	containerName := "mpp-session-" + sessionID
 
-	// 1. Clean up ANY existing mpp-session containers to free up the fixed ports
-	containers, _ := m.cli.ContainerList(ctx, types.ContainerListOptions{All: true})
-	for _, c := range containers {
-		for _, name := range c.Names {
-			if strings.Contains(name, "mpp-session") {
-				log.Printf("Cleaning up old container %s", c.ID[:12])
-				m.cli.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{Force: true})
-				break
-			}
-		}
-	}
+	// 1. Clean up ONLY the specific container for this session if it somehow exists
+	m.cli.ContainerRemove(ctx, containerName, types.ContainerRemoveOptions{Force: true})
 
 	resp, err := m.cli.ContainerCreate(ctx, config, hostConfig, nil, nil, containerName)
 	if err != nil {
