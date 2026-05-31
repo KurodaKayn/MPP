@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatMessage(BaseModel):
@@ -12,7 +12,7 @@ class EditContentRequest(BaseModel):
     content: str
     message: str
     title: str = ""
-    conversation: list[ChatMessage] = []
+    conversation: list[ChatMessage] = Field(default_factory=list)
 
 
 class EditContentResponse(BaseModel):
@@ -25,7 +25,7 @@ class EditPrepublishRequest(BaseModel):
     message: str
     platform: str
     title: str = ""
-    conversation: list[ChatMessage] = []
+    conversation: list[ChatMessage] = Field(default_factory=list)
 
 
 class EditPrepublishResponse(BaseModel):
