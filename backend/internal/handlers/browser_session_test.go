@@ -160,9 +160,9 @@ func TestBrowserSessionHandler_StreamSessionUsesMockStream(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &startResp))
 	streamURL, err := url.Parse(startResp.StreamURL)
 	require.NoError(t, err)
-	streamPathParts := strings.SplitN(streamURL.Path, "/stream/", 2)
+	streamPathParts := strings.SplitN(streamURL.Path, startResp.SessionID.String()+"/", 2)
 	require.Len(t, streamPathParts, 2)
-	streamWildcard := strings.TrimPrefix(streamPathParts[1], "/")
+	streamWildcard := streamPathParts[1]
 
 	req = httptest.NewRequest(http.MethodGet, startResp.StreamURL, nil)
 	rec = httptest.NewRecorder()
