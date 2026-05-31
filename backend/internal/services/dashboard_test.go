@@ -831,6 +831,8 @@ func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
 
 	cookies := []publisher.Cookie{
 		{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/", Secure: true},
+		{Name: "sid_guard", Value: "guard-value", Domain: ".douyin.com", Path: "/", Secure: true},
+		{Name: "passport_csrf_token", Value: "csrf-value", Domain: ".douyin.com", Path: "/", Secure: true},
 	}
 	require.NoError(t, publisher.NewCookieStore(db).Save(context.Background(), user.ID, "douyin", cookies, publisher.RemoteAccountProfile{
 		Username: "creator",
