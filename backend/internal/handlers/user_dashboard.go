@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -241,6 +242,26 @@ func (h *UserDashboardHandler) EditContentWithAI(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+func (h *UserDashboardHandler) StreamEditContentWithAI(c echo.Context) error {
+	if _, err := middleware.GetUserIDFromContext(c); err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	if h.aiContentEditor == nil {
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+	}
+
+	req := new(dto.AIEditContentRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	stream, err := h.aiContentEditor.StreamEditContent(c.Request().Context(), *req)
+	if err != nil {
+		return sendAIEditError(c, err)
+	}
+	return writeAIStream(c, stream)
+}
+
 func (h *UserDashboardHandler) EditPrepublishWithAI(c echo.Context) error {
 	if _, err := middleware.GetUserIDFromContext(c); err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
@@ -261,6 +282,26 @@ func (h *UserDashboardHandler) EditPrepublishWithAI(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+func (h *UserDashboardHandler) StreamEditPrepublishWithAI(c echo.Context) error {
+	if _, err := middleware.GetUserIDFromContext(c); err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	if h.aiContentEditor == nil {
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+	}
+
+	req := new(dto.AIEditPrepublishRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	stream, err := h.aiContentEditor.StreamEditPrepublish(c.Request().Context(), *req)
+	if err != nil {
+		return sendAIEditError(c, err)
+	}
+	return writeAIStream(c, stream)
+}
+
 func sendAIEditError(c echo.Context, err error) error {
 	if errors.Is(err, services.ErrInvalidAIEditRequest) {
 		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
@@ -269,6 +310,41 @@ func sendAIEditError(c echo.Context, err error) error {
 		return sendError(c, http.StatusBadGateway, "ai_unavailable", err.Error())
 	}
 	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+}
+
+func writeAIStream(c echo.Context, stream *services.AIServiceStream) error {
+	if stream == nil || stream.Body == nil {
+		return sendError(c, http.StatusBadGateway, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+	}
+	defer stream.Body.Close()
+
+	contentType := strings.TrimSpace(stream.ContentType)
+	if contentType == "" {
+		contentType = "text/markdown; charset=utf-8"
+	}
+
+	resp := c.Response()
+	resp.Header().Set(echo.HeaderContentType, contentType)
+	resp.Header().Set(echo.HeaderCacheControl, "no-cache")
+	resp.Header().Set("X-Accel-Buffering", "no")
+	resp.WriteHeader(http.StatusOK)
+
+	buffer := make([]byte, 1024)
+	for {
+		n, readErr := stream.Body.Read(buffer)
+		if n > 0 {
+			if _, err := resp.Write(buffer[:n]); err != nil {
+				return err
+			}
+			resp.Flush()
+		}
+		if errors.Is(readErr, io.EOF) {
+			return nil
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
 }
 
 func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
