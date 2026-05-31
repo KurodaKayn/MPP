@@ -413,6 +413,57 @@ func TestUserDashboardHandlerSyncProjectPrepublish(t *testing.T) {
 	require.Contains(t, resp.Items[0].AdaptedContent["markdown"], "**sync**")
 }
 
+func TestUserDashboardHandlerUpdateProjectPrepublishDraft(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Draft title",
+		SourceContent: "<p>Draft</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "zhihu",
+		Enabled:        true,
+		Status:         models.PublicationStatusPublished,
+		AdaptedContent: []byte(`{"format":"markdown","markdown":"# Old"}`),
+		RemoteID:       "remote-id",
+		PublishURL:     "https://example.com/post",
+		RetryCount:     3,
+	}).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPut,
+		"/api/user/dashboard/projects/"+project.ID.String()+"/prepublish/zhihu",
+		strings.NewReader(`{"adapted_content":{"format":"markdown","markdown":"## Updated"}}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id", "platform")
+	c.SetParamValues(project.ID.String(), "zhihu")
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.UpdateProjectPrepublishDraft(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp dto.ProjectPublicationsResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Items, 1)
+	require.Equal(t, models.PublicationStatusAdapted, resp.Items[0].Status)
+	require.Equal(t, "## Updated", resp.Items[0].AdaptedContent["markdown"])
+	require.Empty(t, resp.Items[0].PublishURL)
+	require.Empty(t, resp.Items[0].RemoteID)
+	require.Zero(t, resp.Items[0].RetryCount)
+}
+
 func TestUserDashboardHandlerEditContentWithAI(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)
