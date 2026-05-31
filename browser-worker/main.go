@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/network"
+	"github.com/chromedp/cdproto/storage"
 	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -284,8 +285,26 @@ func main() {
 		err = chromedp.Run(ctx,
 			chromedp.ActionFunc(func(ctx context.Context) error {
 				var err error
-				chromeCookies, err = network.GetCookies().Do(ctx)
-				return err
+				// Use storage.GetCookies to get ALL cookies from the browser instance
+				allCookies, err := storage.GetCookies().Do(ctx)
+				if err != nil {
+					return err
+				}
+				// Map storage.Cookie to network.Cookie (compatible fields)
+				for _, sc := range allCookies {
+					chromeCookies = append(chromeCookies, &network.Cookie{
+						Name:     sc.Name,
+						Value:    sc.Value,
+						Domain:   sc.Domain,
+						Path:     sc.Path,
+						Expires:  sc.Expires,
+						Size:     sc.Size,
+						HTTPOnly: sc.HTTPOnly,
+						Secure:   sc.Secure,
+						Session:  sc.Session,
+					})
+				}
+				return nil
 			}),
 			chromedp.ActionFunc(func(ctx context.Context) error {
 				script := `(function() {
