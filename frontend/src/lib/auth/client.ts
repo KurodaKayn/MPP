@@ -281,12 +281,7 @@ export async function loginWithAccessToken(token: string) {
 }
 
 export async function loginWithUsername(username: string) {
-  const status = await getAuthStatus();
-  if (!status.loginMethods.mock) {
-    throw new Error("开发账号登录仅在本地开发环境可用");
-  }
-
-  const response = await fetch("/api/auth/mock-login", {
+  const response = await fetch("/api/auth/login", {
     body: JSON.stringify({ username }),
     cache: "no-store",
     credentials: "same-origin",
@@ -300,52 +295,6 @@ export async function loginWithUsername(username: string) {
   if (!response.ok || !body.token) {
     throw new Error(
       body.error?.message || body.error?.code || body.message || "登录失败",
-    );
-  }
-
-  const session = { token: body.token, username };
-  setAuthSession(session);
-  return session;
-}
-
-export async function loginWithPassword(username: string, password: string): Promise<AuthSession> {
-  const response = await fetch("/api/auth/login", {
-    body: JSON.stringify({ username, password }),
-    cache: "no-store",
-    credentials: "same-origin",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    method: "POST",
-  });
-  const body = (await response.json().catch(() => ({}))) as LoginResponse;
-
-  if (!response.ok || !body.token) {
-    throw new Error(
-      body.error?.message || body.error?.code || body.message || "用户名或密码错误",
-    );
-  }
-
-  const session = { token: body.token, username };
-  setAuthSession(session);
-  return session;
-}
-
-export async function registerUser(username: string, password: string): Promise<AuthSession> {
-  const response = await fetch("/api/auth/register", {
-    body: JSON.stringify({ username, password }),
-    cache: "no-store",
-    credentials: "same-origin",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    method: "POST",
-  });
-  const body = (await response.json().catch(() => ({}))) as LoginResponse;
-
-  if (!response.ok || !body.token) {
-    throw new Error(
-      body.error?.message || body.error?.code || body.message || "注册失败",
     );
   }
 
