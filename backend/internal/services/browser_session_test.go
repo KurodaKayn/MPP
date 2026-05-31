@@ -2,6 +2,8 @@ package services_test
 
 import (
 	"context"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -46,6 +48,18 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	assert.Equal(t, models.BrowserSessionStatusReady, resp.Status)
 	assert.Contains(t, resp.StreamURL, resp.SessionID.String())
 
+	streamURL, err := url.Parse(resp.StreamURL)
+	require.NoError(t, err)
+	streamToken := streamURL.Query().Get("token")
+	require.NotEmpty(t, streamToken)
+
+	streamEndpoint, err := svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(streamEndpoint, "ws://private-stream/"))
+
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, "bad-token")
+	assert.ErrorIs(t, err, services.ErrInvalidStreamToken)
+
 	// Verify DB state
 	var session models.RemoteBrowserSession
 	err = db.First(&session, resp.SessionID).Error
@@ -76,12 +90,12 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	// Actually, previous session is now COMPLETED, so we CAN start a new one
 	// if we wanted to reconnect. The design doc says "one ACTIVE session".
 	// Let's test active session conflict.
-	
+
 	// Create another user for conflict test
 	user2ID := uuid.New()
 	resp2, err := svc.StartSession(context.Background(), user2ID, platform)
 	assert.NoError(t, err)
-	
+
 	_, err = svc.StartSession(context.Background(), user2ID, platform)
 	assert.ErrorIs(t, err, services.ErrActiveSessionExists)
 
