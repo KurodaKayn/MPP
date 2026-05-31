@@ -25,6 +25,8 @@ var (
 	ErrInvalidStreamToken   = errors.New("invalid or expired stream token")
 )
 
+const pendingSessionStaleAfter = 2 * time.Minute
+
 type BrowserSessionService struct {
 	db           *gorm.DB
 	workerClient publisher.BrowserWorkerClient
@@ -65,6 +67,9 @@ func (s *BrowserSessionService) activeSessionExists(ctx context.Context, userID 
 	for i := range sessions {
 		session := &sessions[i]
 		if session.WorkerSessionRef == "" {
+			if session.CreatedAt.Add(pendingSessionStaleAfter).After(now) {
+				return true, nil
+			}
 			if err := s.expireStaleSession(ctx, session, "worker session reference is missing"); err != nil {
 				return false, err
 			}

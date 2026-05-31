@@ -169,6 +169,57 @@ func TestBrowserSessionService_StartSessionExpiresStaleWorkerRows(t *testing.T) 
 	assert.Equal(t, "worker session is unavailable", savedStaleSession.ErrorMessage)
 }
 
+func TestBrowserSessionService_StartSessionPreservesInFlightPendingRows(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	pendingSession := models.RemoteBrowserSession{
+		UserID:           userID,
+		Platform:         platform,
+		Status:           models.BrowserSessionStatusPending,
+		ConnectTokenHash: "pending-token",
+		CreatedAt:        time.Now(),
+		ExpiresAt:        time.Now().Add(15 * time.Minute),
+	}
+	require.NoError(t, db.Create(&pendingSession).Error)
+
+	_, err := svc.StartSession(context.Background(), userID, platform)
+
+	assert.ErrorIs(t, err, services.ErrActiveSessionExists)
+	var savedPendingSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedPendingSession, pendingSession.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusPending, savedPendingSession.Status)
+	assert.Empty(t, savedPendingSession.ErrorMessage)
+}
+
+func TestBrowserSessionService_StartSessionExpiresOldPendingRows(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	pendingSession := models.RemoteBrowserSession{
+		UserID:           userID,
+		Platform:         platform,
+		Status:           models.BrowserSessionStatusPending,
+		ConnectTokenHash: "pending-token",
+		CreatedAt:        time.Now().Add(-3 * time.Minute),
+		ExpiresAt:        time.Now().Add(12 * time.Minute),
+	}
+	require.NoError(t, db.Create(&pendingSession).Error)
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.BrowserSessionStatusReady, resp.Status)
+	var savedPendingSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedPendingSession, pendingSession.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusExpired, savedPendingSession.Status)
+	assert.Equal(t, "worker session reference is missing", savedPendingSession.ErrorMessage)
+}
+
 func streamTokenFromPath(t *testing.T, path string) string {
 	t.Helper()
 
