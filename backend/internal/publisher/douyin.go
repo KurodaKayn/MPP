@@ -2,12 +2,16 @@ package publisher
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/chromedp/chromedp"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/media"
 )
 
 type DouyinPublisher struct{}
@@ -18,8 +22,13 @@ func (d *DouyinPublisher) ValidateConfig(config []byte) error {
 }
 
 func (d *DouyinPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	// Douyin usually takes plain text for description
-	return []byte(project.SourceContent), nil
+	text := htmlToText(project.SourceContent)
+	if text == "" {
+		text = strings.TrimSpace(project.SourceContent)
+	}
+	content := systemAdaptedContent(project, "text", "douyin-text-adapter", text)
+	content.Text = text
+	return json.Marshal(content)
 }
 
 func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
@@ -27,14 +36,19 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 		return "", "", fmt.Errorf("douyin headless publishing requires an account with cookies")
 	}
 
-	title := "重构测试：抖音图文分发"
-	content := string(pub.AdaptedContent)
-	if content == "" {
-		content = "这是来自 Go 后端的自动化抖音图文分发测试。#自动化 #Golang"
+	title := extractPublicationTitle(pub.Config)
+	if title == "" {
+		title = "抖音图文"
 	}
-
-	// 使用相对路径，确保在不同环境下都能运行
-	localImagePath := filepath.Join("backend", "Assets", "132461906_p0_master1200.jpg")
+	content := extractDouyinText(pub.AdaptedContent)
+	if content == "" {
+		return "", "", fmt.Errorf("douyin text content is empty")
+	}
+	localImagePath, cleanupImage, err := douyinUploadImagePath(pub.Config)
+	if err != nil {
+		return "", "", err
+	}
+	defer cleanupImage()
 
 	// Setup headless browser with account cookies
 	browserCtx, cancel := SetupBrowser(ctx, account.Cookies)
@@ -44,8 +58,8 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	defer cancelPublish()
 
 	var publishURL string
-	
-	err := chromedp.Run(publishCtx,
+
+	err = chromedp.Run(publishCtx,
 		// 1. 进入核心上传页
 		chromedp.Navigate("https://creator.douyin.com/creator-micro/content/upload?default-tab=3"),
 		chromedp.Sleep(5*time.Second),
@@ -81,7 +95,6 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 		chromedp.WaitVisible(`input[type="file"]`, chromedp.ByQuery),
 		chromedp.SetUploadFiles(`input[type="file"]`, []string{localImagePath}, chromedp.ByQuery),
 		chromedp.Sleep(10*time.Second), // 图片上传解析时间
-
 
 		// 4. 开始填写文字：标题
 		chromedp.WaitVisible(`input[placeholder*="标题"]`, chromedp.ByQuery),
@@ -133,4 +146,73 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	}
 
 	return "dy_headless", publishURL, nil
+}
+
+func extractDouyinText(raw []byte) string {
+	var structured AdaptedContent
+	if err := json.Unmarshal(raw, &structured); err == nil {
+		if text := strings.TrimSpace(structured.Text); text != "" {
+			return text
+		}
+		if summary := strings.TrimSpace(structured.Summary); summary != "" {
+			return summary
+		}
+	}
+
+	var plain string
+	if err := json.Unmarshal(raw, &plain); err == nil {
+		return strings.TrimSpace(plain)
+	}
+
+	return strings.TrimSpace(string(raw))
+}
+
+func douyinUploadImagePath(rawConfig []byte) (string, func(), error) {
+	var config struct {
+		CoverImageURL string `json:"cover_image_url"`
+	}
+	_ = json.Unmarshal(rawConfig, &config)
+
+	if source := strings.TrimSpace(config.CoverImageURL); source != "" {
+		data, err := media.DownloadAndProcess(source)
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to prepare douyin cover image: %w", err)
+		}
+		file, err := os.CreateTemp("", "mpp-douyin-cover-*")
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to create douyin cover image: %w", err)
+		}
+		if _, err := file.Write(data); err != nil {
+			_ = file.Close()
+			_ = os.Remove(file.Name())
+			return "", nil, fmt.Errorf("failed to write douyin cover image: %w", err)
+		}
+		if err := file.Close(); err != nil {
+			_ = os.Remove(file.Name())
+			return "", nil, fmt.Errorf("failed to close douyin cover image: %w", err)
+		}
+		return file.Name(), func() { _ = os.Remove(file.Name()) }, nil
+	}
+
+	path, err := bundledDouyinImagePath()
+	if err != nil {
+		return "", nil, err
+	}
+	return path, func() {}, nil
+}
+
+func bundledDouyinImagePath() (string, error) {
+	name := "132461906_p0_master1200.jpg"
+	candidates := []string{
+		filepath.Join("backend", "Assets", name),
+		filepath.Join("Assets", name),
+		filepath.Join("..", "..", "Assets", name),
+		filepath.Join("..", "..", "..", "Assets", name),
+	}
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("douyin image publish requires a cover image")
 }
