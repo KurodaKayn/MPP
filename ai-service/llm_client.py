@@ -36,6 +36,7 @@ def build_llm() -> ChatOpenAI:
         api_key=provider_key,
         base_url=provider_url,
         model=model,
+        streaming=True,
         temperature=0,
     )
 
@@ -53,9 +54,12 @@ def conversation_to_messages(conversation: list[ChatMessage]) -> list[BaseMessag
     return messages
 
 
-def response_text(content: Any) -> str:
+def response_text(content: Any, *, strip: bool = True) -> str:
+    def finish(value: str) -> str:
+        return value.strip() if strip else value
+
     if isinstance(content, str):
-        return content.strip()
+        return finish(content)
     if isinstance(content, list):
         parts: list[str] = []
         for item in content:
@@ -63,8 +67,8 @@ def response_text(content: Any) -> str:
                 parts.append(item["text"])
             else:
                 parts.append(str(item))
-        return "".join(parts).strip()
-    return str(content).strip()
+        return finish("".join(parts))
+    return finish(str(content))
 
 
 def selected_adapted_text(adapted_content: dict[str, Any]) -> tuple[str, str]:

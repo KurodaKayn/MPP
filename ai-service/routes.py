@@ -31,7 +31,7 @@ async def stream_response_text(
     messages: list[BaseMessage],
 ) -> AsyncIterator[str]:
     async for chunk in llm.astream(messages):
-        text = response_text(chunk.content)
+        text = response_text(chunk.content, strip=False)
         if text:
             yield text
 
@@ -43,8 +43,8 @@ async def health():
 
 @router.post("/content/edit", response_model=EditContentResponse)
 async def edit_content(request: EditContentRequest):
-    if not request.content.strip() or not request.message.strip():
-        raise HTTPException(status_code=400, detail="content and message are required")
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail="message is required")
 
     try:
         response = await build_llm().ainvoke(build_edit_content_messages(request))
@@ -61,8 +61,8 @@ async def edit_content(request: EditContentRequest):
 
 @router.post("/content/edit/stream")
 async def stream_edit_content(request: EditContentRequest):
-    if not request.content.strip() or not request.message.strip():
-        raise HTTPException(status_code=400, detail="content and message are required")
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail="message is required")
 
     try:
         llm = build_llm()
