@@ -68,6 +68,8 @@ export type CreateProjectInput = {
 
 export type UpdateProjectInput = CreateProjectInput;
 
+export type SaveProjectContentInput = Omit<CreateProjectInput, "platforms">;
+
 export type GetProjectPublicationsOptions = {
   includeContent?: boolean;
 };
@@ -418,6 +420,19 @@ export function updateDashboardProject(
     {
       body: JSON.stringify(input),
       method: "PUT",
+    },
+  );
+}
+
+export function saveDashboardProjectContent(
+  projectId: string,
+  input: SaveProjectContentInput,
+) {
+  return fetchDashboard<ProjectDetail>(
+    `/api/user/dashboard/projects/${projectId}/content`,
+    {
+      body: JSON.stringify(input),
+      method: "PATCH",
     },
   );
 }
