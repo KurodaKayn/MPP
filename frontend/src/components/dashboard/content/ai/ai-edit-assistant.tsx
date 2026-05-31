@@ -56,7 +56,7 @@ export function AIEditAssistant({
   const [isApplying, setIsApplying] = useState(false);
   const isStreaming = status === "streaming";
   const canGenerate = Boolean(
-    !disabled && !isStreaming && !isApplying && message.trim() && source.trim(),
+    !disabled && !isStreaming && !isApplying && message.trim(),
   );
   const hasProposal = Boolean(proposal.trim());
 
