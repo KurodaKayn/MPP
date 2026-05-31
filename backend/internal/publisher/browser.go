@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
@@ -15,6 +14,8 @@ import (
 
 // BrowserAction represents a reusable browser automation step
 type BrowserAction func(ctx context.Context) error
+
+var runBrowserActions = chromedp.Run
 
 // SetupBrowser initializes a chromedp context with optional cookies
 func SetupBrowser(ctx context.Context, cookiesJSON []byte) (context.Context, context.CancelFunc) {
@@ -46,41 +47,10 @@ func SetupBrowser(ctx context.Context, cookiesJSON []byte) (context.Context, con
 		var cookies []Cookie
 		if err := json.Unmarshal(cookiesJSON, &cookies); err == nil {
 			fmt.Printf("Attempting to set %d cookies...\n", len(cookies))
-			
-			// Find a representative domain to "anchor" the browser
-			// We prioritize zhuanlan.zhihu.com for writing articles
-			targetDomain := "https://www.zhihu.com/robots.txt"
-			for _, c := range cookies {
-				if strings.Contains(c.Domain, "zhuanlan.zhihu.com") {
-					targetDomain = "https://zhuanlan.zhihu.com/robots.txt"
-					break
-				}
-			}
 
-			// We navigate to a tiny asset on the target domain first to establish the origin
-			// This ensures the browser accepts domain-specific cookies.
-			err := chromedp.Run(ctx,
+			err := runBrowserActions(ctx,
 				network.Enable(),
-				chromedp.Navigate(targetDomain),
-				chromedp.ActionFunc(func(ctx context.Context) error {
-					for _, c := range cookies {
-						expr := network.SetCookie(c.Name, c.Value).
-							WithDomain(c.Domain).
-							WithPath(c.Path).
-							WithHTTPOnly(c.HttpOnly).
-							WithSecure(c.Secure)
-
-						if c.Expires > 0 {
-							t := cdp.TimeSinceEpoch(time.Unix(int64(c.Expires), 0))
-							expr = expr.WithExpires(&t)
-						}
-
-						if err := expr.Do(ctx); err != nil {
-							return err
-						}
-					}
-					return nil
-				}),
+				setCookiesAction(cookies),
 			)
 			if err != nil {
 				fmt.Printf("Warning: failed to set cookies: %v\n", err)
@@ -90,6 +60,7 @@ func SetupBrowser(ctx context.Context, cookiesJSON []byte) (context.Context, con
 
 	return ctx, cancel
 }
+
 type Cookie struct {
 	Name     string  `json:"name"`
 	Value    string  `json:"value"`
@@ -178,6 +149,7 @@ func PasteFile(selector string, fileName string, mimeType string, base64Data str
 		return chromedp.Evaluate(script, &res).Do(ctx)
 	})
 }
+
 // PasteContent simulates a paste event into an editor
 func PasteContent(selector string, content string, isHTML bool) chromedp.Action {
 	dataType := "text/plain"
