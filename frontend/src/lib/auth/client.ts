@@ -307,3 +307,49 @@ export async function loginWithUsername(username: string) {
   setAuthSession(session);
   return session;
 }
+
+export async function loginWithPassword(username: string, password: string): Promise<AuthSession> {
+  const response = await fetch("/api/auth/login", {
+    body: JSON.stringify({ username, password }),
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+  const body = (await response.json().catch(() => ({}))) as LoginResponse;
+
+  if (!response.ok || !body.token) {
+    throw new Error(
+      body.error?.message || body.error?.code || body.message || "用户名或密码错误",
+    );
+  }
+
+  const session = { token: body.token, username };
+  setAuthSession(session);
+  return session;
+}
+
+export async function registerUser(username: string, password: string): Promise<AuthSession> {
+  const response = await fetch("/api/auth/register", {
+    body: JSON.stringify({ username, password }),
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+  const body = (await response.json().catch(() => ({}))) as LoginResponse;
+
+  if (!response.ok || !body.token) {
+    throw new Error(
+      body.error?.message || body.error?.code || body.message || "注册失败",
+    );
+  }
+
+  const session = { token: body.token, username };
+  setAuthSession(session);
+  return session;
+}

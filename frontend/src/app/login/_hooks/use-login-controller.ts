@@ -14,7 +14,7 @@ export function resolveNextPath(value: string | null) {
 }
 
 export function useLoginController() {
-  const { initialized, login, loginMethods, loginWithToken, session } =
+  const { initialized, login, realLogin, register, loginMethods, loginWithToken, session } =
     useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -22,7 +22,10 @@ export function useLoginController() {
     () => resolveNextPath(searchParams.get("next")),
     [searchParams],
   );
-  const [username, setUsername] = useState("kuroda_kayn");
+  
+  const [mode, setMode] = useState<"login" | "register" | "mock" | "token">("login");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -31,6 +34,44 @@ export function useLoginController() {
       router.replace(nextPath);
     }
   }, [initialized, nextPath, router, session]);
+
+  // Set default mode based on available methods
+  useEffect(() => {
+    if (initialized) {
+      if (loginMethods.mock && !username) {
+         setMode("mock");
+      }
+    }
+  }, [initialized, loginMethods.mock]);
+
+  const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedUsername = username.trim();
+    const normalizedPassword = password.trim();
+
+    if (!normalizedUsername || !normalizedPassword) {
+      toast.error("请输入用户名和密码");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      if (mode === "register") {
+        await register(normalizedUsername, normalizedPassword);
+        toast.success("注册成功");
+      } else {
+        await realLogin(normalizedUsername, normalizedPassword);
+        toast.success("登录成功");
+      }
+      router.replace(nextPath);
+    } catch (error) {
+      toast.error(mode === "register" ? "注册失败" : "登录失败", {
+        description: error instanceof Error ? error.message : "请求失败，请稍后再试。",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleMockLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -80,10 +121,15 @@ export function useLoginController() {
 
   return {
     accessToken,
+    handleAuthSubmit,
     handleMockLoginSubmit,
     handleTokenLoginSubmit,
     initialized,
     loginMethods,
+    mode,
+    setMode,
+    password,
+    setPassword,
     setAccessToken,
     setUsername,
     submitting,
