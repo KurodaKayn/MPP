@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1280 720" width="1280" height="720" role="img">
+
+  <style>
+    text { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; fill: #111827; }
+    .title { font-size: 24px; font-weight: 700; }
+    .subtitle { font-size: 13px; fill: #6b7280; }
+    .section-title { font-size: 14px; font-weight: 700; }
+    .node-title { font-size: 14px; font-weight: 700; }
+    .node-line { font-size: 12px; fill: #6b7280; }
+    .edge-label { font-size: 11px; font-weight: 600; fill: #374151; }
+    .section { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.4; stroke-dasharray: 7 5; }
+    .node { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.5; }
+    .blue { fill: #eff6ff; stroke: #bfdbfe; }
+    .green { fill: #f0fdf4; stroke: #bbf7d0; }
+    .purple { fill: #faf5ff; stroke: #e9d5ff; }
+    .orange { fill: #fff7ed; stroke: #fed7aa; }
+    .teal { fill: #f0fdfa; stroke: #99f6e4; }
+    .red { fill: #fef2f2; stroke: #fecaca; }
+    .gray { fill: #f9fafb; stroke: #d1d5db; }
+    .request { stroke: #2563eb; stroke-width: 2.2; fill: none; marker-end: url(#arrow-blue); }
+    .data { stroke: #16a34a; stroke-width: 2.2; fill: none; marker-end: url(#arrow-green); }
+    .async { stroke: #dc2626; stroke-width: 2.2; fill: none; stroke-dasharray: 7 5; marker-end: url(#arrow-red); }
+    .ai { stroke: #9333ea; stroke-width: 2.2; fill: none; marker-end: url(#arrow-purple); }
+    .browser { stroke: #ea580c; stroke-width: 2.2; fill: none; marker-end: url(#arrow-orange); }
+    .muted { stroke: #9ca3af; stroke-width: 1.8; fill: none; marker-end: url(#arrow-gray); }
+  </style>
+
+
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/></marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/></marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/></marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/></marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#ea580c"/></marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#9ca3af"/></marker>
+  </defs>
+
+  <rect width="1280" height="720" fill="#ffffff"/>
+  <text x="40" y="44" class="title">Frontend Module Design</text>
+  <text x="40" y="68" class="subtitle">Routes, controller state, editor widgets, and dashboard API client boundaries.</text>
+  <rect x="40" y="105" width="360" height="545" rx="14" class="section"/>
+  <text x="62" y="135" class="section-title">Routes and pages</text>
+  <rect x="460" y="105" width="360" height="545" rx="14" class="section"/>
+  <text x="482" y="135" class="section-title">State and API boundary</text>
+  <rect x="880" y="105" width="360" height="545" rx="14" class="section"/>
+  <text x="902" y="135" class="section-title">Editor and assistant widgets</text>
+  <rect x="75" y="155" width="290" height="115" rx="10" class="node blue"/>
+  <image href="icons/nextdotjs.svg" xlink:href="icons/nextdotjs.svg" x="99" y="173" width="26" height="26"/>
+  <image href="icons/react.svg" xlink:href="icons/react.svg" x="135" y="173" width="26" height="26"/>
+  <text x="99" y="213" class="node-title">Dashboard layout</text>
+  <text x="99" y="235" class="node-line">Sidebar, breadcrumb</text>
+  <text x="99" y="253" class="node-line">Auth guard, page shell</text>
+  <rect x="75" y="285" width="290" height="105" rx="10" class="node green"/>
+  <text x="99" y="316" class="node-title">Content route</text>
+  <text x="99" y="338" class="node-line">Create and edit pages</text>
+  <text x="99" y="356" class="node-line">ContentWorkspace shell</text>
+  <text x="99" y="374" class="node-line">Project id aware loading</text>
+  <rect x="75" y="430" width="290" height="105" rx="10" class="node orange"/>
+  <text x="99" y="461" class="node-title">Auth settings route</text>
+  <text x="99" y="483" class="node-line">Platform account cards</text>
+  <text x="99" y="501" class="node-line">Remote browser modal</text>
+  <text x="99" y="519" class="node-line">Credential dialogs</text>
+  <rect x="495" y="155" width="290" height="115" rx="10" class="node purple"/>
+  <text x="519" y="186" class="node-title">useContentPageController</text>
+  <text x="519" y="208" class="node-line">Load project and publications</text>
+  <text x="519" y="226" class="node-line">Validate title/body/platforms</text>
+  <text x="519" y="244" class="node-line">Save, sync, publish, poll</text>
+  <rect x="495" y="310" width="290" height="100" rx="10" class="node teal"/>
+  <text x="519" y="341" class="node-title">content-page-store</text>
+  <text x="519" y="363" class="node-line">Content view and loading state</text>
+  <text x="519" y="381" class="node-line">Selected platforms</text>
+  <text x="519" y="399" class="node-line">Prepublish draft map</text>
+  <rect x="495" y="450" width="290" height="125" rx="10" class="node blue"/>
+  <image href="icons/typescript.svg" xlink:href="icons/typescript.svg" x="519" y="468" width="26" height="26"/>
+  <text x="519" y="508" class="node-title">Dashboard API client</text>
+  <text x="519" y="530" class="node-line">fetchDashboard JSON wrapper</text>
+  <text x="519" y="548" class="node-line">streamDashboardText reader</text>
+  <text x="519" y="566" class="node-line">Projects, accounts, AI modules</text>
+  <rect x="915" y="145" width="290" height="105" rx="10" class="node green"/>
+  <text x="939" y="176" class="node-title">ContentEditor</text>
+  <text x="939" y="198" class="node-line">TipTap document</text>
+  <text x="939" y="216" class="node-line">Toolbar and extensions</text>
+  <text x="939" y="234" class="node-line">HTML source of truth</text>
+  <rect x="915" y="290" width="290" height="105" rx="10" class="node orange"/>
+  <text x="939" y="321" class="node-title">PrepublishPanel</text>
+  <text x="939" y="343" class="node-line">Platform draft tabs</text>
+  <text x="939" y="361" class="node-line">HTML / markdown / text</text>
+  <text x="939" y="379" class="node-line">Format preview and edit</text>
+  <rect x="915" y="435" width="290" height="125" rx="10" class="node purple"/>
+  <image href="icons/react.svg" xlink:href="icons/react.svg" x="939" y="453" width="26" height="26"/>
+  <text x="939" y="493" class="node-title">AIEditAssistant</text>
+  <text x="939" y="515" class="node-line">Streaming proposal preview</text>
+  <text x="939" y="533" class="node-line">Diff review</text>
+  <text x="939" y="551" class="node-line">Accept or reject apply</text>
+  <path d="M365 330 L495 210" class="request"/>
+  <rect x="392" y="230" width="83" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="402" y="246" class="edge-label">load/save</text>
+  <path d="M640 270 L640 310" class="data"/>
+  <rect x="655" y="280" width="97" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="665" y="296" class="edge-label">local state</text>
+  <path d="M785 500 L915 485" class="request"/>
+  <rect x="815" y="458" width="83" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="825" y="474" class="edge-label">API calls</text>
+  <path d="M785 212 L915 198" class="request"/>
+  <rect x="820" y="174" width="58" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="830" y="190" class="edge-label">props</text>
+  <path d="M785 360 L915 340" class="request"/>
+  <rect x="820" y="318" width="62" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="830" y="334" class="edge-label">drafts</text>
+  <path d="M785 500 L915 498" class="ai"/>
+  <rect x="824" y="504" width="62" height="22" rx="11" fill="#ffffff" opacity="0.96"/>
+  <text x="834" y="520" class="edge-label">stream</text>
+</svg>
