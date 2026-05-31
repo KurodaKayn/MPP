@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -97,11 +98,13 @@ func setContextUser(c echo.Context, userID uuid.UUID) {
 }
 
 type fakeAIContentEditor struct {
-	contentReq     dto.AIEditContentRequest
-	contentResp    *dto.AIEditContentResponse
-	prepublishReq  dto.AIEditPrepublishRequest
-	prepublishResp *dto.AIEditPrepublishResponse
-	err            error
+	contentReq       dto.AIEditContentRequest
+	contentResp      *dto.AIEditContentResponse
+	contentStream    *services.AIServiceStream
+	prepublishReq    dto.AIEditPrepublishRequest
+	prepublishResp   *dto.AIEditPrepublishResponse
+	prepublishStream *services.AIServiceStream
+	err              error
 }
 
 func (f *fakeAIContentEditor) EditContent(ctx context.Context, req dto.AIEditContentRequest) (*dto.AIEditContentResponse, error) {
@@ -112,12 +115,28 @@ func (f *fakeAIContentEditor) EditContent(ctx context.Context, req dto.AIEditCon
 	return f.contentResp, nil
 }
 
+func (f *fakeAIContentEditor) StreamEditContent(ctx context.Context, req dto.AIEditContentRequest) (*services.AIServiceStream, error) {
+	f.contentReq = req
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.contentStream, nil
+}
+
 func (f *fakeAIContentEditor) EditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*dto.AIEditPrepublishResponse, error) {
 	f.prepublishReq = req
 	if f.err != nil {
 		return nil, f.err
 	}
 	return f.prepublishResp, nil
+}
+
+func (f *fakeAIContentEditor) StreamEditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*services.AIServiceStream, error) {
+	f.prepublishReq = req
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.prepublishStream, nil
 }
 
 func TestDashboardHandlerListProjectsNormalizesPagination(t *testing.T) {
@@ -429,6 +448,39 @@ func TestUserDashboardHandlerEditContentWithAI(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, "content", resp.Channel)
 	require.Equal(t, "<p>Sharper draft</p>", resp.Content)
+}
+
+func TestUserDashboardHandlerStreamsContentWithAI(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	aiEditor := &fakeAIContentEditor{
+		contentStream: &services.AIServiceStream{
+			Body:        io.NopCloser(strings.NewReader("streamed markdown")),
+			ContentType: "text/markdown; charset=utf-8",
+		},
+	}
+	handler.UseAIContentEditor(aiEditor)
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/ai/content/edit/stream",
+		strings.NewReader(`{"content":"Draft","message":"Edit"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.StreamEditContentWithAI(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get(echo.HeaderContentType))
+	require.Equal(t, "streamed markdown", rec.Body.String())
+	require.Equal(t, "Draft", aiEditor.contentReq.Content)
+	require.Equal(t, "Edit", aiEditor.contentReq.Message)
 }
 
 func TestUserDashboardHandlerEditPrepublishWithAI(t *testing.T) {
