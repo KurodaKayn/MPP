@@ -30,8 +30,9 @@ func (p queueTestPublisher) Publish(ctx context.Context, pub *models.ProjectPlat
 }
 
 type testPublishQueue struct {
-	jobs  []PublishJob
-	locks map[string]string
+	jobs      []PublishJob
+	locks     map[string]string
+	refreshes int
 }
 
 func newTestPublishQueue() *testPublishQueue {
@@ -62,6 +63,14 @@ func (q *testPublishQueue) AcquireLock(ctx context.Context, key, value string, t
 
 func (q *testPublishQueue) LockValue(ctx context.Context, key string) (string, error) {
 	return q.locks[key], nil
+}
+
+func (q *testPublishQueue) RefreshLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
+	if q.locks[key] != value {
+		return false, nil
+	}
+	q.refreshes++
+	return true, nil
 }
 
 func (q *testPublishQueue) ReleaseLock(ctx context.Context, key, value string) error {
@@ -173,6 +182,39 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 	require.True(t, errors.Is(err, ErrPublicationAlreadyPublishing))
 }
 
+func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := NewDashboardService(db)
+	service.publishQueue = newTestPublishQueue()
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	lastAttemptAt := time.Now().UTC()
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusPublishing,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+		LastAttemptAt:  &lastAttemptAt,
+	}).Error)
+
+	_, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID)
+
+	require.True(t, errors.Is(err, ErrPublicationAlreadyPublishing))
+}
+
 func TestProcessPublishJobPublishesAndReleasesLock(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
 	service := NewDashboardService(db)
@@ -218,4 +260,47 @@ func TestProcessPublishJobPublishesAndReleasesLock(t *testing.T) {
 	require.Equal(t, "remote-id", saved.RemoteID)
 	require.Equal(t, "https://example.com/published", saved.PublishURL)
 	require.Empty(t, queue.locks[lockKey])
+}
+
+func TestProcessPublishJobReacquiresExpiredLock(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := NewDashboardService(db)
+	queue := newTestPublishQueue()
+	service.publishQueue = queue
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusPublishing,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	job := PublishJob{
+		JobID:      uuid.New(),
+		ProjectID:  project.ID,
+		UserID:     user.ID,
+		Platform:   "wechat",
+		EnqueuedAt: time.Now().UTC(),
+	}
+
+	service.processPublishJob(context.Background(), job)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	require.Equal(t, models.PublicationStatusPublished, saved.Status)
+	require.Empty(t, queue.locks[publishLockKey(project.ID, "wechat")])
 }
