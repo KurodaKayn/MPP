@@ -222,6 +222,39 @@ func (h *UserDashboardHandler) SyncProjectPrepublish(c echo.Context) error {
 	return c.JSON(http.StatusOK, publications)
 }
 
+func (h *UserDashboardHandler) UpdateProjectPrepublishDraft(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+
+	req := new(dto.UpdatePrepublishDraftRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	publications, err := h.dashboardService.UpdateProjectPrepublishDraft(projectID, userID, c.Param("platform"), *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "valid platform and adapted_content are required")
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project or publication not found")
+		}
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, publications)
+}
+
 func (h *UserDashboardHandler) EditContentWithAI(c echo.Context) error {
 	if _, err := middleware.GetUserIDFromContext(c); err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
