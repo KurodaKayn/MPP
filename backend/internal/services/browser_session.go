@@ -56,7 +56,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	// 1. Check for active sessions
 	var count int64
 	s.db.Model(&models.RemoteBrowserSession{}).
-		Where("user_id = ? AND platform = ? AND status IN ?", userID, platform, []string{
+		Where("user_id = ? AND platform = ? AND expires_at > ? AND status IN ?", userID, platform, time.Now(), []string{
 			models.BrowserSessionStatusPending,
 			models.BrowserSessionStatusReady,
 			models.BrowserSessionStatusLoginDetected,
