@@ -114,7 +114,8 @@ func main() {
 	// Remote Browser Session Routes
 	userGroup.POST("/settings/platforms/:platform/browser-session", browserSessionHandler.StartSession)
 	userGroup.GET("/browser-sessions/:id", browserSessionHandler.GetSession)
-	userGroup.GET("/browser-sessions/:id/stream", browserSessionHandler.StreamSession)
+	userGroup.Any("/browser-sessions/:id/stream", browserSessionHandler.StreamSession)
+	userGroup.Any("/browser-sessions/:id/stream/*", browserSessionHandler.StreamSession)
 	userGroup.POST("/browser-sessions/:id/complete", browserSessionHandler.CompleteSession)
 	userGroup.DELETE("/browser-sessions/:id", browserSessionHandler.CancelSession)
 

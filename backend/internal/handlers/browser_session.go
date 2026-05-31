@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
@@ -74,7 +75,8 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid session id")
 	}
 
-	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, c.QueryParam("token"))
+	streamToken, proxyPath := streamTokenAndProxyPath(c.QueryParam("token"), c.Param("*"))
+	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken)
 	if err != nil {
 		if err == services.ErrSessionNotFound {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
@@ -89,16 +91,18 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", "invalid stream endpoint")
 	}
+	target.Scheme = reverseProxyScheme(target.Scheme)
+	rawQuery := streamProxyRawQuery(c)
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.Director = func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
-		req.URL.Path = target.Path
+		req.URL.Path = joinURLPath(target.Path, proxyPath)
 		if req.URL.Path == "" {
 			req.URL.Path = "/"
 		}
-		req.URL.RawQuery = target.RawQuery
+		req.URL.RawQuery = rawQuery
 		req.Host = target.Host
 	}
 	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
@@ -153,4 +157,47 @@ func (h *BrowserSessionHandler) CancelSession(c echo.Context) error {
 		SessionID: id,
 		Status:    "expired",
 	})
+}
+
+func streamTokenAndProxyPath(queryToken string, wildcardPath string) (string, string) {
+	wildcardPath = strings.TrimPrefix(wildcardPath, "/")
+	if queryToken != "" {
+		return queryToken, wildcardPath
+	}
+
+	token, proxyPath, hasProxyPath := strings.Cut(wildcardPath, "/")
+	if !hasProxyPath {
+		return token, ""
+	}
+	return token, proxyPath
+}
+
+func streamProxyRawQuery(c echo.Context) string {
+	values := c.QueryParams()
+	values.Del("token")
+	return values.Encode()
+}
+
+func reverseProxyScheme(scheme string) string {
+	switch scheme {
+	case "ws":
+		return "http"
+	case "wss":
+		return "https"
+	default:
+		return scheme
+	}
+}
+
+func joinURLPath(base string, suffix string) string {
+	if suffix == "" {
+		if base == "" {
+			return "/"
+		}
+		return base
+	}
+	if base == "" || base == "/" {
+		return "/" + strings.TrimPrefix(suffix, "/")
+	}
+	return strings.TrimRight(base, "/") + "/" + strings.TrimPrefix(suffix, "/")
 }

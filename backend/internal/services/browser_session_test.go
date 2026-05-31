@@ -51,8 +51,11 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 
 	streamURL, err := url.Parse(resp.StreamURL)
 	require.NoError(t, err)
-	streamToken := streamURL.Query().Get("token")
+	assert.Empty(t, streamURL.Query().Get("token"))
+	assert.Equal(t, resp.ExpiresAt, resp.StreamTokenExpiresAt)
+	streamToken := streamTokenFromPath(t, streamURL.Path)
 	require.NotEmpty(t, streamToken)
+	assert.Contains(t, streamURL.Query().Get("path"), "/stream/"+streamToken+"/websockify")
 
 	streamEndpoint, err := svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken)
 	require.NoError(t, err)
@@ -131,4 +134,19 @@ func TestBrowserSessionService_StartSessionIgnoresExpiredActiveRows(t *testing.T
 	require.NoError(t, err)
 	assert.Equal(t, models.BrowserSessionStatusReady, resp.Status)
 	assert.NotEqual(t, uuid.Nil, resp.SessionID)
+}
+
+func streamTokenFromPath(t *testing.T, path string) string {
+	t.Helper()
+
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	for i, part := range parts {
+		if part == "stream" {
+			require.GreaterOrEqual(t, len(parts), i+3)
+			assert.Equal(t, "vnc.html", parts[i+2])
+			return parts[i+1]
+		}
+	}
+	require.Fail(t, "stream token path segment not found", path)
+	return ""
 }

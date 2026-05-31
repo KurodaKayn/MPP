@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
@@ -269,19 +270,21 @@ func (s *BrowserSessionService) CancelSession(ctx context.Context, userID uuid.U
 }
 
 func browserSessionStreamURL(sessionID uuid.UUID, token string) string {
-	return fmt.Sprintf("/api/user/dashboard/browser-sessions/%s/stream?token=%s", sessionID, token)
+	streamBasePath := fmt.Sprintf(
+		"api/user/dashboard/browser-sessions/%s/stream/%s",
+		sessionID,
+		url.PathEscape(token),
+	)
+	query := url.Values{
+		"autoconnect": {"true"},
+		"path":        {streamBasePath + "/websockify"},
+		"resize":      {"scale"},
+	}
+	return fmt.Sprintf("/%s/vnc.html?%s", streamBasePath, query.Encode())
 }
 
-func streamTokenExpiresAt(sessionExpiresAt time.Time, issuedAt ...time.Time) time.Time {
-	startedAt := time.Now()
-	if len(issuedAt) > 0 {
-		startedAt = issuedAt[0]
-	}
-	expiresAt := startedAt.Add(5 * time.Minute)
-	if sessionExpiresAt.Before(expiresAt) {
-		return sessionExpiresAt
-	}
-	return expiresAt
+func streamTokenExpiresAt(sessionExpiresAt time.Time, _ ...time.Time) time.Time {
+	return sessionExpiresAt
 }
 
 func isStreamableBrowserSessionStatus(status string) bool {
