@@ -306,6 +306,7 @@ export function useContentPageController(projectId?: string) {
       return;
     }
 
+    await updateDashboardProject(projectId, buildProjectInput());
     const results = await Promise.allSettled(
       selectedPlatforms.map(async (platform) => {
         const result = await publishProject(projectId, platform);
