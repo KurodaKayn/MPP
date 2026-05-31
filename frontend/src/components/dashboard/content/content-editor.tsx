@@ -68,7 +68,7 @@ export function ContentEditor({
         <AIEditAssistant
           title="AI 编辑正文"
           source={aiSource}
-          disabled={!editor || !aiSource.trim()}
+          disabled={!editor}
           onApply={applyAIProposal}
           onGenerate={(message, onChunk, signal) =>
             streamAIContentEdit(
