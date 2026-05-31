@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -66,6 +67,31 @@ func TestAIServiceClientEditPrepublishPostsToAIService(t *testing.T) {
 	require.Equal(t, "wechat", resp.Platform)
 	require.Equal(t, "<p>Concise</p>", resp.Content)
 	require.Equal(t, "html", resp.AdaptedContent["format"])
+}
+
+func TestAIServiceClientStreamsEditedContent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/content/edit/stream", r.URL.Path)
+
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		_, _ = w.Write([]byte("first "))
+		_, _ = w.Write([]byte("second"))
+	}))
+	defer server.Close()
+
+	client := NewAIServiceClient(server.URL, server.Client())
+	stream, err := client.StreamEditContent(t.Context(), dto.AIEditContentRequest{
+		Content: "Draft",
+		Message: "Edit",
+	})
+	require.NoError(t, err)
+	defer stream.Body.Close()
+
+	body, err := io.ReadAll(stream.Body)
+	require.NoError(t, err)
+	require.Equal(t, "text/markdown; charset=utf-8", stream.ContentType)
+	require.Equal(t, "first second", string(body))
 }
 
 func TestAIServiceClientMapsBadRequest(t *testing.T) {
