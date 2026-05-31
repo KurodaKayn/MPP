@@ -29,6 +29,13 @@ var (
 type AIContentEditor interface {
 	EditContent(ctx context.Context, req dto.AIEditContentRequest) (*dto.AIEditContentResponse, error)
 	EditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*dto.AIEditPrepublishResponse, error)
+	StreamEditContent(ctx context.Context, req dto.AIEditContentRequest) (*AIServiceStream, error)
+	StreamEditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*AIServiceStream, error)
+}
+
+type AIServiceStream struct {
+	Body        io.ReadCloser
+	ContentType string
 }
 
 type AIServiceClient struct {
@@ -66,6 +73,13 @@ func (c *AIServiceClient) EditContent(ctx context.Context, req dto.AIEditContent
 	return &resp, nil
 }
 
+func (c *AIServiceClient) StreamEditContent(ctx context.Context, req dto.AIEditContentRequest) (*AIServiceStream, error) {
+	if strings.TrimSpace(req.Content) == "" || strings.TrimSpace(req.Message) == "" {
+		return nil, ErrInvalidAIEditRequest
+	}
+	return c.postStream(ctx, "/content/edit/stream", req)
+}
+
 func (c *AIServiceClient) EditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*dto.AIEditPrepublishResponse, error) {
 	if strings.TrimSpace(req.Platform) == "" || strings.TrimSpace(req.Message) == "" || len(req.AdaptedContent) == 0 {
 		return nil, ErrInvalidAIEditRequest
@@ -76,6 +90,13 @@ func (c *AIServiceClient) EditPrepublish(ctx context.Context, req dto.AIEditPrep
 		return nil, err
 	}
 	return &resp, nil
+}
+
+func (c *AIServiceClient) StreamEditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*AIServiceStream, error) {
+	if strings.TrimSpace(req.Platform) == "" || strings.TrimSpace(req.Message) == "" || len(req.AdaptedContent) == 0 {
+		return nil, ErrInvalidAIEditRequest
+	}
+	return c.postStream(ctx, "/prepublish/edit/stream", req)
 }
 
 func (c *AIServiceClient) postJSON(ctx context.Context, path string, payload interface{}, out interface{}) error {
@@ -109,6 +130,39 @@ func (c *AIServiceClient) postJSON(ctx context.Context, path string, payload int
 		return fmt.Errorf("%w: invalid response: %v", ErrAIServiceUnavailable, err)
 	}
 	return nil
+}
+
+func (c *AIServiceClient) postStream(ctx context.Context, path string, payload interface{}) (*AIServiceStream, error) {
+	if c == nil || c.baseURL == "" {
+		return nil, ErrAIServiceUnavailable
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "text/markdown, text/plain, application/octet-stream")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrAIServiceUnavailable, err)
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		defer resp.Body.Close()
+		return nil, aiServiceStatusError(resp)
+	}
+
+	return &AIServiceStream{
+		Body:        resp.Body,
+		ContentType: resp.Header.Get("Content-Type"),
+	}, nil
 }
 
 func aiServiceStatusError(resp *http.Response) error {
