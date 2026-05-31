@@ -260,7 +260,7 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	}
 
 	if len(req.Platforms) > 0 {
-		resp, err := h.dashboardService.BatchPublishProject(projectID, req.Platforms, &userID)
+		resp, err := h.dashboardService.BatchEnqueuePublishProject(c.Request().Context(), projectID, req.Platforms, &userID)
 		if err != nil {
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		}
@@ -268,10 +268,13 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	}
 
 	// Single platform fallback
-	resp, err := h.dashboardService.PublishProject(projectID, req.Platform, &userID)
+	resp, err := h.dashboardService.EnqueuePublishProject(c.Request().Context(), projectID, req.Platform, &userID)
 	if err != nil {
 		if errors.Is(err, services.ErrPublicationDisabled) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
+		}
+		if errors.Is(err, services.ErrPublicationAlreadyPublishing) {
+			return sendError(c, http.StatusConflict, "publish_in_progress", "publication is already publishing")
 		}
 		if errors.Is(err, services.ErrPublicationRequiresSync) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "sync prepublish draft before publishing")
