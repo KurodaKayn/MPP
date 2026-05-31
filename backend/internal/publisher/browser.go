@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/chromedp/cdproto/cdp"
@@ -20,6 +21,8 @@ func SetupBrowser(ctx context.Context, cookiesJSON []byte) (context.Context, con
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.NoFirstRun,
 		chromedp.NoDefaultBrowserCheck,
+		// Force a standard User-Agent to ensure cookies remain valid across environments
+		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"),
 	)
 
 	// Use CHROME_BIN environment variable if provided, otherwise let chromedp find the browser
@@ -42,13 +45,51 @@ func SetupBrowser(ctx context.Context, cookiesJSON []byte) (context.Context, con
 	if len(cookiesJSON) > 0 {
 		var cookies []Cookie
 		if err := json.Unmarshal(cookiesJSON, &cookies); err == nil {
-			chromedp.Run(ctx, setCookiesAction(cookies))
+			fmt.Printf("Attempting to set %d cookies...\n", len(cookies))
+			
+			// Find a representative domain to "anchor" the browser
+			// We prioritize zhuanlan.zhihu.com for writing articles
+			targetDomain := "https://www.zhihu.com/robots.txt"
+			for _, c := range cookies {
+				if strings.Contains(c.Domain, "zhuanlan.zhihu.com") {
+					targetDomain = "https://zhuanlan.zhihu.com/robots.txt"
+					break
+				}
+			}
+
+			// We navigate to a tiny asset on the target domain first to establish the origin
+			// This ensures the browser accepts domain-specific cookies.
+			err := chromedp.Run(ctx,
+				network.Enable(),
+				chromedp.Navigate(targetDomain),
+				chromedp.ActionFunc(func(ctx context.Context) error {
+					for _, c := range cookies {
+						expr := network.SetCookie(c.Name, c.Value).
+							WithDomain(c.Domain).
+							WithPath(c.Path).
+							WithHTTPOnly(c.HttpOnly).
+							WithSecure(c.Secure)
+
+						if c.Expires > 0 {
+							t := cdp.TimeSinceEpoch(time.Unix(int64(c.Expires), 0))
+							expr = expr.WithExpires(&t)
+						}
+
+						if err := expr.Do(ctx); err != nil {
+							return err
+						}
+					}
+					return nil
+				}),
+			)
+			if err != nil {
+				fmt.Printf("Warning: failed to set cookies: %v\n", err)
+			}
 		}
 	}
 
 	return ctx, cancel
 }
-
 type Cookie struct {
 	Name     string  `json:"name"`
 	Value    string  `json:"value"`
