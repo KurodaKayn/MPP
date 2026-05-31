@@ -78,8 +78,9 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	}
 
 	streamToken, proxyPath := streamTokenAndProxyPath(c.QueryParam("token"), c.Param("*"))
-	consumeToken := strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket"
-	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken, consumeToken)
+	isWebSocket := strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket"
+	// Keep the iframe URL stable while noVNC is connected; token expiry limits replay.
+	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken, false)
 	if err != nil {
 		if err == services.ErrSessionNotFound {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
@@ -98,7 +99,7 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	rawQuery := streamProxyRawQuery(c)
 
 	// Use custom WebSocket proxy for noVNC stream (e.g. when requesting /websockify)
-	if consumeToken {
+	if isWebSocket {
 		// Update target path with proxy path before proxying
 		target.Path = joinURLPath(target.Path, proxyPath)
 		target.RawQuery = rawQuery
