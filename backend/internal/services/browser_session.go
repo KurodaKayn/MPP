@@ -225,13 +225,20 @@ func (s *BrowserSessionService) releaseRedisActiveSession(ctx context.Context, u
 	if s.redisClient == nil {
 		return nil
 	}
+	return s.releaseRedisActiveSessionValue(ctx, userID, platform, sessionID.String())
+}
+
+func (s *BrowserSessionService) releaseRedisActiveSessionValue(ctx context.Context, userID uuid.UUID, platform string, activeValue string) error {
+	if s.redisClient == nil {
+		return nil
+	}
 	const script = `
 if redis.call("GET", KEYS[1]) == ARGV[1] then
 	return redis.call("DEL", KEYS[1])
 end
 return 0
 `
-	return s.redisClient.Eval(ctx, script, []string{browserSessionActiveKey(userID, platform)}, sessionID.String()).Err()
+	return s.redisClient.Eval(ctx, script, []string{browserSessionActiveKey(userID, platform)}, activeValue).Err()
 }
 
 func (s *BrowserSessionService) saveRedisLiveSession(ctx context.Context, state browserSessionLiveState) error {
@@ -297,6 +304,77 @@ func (s *BrowserSessionService) removeRedisCleanupMember(ctx context.Context, se
 		return nil
 	}
 	return s.redisClient.ZRem(ctx, browserSessionCleanupKey, sessionID.String()).Err()
+}
+
+func (s *BrowserSessionService) recoverRedisActiveSessionLock(ctx context.Context, userID uuid.UUID, platform string, now time.Time) (bool, error) {
+	if s.redisClient == nil {
+		return false, nil
+	}
+
+	activeValue, err := s.redisClient.Get(ctx, browserSessionActiveKey(userID, platform)).Result()
+	if errors.Is(err, redis.Nil) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	activeSessionID, err := uuid.Parse(activeValue)
+	if err != nil {
+		return true, s.releaseRedisActiveSessionValue(ctx, userID, platform, activeValue)
+	}
+
+	state, ok, err := s.getRedisLiveSession(ctx, activeSessionID)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return true, s.cleanupRecoveredRedisActiveSession(ctx, userID, platform, activeSessionID, "", "redis live session missing")
+	}
+
+	if state.UserID != userID || state.Platform != platform {
+		return true, s.releaseRedisActiveSessionValue(ctx, userID, platform, activeValue)
+	}
+	if state.ExpiresAt.Before(now) || isTerminalBrowserSessionStatus(state.Status) {
+		return true, s.cleanupRecoveredRedisActiveSession(ctx, userID, platform, activeSessionID, state.WorkerSessionRef, "session expired")
+	}
+	if state.WorkerSessionRef == "" {
+		if state.CreatedAt.Add(pendingSessionStaleAfter).After(now) {
+			return false, nil
+		}
+		return true, s.cleanupRecoveredRedisActiveSession(ctx, userID, platform, activeSessionID, "", "worker session reference is missing")
+	}
+
+	heartbeatAlive, err := s.redisWorkerHeartbeatAlive(ctx, state.WorkerSessionRef)
+	if err != nil {
+		return false, err
+	}
+	if _, err := s.workerClient.GetSession(ctx, state.WorkerSessionRef); err == nil {
+		return false, nil
+	}
+
+	message := "worker session is unavailable"
+	if !heartbeatAlive {
+		message = "worker heartbeat missing"
+	}
+	return true, s.cleanupRecoveredRedisActiveSession(ctx, userID, platform, activeSessionID, state.WorkerSessionRef, message)
+}
+
+func (s *BrowserSessionService) cleanupRecoveredRedisActiveSession(ctx context.Context, userID uuid.UUID, platform string, sessionID uuid.UUID, workerSessionRef string, message string) error {
+	if err := s.expireRedisActiveSessionRow(ctx, sessionID, message); err != nil {
+		return err
+	}
+	return s.cleanupRedisSession(ctx, userID, platform, sessionID, workerSessionRef)
+}
+
+func (s *BrowserSessionService) expireRedisActiveSessionRow(ctx context.Context, sessionID uuid.UUID, message string) error {
+	return s.db.WithContext(ctx).Model(&models.RemoteBrowserSession{}).
+		Where("id = ? AND status IN ?", sessionID, activeBrowserSessionStatuses()).
+		Updates(map[string]interface{}{
+			"status":             models.BrowserSessionStatusExpired,
+			"error_message":      message,
+			"connect_token_hash": "",
+		}).Error
 }
 
 func (s *BrowserSessionService) rotateRedisStreamToken(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID, platform string, tokenHash string, sessionExpiresAt time.Time) (time.Time, error) {
@@ -436,7 +514,20 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 			return nil, err
 		}
 		if !acquired {
-			return nil, ErrActiveSessionExists
+			recovered, err := s.recoverRedisActiveSessionLock(ctx, userID, platform, now)
+			if err != nil {
+				return nil, err
+			}
+			if !recovered {
+				return nil, ErrActiveSessionExists
+			}
+			acquired, err = s.acquireRedisActiveSession(ctx, userID, platform, sessionID, expiresAt)
+			if err != nil {
+				return nil, err
+			}
+			if !acquired {
+				return nil, ErrActiveSessionExists
+			}
 		}
 		if err := s.expireSupersededActiveRows(ctx, userID, platform); err != nil {
 			_ = s.releaseRedisActiveSession(ctx, userID, platform, sessionID)
