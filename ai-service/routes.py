@@ -36,6 +36,32 @@ async def stream_response_text(
             yield text
 
 
+async def stream_markdown_response(
+    llm: BaseChatModel,
+    messages: list[BaseMessage],
+) -> StreamingResponse:
+    stream = stream_response_text(llm, messages)
+
+    try:
+        first_chunk = await anext(stream)
+    except StopAsyncIteration:
+        raise HTTPException(status_code=502, detail="LLM returned empty content")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    async def with_first_chunk() -> AsyncIterator[str]:
+        yield first_chunk
+        async for chunk in stream:
+            yield chunk
+
+    return StreamingResponse(
+        with_first_chunk(),
+        media_type="text/markdown; charset=utf-8",
+    )
+
+
 @router.get("/health")
 async def health():
     return {"status": "healthy"}
@@ -67,10 +93,7 @@ async def stream_edit_content(request: EditContentRequest):
     try:
         llm = build_llm()
         messages = build_edit_content_messages(request)
-        return StreamingResponse(
-            stream_response_text(llm, messages),
-            media_type="text/markdown; charset=utf-8",
-        )
+        return await stream_markdown_response(llm, messages)
     except HTTPException:
         raise
     except Exception as e:
@@ -123,10 +146,7 @@ async def stream_edit_prepublish(request: EditPrepublishRequest):
     try:
         llm = build_llm()
         messages = build_edit_prepublish_messages(request, content_key, current_text)
-        return StreamingResponse(
-            stream_response_text(llm, messages),
-            media_type="text/markdown; charset=utf-8",
-        )
+        return await stream_markdown_response(llm, messages)
     except HTTPException:
         raise
     except Exception as e:
