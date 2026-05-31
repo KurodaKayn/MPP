@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "react-diff-view/style/index.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -126,5 +127,47 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+@layer components {
+  .ai-diff-view {
+    --diff-background-color: var(--background);
+    --diff-text-color: var(--foreground);
+    --diff-gutter-insert-background-color: color-mix(
+      in oklch,
+      oklch(0.72 0.17 142) 18%,
+      transparent
+    );
+    --diff-code-insert-background-color: color-mix(
+      in oklch,
+      oklch(0.72 0.17 142) 14%,
+      transparent
+    );
+    --diff-gutter-delete-background-color: color-mix(
+      in oklch,
+      var(--destructive) 16%,
+      transparent
+    );
+    --diff-code-delete-background-color: color-mix(
+      in oklch,
+      var(--destructive) 11%,
+      transparent
+    );
+  }
+
+  .ai-diff-view .diff {
+    width: 100%;
+    min-width: 760px;
+  }
+
+  .ai-diff-view .diff-gutter {
+    user-select: none;
+  }
+
+  .ai-diff-view .diff-code {
+    font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo,
+      Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    line-height: 1.6;
   }
 }
