@@ -8,7 +8,6 @@ import {
   Loader2,
   Square,
   X,
-  ArrowBigUpDash,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -186,7 +185,7 @@ export function AIEditAssistant({
               {isStreaming ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                <ArrowBigUpDash className="size-4" />
+                <Bot className="size-4" />
               )}
               生成
             </Button>
