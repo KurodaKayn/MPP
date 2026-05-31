@@ -13,10 +13,12 @@ import {
   saveXAccount,
   saveWechatAccount,
   syncProjectPrepublish,
+  waitForProjectPublications,
   testWechatConnection,
   testXConnection,
   updateDashboardProject,
 } from "./api";
+import type { ProjectPublications } from "./api";
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), {
@@ -186,6 +188,56 @@ describe("dashboard api client", () => {
         method: "POST",
       }),
     );
+  });
+
+  it("waits for queued publications to reach a final state", async () => {
+    const publishing = {
+      items: [
+        {
+          adapted_content: {},
+          config: {},
+          created_at: "2026-05-29T12:00:00Z",
+          enabled: true,
+          id: "pub-1",
+          platform: "wechat",
+          retry_count: 0,
+          status: "publishing",
+          updated_at: "2026-05-29T12:00:00Z",
+        },
+      ],
+      project_id: "project-1",
+    } as ProjectPublications;
+    const published = {
+      items: [
+        {
+          adapted_content: {},
+          config: {},
+          created_at: "2026-05-29T12:00:00Z",
+          enabled: true,
+          id: "pub-1",
+          platform: "wechat",
+          publish_url: "https://example.com/post",
+          retry_count: 0,
+          status: "published",
+          updated_at: "2026-05-29T12:00:00Z",
+        },
+      ],
+      project_id: "project-1",
+    } as ProjectPublications;
+
+    const fetchProjectPublications = vi
+      .fn()
+      .mockResolvedValueOnce(publishing)
+      .mockResolvedValueOnce(published);
+
+    await expect(
+      waitForProjectPublications("project-1", ["wechat"], {
+        fetchProjectPublications,
+        sleep: async () => {},
+      }),
+    ).resolves.toEqual(published);
+
+    expect(fetchProjectPublications).toHaveBeenCalledTimes(2);
   });
 
   it("creates a project with selected platforms", async () => {

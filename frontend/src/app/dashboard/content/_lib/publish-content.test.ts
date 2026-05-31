@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest";
-import type { ProjectListItem } from "@/lib/dashboard/api";
+import type { ProjectListItem, ProjectPublications } from "@/lib/dashboard/api";
 import { publishContentToPlatforms } from "./publish-content";
 
 const project: ProjectListItem = {
@@ -86,5 +86,58 @@ describe("publishContentToPlatforms", () => {
         platform: "bilibili",
       },
     ]);
+  });
+
+  it("waits for queued publish jobs before reporting success", async () => {
+    const createProject = vi.fn(async () => project);
+    const publishProject = vi.fn(async () => ({
+      job_id: "job-1",
+      status: "publishing",
+    }));
+    const publications = {
+      items: [
+        {
+          adapted_content: {},
+          config: {},
+          created_at: "2026-05-29T12:00:00Z",
+          enabled: true,
+          id: "pub-1",
+          platform: "wechat",
+          publish_url: "https://example.com/post",
+          retry_count: 0,
+          status: "published",
+          updated_at: "2026-05-29T12:00:00Z",
+        },
+      ],
+      project_id: "project-1",
+    } as ProjectPublications;
+    const waitForProjectPublications = vi.fn(async () => publications);
+
+    const result = await publishContentToPlatforms(
+      {
+        content: {
+          firstImageSrc: "",
+          html: "<p>Body</p>",
+          text: "Body",
+        },
+        platforms: ["wechat"],
+        title: "Post title",
+      },
+      {
+        createProject,
+        publishProject,
+        waitForProjectPublications,
+      },
+    );
+
+    expect(publishProject).toHaveBeenCalledWith("project-1", "wechat");
+    expect(waitForProjectPublications).toHaveBeenCalledWith("project-1", [
+      "wechat",
+    ]);
+    expect(result).toEqual({
+      failed: [],
+      project,
+      succeeded: ["wechat"],
+    });
   });
 });
