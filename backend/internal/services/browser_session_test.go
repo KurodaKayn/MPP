@@ -84,6 +84,7 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, models.BrowserSessionStatusReady, session.Status)
 	assert.NotEmpty(t, session.WorkerSessionRef)
+	assert.WithinDuration(t, resp.StreamTokenExpiresAt, session.ConnectTokenExpiresAt, time.Second)
 
 	// 2. Get Session
 	getStatus, err := svc.GetSession(context.Background(), userID, resp.SessionID)
@@ -128,6 +129,38 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 
 	// 5. Cancel the second session
 	err = svc.CancelSession(context.Background(), user2ID, resp2.SessionID)
+	assert.NoError(t, err)
+}
+
+func TestBrowserSessionService_GetStreamEndpointRejectsExpiredDatabaseToken(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+	require.NoError(t, err)
+	streamURL, err := url.Parse(resp.StreamURL)
+	require.NoError(t, err)
+	streamToken := streamTokenFromPath(t, streamURL.Path)
+
+	require.NoError(t, db.Model(&models.RemoteBrowserSession{}).
+		Where("id = ?", resp.SessionID).
+		Update("connect_token_expires_at", time.Now().Add(-time.Second)).Error)
+
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
+	assert.ErrorIs(t, err, services.ErrInvalidStreamToken)
+
+	status, err := svc.GetSession(context.Background(), userID, resp.SessionID)
+	require.NoError(t, err)
+	require.NotEmpty(t, status.StreamURL)
+	assert.True(t, status.StreamTokenExpiresAt.After(time.Now()))
+	assert.True(t, !status.StreamTokenExpiresAt.After(status.ExpiresAt))
+
+	rotatedURL, err := url.Parse(status.StreamURL)
+	require.NoError(t, err)
+	rotatedToken := streamTokenFromPath(t, rotatedURL.Path)
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, rotatedToken, false)
 	assert.NoError(t, err)
 }
 
