@@ -9,6 +9,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+const jwtTokenLookup = "header:Authorization:Bearer ,cookie:sevenoxcloud.auth_token,cookie:auth_token,cookie:access_token"
+
 // JWTCustomClaims are custom claims extending default ones.
 type JWTCustomClaims struct {
 	UserID uuid.UUID `json:"user_id"`
@@ -22,7 +24,8 @@ func GetJWTConfig(signingKey []byte) echojwt.Config {
 		NewClaimsFunc: func(c echo.Context) jwt.Claims {
 			return new(JWTCustomClaims)
 		},
-		SigningKey: signingKey,
+		SigningKey:  signingKey,
+		TokenLookup: jwtTokenLookup,
 	}
 }
 
