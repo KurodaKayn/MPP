@@ -251,6 +251,19 @@ describe("dashboard api client", () => {
     );
   });
 
+  it("surfaces empty AI content streams as errors", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => textStreamResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      streamAIContentEdit({
+        content: "",
+        message: "write a hello world example",
+        title: "Draft",
+      }),
+    ).rejects.toThrow("AI 没有返回内容");
+  });
+
   it("streams AI prepublish edit chunks", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
       textStreamResponse(["## ", "Draft"]),
