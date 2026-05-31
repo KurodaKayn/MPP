@@ -532,6 +532,32 @@ func (s *DashboardService) UpdateProject(projectID uuid.UUID, userID uuid.UUID, 
 	return s.GetProject(projectID, &userID)
 }
 
+func (s *DashboardService) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req dto.SaveProjectContentRequest) (*dto.ProjectDetail, error) {
+	title := strings.TrimSpace(req.Title)
+	sourceContent := strings.TrimSpace(req.SourceContent)
+	if title == "" || sourceContent == "" {
+		return nil, ErrInvalidProject
+	}
+
+	var project models.Project
+	if err := s.db.First(&project, "id = ?", projectID).Error; err != nil {
+		return nil, err
+	}
+	if project.UserID != userID {
+		return nil, ErrForbidden
+	}
+
+	if err := s.db.Model(&project).Updates(map[string]interface{}{
+		"source_content": sourceContent,
+		"status":         models.ProjectStatusReady,
+		"title":          title,
+	}).Error; err != nil {
+		return nil, err
+	}
+
+	return s.GetProject(projectID, &userID)
+}
+
 func buildPendingPublicationPayload(title, summary, coverImageURL string) (datatypes.JSON, datatypes.JSON, string, error) {
 	config, err := defaultPublicationConfig(title, summary, coverImageURL)
 	if err != nil {

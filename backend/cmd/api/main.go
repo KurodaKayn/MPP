@@ -100,6 +100,7 @@ func main() {
 	userGroup.POST("/projects", userDashboardHandler.CreateProject)
 	userGroup.GET("/projects/:id", userDashboardHandler.GetMyProject)
 	userGroup.PUT("/projects/:id", userDashboardHandler.UpdateProject)
+	userGroup.PATCH("/projects/:id/content", userDashboardHandler.SaveProjectContent)
 	userGroup.GET("/projects/:id/publications", userDashboardHandler.GetMyProjectPublications)
 	userGroup.POST("/projects/:id/prepublish/sync", userDashboardHandler.SyncProjectPrepublish)
 	userGroup.PUT("/projects/:id/prepublish/:platform", userDashboardHandler.UpdateProjectPrepublishDraft)

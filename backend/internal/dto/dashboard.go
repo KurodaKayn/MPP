@@ -44,6 +44,13 @@ type UpdateProjectRequest struct {
 	Platforms     []string `json:"platforms"`
 }
 
+type SaveProjectContentRequest struct {
+	Title         string `json:"title"`
+	SourceContent string `json:"source_content"`
+	Summary       string `json:"summary,omitempty"`
+	CoverImageURL string `json:"cover_image_url,omitempty"`
+}
+
 type SyncActor struct {
 	Type string `json:"type"`
 }
