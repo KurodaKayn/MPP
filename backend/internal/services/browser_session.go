@@ -53,8 +53,9 @@ func (s *BrowserSessionService) RegisterAdapter(a publisher.RemoteBrowserPlatfor
 
 func (s *BrowserSessionService) activeSessionExists(ctx context.Context, userID uuid.UUID, platform string, now time.Time) (bool, error) {
 	var sessions []models.RemoteBrowserSession
+	// Search for ALL sessions with active statuses (ignore expires_at for now to handle stale index rows)
 	err := s.db.WithContext(ctx).
-		Where("user_id = ? AND platform = ? AND expires_at > ? AND status IN ?", userID, platform, now, []string{
+		Where("user_id = ? AND platform = ? AND status IN ?", userID, platform, []string{
 			models.BrowserSessionStatusPending,
 			models.BrowserSessionStatusReady,
 			models.BrowserSessionStatusLoginDetected,
@@ -67,6 +68,16 @@ func (s *BrowserSessionService) activeSessionExists(ctx context.Context, userID 
 
 	for i := range sessions {
 		session := &sessions[i]
+		
+		// 1. If actually expired by time, mark it so and continue
+		if session.ExpiresAt.Before(now) {
+			if err := s.expireStaleSession(ctx, session, "session expired"); err != nil {
+				return false, err
+			}
+			continue
+		}
+
+		// 2. If no worker ref, check for pending timeout
 		if session.WorkerSessionRef == "" {
 			if session.CreatedAt.Add(pendingSessionStaleAfter).After(now) {
 				return true, nil
@@ -76,6 +87,8 @@ func (s *BrowserSessionService) activeSessionExists(ctx context.Context, userID 
 			}
 			continue
 		}
+
+		// 3. Verify with worker
 		if _, err := s.workerClient.GetSession(ctx, session.WorkerSessionRef); err != nil {
 			if err := s.expireStaleSession(ctx, session, "worker session is unavailable"); err != nil {
 				return false, err

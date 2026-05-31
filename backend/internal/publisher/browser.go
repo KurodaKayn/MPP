@@ -15,11 +15,15 @@ import (
 // BrowserAction represents a reusable browser automation step
 type BrowserAction func(ctx context.Context) error
 
+var runBrowserActions = chromedp.Run
+
 // SetupBrowser initializes a chromedp context with optional cookies
 func SetupBrowser(ctx context.Context, cookiesJSON []byte) (context.Context, context.CancelFunc) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.NoFirstRun,
 		chromedp.NoDefaultBrowserCheck,
+		// Force a standard User-Agent to ensure cookies remain valid across environments
+		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"),
 	)
 
 	// Use CHROME_BIN environment variable if provided, otherwise let chromedp find the browser
@@ -42,7 +46,15 @@ func SetupBrowser(ctx context.Context, cookiesJSON []byte) (context.Context, con
 	if len(cookiesJSON) > 0 {
 		var cookies []Cookie
 		if err := json.Unmarshal(cookiesJSON, &cookies); err == nil {
-			chromedp.Run(ctx, setCookiesAction(cookies))
+			fmt.Printf("Attempting to set %d cookies...\n", len(cookies))
+
+			err := runBrowserActions(ctx,
+				network.Enable(),
+				setCookiesAction(cookies),
+			)
+			if err != nil {
+				fmt.Printf("Warning: failed to set cookies: %v\n", err)
+			}
 		}
 	}
 
@@ -137,6 +149,7 @@ func PasteFile(selector string, fileName string, mimeType string, base64Data str
 		return chromedp.Evaluate(script, &res).Do(ctx)
 	})
 }
+
 // PasteContent simulates a paste event into an editor
 func PasteContent(selector string, content string, isHTML bool) chromedp.Action {
 	dataType := "text/plain"
