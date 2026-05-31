@@ -1,11 +1,11 @@
 "use client";
 
-import { Check, Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import Image from "next/image";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PLATFORM_TABS, type PlatformTab } from "@/lib/content/platforms";
 import type { ContentValue } from "@/lib/content/types";
 import { cn } from "@/lib/utils";
@@ -20,8 +20,7 @@ type ContentPrepublishPanelProps = {
   content: ContentValue;
   drafts: Partial<Record<PublishPlatform, PrepublishDraft>>;
   isSyncing: boolean;
-  onSelectedPlatformsChange: (platforms: PublishPlatform[]) => void;
-  onSync: () => void;
+  onSync: (platforms?: PublishPlatform[]) => void;
   selectedPlatforms: PublishPlatform[];
   title: string;
 };
@@ -73,34 +72,35 @@ export function ContentPrepublishPanel({
   content,
   drafts,
   isSyncing,
-  onSelectedPlatformsChange,
   onSync,
   selectedPlatforms,
   title,
 }: ContentPrepublishPanelProps) {
   const selectedSet = new Set(selectedPlatforms);
-  const allSelected = selectedPlatforms.length === PLATFORM_TABS.length;
-  const activePlatform = selectedPlatforms[0] ?? PLATFORM_TABS[0].value;
   const hasSourceContent = Boolean(
     content.text.trim() || content.firstImageSrc,
   );
+  const [activePlatform, setActivePlatform] = useState<PublishPlatform>(
+    selectedPlatforms[0] ?? PLATFORM_TABS[0].value,
+  );
 
-  const togglePlatform = (platform: PublishPlatform, checked: boolean) => {
-    if (checked) {
-      onSelectedPlatformsChange([...selectedPlatforms, platform]);
+  useEffect(() => {
+    if (selectedPlatforms.length === 0) {
+      setActivePlatform(PLATFORM_TABS[0].value);
       return;
     }
 
-    onSelectedPlatformsChange(
-      selectedPlatforms.filter((item) => item !== platform),
-    );
+    if (!selectedSet.has(activePlatform)) {
+      setActivePlatform(selectedPlatforms[0]);
+    }
+  }, [activePlatform, selectedPlatforms, selectedSet]);
+
+  const activatePlatform = (platform: PublishPlatform) => {
+    setActivePlatform(platform);
   };
 
-  const toggleAll = (checked: boolean) => {
-    onSelectedPlatformsChange(
-      checked ? PLATFORM_TABS.map((platform) => platform.value) : [],
-    );
-  };
+  const activeDraft = drafts[activePlatform];
+  const expectedFormat = platformFormats[activePlatform];
 
   return (
     <Card>
@@ -109,69 +109,69 @@ export function ContentPrepublishPanel({
           <div>
             <CardTitle>预发布</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              同步后查看各平台将使用的原始格式和预览。
+              点击平台进入专属预发布区块，左侧查看原始格式，右侧查看预览。
             </p>
           </div>
-          <Button
-            type="button"
-            onClick={onSync}
-            disabled={!hasSourceContent || selectedPlatforms.length === 0}
-            className="w-full sm:w-auto"
-          >
-            {isSyncing ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <RefreshCw className="size-4" />
-            )}
-            同步到预发布
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                onSync(
+                  selectedSet.has(activePlatform)
+                    ? [activePlatform]
+                    : [...selectedPlatforms, activePlatform],
+                )
+              }
+              disabled={!hasSourceContent}
+              className="w-full sm:w-auto"
+            >
+              {isSyncing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              同步到该平台
+            </Button>
+            <Button
+              type="button"
+              onClick={() =>
+                onSync(PLATFORM_TABS.map((platform) => platform.value))
+              }
+              disabled={!hasSourceContent}
+              className="w-full sm:w-auto"
+            >
+              {isSyncing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              一键同步到所有平台
+            </Button>
+          </div>
         </div>
-
-        <label className="inline-flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={(event) => toggleAll(event.currentTarget.checked)}
-            className="size-4 rounded border-input accent-primary"
-          />
-          全选平台
-        </label>
       </CardHeader>
 
       <CardContent className="space-y-5">
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
           {PLATFORM_TABS.map((platform) => {
-            const checked = selectedSet.has(platform.value);
+            const isSelected = selectedSet.has(platform.value);
+            const isActive = activePlatform === platform.value;
 
             return (
-              <label
+              <button
+                type="button"
                 key={platform.value}
+                onClick={() => activatePlatform(platform.value)}
                 className={cn(
-                  "flex h-14 cursor-pointer items-center gap-3 rounded-lg border px-3 text-sm transition-colors",
-                  checked
-                    ? "border-primary bg-primary/5 text-foreground"
-                    : "border-border bg-background hover:bg-muted/50",
+                  "flex h-14 items-center gap-3 rounded-lg border px-3 text-left text-sm transition-colors",
+                  isActive
+                    ? "border-primary bg-primary/8 text-foreground shadow-sm"
+                    : isSelected
+                      ? "border-primary/40 bg-primary/5 text-foreground"
+                      : "border-border bg-background hover:bg-muted/50",
                 )}
               >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  className="sr-only"
-                  onChange={(event) =>
-                    togglePlatform(platform.value, event.currentTarget.checked)
-                  }
-                />
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "flex size-4 shrink-0 items-center justify-center rounded-sm border",
-                    checked
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-input bg-background",
-                  )}
-                >
-                  {checked ? <Check className="size-3" /> : null}
-                </span>
                 <Image
                   src={platform.icon}
                   alt=""
@@ -180,72 +180,67 @@ export function ContentPrepublishPanel({
                   aria-hidden="true"
                   className="size-[18px] shrink-0"
                 />
-                <span className="truncate font-medium">{platform.label}</span>
-              </label>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium">{platform.label}</div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    {drafts[platform.value] ? "已同步" : "未同步"}
+                  </div>
+                </div>
+              </button>
             );
           })}
         </div>
 
-        {selectedPlatforms.length === 0 ? (
+        {!hasSourceContent ? (
           <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            选择平台后同步预发布内容。
+            请先填写内容，再同步平台草稿。
           </div>
         ) : (
-          <Tabs defaultValue={activePlatform} className="w-full">
-            <TabsList
-              className="grid w-full"
-              style={{
-                gridTemplateColumns: `repeat(${selectedPlatforms.length}, minmax(0, 1fr))`,
-              }}
-            >
-              {selectedPlatforms.map((platform) => (
-                <TabsTrigger key={platform} value={platform}>
-                  {platformLabel(platform)}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+          <section className="space-y-3">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">
+                  {platformLabel(activePlatform)}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {activeDraft
+                    ? `${formatLabel(activeDraft.format)} · 已同步 ${new Date(
+                        activeDraft.syncedAt,
+                      ).toLocaleString()}`
+                    : `尚未同步。目标格式：${formatLabel(expectedFormat)}。`}
+                </p>
+              </div>
+            </div>
 
-            {selectedPlatforms.map((platform) => {
-              const draft = drafts[platform];
-              const expectedFormat = platformFormats[platform];
+            <div className="grid gap-4 xl:grid-cols-2">
+              <section className="space-y-2">
+                <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  原始格式
+                </h4>
+                <ScrollArea className="h-96 rounded-lg border bg-muted/30">
+                  <pre className="p-4 text-xs leading-5 whitespace-pre-wrap">
+                    {activeDraft?.raw ??
+                      `当前平台目标格式：${formatLabel(expectedFormat)}。\n点击上方按钮同步后，这里会显示真正保存到数据库中的原始格式内容。`}
+                  </pre>
+                </ScrollArea>
+              </section>
 
-              return (
-                <TabsContent key={platform} value={platform} className="mt-4">
-                  {draft ? (
-                    <Tabs defaultValue="raw" className="w-full">
-                      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="text-sm text-muted-foreground">
-                          {formatLabel(draft.format)} · 已同步{" "}
-                          {new Date(draft.syncedAt).toLocaleString()}
-                        </div>
-                        <TabsList>
-                          <TabsTrigger value="raw">原始格式</TabsTrigger>
-                          <TabsTrigger value="preview">预览</TabsTrigger>
-                        </TabsList>
-                      </div>
-                      <TabsContent value="raw" className="mt-0">
-                        <ScrollArea className="h-80 rounded-lg border bg-muted/30">
-                          <pre className="p-4 text-xs leading-5 whitespace-pre-wrap">
-                            {draft.raw}
-                          </pre>
-                        </ScrollArea>
-                      </TabsContent>
-                      <TabsContent value="preview" className="mt-0">
-                        <ScrollArea className="h-80 rounded-lg border p-4">
-                          {renderPreview(draft, title)}
-                        </ScrollArea>
-                      </TabsContent>
-                    </Tabs>
+              <section className="space-y-2">
+                <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  预览
+                </h4>
+                <ScrollArea className="h-96 rounded-lg border p-4">
+                  {activeDraft ? (
+                    renderPreview(activeDraft, title)
                   ) : (
-                    <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                      尚未同步。当前平台目标格式：
-                      {formatLabel(expectedFormat)}。
+                    <div className="text-sm leading-6 text-muted-foreground">
+                      当前平台还没有同步草稿，预览将在同步完成后显示。
                     </div>
                   )}
-                </TabsContent>
-              );
-            })}
-          </Tabs>
+                </ScrollArea>
+              </section>
+            </div>
+          </section>
         )}
       </CardContent>
     </Card>

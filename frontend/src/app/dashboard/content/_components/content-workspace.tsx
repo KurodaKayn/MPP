@@ -83,7 +83,6 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         drafts={contentPage.prepublishDrafts}
         isSyncing={contentPage.isSyncingPrepublish}
         selectedPlatforms={contentPage.selectedPlatforms}
-        onSelectedPlatformsChange={contentPage.setSelectedPlatforms}
         onSync={contentPage.syncPrepublish}
       />
 

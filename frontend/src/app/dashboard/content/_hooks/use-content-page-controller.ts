@@ -214,11 +214,21 @@ export function useContentPageController(projectId?: string) {
     return true;
   };
 
-  const validateContent = () => {
-    if (selectedPlatforms.length === 0) {
+  const validatePlatforms = (platforms: PublishPlatform[]) => {
+    if (platforms.length === 0) {
       toast.error("请选择发布平台", {
         description: "在底部发布渠道中勾选至少一个平台。",
       });
+      return false;
+    }
+
+    return true;
+  };
+
+  const validateContent = (
+    platforms: PublishPlatform[] = selectedPlatforms,
+  ) => {
+    if (!validatePlatforms(platforms)) {
       return false;
     }
 
@@ -270,20 +280,23 @@ export function useContentPageController(projectId?: string) {
     }
   };
 
-  const syncPrepublish = async () => {
-    if (!validateContent()) {
+  const syncPrepublish = async (
+    platforms: PublishPlatform[] = selectedPlatforms,
+  ) => {
+    if (!validateContent(platforms)) {
       return;
     }
 
     setIsSyncingPrepublish(true);
     try {
       const targetProject = projectId
-        ? await updateDashboardProject(projectId, buildProjectInput())
-        : await createDashboardProject(buildProjectInput());
+        ? await updateDashboardProject(projectId, buildProjectInput(platforms))
+        : await createDashboardProject(buildProjectInput(platforms));
       const publications = await syncProjectPrepublish(targetProject.id, {
-        platforms: selectedPlatforms,
+        platforms,
       });
 
+      setSelectedPlatforms(platforms);
       setPrepublishDrafts(draftsFromPublications(publications));
       toast.success("已同步到预发布", {
         description: "平台草稿已由后端适配并保存。",
