@@ -18,13 +18,10 @@ func StartLoop(ctx context.Context, workerSession *session.WorkerSession) contex
 		for {
 			state, err := DetectAndSave(loopCtx, workerSession)
 			if err != nil {
-				state = session.WorkerSessionState{
-					WorkerSessionRef: workerSession.ID,
-					Status:           "failed",
-					Message:          err.Error(),
-					ExpiresAt:        workerSession.ExpiresAt,
+				if loopCtx.Err() != nil {
+					return
 				}
-				workerSession.Status = state.Status
+				state = transientReadState(workerSession, err)
 				_ = workerSession.StateStore.SaveLiveSession(loopCtx, workerSession, state)
 			}
 			_ = workerSession.StateStore.RefreshHeartbeat(loopCtx, workerSession)
@@ -37,6 +34,20 @@ func StartLoop(ctx context.Context, workerSession *session.WorkerSession) contex
 		}
 	}()
 	return cancel
+}
+
+func transientReadState(workerSession *session.WorkerSession, err error) session.WorkerSessionState {
+	status := workerSession.Status
+	if status == "" || status == "failed" {
+		status = "ready"
+	}
+	return session.WorkerSessionState{
+		WorkerSessionRef: workerSession.ID,
+		Status:           status,
+		LoginDetected:    status == "login_detected",
+		Message:          "Temporarily unable to read browser state: " + err.Error(),
+		ExpiresAt:        workerSession.ExpiresAt,
+	}
 }
 
 func DetectAndSave(ctx context.Context, workerSession *session.WorkerSession) (session.WorkerSessionState, error) {
