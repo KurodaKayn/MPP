@@ -88,17 +88,23 @@ func (s *DashboardService) StartXOAuth2(userID uuid.UUID, redirectURI string) (s
 		return "", err
 	}
 
-	s.storeXOAuth2State(state, xOAuth2PendingState{
+	pending := xOAuth2PendingState{
 		UserID:       userID,
 		CodeVerifier: codeVerifier,
 		RedirectURI:  strings.TrimSpace(redirectURI),
 		ExpiresAt:    time.Now().Add(xOAuth2StateTTL),
-	})
+	}
+	if err := s.xOAuth2States.Store(context.Background(), state, pending, xOAuth2StateTTL); err != nil {
+		return "", err
+	}
 	return authURL, nil
 }
 
 func (s *DashboardService) CompleteXOAuth2(ctx context.Context, state, code string) (*dto.XAccountResponse, error) {
-	pending, ok := s.consumeXOAuth2State(strings.TrimSpace(state))
+	pending, ok, err := s.xOAuth2States.Consume(ctx, strings.TrimSpace(state))
+	if err != nil {
+		return nil, err
+	}
 	if !ok || time.Now().After(pending.ExpiresAt) {
 		return nil, ErrInvalidXOAuth2State
 	}
@@ -269,30 +275,6 @@ func (s *DashboardService) refreshXOAuth2CredentialsIfNeeded(ctx context.Context
 	}
 	account.Credentials = rawCredentials
 	return credentials, nil
-}
-
-func (s *DashboardService) storeXOAuth2State(state string, pending xOAuth2PendingState) {
-	s.xOAuth2StatesMu.Lock()
-	defer s.xOAuth2StatesMu.Unlock()
-
-	now := time.Now()
-	for existingState, existingPending := range s.xOAuth2States {
-		if now.After(existingPending.ExpiresAt) {
-			delete(s.xOAuth2States, existingState)
-		}
-	}
-	s.xOAuth2States[state] = pending
-}
-
-func (s *DashboardService) consumeXOAuth2State(state string) (xOAuth2PendingState, bool) {
-	s.xOAuth2StatesMu.Lock()
-	defer s.xOAuth2StatesMu.Unlock()
-
-	pending, ok := s.xOAuth2States[state]
-	if ok {
-		delete(s.xOAuth2States, state)
-	}
-	return pending, ok
 }
 
 func newXOAuth2State() (string, error) {
