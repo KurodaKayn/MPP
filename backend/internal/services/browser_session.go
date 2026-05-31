@@ -205,14 +205,6 @@ func browserSessionLiveTTL(expiresAt time.Time) time.Duration {
 	return ttl
 }
 
-func streamTokenTTL(sessionExpiresAt time.Time) time.Duration {
-	ttl := time.Until(sessionExpiresAt)
-	if ttl > streamTokenMaxTTL {
-		ttl = streamTokenMaxTTL
-	}
-	return ttl
-}
-
 func (s *BrowserSessionService) acquireRedisActiveSession(ctx context.Context, userID uuid.UUID, platform string, sessionID uuid.UUID, expiresAt time.Time) (bool, error) {
 	if s.redisClient == nil {
 		return true, nil
@@ -383,7 +375,7 @@ func (s *BrowserSessionService) deleteRedisStreamToken(ctx context.Context, sess
 
 func (s *BrowserSessionService) hasCurrentStreamToken(ctx context.Context, session models.RemoteBrowserSession) (bool, error) {
 	if s.redisClient == nil {
-		return session.ConnectTokenHash != "", nil
+		return session.ConnectTokenHash != "" && streamTokenValidUntil(session).After(time.Now()), nil
 	}
 	currentHash, err := s.redisClient.Get(ctx, browserSessionStreamCurrentKey(session.ID)).Result()
 	if errors.Is(err, redis.Nil) {
@@ -445,13 +437,14 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 
 	// 3. Create session in DB
 	session := &models.RemoteBrowserSession{
-		ID:               sessionID,
-		UserID:           userID,
-		Platform:         platform,
-		Status:           models.BrowserSessionStatusPending,
-		ConnectTokenHash: tokenHash,
-		CreatedAt:        now,
-		ExpiresAt:        expiresAt,
+		ID:                    sessionID,
+		UserID:                userID,
+		Platform:              platform,
+		Status:                models.BrowserSessionStatusPending,
+		ConnectTokenHash:      tokenHash,
+		ConnectTokenExpiresAt: streamTokenExpiresAt(expiresAt, now),
+		CreatedAt:             now,
+		ExpiresAt:             expiresAt,
 	}
 
 	if err := s.db.Create(session).Error; err != nil {
@@ -536,6 +529,13 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}
+	if err := s.db.Model(session).Update("connect_token_expires_at", tokenExpiresAt).Error; err != nil {
+		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
+		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID)
+		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
+		return nil, err
+	}
+	session.ConnectTokenExpiresAt = tokenExpiresAt
 
 	return &dto.StartBrowserSessionResponse{
 		SessionID:            sessionID,
@@ -615,9 +615,14 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 			return nil, err
 		}
 		if s.redisClient == nil {
-			if err := s.db.Model(&session).Update("connect_token_hash", tokenHash).Error; err != nil {
+			if err := s.db.Model(&session).Updates(map[string]interface{}{
+				"connect_token_hash":       tokenHash,
+				"connect_token_expires_at": tokenExpiresAt,
+			}).Error; err != nil {
 				return nil, err
 			}
+			session.ConnectTokenHash = tokenHash
+			session.ConnectTokenExpiresAt = tokenExpiresAt
 		}
 		resp.StreamURL = browserSessionStreamURL(id, token)
 		resp.StreamTokenExpiresAt = tokenExpiresAt
@@ -645,7 +650,8 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 		return "", err
 	}
 
-	if time.Now().After(session.ExpiresAt) {
+	now := time.Now()
+	if now.After(session.ExpiresAt) {
 		return "", ErrInvalidStreamToken
 	}
 	if !isStreamableBrowserSessionStatus(session.Status) {
@@ -671,6 +677,9 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 			return "", ErrInvalidStreamToken
 		}
 	} else {
+		if !streamTokenValidUntil(session).After(now) {
+			return "", ErrInvalidStreamToken
+		}
 		if subtle.ConstantTimeCompare([]byte(tokenHash), []byte(session.ConnectTokenHash)) != 1 {
 			return "", ErrInvalidStreamToken
 		}
@@ -905,12 +914,26 @@ func browserSessionStreamURL(sessionID uuid.UUID, token string) string {
 	return fmt.Sprintf("/%s/vnc.html?%s", streamBasePath, query.Encode())
 }
 
-func streamTokenExpiresAt(sessionExpiresAt time.Time, _ ...time.Time) time.Time {
-	ttl := streamTokenTTL(sessionExpiresAt)
-	if ttl <= 0 {
-		return time.Now()
+func streamTokenExpiresAt(sessionExpiresAt time.Time, issuedAt ...time.Time) time.Time {
+	now := time.Now()
+	if len(issuedAt) > 0 && !issuedAt[0].IsZero() {
+		now = issuedAt[0]
 	}
-	return time.Now().Add(ttl)
+	ttl := sessionExpiresAt.Sub(now)
+	if ttl > streamTokenMaxTTL {
+		ttl = streamTokenMaxTTL
+	}
+	if ttl <= 0 {
+		return now
+	}
+	return now.Add(ttl)
+}
+
+func streamTokenValidUntil(session models.RemoteBrowserSession) time.Time {
+	if !session.ConnectTokenExpiresAt.IsZero() {
+		return session.ConnectTokenExpiresAt
+	}
+	return streamTokenExpiresAt(session.ExpiresAt, session.CreatedAt)
 }
 
 func isStreamableBrowserSessionStatus(status string) bool {
