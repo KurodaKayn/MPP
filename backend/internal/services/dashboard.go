@@ -803,6 +803,50 @@ func (s *DashboardService) SyncProjectPrepublish(projectID uuid.UUID, userID uui
 	return s.GetProjectPublications(projectID, &userID, true)
 }
 
+func (s *DashboardService) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.UUID, platform string, req dto.UpdatePrepublishDraftRequest) (*dto.ProjectPublicationsResponse, error) {
+	var project models.Project
+	if err := s.db.Select("id, user_id").First(&project, "id = ?", projectID).Error; err != nil {
+		return nil, err
+	}
+	if project.UserID != userID {
+		return nil, ErrForbidden
+	}
+
+	platforms, err := normalizeProjectPlatforms([]string{platform})
+	if err != nil || len(platforms) != 1 {
+		return nil, ErrInvalidProject
+	}
+	if len(req.AdaptedContent) == 0 {
+		return nil, ErrInvalidProject
+	}
+
+	adaptedContent, err := json.Marshal(req.AdaptedContent)
+	if err != nil {
+		return nil, err
+	}
+
+	var publication models.ProjectPlatformPublication
+	if err := s.db.Where("project_id = ? AND platform = ?", projectID, platforms[0]).First(&publication).Error; err != nil {
+		return nil, err
+	}
+
+	if err := s.db.Model(&publication).Updates(map[string]interface{}{
+		"adapted_content": datatypes.JSON(adaptedContent),
+		"enabled":         true,
+		"error_message":   "",
+		"last_attempt_at": nil,
+		"published_at":    nil,
+		"publish_url":     "",
+		"remote_id":       "",
+		"retry_count":     0,
+		"status":          models.PublicationStatusAdapted,
+	}).Error; err != nil {
+		return nil, err
+	}
+
+	return s.GetProjectPublications(projectID, &userID, true)
+}
+
 func (s *DashboardService) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.UUID, includeContent bool) (*dto.ProjectPublicationsResponse, error) {
 	// Verify project exists and ownership
 	var proj models.Project
