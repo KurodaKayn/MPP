@@ -75,9 +75,18 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	}
 
 	token := c.QueryParam("token")
-	userID, _ := middleware.GetUserIDFromContext(c) // May be nil if coming from public route
+	
+	// If token is missing in query, try to get it from a session-specific cookie
+	// This allows loading sub-resources (js/css) which don't have the token in the URL
+	cookieName := "mpp_st_" + id.String()
+	if token == "" {
+		if cookie, err := c.Cookie(cookieName); err == nil {
+			token = cookie.Value
+		}
+	}
 
-	// The service will validate the token against the session, and optionally the userID if provided
+	userID, _ := middleware.GetUserIDFromContext(c)
+
 	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, token)
 	if err != nil {
 		if err == services.ErrSessionNotFound {
@@ -87,6 +96,18 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 			return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	// If we had a valid token in the query, set/refresh the session cookie
+	if c.QueryParam("token") != "" {
+		c.SetCookie(&http.Cookie{
+			Name:     cookieName,
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   3600, // 1 hour
+		})
 	}
 
 	target, err := url.Parse(endpoint)
@@ -104,17 +125,22 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	originalDirector := p.Director
 	p.Director = func(req *http.Request) {
 		originalDirector(req)
-		// Extract the subpath after "/stream"
-		// e.g., /api/user/dashboard/browser-sessions/id/stream/vnc.html -> /vnc.html
-		path := c.Request().URL.Path
-		if idx := strings.Index(path, "/stream"); idx != -1 {
-			subPath := path[idx+len("/stream"):]
-			if subPath == "" || subPath == "/" {
-				req.URL.Path = target.Path + "/"
-			} else {
-				req.URL.Path = target.Path + subPath
+		// Use the wildcard parameter from Echo to get the sub-path
+		subPath := c.Param("*")
+		
+		// Ensure target path ends without trailing slash for consistent joining
+		targetPath := strings.TrimSuffix(target.Path, "/")
+		
+		if subPath == "" || subPath == "/" {
+			req.URL.Path = targetPath + "/vnc.html"
+		} else {
+			if !strings.HasPrefix(subPath, "/") {
+				subPath = "/" + subPath
 			}
+			req.URL.Path = targetPath + subPath
 		}
+		// Ensure the Host header and other proxy headers are set correctly
+		req.Host = target.Host
 	}
 	p.ServeHTTP(c.Response(), c.Request())
 	return nil

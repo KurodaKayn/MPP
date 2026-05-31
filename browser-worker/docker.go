@@ -44,8 +44,8 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 
 	hostConfig := &container.HostConfig{
 		PortBindings: nat.PortMap{
-			"9222/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
-			"6080/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
+			"9222/tcp": []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: "9222"}},
+			"6080/tcp": []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: "6080"}},
 		},
 		Resources: container.Resources{
 			Memory:   1024 * 1024 * 1024,
@@ -55,7 +55,17 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 
 	containerName := "mpp-session-" + sessionID
 
-	m.cli.ContainerRemove(ctx, containerName, types.ContainerRemoveOptions{Force: true})
+	// 1. Clean up ANY existing mpp-session containers to free up the fixed ports
+	containers, _ := m.cli.ContainerList(ctx, types.ContainerListOptions{All: true})
+	for _, c := range containers {
+		for _, name := range c.Names {
+			if strings.Contains(name, "mpp-session") {
+				log.Printf("Cleaning up old container %s", c.ID[:12])
+				m.cli.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{Force: true})
+				break
+			}
+		}
+	}
 
 	resp, err := m.cli.ContainerCreate(ctx, config, hostConfig, nil, nil, containerName)
 	if err != nil {
@@ -66,34 +76,11 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 		return "", "", 0, 0, fmt.Errorf("failed to start container: %w", err)
 	}
 
-	// Give Chromium and noVNC a moment to bind before discovering mapped ports.
+	// Wait for services to start inside the container
 	time.Sleep(5 * time.Second)
 
-	json, err := m.cli.ContainerInspect(ctx, resp.ID)
-	if err != nil {
-		return "", "", 0, 0, fmt.Errorf("failed to inspect container: %w", err)
-	}
-
-	containerIPAddr := json.NetworkSettings.IPAddress
-	if containerIPAddr == "" {
-		for _, net := range json.NetworkSettings.Networks {
-			containerIPAddr = net.IPAddress
-			break
-		}
-	}
-
-	cdpPort, err = mappedHostPort(json.NetworkSettings.Ports, "9222/tcp")
-	if err != nil {
-		return "", "", 0, 0, err
-	}
-	streamPort, err = mappedHostPort(json.NetworkSettings.Ports, "6080/tcp")
-	if err != nil {
-		return "", "", 0, 0, err
-	}
-
-	log.Printf("Started container %s with ports: CDP=%d, Stream=%d", resp.ID[:12], cdpPort, streamPort)
-
-	return resp.ID, containerIPAddr, cdpPort, streamPort, nil
+	// Since we use fixed ports, we return them directly
+	return resp.ID, "127.0.0.1", 9222, 6080, nil
 }
 
 func mappedHostPort(ports nat.PortMap, port string) (int, error) {
