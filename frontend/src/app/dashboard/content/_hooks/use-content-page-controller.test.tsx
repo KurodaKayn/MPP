@@ -233,4 +233,89 @@ describe("useContentPageController", () => {
 
     view.unmount();
   });
+
+  it("saves the current platform selection before publishing", async () => {
+    mocks.getDashboardProject.mockResolvedValue({
+      created_at: "2026-05-30T12:00:00.000Z",
+      id: "project-1",
+      publications: [
+        { enabled: true, id: "pub-1", platform: "wechat", status: "adapted" },
+        { enabled: true, id: "pub-2", platform: "zhihu", status: "adapted" },
+      ],
+      source_content: "<p>Rendered body</p>",
+      status: "ready",
+      title: "Post title",
+      updated_at: "2026-05-30T12:00:00.000Z",
+      user_id: "user-1",
+    });
+    mocks.getProjectPublications.mockResolvedValue({
+      items: [
+        {
+          adapted_content: {
+            format: "html",
+            html: "<p>Rendered body</p>",
+            source_revision: "2026-05-30T12:00:00.000Z",
+          },
+          enabled: true,
+          platform: "wechat",
+          updated_at: "2026-05-30T12:00:00.000Z",
+        },
+        {
+          adapted_content: {
+            format: "markdown",
+            markdown: "Rendered body",
+            source_revision: "2026-05-30T12:00:00.000Z",
+          },
+          enabled: true,
+          platform: "zhihu",
+          updated_at: "2026-05-30T12:00:00.000Z",
+        },
+      ],
+      project_id: "project-1",
+    });
+    mocks.updateDashboardProject.mockResolvedValue({
+      id: "project-1",
+    });
+    mocks.publishProject.mockResolvedValue({ status: "published" });
+
+    const view = renderController("project-1");
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      useContentPageStore.setState({
+        content: {
+          firstImageSrc: "",
+          html: "<p>Rendered body</p>",
+          text: "Rendered body",
+        },
+        prepublishDrafts: {
+          zhihu: {
+            format: "markdown",
+            raw: "Rendered body",
+            syncedAt: "2026-05-30T12:00:00.000Z",
+          },
+        },
+        selectedPlatforms: ["zhihu"],
+        title: "Post title",
+      });
+    });
+
+    await act(async () => {
+      await view.getController().publish();
+    });
+
+    expect(mocks.updateDashboardProject).toHaveBeenCalledWith("project-1", {
+      cover_image_url: undefined,
+      platforms: ["zhihu"],
+      source_content: "<p>Rendered body</p>",
+      summary: "Rendered body",
+      title: "Post title",
+    });
+    expect(mocks.publishProject).toHaveBeenCalledWith("project-1", "zhihu");
+
+    view.unmount();
+  });
 });
