@@ -558,6 +558,84 @@ func (s *DashboardService) SaveProjectContent(projectID uuid.UUID, userID uuid.U
 	return s.GetProject(projectID, &userID)
 }
 
+func (s *DashboardService) SaveProjectPlatforms(projectID uuid.UUID, userID uuid.UUID, req dto.SaveProjectPlatformsRequest) (*dto.ProjectDetail, error) {
+	platforms, err := normalizeProjectPlatforms(req.Platforms)
+	if err != nil || len(platforms) == 0 {
+		return nil, ErrInvalidProject
+	}
+
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		var project models.Project
+		if err := tx.First(&project, "id = ?", projectID).Error; err != nil {
+			return err
+		}
+		if project.UserID != userID {
+			return ErrForbidden
+		}
+
+		var existing []models.ProjectPlatformPublication
+		if err := tx.Where("project_id = ?", project.ID).Find(&existing).Error; err != nil {
+			return err
+		}
+
+		selected := make(map[string]struct{}, len(platforms))
+		for _, platform := range platforms {
+			selected[platform] = struct{}{}
+		}
+
+		for _, publication := range existing {
+			if _, ok := selected[publication.Platform]; !ok {
+				if err := tx.Model(&publication).Updates(map[string]interface{}{
+					"enabled":       false,
+					"error_message": "",
+					"status":        models.PublicationStatusDisabled,
+				}).Error; err != nil {
+					return err
+				}
+				continue
+			}
+
+			if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
+				if err := tx.Model(&publication).Updates(map[string]interface{}{
+					"enabled": true,
+					"status":  models.PublicationStatusPending,
+				}).Error; err != nil {
+					return err
+				}
+			}
+			delete(selected, publication.Platform)
+		}
+
+		for _, platform := range platforms {
+			if _, ok := selected[platform]; !ok {
+				continue
+			}
+
+			config, adaptedContent, status, err := buildPendingPublicationPayload(project.Title, "", "")
+			if err != nil {
+				return err
+			}
+			publication := models.ProjectPlatformPublication{
+				ProjectID:      project.ID,
+				Platform:       platform,
+				Enabled:        true,
+				Status:         status,
+				Config:         config,
+				AdaptedContent: adaptedContent,
+			}
+			if err := tx.Create(&publication).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return s.GetProject(projectID, &userID)
+}
+
 func buildPendingPublicationPayload(title, summary, coverImageURL string) (datatypes.JSON, datatypes.JSON, string, error) {
 	config, err := defaultPublicationConfig(title, summary, coverImageURL)
 	if err != nil {

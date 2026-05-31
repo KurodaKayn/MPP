@@ -51,6 +51,10 @@ type SaveProjectContentRequest struct {
 	CoverImageURL string `json:"cover_image_url,omitempty"`
 }
 
+type SaveProjectPlatformsRequest struct {
+	Platforms []string `json:"platforms"`
+}
+
 type SyncActor struct {
 	Type string `json:"type"`
 }
