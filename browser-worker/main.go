@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -210,21 +212,20 @@ func main() {
 			ExpiresAt:         workerSession.ExpiresAt,
 		})
 	})
+e.GET("/internal/browser-sessions/:ref", func(c echo.Context) error {
+	ref := c.Param("ref")
+	session, ok := sm.get(ref)
 
-	e.GET("/internal/browser-sessions/:ref", func(c echo.Context) error {
-		ref := c.Param("ref")
-		session, ok := sm.get(ref)
+	if !ok {
+		return echo.NewHTTPError(http.StatusNotFound, "session not found")
+	}
 
-		if !ok {
-			return echo.NewHTTPError(http.StatusNotFound, "session not found")
-		}
-
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"worker_session_ref": ref,
-			"status":             session.Status,
-			"expires_at":         session.ExpiresAt,
-		})
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"worker_session_ref": ref,
+		"status":             session.Status,
+		"expires_at":         session.ExpiresAt,
 	})
+})
 
 	e.Any("/internal/browser-sessions/:ref/stream", func(c echo.Context) error {
 		ref := c.Param("ref")
@@ -233,18 +234,24 @@ func main() {
 			return echo.NewHTTPError(http.StatusNotFound, "session not found")
 		}
 
-		target, err := url.Parse(session.InternalStreamURL)
+		targetURL, err := url.Parse(session.InternalStreamURL)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "invalid stream endpoint")
 		}
 
-		proxy := httputil.NewSingleHostReverseProxy(target)
+		// Use custom WebSocket proxy logic here as well
+		if strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket" {
+			// For worker, we can use a simpler version since it's local
+			return proxyWebSocket(c, targetURL)
+		}
+
+		proxy := httputil.NewSingleHostReverseProxy(targetURL)
 		proxy.Director = func(req *http.Request) {
-			req.URL.Scheme = target.Scheme
-			req.URL.Host = target.Host
+			req.URL.Scheme = targetURL.Scheme
+			req.URL.Host = targetURL.Host
 			req.URL.Path = "/"
 			req.URL.RawQuery = c.Request().URL.RawQuery
-			req.Host = target.Host
+			req.Host = targetURL.Host
 		}
 		proxy.ServeHTTP(c.Response(), c.Request())
 		return nil
@@ -348,6 +355,68 @@ func cleanupSession(ctx context.Context, dm *DockerManager, session *WorkerSessi
 		if err := dm.StopContainer(ctx, session.ContainerID); err != nil {
 			log.Printf("Failed to stop session container %s: %v", session.ContainerID, err)
 		}
+	}
+}
+
+func proxyWebSocket(c echo.Context, target *url.URL) error {
+	req := c.Request()
+	res := c.Response()
+
+	targetAddr := target.Host
+	if !strings.Contains(targetAddr, ":") {
+		targetAddr += ":80"
+	}
+
+	d := net.Dialer{}
+	targetConn, err := d.DialContext(req.Context(), "tcp", targetAddr)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadGateway, "failed to connect to stream target")
+	}
+	defer targetConn.Close()
+
+	targetReq, err := http.NewRequestWithContext(req.Context(), req.Method, target.String(), nil)
+	if err != nil {
+		return err
+	}
+	for k, vv := range req.Header {
+		for _, v := range vv {
+			targetReq.Header.Add(k, v)
+		}
+	}
+	targetReq.Host = target.Host
+
+	if err := targetReq.Write(targetConn); err != nil {
+		return err
+	}
+
+	hijacker, ok := res.Writer.(http.Hijacker)
+	if !ok {
+		return echo.NewHTTPError(http.StatusInternalServerError, "webserver does not support hijacking")
+	}
+
+	clientConn, _, err := hijacker.Hijack()
+	if err != nil {
+		return err
+	}
+	defer clientConn.Close()
+
+	errChan := make(chan error, 2)
+	cp := func(dst io.Writer, src io.Reader) {
+		_, err := io.Copy(dst, src)
+		errChan <- err
+	}
+
+	go cp(targetConn, clientConn)
+	go cp(clientConn, targetConn)
+
+	select {
+	case <-req.Context().Done():
+		return req.Context().Err()
+	case err := <-errChan:
+		if err != nil && err != io.EOF {
+			log.Printf("WebSocket worker proxy error: %v", err)
+		}
+		return nil
 	}
 }
 

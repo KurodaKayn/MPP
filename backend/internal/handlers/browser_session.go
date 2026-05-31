@@ -4,9 +4,11 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/proxy"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/labstack/echo/v4"
 )
@@ -89,8 +91,14 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 		return sendError(c, http.StatusInternalServerError, "internal_error", "invalid stream endpoint")
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	proxy.Director = func(req *http.Request) {
+	// Use custom WebSocket proxy for noVNC stream
+	if strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket" {
+		return proxy.ProxyWebSocket(c, target)
+	}
+
+	// Fallback to regular proxy for assets (vnc.html, js, css)
+	p := httputil.NewSingleHostReverseProxy(target)
+	p.Director = func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
 		req.URL.Path = target.Path
@@ -100,10 +108,7 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 		req.URL.RawQuery = target.RawQuery
 		req.Host = target.Host
 	}
-	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
-		http.Error(rw, "stream unavailable", http.StatusBadGateway)
-	}
-	proxy.ServeHTTP(c.Response(), c.Request())
+	p.ServeHTTP(c.Response(), c.Request())
 	return nil
 }
 
