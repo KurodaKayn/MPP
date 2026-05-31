@@ -330,13 +330,7 @@ describe("useContentPageController", () => {
       await view.getController().publish();
     });
 
-    expect(mocks.updateDashboardProject).toHaveBeenCalledWith("project-1", {
-      cover_image_url: undefined,
-      platforms: ["zhihu"],
-      source_content: "<p>Rendered body</p>",
-      summary: "Rendered body",
-      title: "Post title",
-    });
+    expect(mocks.updateDashboardProject).not.toHaveBeenCalled();
     expect(mocks.publishProject).toHaveBeenCalledWith("project-1", "zhihu");
     expect(mocks.waitForProjectPublications).toHaveBeenCalledWith("project-1", [
       "zhihu",
