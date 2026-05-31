@@ -102,6 +102,7 @@ func main() {
 	userGroup.PUT("/projects/:id", userDashboardHandler.UpdateProject)
 	userGroup.GET("/projects/:id/publications", userDashboardHandler.GetMyProjectPublications)
 	userGroup.POST("/projects/:id/prepublish/sync", userDashboardHandler.SyncProjectPrepublish)
+	userGroup.PUT("/projects/:id/prepublish/:platform", userDashboardHandler.UpdateProjectPrepublishDraft)
 	userGroup.POST("/projects/:id/publish", userDashboardHandler.PublishProject)
 	userGroup.POST("/ai/content/edit", userDashboardHandler.EditContentWithAI)
 	userGroup.POST("/ai/content/edit/stream", userDashboardHandler.StreamEditContentWithAI)
