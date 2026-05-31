@@ -53,6 +53,10 @@ type SyncPrepublishRequest struct {
 	Actor     SyncActor `json:"actor"`
 }
 
+type UpdatePrepublishDraftRequest struct {
+	AdaptedContent map[string]interface{} `json:"adapted_content"`
+}
+
 type AIChatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
