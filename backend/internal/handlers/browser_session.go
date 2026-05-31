@@ -6,6 +6,7 @@ import (
 	"net/url"
 
 	"github.com/google/uuid"
+	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/labstack/echo/v4"
@@ -148,5 +149,8 @@ func (h *BrowserSessionHandler) CancelSession(c echo.Context) error {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 
-	return c.NoContent(http.StatusNoContent)
+	return c.JSON(http.StatusOK, dto.CancelBrowserSessionResponse{
+		SessionID: id,
+		Status:    "expired",
+	})
 }

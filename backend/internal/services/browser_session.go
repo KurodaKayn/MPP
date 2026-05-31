@@ -122,13 +122,11 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 		return nil, err
 	}
 
-	streamURL := fmt.Sprintf("/api/user/dashboard/browser-sessions/%s/stream?token=%s", sessionID, token)
-
 	return &dto.StartBrowserSessionResponse{
 		SessionID:            sessionID,
 		Status:               models.BrowserSessionStatusReady,
-		StreamURL:            streamURL,
-		StreamTokenExpiresAt: time.Now().Add(5 * time.Minute),
+		StreamURL:            browserSessionStreamURL(sessionID, token),
+		StreamTokenExpiresAt: streamTokenExpiresAt(expiresAt),
 		ExpiresAt:            expiresAt,
 	}, nil
 }
@@ -156,7 +154,6 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 		Message:   session.ErrorMessage,
 	}
 
-	// Rotated token logic could go here if needed for reconnect
 	return resp, nil
 }
 
@@ -173,7 +170,10 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 		return "", err
 	}
 
-	if time.Now().After(session.ExpiresAt) {
+	if time.Now().After(streamTokenExpiresAt(session.ExpiresAt, session.CreatedAt)) {
+		return "", ErrInvalidStreamToken
+	}
+	if !isStreamableBrowserSessionStatus(session.Status) {
 		return "", ErrInvalidStreamToken
 	}
 
@@ -266,6 +266,33 @@ func (s *BrowserSessionService) CancelSession(ctx context.Context, userID uuid.U
 	return s.db.Model(&session).Updates(map[string]interface{}{
 		"status": models.BrowserSessionStatusExpired,
 	}).Error
+}
+
+func browserSessionStreamURL(sessionID uuid.UUID, token string) string {
+	return fmt.Sprintf("/api/user/dashboard/browser-sessions/%s/stream?token=%s", sessionID, token)
+}
+
+func streamTokenExpiresAt(sessionExpiresAt time.Time, issuedAt ...time.Time) time.Time {
+	startedAt := time.Now()
+	if len(issuedAt) > 0 {
+		startedAt = issuedAt[0]
+	}
+	expiresAt := startedAt.Add(5 * time.Minute)
+	if sessionExpiresAt.Before(expiresAt) {
+		return sessionExpiresAt
+	}
+	return expiresAt
+}
+
+func isStreamableBrowserSessionStatus(status string) bool {
+	switch status {
+	case models.BrowserSessionStatusReady,
+		models.BrowserSessionStatusLoginDetected,
+		models.BrowserSessionStatusCapturing:
+		return true
+	default:
+		return false
+	}
 }
 
 func generateStreamToken() (string, string, error) {
