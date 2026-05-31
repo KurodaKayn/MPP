@@ -1,15 +1,14 @@
-package main
+package isolation
 
 import (
 	"net"
 	"net/url"
-	"strings"
+
+	"github.com/kurodakayn/mpp-browser-worker/internal/cookies"
+	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
 
-// Reusing types defined in main.go for consistency
-// (In a larger project, these would be in a shared 'pkg' or 'types' directory)
-
-func IsDomainAllowed(rawURL string, rules []DomainRule) bool {
+func IsDomainAllowed(rawURL string, rules []session.DomainRule) bool {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return false
@@ -41,7 +40,7 @@ func IsDomainAllowed(rawURL string, rules []DomainRule) bool {
 				return true
 			}
 		} else if rule.Match == "suffix" {
-			if host == rule.Host || strings.HasSuffix(host, "."+rule.Host) {
+			if cookies.DomainMatches(host, rule.Host) {
 				return true
 			}
 		}

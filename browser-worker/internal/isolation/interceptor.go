@@ -1,4 +1,4 @@
-package main
+package isolation
 
 import (
 	"context"
@@ -9,9 +9,10 @@ import (
 	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
 
-func SetupInterception(ctx context.Context, rules []DomainRule) error {
+func SetupInterception(ctx context.Context, rules []session.DomainRule) error {
 	// Enable fetch interception
 	err := chromedp.Run(ctx, fetch.Enable().WithPatterns([]*fetch.RequestPattern{
 		{RequestStage: fetch.RequestStageRequest},

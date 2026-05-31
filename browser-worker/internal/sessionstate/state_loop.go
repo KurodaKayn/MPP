@@ -1,0 +1,70 @@
+package sessionstate
+
+import (
+	"context"
+	"time"
+
+	"github.com/kurodakayn/mpp-browser-worker/internal/cdp"
+	"github.com/kurodakayn/mpp-browser-worker/internal/cookies"
+	"github.com/kurodakayn/mpp-browser-worker/internal/session"
+)
+
+func StartLoop(ctx context.Context, workerSession *session.WorkerSession) context.CancelFunc {
+	loopCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		ticker := time.NewTicker(session.HeartbeatRefreshInterval)
+		defer ticker.Stop()
+
+		for {
+			state, err := DetectAndSave(loopCtx, workerSession)
+			if err != nil {
+				state = session.WorkerSessionState{
+					WorkerSessionRef: workerSession.ID,
+					Status:           "failed",
+					Message:          err.Error(),
+					ExpiresAt:        workerSession.ExpiresAt,
+				}
+				workerSession.Status = state.Status
+				_ = workerSession.StateStore.SaveLiveSession(loopCtx, workerSession, state)
+			}
+			_ = workerSession.StateStore.RefreshHeartbeat(loopCtx, workerSession)
+
+			select {
+			case <-loopCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	return cancel
+}
+
+func DetectAndSave(ctx context.Context, workerSession *session.WorkerSession) (session.WorkerSessionState, error) {
+	currentURL, browserCookies, _, err := cdp.Snapshot(ctx, workerSession, false)
+	if err != nil {
+		return session.WorkerSessionState{}, err
+	}
+
+	ok, missing := cookies.ValidateRequired(browserCookies, workerSession.RequiredCookies)
+	status := "ready"
+	message := "Waiting for required login cookies"
+	if ok {
+		status = "login_detected"
+		message = "Login detected successfully"
+	}
+
+	state := session.WorkerSessionState{
+		WorkerSessionRef: workerSession.ID,
+		Status:           status,
+		CurrentURL:       currentURL,
+		LoginDetected:    ok,
+		MissingCookies:   missing,
+		Message:          message,
+		ExpiresAt:        workerSession.ExpiresAt,
+	}
+	workerSession.Status = status
+	if err := workerSession.StateStore.SaveLiveSession(ctx, workerSession, state); err != nil {
+		return session.WorkerSessionState{}, err
+	}
+	return state, nil
+}

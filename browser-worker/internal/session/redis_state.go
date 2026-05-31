@@ -1,4 +1,4 @@
-package main
+package session
 
 import (
 	"context"
@@ -19,11 +19,11 @@ const (
 	redisDBEnv       = "REDIS_DB"
 	redisTLSEnv      = "REDIS_TLS"
 
-	browserSessionKeyPrefix        = "mpp:browser:session:"
-	browserSessionHeartbeatPrefix  = "mpp:browser:worker-heartbeat:"
-	browserSessionRedisGrace       = time.Minute
-	browserSessionHeartbeatTTL     = 45 * time.Second
-	browserSessionHeartbeatRefresh = 15 * time.Second
+	browserSessionKeyPrefix       = "mpp:browser:session:"
+	browserSessionHeartbeatPrefix = "mpp:browser:worker-heartbeat:"
+	browserSessionRedisGrace      = time.Minute
+	browserSessionHeartbeatTTL    = 45 * time.Second
+	HeartbeatRefreshInterval      = 15 * time.Second
 )
 
 type RedisStateStore struct {

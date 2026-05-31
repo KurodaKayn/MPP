@@ -1,4 +1,4 @@
-package main
+package container
 
 import (
 	"archive/tar"
@@ -10,27 +10,27 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
+	dockercontainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 )
 
-type DockerManager struct {
+type Manager struct {
 	cli *client.Client
 }
 
-func NewDockerManager() (*DockerManager, error) {
+func NewManager() (*Manager, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.41"))
 	if err != nil {
 		return nil, err
 	}
-	return &DockerManager{cli: cli}, nil
+	return &Manager{cli: cli}, nil
 }
 
-func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID string) (containerID string, containerIP string, cdpPort, streamPort int, err error) {
+func (m *Manager) StartBrowserContainer(ctx context.Context, sessionID string) (containerID string, containerIP string, cdpPort, streamPort int, err error) {
 	imageName := "mpp-browser-runtime"
 
-	config := &container.Config{
+	config := &dockercontainer.Config{
 		Image: imageName,
 		ExposedPorts: nat.PortSet{
 			"9222/tcp": {},
@@ -42,12 +42,12 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 		},
 	}
 
-	hostConfig := &container.HostConfig{
+	hostConfig := &dockercontainer.HostConfig{
 		PortBindings: nat.PortMap{
 			"9222/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
 			"6080/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
 		},
-		Resources: container.Resources{
+		Resources: dockercontainer.Resources{
 			Memory:   1024 * 1024 * 1024,
 			NanoCPUs: 1000000000,
 		},
@@ -101,14 +101,14 @@ func mappedHostPort(ports nat.PortMap, port string) (int, error) {
 	return hostPort, nil
 }
 
-func (m *DockerManager) StopContainer(ctx context.Context, id string) error {
+func (m *Manager) StopContainer(ctx context.Context, id string) error {
 	log.Printf("Stopping and removing container %s", id)
-	m.cli.ContainerStop(ctx, id, container.StopOptions{})
+	m.cli.ContainerStop(ctx, id, dockercontainer.StopOptions{})
 	return m.cli.ContainerRemove(ctx, id, types.ContainerRemoveOptions{Force: true})
 }
 
 // GetBrowserUUID reads the DevToolsActivePort file from the container to bypass HTTP Host checks
-func (m *DockerManager) GetBrowserUUID(ctx context.Context, containerID string) (string, error) {
+func (m *Manager) GetBrowserUUID(ctx context.Context, containerID string) (string, error) {
 	reader, _, err := m.cli.CopyFromContainer(ctx, containerID, "/tmp/browser-profile/DevToolsActivePort")
 	if err != nil {
 		return "", err
