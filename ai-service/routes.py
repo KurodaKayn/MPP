@@ -32,7 +32,7 @@ async def edit_content(request: EditContentRequest):
         raise HTTPException(status_code=400, detail="content and message are required")
 
     try:
-        response = build_llm().invoke(build_edit_content_messages(request))
+        response = await build_llm().ainvoke(build_edit_content_messages(request))
         edited_content = response_text(response.content)
         if not edited_content:
             raise HTTPException(status_code=502, detail="LLM returned empty content")
@@ -54,7 +54,7 @@ async def edit_prepublish(request: EditPrepublishRequest):
         raise HTTPException(status_code=400, detail="adapted_content text is required")
 
     try:
-        response = build_llm().invoke(
+        response = await build_llm().ainvoke(
             build_edit_prepublish_messages(request, content_key, current_text)
         )
         edited_text = response_text(response.content)
@@ -81,7 +81,7 @@ async def edit_prepublish(request: EditPrepublishRequest):
 @router.post("/calibrate")
 async def calibrate(request: CalibrateRequest):
     try:
-        response = build_llm().invoke(build_calibrate_messages(request))
+        response = await build_llm().ainvoke(build_calibrate_messages(request))
 
         return {
             "platform": request.platform,
