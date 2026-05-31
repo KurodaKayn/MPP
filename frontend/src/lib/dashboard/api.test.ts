@@ -14,6 +14,7 @@ import {
   getXAccount,
   getWechatAccount,
   publishProject,
+  saveDashboardProjectContent,
   saveXAccount,
   saveWechatAccount,
   startBrowserSession,
@@ -509,6 +510,43 @@ describe("dashboard api client", () => {
         credentials: "same-origin",
         headers: expect.any(Headers),
         method: "PUT",
+      }),
+    );
+  });
+
+  it("saves project content without touching selected platforms", async () => {
+    const project = {
+      created_at: "2026-05-29T12:00:00Z",
+      id: "project-1",
+      publications: [],
+      source_content: "<p>Updated</p>",
+      status: "ready",
+      title: "Updated post",
+      updated_at: "2026-05-29T12:00:00Z",
+      user_id: "user-1",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(project));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      saveDashboardProjectContent("project-1", {
+        source_content: "<p>Updated</p>",
+        summary: "Updated",
+        title: "Updated post",
+      }),
+    ).resolves.toEqual(project);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/content",
+      expect.objectContaining({
+        body: JSON.stringify({
+          source_content: "<p>Updated</p>",
+          summary: "Updated",
+          title: "Updated post",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "PATCH",
       }),
     );
   });
