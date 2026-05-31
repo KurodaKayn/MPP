@@ -30,6 +30,9 @@ func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *services.BrowserSessionSe
 	require.NoError(t, err)
 
 	worker := publisher.NewMockBrowserWorkerClient()
+	t.Cleanup(func() {
+		require.NoError(t, worker.Close())
+	})
 	store := publisher.NewCookieStore(db)
 	svc := services.NewBrowserSessionService(db, worker, store)
 
@@ -59,7 +62,7 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 
 	streamEndpoint, err := svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken)
 	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(streamEndpoint, "ws://private-stream/"))
+	assert.True(t, strings.HasPrefix(streamEndpoint, "http://127.0.0.1:"))
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, "bad-token")
 	assert.ErrorIs(t, err, services.ErrInvalidStreamToken)
