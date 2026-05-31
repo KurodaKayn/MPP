@@ -346,6 +346,20 @@ func (h *UserDashboardHandler) TestWechatAccount(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+func (h *UserDashboardHandler) GetDouyinAccount(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	resp, err := h.dashboardService.GetDouyinAccount(userID)
+	if err != nil {
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
 func (h *UserDashboardHandler) GetXAccount(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {

@@ -5,12 +5,19 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import {
+  cancelBrowserSession,
+  completeBrowserSession,
+  getBrowserSession,
+  getDouyinAccount,
   getXAccount,
   getWechatAccount,
   saveWechatAccount,
   saveXAccount,
+  startBrowserSession,
   testWechatConnection,
   testXConnection,
+  type BrowserSession,
+  type DouyinAccount,
   type WechatAccount,
   type WechatConnectionTestResult,
   type XAccount,
@@ -19,6 +26,8 @@ import {
 import { SettingsPageHeader } from "./_components/settings-page-header";
 import { WechatAccountCard } from "./_components/wechat-account-card";
 import { WechatConnectionCheckCard } from "./_components/wechat-connection-check-card";
+import { DouyinAccountCard } from "./_components/douyin-account-card";
+import { RemoteBrowserSessionModal } from "./_components/remote-browser-session-modal";
 import { XAccountCard } from "./_components/x-account-card";
 
 function SettingsPageContent() {
@@ -28,6 +37,14 @@ function SettingsPageContent() {
   const [testResult, setTestResult] =
     useState<WechatConnectionTestResult | null>(null);
   const [xAccount, setXAccount] = useState<XAccount | null>(null);
+  const [douyinAccount, setDouyinAccount] = useState<DouyinAccount | null>(
+    null,
+  );
+  const [browserSession, setBrowserSession] = useState<BrowserSession | null>(
+    null,
+  );
+  const [browserStreamURL, setBrowserStreamURL] = useState<string>();
+  const [browserError, setBrowserError] = useState<string>();
   const [xTestResult, setXTestResult] = useState<XConnectionTestResult | null>(
     null,
   );
@@ -43,6 +60,8 @@ function SettingsPageContent() {
   const [testing, setTesting] = useState(false);
   const [xSaving, setXSaving] = useState(false);
   const [xTesting, setXTesting] = useState(false);
+  const [douyinConnecting, setDouyinConnecting] = useState(false);
+  const [douyinCompleting, setDouyinCompleting] = useState(false);
   const xOAuthStatus = searchParams.get("x_oauth");
 
   useEffect(() => {
@@ -50,9 +69,10 @@ function SettingsPageContent() {
 
     async function loadAccounts() {
       try {
-        const [wechatResponse, xResponse] = await Promise.all([
+        const [wechatResponse, xResponse, douyinResponse] = await Promise.all([
           getWechatAccount(),
           getXAccount(),
+          getDouyinAccount(),
         ]);
         if (cancelled) {
           return;
@@ -60,6 +80,7 @@ function SettingsPageContent() {
         setAccount(wechatResponse);
         setAppID(wechatResponse.app_id ?? "");
         setXAccount(xResponse);
+        setDouyinAccount(douyinResponse);
         setXAPIKey(xResponse.api_key ?? "");
         setXUsername(xResponse.username ?? "");
       } catch (error) {
@@ -80,6 +101,49 @@ function SettingsPageContent() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!browserSession) {
+      return;
+    }
+
+    const finalStatuses = new Set(["connected", "expired", "failed"]);
+    if (finalStatuses.has(browserSession.status)) {
+      return;
+    }
+
+    let cancelled = false;
+    const interval = window.setInterval(() => {
+      void getBrowserSession(browserSession.session_id)
+        .then((nextSession) => {
+          if (cancelled) {
+            return;
+          }
+          setBrowserSession(nextSession);
+          if (nextSession.stream_url) {
+            setBrowserStreamURL(nextSession.stream_url);
+          }
+          if (nextSession.status === "expired") {
+            setBrowserError("远程浏览器会话已过期，请重新连接。");
+          }
+          if (nextSession.status === "failed") {
+            setBrowserError(nextSession.message || "远程浏览器启动失败。");
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setBrowserError(
+              error instanceof Error ? error.message : "无法刷新会话状态。",
+            );
+          }
+        });
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [browserSession]);
 
   useEffect(() => {
     if (xOAuthStatus === "connected") {
@@ -141,15 +205,22 @@ function SettingsPageContent() {
   if (xTestResult) {
     currentXTestError = xTestResult.connected ? undefined : xTestResult.message;
   }
-  const connectedCount = [currentStatus, currentXStatus].filter(
-    (status) => status === "connected",
-  ).length;
+  const currentDouyinStatus = douyinAccount?.status ?? "unconfigured";
+  const connectedCount = [
+    currentStatus,
+    currentXStatus,
+    currentDouyinStatus,
+  ].filter((status) => status === "connected").length;
   const aggregateStatus =
     connectedCount > 0
       ? "connected"
-      : currentStatus === "failed" || currentXStatus === "failed"
+      : currentStatus === "failed" ||
+          currentXStatus === "failed" ||
+          currentDouyinStatus === "failed"
         ? "failed"
-        : currentStatus === "untested" || currentXStatus === "untested"
+        : currentStatus === "untested" ||
+            currentXStatus === "untested" ||
+            currentDouyinStatus === "untested"
           ? "untested"
           : "unconfigured";
 
@@ -260,12 +331,83 @@ function SettingsPageContent() {
     }
   };
 
+  const handleConnectDouyin = async () => {
+    setDouyinConnecting(true);
+    setBrowserError(undefined);
+    try {
+      const session = await startBrowserSession("douyin");
+      setBrowserSession({
+        expires_at: session.expires_at,
+        platform: "douyin",
+        session_id: session.session_id,
+        status: session.status,
+        stream_token_expires_at: session.stream_token_expires_at,
+        stream_url: session.stream_url,
+      });
+      setBrowserStreamURL(session.stream_url);
+      toast.success("远程浏览器已启动", {
+        description: "请在弹窗中完成抖音登录。",
+      });
+    } catch (error) {
+      toast.error("无法启动抖音连接", {
+        description: error instanceof Error ? error.message : "请稍后再试。",
+      });
+    } finally {
+      setDouyinConnecting(false);
+    }
+  };
+
+  const handleCompleteDouyin = async () => {
+    if (!browserSession) {
+      return;
+    }
+
+    setDouyinCompleting(true);
+    setBrowserError(undefined);
+    try {
+      const result = await completeBrowserSession(browserSession.session_id);
+      const account = await getDouyinAccount();
+      setDouyinAccount(account);
+      setBrowserSession(null);
+      setBrowserStreamURL(undefined);
+      toast.success("抖音账号已连接", {
+        description: result.account.username || "Cookie 已安全保存。",
+      });
+    } catch (error) {
+      setBrowserError(
+        error instanceof Error ? error.message : "还没有检测到登录状态。",
+      );
+    } finally {
+      setDouyinCompleting(false);
+    }
+  };
+
+  const handleCancelDouyin = async () => {
+    const sessionID = browserSession?.session_id;
+    setBrowserSession(null);
+    setBrowserStreamURL(undefined);
+    setBrowserError(undefined);
+
+    if (!sessionID) {
+      return;
+    }
+
+    try {
+      await cancelBrowserSession(sessionID);
+    } catch (error) {
+      toast.error("取消远程会话失败", {
+        description:
+          error instanceof Error ? error.message : "浏览器会话可能已经结束。",
+      });
+    }
+  };
+
   return (
     <div className="flex max-w-6xl flex-col gap-4">
       <SettingsPageHeader
         connectedCount={connectedCount}
         status={aggregateStatus}
-        totalCount={2}
+        totalCount={3}
       />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
@@ -296,6 +438,36 @@ function SettingsPageContent() {
           testError={currentTestError}
           errCode={testResult?.err_code}
           errMsg={testResult?.err_msg}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <DouyinAccountCard
+          account={douyinAccount}
+          connecting={douyinConnecting}
+          loading={loading}
+          onConnect={handleConnectDouyin}
+        />
+
+        <WechatConnectionCheckCard
+          lastTestedAt={douyinAccount?.updated_at}
+          ipHint={{
+            message:
+              "抖音使用隔离 Chromium 登录，不需要手工复制 Cookie 或输入密码到 MPP 表单。",
+            status:
+              douyinAccount?.status === "connected" ? "passed" : "unknown",
+            title: "远程浏览器连接",
+          }}
+          authHint={{
+            message:
+              douyinAccount?.status === "connected"
+                ? "已保存加密 Cookie，发布时会在服务边界解密后交给发布器。"
+                : "点击连接后在官方页面完成扫码或登录。",
+            status:
+              douyinAccount?.status === "connected" ? "passed" : "unknown",
+            title: "Cookie 发布凭据",
+          }}
+          testError={douyinAccount?.last_test_error}
         />
       </div>
 
@@ -342,6 +514,19 @@ function SettingsPageContent() {
           testError={currentXTestError}
         />
       </div>
+
+      {browserSession ? (
+        <RemoteBrowserSessionModal
+          completing={douyinCompleting}
+          error={browserError}
+          expiresAt={browserSession.expires_at}
+          platformLabel="抖音"
+          status={browserSession.status}
+          streamURL={browserStreamURL}
+          onCancel={handleCancelDouyin}
+          onComplete={handleCompleteDouyin}
+        />
+      ) : null}
     </div>
   );
 }

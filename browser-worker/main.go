@@ -226,7 +226,7 @@ func main() {
 		})
 	})
 
-	e.Any("/internal/browser-sessions/:ref/stream", func(c echo.Context) error {
+	streamHandler := func(c echo.Context) error {
 		ref := c.Param("ref")
 		session, ok := sm.get(ref)
 		if !ok {
@@ -242,13 +242,15 @@ func main() {
 		proxy.Director = func(req *http.Request) {
 			req.URL.Scheme = target.Scheme
 			req.URL.Host = target.Host
-			req.URL.Path = "/"
+			req.URL.Path = workerStreamPath(c.Param("*"))
 			req.URL.RawQuery = c.Request().URL.RawQuery
 			req.Host = target.Host
 		}
 		proxy.ServeHTTP(c.Response(), c.Request())
 		return nil
-	})
+	}
+	e.Any("/internal/browser-sessions/:ref/stream", streamHandler)
+	e.Any("/internal/browser-sessions/:ref/stream/*", streamHandler)
 
 	e.POST("/internal/browser-sessions/:ref/capture", func(c echo.Context) error {
 		ref := c.Param("ref")
@@ -408,6 +410,14 @@ func endpointPort(endpoint string) (int, error) {
 		return 0, fmt.Errorf("missing endpoint port")
 	}
 	return port, nil
+}
+
+func workerStreamPath(wildcardPath string) string {
+	wildcardPath = strings.TrimPrefix(wildcardPath, "/")
+	if wildcardPath == "" {
+		return "/"
+	}
+	return "/" + wildcardPath
 }
 
 func validateRequiredCookies(cookies []Cookie, requirements []CookieRequirement) (bool, []string) {

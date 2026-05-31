@@ -85,3 +85,13 @@ type XConnectionTestResponse struct {
 	AccountAuth   RequirementStatus `json:"account_auth"`
 	PublishAccess RequirementStatus `json:"publish_access"`
 }
+
+type DouyinAccountResponse struct {
+	Platform      string     `json:"platform"`
+	Username      string     `json:"username,omitempty"`
+	AvatarURL     string     `json:"avatar_url,omitempty"`
+	Status        string     `json:"status"`
+	LastTestedAt  *time.Time `json:"last_tested_at,omitempty"`
+	LastTestError string     `json:"last_test_error,omitempty"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+}

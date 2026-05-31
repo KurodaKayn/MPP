@@ -105,6 +105,7 @@ func main() {
 	userGroup.GET("/settings/wechat/account", userDashboardHandler.GetWechatAccount)
 	userGroup.PUT("/settings/wechat/account", userDashboardHandler.SaveWechatAccount)
 	userGroup.POST("/settings/wechat/test", userDashboardHandler.TestWechatAccount)
+	userGroup.GET("/settings/douyin/account", userDashboardHandler.GetDouyinAccount)
 	userGroup.GET("/settings/x/account", userDashboardHandler.GetXAccount)
 	userGroup.PUT("/settings/x/account", userDashboardHandler.SaveXAccount)
 	userGroup.POST("/settings/x/test", userDashboardHandler.TestXAccount)
@@ -113,7 +114,8 @@ func main() {
 	// Remote Browser Session Routes
 	userGroup.POST("/settings/platforms/:platform/browser-session", browserSessionHandler.StartSession)
 	userGroup.GET("/browser-sessions/:id", browserSessionHandler.GetSession)
-	userGroup.GET("/browser-sessions/:id/stream", browserSessionHandler.StreamSession)
+	userGroup.Any("/browser-sessions/:id/stream", browserSessionHandler.StreamSession)
+	userGroup.Any("/browser-sessions/:id/stream/*", browserSessionHandler.StreamSession)
 	userGroup.POST("/browser-sessions/:id/complete", browserSessionHandler.CompleteSession)
 	userGroup.DELETE("/browser-sessions/:id", browserSessionHandler.CancelSession)
 
