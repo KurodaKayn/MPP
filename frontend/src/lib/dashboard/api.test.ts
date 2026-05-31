@@ -24,6 +24,7 @@ import {
   testWechatConnection,
   testXConnection,
   updateDashboardProject,
+  updateProjectPrepublishDraft,
 } from "./api";
 import type { ProjectPublications } from "./api";
 
@@ -279,6 +280,54 @@ describe("dashboard api client", () => {
         message: "make it level two",
         platform: "zhihu",
         title: "Draft",
+      }),
+    );
+  });
+
+  it("updates a platform prepublish draft", async () => {
+    const publications = {
+      items: [
+        {
+          adapted_content: {
+            format: "markdown",
+            markdown: "## Updated",
+          },
+          config: {},
+          created_at: "2026-05-29T12:00:00Z",
+          enabled: true,
+          id: "pub-1",
+          platform: "zhihu",
+          retry_count: 0,
+          status: "adapted",
+          updated_at: "2026-05-29T12:00:00Z",
+        },
+      ],
+      project_id: "project-1",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse(publications),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      updateProjectPrepublishDraft("project-1", "zhihu", {
+        adapted_content: {
+          format: "markdown",
+          markdown: "## Updated",
+        },
+      }),
+    ).resolves.toEqual(publications);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/prepublish/zhihu",
+      expect.objectContaining({
+        body: JSON.stringify({
+          adapted_content: {
+            format: "markdown",
+            markdown: "## Updated",
+          },
+        }),
+        method: "PUT",
       }),
     );
   });
