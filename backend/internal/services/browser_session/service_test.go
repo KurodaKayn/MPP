@@ -1,4 +1,4 @@
-package services_test
+package browsersession_test
 
 import (
 	"context"
@@ -13,14 +13,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
-	"github.com/kurodakayn/mpp-backend/internal/services"
+	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
-func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *services.BrowserSessionService, *publisher.MockBrowserWorkerClient) {
+func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *browsersession.BrowserSessionService, *publisher.MockBrowserWorkerClient) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
@@ -45,12 +45,12 @@ func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *services.BrowserSessionSe
 		require.NoError(t, worker.Close())
 	})
 	store := publisher.NewCookieStore(db)
-	svc := services.NewBrowserSessionService(db, worker, store)
+	svc := browsersession.NewBrowserSessionService(db, worker, store)
 
 	return db, svc, worker
 }
 
-func setupBrowserSessionRedis(t *testing.T, svc *services.BrowserSessionService) *redis.Client {
+func setupBrowserSessionRedis(t *testing.T, svc *browsersession.BrowserSessionService) *redis.Client {
 	t.Helper()
 
 	redisServer := miniredis.RunT(t)
@@ -101,7 +101,7 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	assert.True(t, strings.HasPrefix(streamEndpoint, "http://127.0.0.1:"))
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, "bad-token", false)
-	assert.ErrorIs(t, err, services.ErrInvalidStreamToken)
+	assert.ErrorIs(t, err, browsersession.ErrInvalidStreamToken)
 
 	// Verify DB state
 	var session models.RemoteBrowserSession
@@ -150,7 +150,7 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = svc.StartSession(context.Background(), user2ID, platform)
-	assert.ErrorIs(t, err, services.ErrActiveSessionExists)
+	assert.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
 
 	// 5. Cancel the second session
 	err = svc.CancelSession(context.Background(), user2ID, resp2.SessionID)
@@ -174,7 +174,7 @@ func TestBrowserSessionService_GetStreamEndpointRejectsExpiredDatabaseToken(t *t
 		Update("connect_token_expires_at", time.Now().Add(-time.Second)).Error)
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
-	assert.ErrorIs(t, err, services.ErrInvalidStreamToken)
+	assert.ErrorIs(t, err, browsersession.ErrInvalidStreamToken)
 
 	status, err := svc.GetSession(context.Background(), userID, resp.SessionID)
 	require.NoError(t, err)
@@ -192,7 +192,7 @@ func TestBrowserSessionService_GetStreamEndpointRejectsExpiredDatabaseToken(t *t
 func TestBrowserSessionService_UnsupportedPlatform(t *testing.T) {
 	_, svc, _ := setupBrowserSessionTest(t)
 	_, err := svc.StartSession(context.Background(), uuid.New(), "invalid-platform")
-	assert.ErrorIs(t, err, services.ErrPlatformNotSupported)
+	assert.ErrorIs(t, err, browsersession.ErrPlatformNotSupported)
 }
 
 func TestBrowserSessionService_StartSessionIgnoresExpiredActiveRows(t *testing.T) {
@@ -265,7 +265,7 @@ func TestBrowserSessionService_StartSessionPreservesInFlightPendingRows(t *testi
 
 	_, err := svc.StartSession(context.Background(), userID, platform)
 
-	assert.ErrorIs(t, err, services.ErrActiveSessionExists)
+	assert.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
 	var savedPendingSession models.RemoteBrowserSession
 	require.NoError(t, db.First(&savedPendingSession, pendingSession.ID).Error)
 	assert.Equal(t, models.BrowserSessionStatusPending, savedPendingSession.Status)
@@ -358,7 +358,7 @@ func TestBrowserSessionService_StartSessionPreservesReachableRedisActiveLock(t *
 
 	_, err = svc.StartSession(context.Background(), userID, platform)
 
-	assert.ErrorIs(t, err, services.ErrActiveSessionExists)
+	assert.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
 	activeSessionID, err := client.Get(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Result()
 	require.NoError(t, err)
 	assert.Equal(t, resp.SessionID.String(), activeSessionID)
