@@ -205,7 +205,13 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 	}
 
 	var session models.RemoteBrowserSession
-	if err := s.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&session).Error; err != nil {
+	query := s.db.WithContext(ctx).Where("id = ?", id)
+	// Only filter by userID if it's provided (not uuid.Nil)
+	if userID != uuid.Nil {
+		query = query.Where("user_id = ?", userID)
+	}
+
+	if err := query.First(&session).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", ErrSessionNotFound
 		}

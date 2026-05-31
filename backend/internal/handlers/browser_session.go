@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/proxy"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/labstack/echo/v4"
 )
@@ -26,7 +27,11 @@ func (h *BrowserSessionHandler) StartSession(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
+
 	platform := c.Param("platform")
+	if platform == "" {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "platform is required")
+	}
 
 	resp, err := h.service.StartSession(c.Request().Context(), userID, platform)
 	if err != nil {
@@ -65,11 +70,8 @@ func (h *BrowserSessionHandler) GetSession(c echo.Context) error {
 }
 
 func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
-	userID, err := middleware.GetUserIDFromContext(c)
-	if err != nil {
-		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-	}
-
+	userID, _ := middleware.GetUserIDFromContext(c) // May be nil if coming from public route
+	
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid session id")
@@ -94,8 +96,16 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	target.Scheme = reverseProxyScheme(target.Scheme)
 	rawQuery := streamProxyRawQuery(c)
 
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	proxy.Director = func(req *http.Request) {
+	// Use custom WebSocket proxy for noVNC stream (e.g. when requesting /websockify)
+	if strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket" {
+		// Update target path with proxy path before proxying
+		target.Path = joinURLPath(target.Path, proxyPath)
+		target.RawQuery = rawQuery
+		return proxy.ProxyWebSocket(c, target)
+	}
+
+	reverseProxy := httputil.NewSingleHostReverseProxy(target)
+	reverseProxy.Director = func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
 		req.URL.Path = joinURLPath(target.Path, proxyPath)
@@ -105,10 +115,7 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 		req.URL.RawQuery = rawQuery
 		req.Host = target.Host
 	}
-	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
-		http.Error(rw, "stream unavailable", http.StatusBadGateway)
-	}
-	proxy.ServeHTTP(c.Response(), c.Request())
+	reverseProxy.ServeHTTP(c.Response(), c.Request())
 	return nil
 }
 

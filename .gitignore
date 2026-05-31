@@ -47,3 +47,4 @@ ai-service/dist/
 ai-service/wheels/
 ai-service/*.egg-info
 ai-service/.venv/
+*.exe
