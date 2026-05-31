@@ -56,6 +56,7 @@ For platforms without stable public publishing APIs, MPP uses a backend-controll
 ![MPP Overall Architecture](doc/assests/project-overall-architecture.png)
 
 For detailed design notes for each module, see [module-design.md](doc/module-design.md).
+For a module-by-module technology stack breakdown, see [tech-stack.md](doc/tech-stack.md).
 
 ## How to Quick Start
 
