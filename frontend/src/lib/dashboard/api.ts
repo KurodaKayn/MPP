@@ -366,6 +366,9 @@ async function streamDashboardText(
         accumulated += trailing;
         options.onChunk?.(trailing, accumulated);
       }
+      if (!accumulated.trim()) {
+        throw new Error("AI 没有返回内容，请换个说法再试。");
+      }
       return accumulated;
     }
 
