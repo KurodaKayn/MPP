@@ -316,12 +316,21 @@ export function useContentPageController(projectId?: string) {
     }
   };
 
+  const updatePrepublishDraft = (
+    platform: PublishPlatform,
+    draft: PrepublishDraft,
+  ) => {
+    setPrepublishDrafts({
+      ...prepublishDrafts,
+      [platform]: draft,
+    });
+  };
+
   const publishExistingProject = async () => {
     if (!projectId) {
       return;
     }
 
-    await updateDashboardProject(projectId, buildProjectInput());
     const results = await Promise.allSettled(
       selectedPlatforms.map(async (platform) => {
         const result = await publishProject(projectId, platform);
@@ -525,5 +534,6 @@ export function useContentPageController(projectId?: string) {
     },
     syncPrepublish,
     title,
+    updatePrepublishDraft,
   };
 }
