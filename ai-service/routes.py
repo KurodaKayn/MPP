@@ -1,11 +1,14 @@
 from fastapi import APIRouter, HTTPException
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from llm_client import (
     build_llm,
-    conversation_to_messages,
     response_text,
     selected_adapted_text,
+)
+from prompts import (
+    build_calibrate_messages,
+    build_edit_content_messages,
+    build_edit_prepublish_messages,
 )
 from schemas import (
     CalibrateRequest,
@@ -29,28 +32,7 @@ async def edit_content(request: EditContentRequest):
         raise HTTPException(status_code=400, detail="content and message are required")
 
     try:
-        messages: list[BaseMessage] = [
-            SystemMessage(
-                content=(
-                    "You are an editorial assistant for multi-platform posts. "
-                    "Rewrite only the supplied content according to the user's latest request. "
-                    "Preserve the original language and meaningful formatting. "
-                    "If the content is HTML, return valid edited HTML only. "
-                    "Do not add explanations, markdown fences, or commentary."
-                )
-            ),
-            *conversation_to_messages(request.conversation),
-            HumanMessage(
-                content=(
-                    f"Title: {request.title}\n\n"
-                    f"Current content:\n{request.content}\n\n"
-                    f"User request:\n{request.message}\n\n"
-                    "Return only the edited content."
-                )
-            ),
-        ]
-
-        response = build_llm().invoke(messages)
+        response = build_llm().invoke(build_edit_content_messages(request))
         edited_content = response_text(response.content)
         if not edited_content:
             raise HTTPException(status_code=502, detail="LLM returned empty content")
@@ -72,30 +54,9 @@ async def edit_prepublish(request: EditPrepublishRequest):
         raise HTTPException(status_code=400, detail="adapted_content text is required")
 
     try:
-        messages: list[BaseMessage] = [
-            SystemMessage(
-                content=(
-                    "You are an assistant editing platform-specific prepublish drafts. "
-                    "Rewrite only the draft text according to the user's latest request. "
-                    "Respect the target platform, keep the same output format, and avoid explanations. "
-                    "For HTML return valid HTML only; for markdown return markdown only; "
-                    "for plain text return plain text only."
-                )
-            ),
-            *conversation_to_messages(request.conversation),
-            HumanMessage(
-                content=(
-                    f"Platform: {request.platform}\n"
-                    f"Title: {request.title}\n"
-                    f"Format: {content_key}\n\n"
-                    f"Current draft:\n{current_text}\n\n"
-                    f"User request:\n{request.message}\n\n"
-                    "Return only the edited draft."
-                )
-            ),
-        ]
-
-        response = build_llm().invoke(messages)
+        response = build_llm().invoke(
+            build_edit_prepublish_messages(request, content_key, current_text)
+        )
         edited_text = response_text(response.content)
         if not edited_text:
             raise HTTPException(status_code=502, detail="LLM returned empty content")
@@ -120,17 +81,7 @@ async def edit_prepublish(request: EditPrepublishRequest):
 @router.post("/calibrate")
 async def calibrate(request: CalibrateRequest):
     try:
-        messages: list[BaseMessage] = [
-            SystemMessage(
-                content=(
-                    "You are an expert social media manager. Calibrate the following "
-                    "content for the requested platform rules and style."
-                )
-            ),
-            HumanMessage(content=f"Platform: {request.platform}\n\n{request.content}"),
-        ]
-
-        response = build_llm().invoke(messages)
+        response = build_llm().invoke(build_calibrate_messages(request))
 
         return {
             "platform": request.platform,
