@@ -18,13 +18,25 @@ export type PublicationSummary = {
 export type PublicationDetail = PublicationSummary & {
   error_message?: string;
   config: Record<string, unknown>;
-  adapted_content: Record<string, unknown>;
+  adapted_content: AdaptedContent;
   remote_id?: string;
   retry_count: number;
   last_attempt_at?: string;
   published_at?: string;
   created_at: string;
   updated_at: string;
+};
+
+export type AdaptedContent = {
+  schema_version?: number;
+  format?: "html" | "markdown" | "text" | string;
+  summary?: string;
+  source_revision?: string;
+  generated_by?: Record<string, unknown>;
+  html?: string;
+  markdown?: string;
+  text?: string;
+  assets?: Array<Record<string, unknown>>;
 };
 
 export type ProjectPublications = {
@@ -52,6 +64,17 @@ export type CreateProjectInput = {
 };
 
 export type UpdateProjectInput = CreateProjectInput;
+
+export type GetProjectPublicationsOptions = {
+  includeContent?: boolean;
+};
+
+export type SyncPrepublishInput = {
+  platforms: string[];
+  actor?: {
+    type: "system";
+  };
+};
 
 export type RequirementStatus = {
   status: "passed" | "warning" | "failed" | "unknown";
@@ -234,9 +257,30 @@ export function updateDashboardProject(
   );
 }
 
-export function getProjectPublications(projectId: string) {
+export function getProjectPublications(
+  projectId: string,
+  options?: GetProjectPublicationsOptions,
+) {
+  const query = options?.includeContent ? "?include_content=true" : "";
+
   return fetchDashboard<ProjectPublications>(
-    `/api/user/dashboard/projects/${projectId}/publications`,
+    `/api/user/dashboard/projects/${projectId}/publications${query}`,
+  );
+}
+
+export function syncProjectPrepublish(
+  projectId: string,
+  input: SyncPrepublishInput,
+) {
+  return fetchDashboard<ProjectPublications>(
+    `/api/user/dashboard/projects/${projectId}/prepublish/sync`,
+    {
+      body: JSON.stringify({
+        actor: input.actor ?? { type: "system" },
+        platforms: input.platforms,
+      }),
+      method: "POST",
+    },
   );
 }
 

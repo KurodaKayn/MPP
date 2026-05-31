@@ -82,8 +82,6 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         content={contentPage.content}
         drafts={contentPage.prepublishDrafts}
         isSyncing={contentPage.isSyncingPrepublish}
-        selectedPlatforms={contentPage.selectedPlatforms}
-        onSelectedPlatformsChange={contentPage.setSelectedPlatforms}
         onSync={contentPage.syncPrepublish}
       />
 
@@ -91,11 +89,13 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         <ContentPublishBar
           canOpenXPostIntent={contentPage.canOpenXPostIntent}
           canPublish={contentPage.canPublish}
+          canSelectPlatforms={contentPage.canSelectPlatforms}
           isOpeningXPostIntent={contentPage.isOpeningXPostIntent}
           isPublishing={contentPage.isPublishing}
           selectedPlatforms={contentPage.selectedPlatforms}
           onOpenXPostIntent={contentPage.openXPostIntent}
           onPublish={contentPage.publish}
+          onSelectedPlatformsChange={contentPage.setSelectedPlatforms}
           publishLabel={contentPage.isEditing ? "保存并发布" : "一键发布"}
         />
       </div>
