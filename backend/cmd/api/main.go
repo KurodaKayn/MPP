@@ -114,6 +114,7 @@ func main() {
 	userGroup.PUT("/settings/wechat/account", userDashboardHandler.SaveWechatAccount)
 	userGroup.POST("/settings/wechat/test", userDashboardHandler.TestWechatAccount)
 	userGroup.GET("/settings/douyin/account", userDashboardHandler.GetDouyinAccount)
+	userGroup.GET("/settings/zhihu/account", userDashboardHandler.GetZhihuAccount)
 	userGroup.GET("/settings/x/account", userDashboardHandler.GetXAccount)
 	userGroup.PUT("/settings/x/account", userDashboardHandler.SaveXAccount)
 	userGroup.POST("/settings/x/test", userDashboardHandler.TestXAccount)

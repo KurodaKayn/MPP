@@ -43,6 +43,7 @@ func NewBrowserSessionService(db *gorm.DB, worker publisher.BrowserWorkerClient,
 	}
 	// Register adapters
 	s.RegisterAdapter(&publisher.DouyinAdapter{})
+	s.RegisterAdapter(&publisher.ZhihuAdapter{})
 	return s
 }
 
@@ -318,7 +319,7 @@ func (s *BrowserSessionService) CancelSession(ctx context.Context, userID uuid.U
 
 func browserSessionStreamURL(sessionID uuid.UUID, token string) string {
 	streamBasePath := fmt.Sprintf(
-		"api/user/dashboard/browser-sessions/%s/stream/%s",
+		"api/browser-stream/%s/%s",
 		sessionID,
 		url.PathEscape(token),
 	)
