@@ -135,7 +135,15 @@ func Snapshot(ctx context.Context, workerSession *session.WorkerSession, include
 		}))
 	}
 
-	if err := chromedp.Run(workerSession.BrowserContext, actions...); err != nil {
+	runCtx, cancel := context.WithCancel(workerSession.BrowserContext)
+	defer cancel()
+	stopCallerCancel := context.AfterFunc(ctx, cancel)
+	defer stopCallerCancel()
+
+	if err := chromedp.Run(runCtx, actions...); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", nil, "", ctxErr
+		}
 		return "", nil, "", err
 	}
 
