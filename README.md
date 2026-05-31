@@ -22,6 +22,11 @@
 
 MPP is a multi-platform content publishing system for creators and operations teams. It helps manage content projects, platform-specific adaptation, publishing status tracking, and AI-assisted processing from a unified workspace.
 
+## Demo Videos
+
+- [Bilibili demo](https://www.bilibili.com/video/BV1wQVD6mEA6)
+- [YouTube demo](https://youtu.be/_Dh35Ksb9RQ)
+
 ## Project Innovations
 
 MPP focuses its innovation on platform-specific draft adaptation, third-party platform isolation, remote login, reviewable AI editing, and VM-style publishing execution without requiring browser plugins.
@@ -64,6 +69,8 @@ Compared with plugin-based automation, this approach gives the system a more con
 ## Architecture
 
 ![MPP Overall Architecture](doc/assests/project-overall-architecture.png)
+
+For detailed design notes for each module, see [module-design.md](doc/module-design.md).
 
 ## How to Quick Start
 
