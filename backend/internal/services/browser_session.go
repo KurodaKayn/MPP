@@ -43,6 +43,7 @@ func NewBrowserSessionService(db *gorm.DB, worker publisher.BrowserWorkerClient,
 	}
 	// Register adapters
 	s.RegisterAdapter(&publisher.DouyinAdapter{})
+	s.RegisterAdapter(&publisher.ZhihuAdapter{})
 	return s
 }
 
