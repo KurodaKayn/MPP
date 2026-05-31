@@ -9,11 +9,13 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
@@ -63,7 +65,7 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 	if err != nil {
 		return nil, err
 	}
-	if pub.Status != models.PublicationStatusAdapted {
+	if pub.Status != models.PublicationStatusAdapted && pub.Status != models.PublicationStatusPublishing {
 		if err := s.adaptPublicationForPublish(&proj, &pub, p); err != nil {
 			return nil, err
 		}
@@ -83,6 +85,15 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 		// but headless ones usually do.
 	}
 
+	startedAt := time.Now().UTC()
+	if err := s.db.Model(&pub).Updates(map[string]interface{}{
+		"status":          models.PublicationStatusPublishing,
+		"error_message":   "",
+		"last_attempt_at": &startedAt,
+	}).Error; err != nil {
+		return nil, err
+	}
+
 	// 5. Execute Publish
 	remoteID, publishURL, err := p.Publish(context.Background(), &pub, &account)
 
@@ -94,15 +105,29 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 		errMsg = sanitizeUserFacingErrorMessage(err.Error())
 	}
 
+	response := map[string]interface{}{
+		"status":        status,
+		"remote_id":     remoteID,
+		"publish_url":   publishURL,
+		"error_message": errMsg,
+	}
 	updates := map[string]interface{}{
 		"status":        status,
 		"remote_id":     remoteID,
 		"publish_url":   publishURL,
 		"error_message": errMsg,
 	}
-	s.db.Model(&pub).Updates(updates)
+	if status == models.PublicationStatusPublished {
+		publishedAt := time.Now().UTC()
+		updates["published_at"] = &publishedAt
+	} else {
+		updates["retry_count"] = gorm.Expr("retry_count + ?", 1)
+	}
+	if err := s.db.Model(&pub).Updates(updates).Error; err != nil {
+		return nil, err
+	}
 
-	return updates, nil
+	return response, nil
 }
 
 func (s *DashboardService) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
@@ -207,8 +232,8 @@ type DashboardService struct {
 	wechatTester    WechatConnectionTester
 	xTester         XConnectionTester
 	xOAuth2Provider XOAuth2Provider
-	xOAuth2States   map[string]xOAuth2PendingState
-	xOAuth2StatesMu sync.Mutex
+	xOAuth2States   XOAuth2StateStore
+	publishQueue    PublishQueue
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
@@ -231,7 +256,7 @@ func NewDashboardServiceWithPlatformTesters(db *gorm.DB, tester WechatConnection
 		wechatTester:    tester,
 		xTester:         xTester,
 		xOAuth2Provider: XOAuth2API{},
-		xOAuth2States:   make(map[string]xOAuth2PendingState),
+		xOAuth2States:   NewMemoryXOAuth2StateStore(),
 	}
 }
 
@@ -241,6 +266,14 @@ func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider XOAuth2Provide
 		service.xOAuth2Provider = provider
 	}
 	return service
+}
+
+func (s *DashboardService) UseRedis(client *redis.Client) {
+	if client == nil {
+		return
+	}
+	s.xOAuth2States = NewRedisXOAuth2StateStore(client)
+	s.publishQueue = NewRedisPublishQueue(client)
 }
 
 func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {

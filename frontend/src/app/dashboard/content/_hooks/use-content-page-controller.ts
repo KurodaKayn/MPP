@@ -324,7 +324,7 @@ export function useContentPageController(projectId?: string) {
     const results = await Promise.allSettled(
       selectedPlatforms.map(async (platform) => {
         const result = await publishProject(projectId, platform);
-        if (result.status === "failed") {
+        if (result.status === "failed" || result.status === "error") {
           throw new Error(result.error_message || `${platform} 发布失败`);
         }
         return platform;
@@ -437,11 +437,14 @@ export function useContentPageController(projectId?: string) {
         return;
       }
 
-      toast.success(projectId ? "修改并发布完成" : "发布完成", {
-        description: `已发布到 ${getSelectedPlatformLabels(
-          result.succeeded,
-        ).join("、")}。`,
-      });
+      toast.success(
+        projectId ? "修改已保存，发布任务已提交" : "发布任务已提交",
+        {
+          description: `后台将继续发布到 ${getSelectedPlatformLabels(
+            result.succeeded,
+          ).join("、")}。`,
+        },
+      );
     } catch (requestError) {
       toast.error("发布请求失败", {
         description:

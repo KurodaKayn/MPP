@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/redisclient"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
@@ -39,6 +41,15 @@ func main() {
 
 	// Initialize Services and Handlers
 	dashboardService := services.NewDashboardService(db.DB)
+	redisClient, err := redisclient.NewFromEnv(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	if redisClient != nil {
+		defer redisClient.Close()
+		dashboardService.UseRedis(redisClient)
+		dashboardService.StartPublishWorker(context.Background())
+	}
 	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
 	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
 	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
