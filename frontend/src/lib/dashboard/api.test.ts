@@ -17,6 +17,8 @@ import {
   saveXAccount,
   saveWechatAccount,
   startBrowserSession,
+  streamAIContentEdit,
+  streamAIPrepublishEdit,
   syncProjectPrepublish,
   waitForProjectPublications,
   testWechatConnection,
@@ -30,6 +32,23 @@ function jsonResponse(body: unknown, init?: ResponseInit) {
     headers: { "content-type": "application/json" },
     ...init,
   });
+}
+
+function textStreamResponse(chunks: string[], init?: ResponseInit) {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(new TextEncoder().encode(chunk));
+        }
+        controller.close();
+      },
+    }),
+    {
+      headers: { "content-type": "text/markdown" },
+      ...init,
+    },
+  );
 }
 
 describe("dashboard api client", () => {
@@ -191,6 +210,75 @@ describe("dashboard api client", () => {
         credentials: "same-origin",
         headers: expect.any(Headers),
         method: "POST",
+      }),
+    );
+  });
+
+  it("streams AI content edit chunks", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      textStreamResponse(["hello ", "**world**"]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const chunks: string[] = [];
+
+    await expect(
+      streamAIContentEdit(
+        {
+          content: "hello world",
+          message: "bold world",
+          title: "Draft",
+        },
+        {
+          onChunk: (chunk) => chunks.push(chunk),
+        },
+      ),
+    ).resolves.toBe("hello **world**");
+
+    expect(chunks).toEqual(["hello ", "**world**"]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/ai/content/edit/stream",
+      expect.objectContaining({
+        body: JSON.stringify({
+          content: "hello world",
+          message: "bold world",
+          title: "Draft",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("streams AI prepublish edit chunks", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      textStreamResponse(["## ", "Draft"]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      streamAIPrepublishEdit({
+        adapted_content: {
+          format: "markdown",
+          markdown: "# Draft",
+        },
+        message: "make it level two",
+        platform: "zhihu",
+        title: "Draft",
+      }),
+    ).resolves.toBe("## Draft");
+
+    const [path, init] = fetchMock.mock.calls[0];
+    expect(path).toBe("/api/user/dashboard/ai/prepublish/edit/stream");
+    expect(init?.body).toBe(
+      JSON.stringify({
+        adapted_content: {
+          format: "markdown",
+          markdown: "# Draft",
+        },
+        message: "make it level two",
+        platform: "zhihu",
+        title: "Draft",
       }),
     );
   });
