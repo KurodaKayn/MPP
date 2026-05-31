@@ -84,6 +84,9 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 		// Non-blocking: some publishers might not need a pre-stored account (using config instead)
 		// but headless ones usually do.
 	}
+	if err := s.applySavedBrowserCookies(context.Background(), proj.UserID, platform, &account); err != nil {
+		return nil, err
+	}
 
 	startedAt := time.Now().UTC()
 	if err := s.db.Model(&pub).Updates(map[string]interface{}{
@@ -206,6 +209,33 @@ func (s *DashboardService) adaptPublicationForPublish(project *models.Project, p
 	pub.RetryCount = 0
 	pub.Status = models.PublicationStatusAdapted
 	return nil
+}
+
+func (s *DashboardService) applySavedBrowserCookies(ctx context.Context, userID uuid.UUID, platform string, account *models.PlatformAccount) error {
+	if account == nil || !usesStoredBrowserCookies(platform) || account.UserID == uuid.Nil {
+		return nil
+	}
+
+	cookies, err := publisher.NewCookieStore(s.db).Load(ctx, userID, platform)
+	if err != nil {
+		return fmt.Errorf("%w: %s cookies are unavailable: %v", ErrInvalidPlatformAccount, platform, err)
+	}
+
+	cookiesJSON, err := json.Marshal(cookies)
+	if err != nil {
+		return fmt.Errorf("failed to prepare %s cookies: %w", platform, err)
+	}
+	account.Cookies = datatypes.JSON(cookiesJSON)
+	return nil
+}
+
+func usesStoredBrowserCookies(platform string) bool {
+	switch platform {
+	case "douyin", "zhihu":
+		return true
+	default:
+		return false
+	}
 }
 
 var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
