@@ -72,6 +72,13 @@ export type GetProjectPublicationsOptions = {
   includeContent?: boolean;
 };
 
+export type WaitForProjectPublicationsOptions = {
+  intervalMs?: number;
+  timeoutMs?: number;
+  fetchProjectPublications?: typeof getProjectPublications;
+  sleep?: (ms: number) => Promise<void>;
+};
+
 export type SyncPrepublishInput = {
   platforms: string[];
   actor?: {
@@ -269,6 +276,51 @@ export function getProjectPublications(
   return fetchDashboard<ProjectPublications>(
     `/api/user/dashboard/projects/${projectId}/publications${query}`,
   );
+}
+
+function defaultSleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
+}
+
+function isPublishingStatus(status: string) {
+  return status === "publishing";
+}
+
+export async function waitForProjectPublications(
+  projectId: string,
+  platforms: string[],
+  options: WaitForProjectPublicationsOptions = {},
+) {
+  const timeoutMs = options.timeoutMs ?? 5 * 60 * 1000;
+  const intervalMs = options.intervalMs ?? 2000;
+  const fetchProjectPublications =
+    options.fetchProjectPublications ?? getProjectPublications;
+  const sleep = options.sleep ?? defaultSleep;
+  const deadline = Date.now() + timeoutMs;
+  const expectedPlatforms = new Set(platforms);
+
+  let latestPublications = await fetchProjectPublications(projectId);
+
+  while (Date.now() <= deadline) {
+    const relevantPublications = latestPublications.items.filter((item) =>
+      expectedPlatforms.has(item.platform),
+    );
+    if (
+      relevantPublications.length === expectedPlatforms.size &&
+      relevantPublications.every(
+        (publication) => !isPublishingStatus(publication.status),
+      )
+    ) {
+      return latestPublications;
+    }
+
+    await sleep(intervalMs);
+    latestPublications = await fetchProjectPublications(projectId);
+  }
+
+  throw new Error("发布任务超时，请稍后刷新查看状态");
 }
 
 export function syncProjectPrepublish(
