@@ -46,8 +46,8 @@ const (
 )
 
 type User struct {
-	ID               uuid.UUID         `gorm:"type:uuid;primaryKey"`
-	Username         string            `gorm:"not null"`
+	ID               uuid.UUID `gorm:"type:uuid;primaryKey"`
+	Username         string    `gorm:"not null"`
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	Projects         []Project         `gorm:"foreignKey:UserID"`
@@ -101,19 +101,20 @@ type PlatformAccount struct {
 }
 
 type RemoteBrowserSession struct {
-	ID                uuid.UUID  `gorm:"type:uuid;primaryKey"`
-	UserID            uuid.UUID  `gorm:"type:uuid;not null;index:idx_browser_sessions_user_platform"`
-	Platform          string     `gorm:"not null;index:idx_browser_sessions_user_platform"`
-	Status            string     `gorm:"not null;index:idx_browser_sessions_user_platform"`
-	WorkerSessionRef  string     `gorm:"not null;default:''"`
-	ContainerID       string     `gorm:"not null;default:''"`
-	CDPEndpointRef    string     `gorm:"not null;default:''"`
-	StreamEndpointRef string     `gorm:"not null;default:''"`
-	ConnectTokenHash  string     `gorm:"not null"`
-	ErrorMessage      string     `gorm:"not null;default:''"`
-	CreatedAt         time.Time  `gorm:"not null"`
-	ExpiresAt         time.Time  `gorm:"not null"`
-	CompletedAt       *time.Time
+	ID                    uuid.UUID `gorm:"type:uuid;primaryKey"`
+	UserID                uuid.UUID `gorm:"type:uuid;not null;index:idx_browser_sessions_user_platform"`
+	Platform              string    `gorm:"not null;index:idx_browser_sessions_user_platform"`
+	Status                string    `gorm:"not null;index:idx_browser_sessions_user_platform"`
+	WorkerSessionRef      string    `gorm:"not null;default:''"`
+	ContainerID           string    `gorm:"not null;default:''"`
+	CDPEndpointRef        string    `gorm:"not null;default:''"`
+	StreamEndpointRef     string    `gorm:"not null;default:''"`
+	ConnectTokenHash      string    `gorm:"not null"`
+	ConnectTokenExpiresAt time.Time
+	ErrorMessage          string    `gorm:"not null;default:''"`
+	CreatedAt             time.Time `gorm:"not null"`
+	ExpiresAt             time.Time `gorm:"not null"`
+	CompletedAt           *time.Time
 }
 
 // BeforeCreate hook to generate UUID if not set
