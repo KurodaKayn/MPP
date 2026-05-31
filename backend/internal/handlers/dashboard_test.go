@@ -334,6 +334,55 @@ func TestUserDashboardHandlerGetAndUpdateProject(t *testing.T) {
 	require.Len(t, detail.Publications, 2)
 }
 
+func TestUserDashboardHandlerSaveProjectContentPreservesPrepublishDraft(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Draft title",
+		SourceContent: "<p>Draft body</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "zhihu",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: []byte(`{"format":"markdown","markdown":"AI draft"}`),
+	}).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/user/dashboard/projects/"+project.ID.String()+"/content",
+		strings.NewReader(`{"title":"Updated title","source_content":"<p>Updated body</p>","summary":"Updated"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(project.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.SaveProjectContent(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var detail dto.ProjectDetail
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &detail))
+	require.Equal(t, "Updated title", detail.Title)
+	require.Equal(t, "<p>Updated body</p>", detail.SourceContent)
+
+	var publication models.ProjectPlatformPublication
+	require.NoError(t, db.First(&publication, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	require.Equal(t, models.PublicationStatusAdapted, publication.Status)
+	require.JSONEq(t, `{"format":"markdown","markdown":"AI draft"}`, string(publication.AdaptedContent))
+}
+
 func TestUserDashboardHandlerGetProjectPublicationsReturnsForbidden(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)
