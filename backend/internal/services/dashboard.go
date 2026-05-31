@@ -246,11 +246,10 @@ var ErrManualPublishUnsupported = errors.New("manual publish is only supported f
 
 var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
 var allowedProjectPlatforms = map[string]struct{}{
-	"bilibili":    {},
-	"wechat":      {},
-	"x":           {},
-	"xiaohongshu": {},
-	"zhihu":       {},
+	"douyin": {},
+	"wechat": {},
+	"x":      {},
+	"zhihu":  {},
 }
 
 func sanitizeUserFacingErrorMessage(message string) string {

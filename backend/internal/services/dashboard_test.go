@@ -244,7 +244,7 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 		SourceContent: "<p>Hello WeChat</p>",
 		Summary:       "Hello WeChat",
 		CoverImageURL: "data:image/png;base64,aGVsbG8=",
-		Platforms:     []string{"wechat", "wechat", "bilibili"},
+		Platforms:     []string{"wechat", "wechat", "douyin"},
 	})
 
 	assert.NoError(t, err)
@@ -271,9 +271,9 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &adapted))
 	assert.Empty(t, adapted)
 
-	var bilibiliPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&bilibiliPub, "project_id = ? AND platform = ?", resp.ID, "bilibili").Error)
-	assert.Equal(t, models.PublicationStatusPending, bilibiliPub.Status)
+	var douyinPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", resp.ID, "douyin").Error)
+	assert.Equal(t, models.PublicationStatusPending, douyinPub.Status)
 }
 
 func TestCreateProjectRejectsInvalidInput(t *testing.T) {
@@ -369,7 +369,7 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 		Title:         "New title",
 		SourceContent: "<p>New body</p>",
 		Summary:       "New body",
-		Platforms:     []string{"zhihu", "bilibili"},
+		Platforms:     []string{"zhihu", "douyin"},
 	})
 
 	assert.NoError(t, err)
@@ -396,10 +396,10 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 	assert.Empty(t, zhihuPub.PublishURL)
 	assert.Nil(t, zhihuPub.PublishedAt)
 
-	var bilibiliPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&bilibiliPub, "project_id = ? AND platform = ?", project.ID, "bilibili").Error)
-	assert.True(t, bilibiliPub.Enabled)
-	assert.Equal(t, models.PublicationStatusPending, bilibiliPub.Status)
+	var douyinPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", project.ID, "douyin").Error)
+	assert.True(t, douyinPub.Enabled)
+	assert.Equal(t, models.PublicationStatusPending, douyinPub.Status)
 
 	_, err = s.UpdateProject(project.ID, stranger.ID, dto.UpdateProjectRequest{
 		Title:         "Not allowed",
@@ -444,15 +444,22 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 		Status:    models.PublicationStatusPending,
 		Config:    datatypes.JSON(`{"title":"Platform title"}`),
 	})
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "douyin",
+		Enabled:   true,
+		Status:    models.PublicationStatusPending,
+		Config:    datatypes.JSON(`{"title":"Platform title"}`),
+	})
 
 	resp, err := s.SyncProjectPrepublish(project.ID, owner.ID, dto.SyncPrepublishRequest{
-		Platforms: []string{"wechat", "zhihu", "x"},
+		Platforms: []string{"wechat", "zhihu", "x", "douyin"},
 		Actor:     dto.SyncActor{Type: "system"},
 	})
 
 	assert.NoError(t, err)
 	assert.Equal(t, project.ID, resp.ProjectID)
-	assert.Len(t, resp.Items, 3)
+	assert.Len(t, resp.Items, 4)
 
 	var wechatPub models.ProjectPlatformPublication
 	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
@@ -482,6 +489,15 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 	assert.Equal(t, "text", xContent["format"])
 	assert.Contains(t, xContent["text"], "Platform title")
 	assert.Contains(t, xContent["text"], "Hello draft")
+
+	var douyinPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", project.ID, "douyin").Error)
+	assert.Equal(t, models.PublicationStatusAdapted, douyinPub.Status)
+
+	var douyinContent map[string]interface{}
+	assert.NoError(t, json.Unmarshal(douyinPub.AdaptedContent, &douyinContent))
+	assert.Equal(t, "text", douyinContent["format"])
+	assert.Contains(t, douyinContent["text"], "Hello draft")
 }
 
 func TestGetProjectPublications(t *testing.T) {

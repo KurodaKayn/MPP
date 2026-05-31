@@ -2,6 +2,7 @@ package publisher
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/google/uuid"
@@ -30,22 +31,33 @@ func TestDouyinPublisher_Publish_NoAccount(t *testing.T) {
 func TestDouyinPublisher_AdaptContent(t *testing.T) {
 	p := &DouyinPublisher{}
 	project := &models.Project{
-		SourceContent: "抖音测试正文 #自动化发布",
+		Title:         "抖音标题",
+		SourceContent: "<p>抖音测试正文 <strong>#自动化发布</strong></p>",
 	}
 
 	content, err := p.AdaptContent(project)
 
 	assert.NoError(t, err)
-	// 抖音目前直接透传原始正文，验证内容是否存在
-	assert.Equal(t, "抖音测试正文 #自动化发布", string(content))
+	var adapted AdaptedContent
+	assert.NoError(t, json.Unmarshal(content, &adapted))
+	assert.Equal(t, 1, adapted.SchemaVersion)
+	assert.Equal(t, "text", adapted.Format)
+	assert.Equal(t, "douyin-text-adapter", adapted.GeneratedBy.ID)
+	assert.Equal(t, "抖音测试正文 #自动化发布", adapted.Text)
+}
+
+func TestExtractDouyinTextSupportsUnifiedSchema(t *testing.T) {
+	content := extractDouyinText([]byte(`{"format":"text","text":"抖音正文"}`))
+
+	assert.Equal(t, "抖音正文", content)
 }
 
 // TestDouyinPublisher_Publish_InvalidContext 验证在异常环境下的快速失败
 func TestDouyinPublisher_Publish_InvalidContext(t *testing.T) {
 	p := &DouyinPublisher{}
 	pub := &models.ProjectPlatformPublication{
-		ID:       uuid.New(),
-		Platform: "douyin",
+		ID:             uuid.New(),
+		Platform:       "douyin",
 		AdaptedContent: []byte("Test content"),
 	}
 	account := &models.PlatformAccount{
@@ -57,7 +69,7 @@ func TestDouyinPublisher_Publish_InvalidContext(t *testing.T) {
 	cancel() // 立即取消
 
 	_, _, err := p.Publish(ctx, pub, account)
-	
+
 	// 由于 context 已取消，应该报错
 	assert.Error(t, err)
 }
