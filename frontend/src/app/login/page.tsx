@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { ArrowRight, Loader2, LogIn, UserPlus } from "lucide-react";
+import { ArrowRight, Loader2, LogIn } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,15 +11,10 @@ import { useLoginController } from "./_hooks/use-login-controller";
 function LoginContent() {
   const {
     accessToken,
-    handleAuthSubmit,
-    handleMockLoginSubmit,
+    handleLoginSubmit,
     handleTokenLoginSubmit,
     initialized,
     loginMethods,
-    mode,
-    setMode,
-    password,
-    setPassword,
     setAccessToken,
     setUsername,
     submitting,
@@ -77,21 +72,15 @@ function LoginContent() {
 
             <div className="mb-7">
               <h2 className="text-2xl font-semibold tracking-normal">
-                {mode === "register" ? "创建账号" : mode === "token" ? "令牌登录" : mode === "mock" ? "开发测试登录" : "登录控制台"}
+                登录控制台
               </h2>
               <p className="mt-2 text-sm text-[#667064]">
-                {mode === "register" 
-                  ? "加入 MPP，开启多平台分发之旅。" 
-                  : mode === "token" 
-                    ? "使用访问令牌进入工作台。" 
-                    : mode === "mock"
-                      ? "使用开发账号直接进入。"
-                      : "欢迎回来，请输入您的凭据。"}
+                请输入您的用户名直接进入工作台。
               </p>
             </div>
 
-            {(mode === "login" || mode === "register") ? (
-              <form className="space-y-5" onSubmit={handleAuthSubmit}>
+            {loginMethods.mock || true ? (
+              <form className="space-y-5" onSubmit={handleLoginSubmit}>
                 <div className="space-y-2">
                   <Label htmlFor="username">用户名</Label>
                   <Input
@@ -100,57 +89,7 @@ function LoginContent() {
                     className="h-10 border-[#cfc8ba] bg-white/70"
                     value={username}
                     onChange={(event) => setUsername(event.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="password">密码</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    autoComplete={mode === "login" ? "current-password" : "new-password"}
-                    className="h-10 border-[#cfc8ba] bg-white/70"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                  />
-                </div>
-
-                <Button
-                  type="submit"
-                  className="h-10 w-full bg-[#1f2520] text-[#f6f4ee] hover:bg-[#303830]"
-                  disabled={submitting || !initialized}
-                >
-                  {submitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : mode === "register" ? (
-                    <UserPlus className="h-4 w-4" />
-                  ) : (
-                    <LogIn className="h-4 w-4" />
-                  )}
-                  {mode === "register" ? "立即注册" : "登录"}
-                  <ArrowRight className="ml-auto h-4 w-4" />
-                </Button>
-
-                <div className="pt-2 text-center text-sm">
-                   <button 
-                    type="button"
-                    onClick={() => setMode(mode === "login" ? "register" : "login")}
-                    className="text-[#667064] hover:text-[#1f2520] underline underline-offset-4"
-                   >
-                     {mode === "login" ? "还没有账号？立即注册" : "已有账号？返回登录"}
-                   </button>
-                </div>
-              </form>
-            ) : mode === "mock" ? (
-              <form className="space-y-5" onSubmit={handleMockLoginSubmit}>
-                <div className="space-y-2">
-                  <Label htmlFor="username">用户名</Label>
-                  <Input
-                    id="username"
-                    autoComplete="username"
-                    className="h-10 border-[#cfc8ba] bg-white/70"
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
+                    placeholder="例如: test_user"
                   />
                 </div>
 
@@ -164,19 +103,9 @@ function LoginContent() {
                   ) : (
                     <LogIn className="h-4 w-4" />
                   )}
-                  进入工作台 (Mock)
+                  进入工作台
                   <ArrowRight className="ml-auto h-4 w-4" />
                 </Button>
-                
-                <div className="pt-2 text-center text-sm">
-                   <button 
-                    type="button"
-                    onClick={() => setMode("login")}
-                    className="text-[#667064] hover:text-[#1f2520] underline underline-offset-4"
-                   >
-                     返回标准登录
-                   </button>
-                </div>
               </form>
             ) : (
               <form className="space-y-5" onSubmit={handleTokenLoginSubmit}>
@@ -202,19 +131,9 @@ function LoginContent() {
                   ) : (
                     <LogIn className="h-4 w-4" />
                   )}
-                  进入工作台 (Token)
+                  进入工作台
                   <ArrowRight className="ml-auto h-4 w-4" />
                 </Button>
-
-                <div className="pt-2 text-center text-sm">
-                   <button 
-                    type="button"
-                    onClick={() => setMode("login")}
-                    className="text-[#667064] hover:text-[#1f2520] underline underline-offset-4"
-                   >
-                     返回标准登录
-                   </button>
-                </div>
               </form>
             )}
           </div>
