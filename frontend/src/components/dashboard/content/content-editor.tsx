@@ -2,15 +2,18 @@
 
 import { useRef } from "react";
 
+import { AIEditAssistant } from "@/components/dashboard/content/ai/ai-edit-assistant";
 import { getCurrentBlockLabel } from "@/components/dashboard/content/editor/content-editor-block-menu";
 import {
   ContentEditorBody,
   ContentEditorTitle,
 } from "@/components/dashboard/content/editor/content-editor-document";
 import { ContentEditorToolbar } from "@/components/dashboard/content/editor/content-editor-toolbar";
+import { contentValueFromHtml } from "@/components/dashboard/content/editor/content-editor-utils";
 import { useContentTipTapEditor } from "@/components/dashboard/content/editor/use-content-tiptap-editor";
 import { Card } from "@/components/ui/card";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { streamAIContentEdit } from "@/lib/dashboard/api";
 import type { ContentValue } from "@/lib/content/types";
 
 type ContentEditorProps = {
@@ -35,6 +38,16 @@ export function ContentEditor({
       onContentChange,
     });
   const blockLabel = getCurrentBlockLabel(editor);
+  const aiSource = editor?.getMarkdown?.() || content.text || content.html;
+
+  const applyAIProposal = (proposal: string) => {
+    if (!editor || editor.isDestroyed) {
+      return;
+    }
+
+    editor.commands.setContent(proposal, { contentType: "markdown" });
+    onContentChange(contentValueFromHtml(editor.getHTML()));
+  };
 
   return (
     <TooltipProvider>
@@ -50,6 +63,26 @@ export function ContentEditor({
           blockLabel={blockLabel}
           characterCount={content.text.length}
           imageCount={imageCount}
+        />
+
+        <AIEditAssistant
+          title="AI 编辑正文"
+          source={aiSource}
+          disabled={!editor || !aiSource.trim()}
+          onApply={applyAIProposal}
+          onGenerate={(message, onChunk, signal) =>
+            streamAIContentEdit(
+              {
+                content: aiSource,
+                message,
+                title,
+              },
+              {
+                onChunk,
+                signal,
+              },
+            )
+          }
         />
 
         <input
