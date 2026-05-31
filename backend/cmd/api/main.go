@@ -67,6 +67,10 @@ func main() {
 
 	cookieStore := publisher.NewCookieStore(db.DB)
 	browserSessionService := services.NewBrowserSessionService(db.DB, workerClient, cookieStore)
+	if redisClient != nil {
+		browserSessionService.UseRedis(redisClient)
+		browserSessionService.StartCleanupWorker(context.Background())
+	}
 	browserSessionHandler := handlers.NewBrowserSessionHandler(browserSessionService)
 
 	e := echo.New()
@@ -99,7 +103,7 @@ func main() {
 	// User / Personal Center APIs (Protected by JWT)
 	userGroup := e.Group("/api/user/dashboard")
 	userGroup.Use(echojwt.WithConfig(middleware.GetJWTConfig(jwtSigningKey)))
-	
+
 	userGroup.GET("/stats", userDashboardHandler.GetMyStats)
 	userGroup.GET("/projects", userDashboardHandler.ListMyProjects)
 	userGroup.POST("/projects", userDashboardHandler.CreateProject)

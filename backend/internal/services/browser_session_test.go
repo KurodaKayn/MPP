@@ -63,17 +63,19 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	streamURL, err := url.Parse(resp.StreamURL)
 	require.NoError(t, err)
 	assert.Empty(t, streamURL.Query().Get("token"))
-	assert.Equal(t, resp.ExpiresAt, resp.StreamTokenExpiresAt)
+	assert.True(t, resp.StreamTokenExpiresAt.After(time.Now()))
+	assert.True(t, !resp.StreamTokenExpiresAt.After(resp.ExpiresAt))
+	assert.WithinDuration(t, time.Now().Add(5*time.Minute), resp.StreamTokenExpiresAt, 2*time.Second)
 	streamToken := streamTokenFromPath(t, streamURL.Path)
 	require.NotEmpty(t, streamToken)
 	expectedProxyPath := strings.TrimSuffix(strings.TrimPrefix(streamURL.Path, "/"), "/vnc.html") + "/websockify"
 	assert.Equal(t, expectedProxyPath, streamURL.Query().Get("path"))
 
-	streamEndpoint, err := svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken)
+	streamEndpoint, err := svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(streamEndpoint, "http://127.0.0.1:"))
 
-	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, "bad-token")
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, "bad-token", false)
 	assert.ErrorIs(t, err, services.ErrInvalidStreamToken)
 
 	// Verify DB state
@@ -87,6 +89,15 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	getStatus, err := svc.GetSession(context.Background(), userID, resp.SessionID)
 	assert.NoError(t, err)
 	assert.Equal(t, models.BrowserSessionStatusReady, getStatus.Status)
+	assert.Empty(t, getStatus.StreamURL)
+
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, true)
+	require.NoError(t, err)
+
+	getStatus, err = svc.GetSession(context.Background(), userID, resp.SessionID)
+	assert.NoError(t, err)
+	assert.Equal(t, models.BrowserSessionStatusReady, getStatus.Status)
+	assert.NotEmpty(t, getStatus.StreamURL)
 
 	// 3. Complete Session (Simulate successful login)
 	completeResp, err := svc.CompleteSession(context.Background(), userID, resp.SessionID)
