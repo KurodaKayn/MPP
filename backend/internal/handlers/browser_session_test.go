@@ -81,7 +81,7 @@ func TestBrowserSessionHandler_FullFlow(t *testing.T) {
 	c.SetParamValues("douyin")
 	setHandlerUser(c, userID)
 	require.NoError(t, h.StartSession(c))
-	
+
 	var startResp dto.StartBrowserSessionResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &startResp))
 	sessionID := startResp.SessionID
@@ -105,4 +105,35 @@ func TestBrowserSessionHandler_FullFlow(t *testing.T) {
 	setHandlerUser(c, userID)
 	require.NoError(t, h.CompleteSession(c))
 	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestBrowserSessionHandler_CancelSessionReturnsStatus(t *testing.T) {
+	e, h, _ := setupBrowserSessionHandlerTest(t)
+	userID := uuid.New()
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("platform")
+	c.SetParamValues("douyin")
+	setHandlerUser(c, userID)
+	require.NoError(t, h.StartSession(c))
+
+	var startResp dto.StartBrowserSessionResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &startResp))
+
+	req = httptest.NewRequest(http.MethodDelete, "/", nil)
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(startResp.SessionID.String())
+	setHandlerUser(c, userID)
+	require.NoError(t, h.CancelSession(c))
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	var cancelResp dto.CancelBrowserSessionResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &cancelResp))
+	assert.Equal(t, startResp.SessionID, cancelResp.SessionID)
+	assert.Equal(t, models.BrowserSessionStatusExpired, cancelResp.Status)
 }

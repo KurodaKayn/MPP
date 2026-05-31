@@ -848,6 +848,32 @@ func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
 	assert.Equal(t, cookies, passedCookies)
 }
 
+func TestGetDouyinAccount(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	empty, err := s.GetDouyinAccount(user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "douyin", empty.Platform)
+	assert.Equal(t, "unconfigured", empty.Status)
+
+	require.NoError(t, db.Create(&models.PlatformAccount{
+		UserID:    user.ID,
+		Platform:  "douyin",
+		Username:  "creator",
+		AvatarURL: "https://example.com/avatar.png",
+		Status:    models.PlatformAccountStatusConnected,
+	}).Error)
+
+	account, err := s.GetDouyinAccount(user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "creator", account.Username)
+	assert.Equal(t, "https://example.com/avatar.png", account.AvatarURL)
+	assert.Equal(t, models.PlatformAccountStatusConnected, account.Status)
+}
+
 func TestPublishProjectAdaptsPendingPublicationBeforePublishing(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
