@@ -1,0 +1,274 @@
+package services
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
+)
+
+const (
+	publishQueueName         = "mpp:publish:jobs"
+	publishLockKeyPrefix     = "mpp:publish:lock:"
+	publishLockTTL           = 30 * time.Minute
+	publishQueueBlockTimeout = 5 * time.Second
+)
+
+var (
+	ErrPublicationAlreadyPublishing = errors.New("publication is already publishing")
+	ErrPublishQueueEmpty            = errors.New("publish queue empty")
+)
+
+type PublishJob struct {
+	JobID      uuid.UUID `json:"job_id"`
+	ProjectID  uuid.UUID `json:"project_id"`
+	UserID     uuid.UUID `json:"user_id"`
+	Platform   string    `json:"platform"`
+	EnqueuedAt time.Time `json:"enqueued_at"`
+}
+
+type PublishQueue interface {
+	Enqueue(ctx context.Context, job PublishJob) error
+	Dequeue(ctx context.Context) (PublishJob, error)
+	AcquireLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error)
+	LockValue(ctx context.Context, key string) (string, error)
+	ReleaseLock(ctx context.Context, key, value string) error
+}
+
+type RedisPublishQueue struct {
+	client    *redis.Client
+	queueName string
+}
+
+func NewRedisPublishQueue(client *redis.Client) *RedisPublishQueue {
+	return &RedisPublishQueue{
+		client:    client,
+		queueName: publishQueueName,
+	}
+}
+
+func (q *RedisPublishQueue) Enqueue(ctx context.Context, job PublishJob) error {
+	payload, err := json.Marshal(job)
+	if err != nil {
+		return err
+	}
+	return q.client.RPush(ctx, q.queueName, payload).Err()
+}
+
+func (q *RedisPublishQueue) Dequeue(ctx context.Context) (PublishJob, error) {
+	result, err := q.client.BLPop(ctx, publishQueueBlockTimeout, q.queueName).Result()
+	if errors.Is(err, redis.Nil) {
+		return PublishJob{}, ErrPublishQueueEmpty
+	}
+	if err != nil {
+		return PublishJob{}, err
+	}
+	if len(result) != 2 {
+		return PublishJob{}, fmt.Errorf("unexpected redis queue response")
+	}
+
+	var job PublishJob
+	if err := json.Unmarshal([]byte(result[1]), &job); err != nil {
+		return PublishJob{}, err
+	}
+	return job, nil
+}
+
+func (q *RedisPublishQueue) AcquireLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
+	return q.client.SetNX(ctx, key, value, ttl).Result()
+}
+
+func (q *RedisPublishQueue) LockValue(ctx context.Context, key string) (string, error) {
+	value, err := q.client.Get(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", nil
+	}
+	return value, err
+}
+
+func (q *RedisPublishQueue) ReleaseLock(ctx context.Context, key, value string) error {
+	const releaseLockScript = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+	return redis.call("DEL", KEYS[1])
+end
+return 0
+`
+	return q.client.Eval(ctx, releaseLockScript, []string{key}, value).Err()
+}
+
+func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
+	if s.publishQueue == nil {
+		return s.PublishProject(projectID, platform, scopeUserID)
+	}
+	if scopeUserID == nil {
+		return nil, ErrForbidden
+	}
+
+	project, pub, err := s.preparePublishJob(projectID, platform, *scopeUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	job := PublishJob{
+		JobID:      uuid.New(),
+		ProjectID:  project.ID,
+		UserID:     *scopeUserID,
+		Platform:   platform,
+		EnqueuedAt: time.Now().UTC(),
+	}
+	lockKey := publishLockKey(project.ID, platform)
+	acquired, err := s.publishQueue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
+	if err != nil {
+		return nil, err
+	}
+	if !acquired {
+		return nil, ErrPublicationAlreadyPublishing
+	}
+
+	if err := s.markPublicationQueued(&pub, job.EnqueuedAt); err != nil {
+		_ = s.publishQueue.ReleaseLock(ctx, lockKey, job.JobID.String())
+		return nil, err
+	}
+	if err := s.publishQueue.Enqueue(ctx, job); err != nil {
+		_ = s.publishQueue.ReleaseLock(ctx, lockKey, job.JobID.String())
+		_ = s.markPublicationFailed(project.ID, platform, "failed to enqueue publish job: "+err.Error())
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"status":      models.PublicationStatusPublishing,
+		"job_id":      job.JobID.String(),
+		"platform":    platform,
+		"queued_at":   job.EnqueuedAt,
+		"publish_url": pub.PublishURL,
+	}, nil
+}
+
+func (s *DashboardService) BatchEnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID) (map[string]map[string]interface{}, error) {
+	results := make(map[string]map[string]interface{})
+	for _, platform := range platforms {
+		resp, err := s.EnqueuePublishProject(ctx, projectID, platform, scopeUserID)
+		if err != nil {
+			results[platform] = map[string]interface{}{"status": "error", "message": err.Error()}
+			continue
+		}
+		results[platform] = resp
+	}
+	return results, nil
+}
+
+func (s *DashboardService) StartPublishWorker(ctx context.Context) {
+	if s.publishQueue == nil {
+		return
+	}
+
+	go s.runPublishWorker(ctx)
+}
+
+func (s *DashboardService) runPublishWorker(ctx context.Context) {
+	for {
+		job, err := s.publishQueue.Dequeue(ctx)
+		if errors.Is(err, ErrPublishQueueEmpty) {
+			continue
+		}
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			log.Printf("publish queue dequeue failed: %v", err)
+			time.Sleep(time.Second)
+			continue
+		}
+
+		s.processPublishJob(ctx, job)
+	}
+}
+
+func (s *DashboardService) processPublishJob(ctx context.Context, job PublishJob) {
+	if job.JobID == uuid.Nil || job.ProjectID == uuid.Nil || job.UserID == uuid.Nil || strings.TrimSpace(job.Platform) == "" {
+		log.Printf("discarding invalid publish job: %+v", job)
+		return
+	}
+
+	lockKey := publishLockKey(job.ProjectID, job.Platform)
+	lockValue, err := s.publishQueue.LockValue(ctx, lockKey)
+	if err != nil {
+		log.Printf("publish lock read failed for job %s: %v", job.JobID, err)
+		return
+	}
+	if lockValue != job.JobID.String() {
+		log.Printf("skipping publish job %s because lock is not owned by this job", job.JobID)
+		return
+	}
+
+	if _, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID); err != nil {
+		log.Printf("publish job %s failed: %v", job.JobID, err)
+		if markErr := s.markPublicationFailed(job.ProjectID, job.Platform, err.Error()); markErr != nil {
+			log.Printf("failed to mark publish job %s as failed: %v", job.JobID, markErr)
+		}
+	}
+
+	if err := s.publishQueue.ReleaseLock(ctx, lockKey, job.JobID.String()); err != nil {
+		log.Printf("publish lock release failed for job %s: %v", job.JobID, err)
+	}
+}
+
+func (s *DashboardService) preparePublishJob(projectID uuid.UUID, platform string, userID uuid.UUID) (models.Project, models.ProjectPlatformPublication, error) {
+	var project models.Project
+	if err := s.db.Where("id = ? AND user_id = ?", projectID, userID).First(&project).Error; err != nil {
+		return models.Project{}, models.ProjectPlatformPublication{}, ErrForbidden
+	}
+
+	var pub models.ProjectPlatformPublication
+	if err := s.db.Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
+		return models.Project{}, models.ProjectPlatformPublication{}, fmt.Errorf("publication record not found for platform: %s", platform)
+	}
+	if !pub.Enabled || pub.Status == models.PublicationStatusDisabled {
+		return models.Project{}, models.ProjectPlatformPublication{}, ErrPublicationDisabled
+	}
+	if _, err := publisher.Factory.GetPublisher(platform); err != nil {
+		return models.Project{}, models.ProjectPlatformPublication{}, err
+	}
+	if pub.Status != models.PublicationStatusAdapted && pub.Status != models.PublicationStatusPublishing {
+		p, err := publisher.Factory.GetPublisher(platform)
+		if err != nil {
+			return models.Project{}, models.ProjectPlatformPublication{}, err
+		}
+		if err := s.adaptPublicationForPublish(&project, &pub, p); err != nil {
+			return models.Project{}, models.ProjectPlatformPublication{}, err
+		}
+	}
+
+	return project, pub, nil
+}
+
+func (s *DashboardService) markPublicationQueued(pub *models.ProjectPlatformPublication, queuedAt time.Time) error {
+	return s.db.Model(pub).Updates(map[string]interface{}{
+		"status":          models.PublicationStatusPublishing,
+		"error_message":   "",
+		"last_attempt_at": &queuedAt,
+	}).Error
+}
+
+func (s *DashboardService) markPublicationFailed(projectID uuid.UUID, platform, message string) error {
+	return s.db.Model(&models.ProjectPlatformPublication{}).
+		Where("project_id = ? AND platform = ?", projectID, platform).
+		Updates(map[string]interface{}{
+			"status":        models.PublicationStatusFailed,
+			"error_message": sanitizeUserFacingErrorMessage(message),
+			"retry_count":   gorm.Expr("retry_count + ?", 1),
+		}).Error
+}
+
+func publishLockKey(projectID uuid.UUID, platform string) string {
+	return publishLockKeyPrefix + projectID.String() + ":" + platform
+}
