@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   syncProjectPrepublish: vi.fn(),
   updateDashboardProject: vi.fn(),
+  waitForProjectPublications: vi.fn(),
 }));
 
 vi.mock("@/lib/dashboard/api", () => ({
@@ -31,6 +32,7 @@ vi.mock("@/lib/dashboard/api", () => ({
   publishProject: mocks.publishProject,
   syncProjectPrepublish: mocks.syncProjectPrepublish,
   updateDashboardProject: mocks.updateDashboardProject,
+  waitForProjectPublications: mocks.waitForProjectPublications,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -95,6 +97,7 @@ describe("useContentPageController", () => {
     mocks.toastSuccess.mockReset();
     mocks.syncProjectPrepublish.mockReset();
     mocks.updateDashboardProject.mockReset();
+    mocks.waitForProjectPublications.mockReset();
     useContentPageStore.getState().resetForCreate();
   });
 
@@ -276,7 +279,27 @@ describe("useContentPageController", () => {
     mocks.updateDashboardProject.mockResolvedValue({
       id: "project-1",
     });
-    mocks.publishProject.mockResolvedValue({ status: "published" });
+    mocks.publishProject.mockResolvedValue({
+      job_id: "job-1",
+      status: "publishing",
+    });
+    mocks.waitForProjectPublications.mockResolvedValue({
+      items: [
+        {
+          adapted_content: {},
+          config: {},
+          created_at: "2026-05-30T12:00:00.000Z",
+          enabled: true,
+          id: "pub-2",
+          platform: "zhihu",
+          publish_url: "https://example.com/zhihu",
+          retry_count: 0,
+          status: "published",
+          updated_at: "2026-05-30T12:00:00.000Z",
+        },
+      ],
+      project_id: "project-1",
+    });
 
     const view = renderController("project-1");
 
@@ -315,6 +338,12 @@ describe("useContentPageController", () => {
       title: "Post title",
     });
     expect(mocks.publishProject).toHaveBeenCalledWith("project-1", "zhihu");
+    expect(mocks.waitForProjectPublications).toHaveBeenCalledWith("project-1", [
+      "zhihu",
+    ]);
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("修改并发布完成", {
+      description: "已发布到 知乎。",
+    });
 
     view.unmount();
   });

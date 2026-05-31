@@ -12,6 +12,7 @@ import {
   publishProject,
   syncProjectPrepublish,
   updateDashboardProject,
+  waitForProjectPublications,
   type AdaptedContent,
   type CreateProjectInput,
   type ProjectPublications,
@@ -327,17 +328,25 @@ export function useContentPageController(projectId?: string) {
         if (result.status === "failed" || result.status === "error") {
           throw new Error(result.error_message || `${platform} 发布失败`);
         }
-        return platform;
+        return {
+          platform,
+          status: result.status,
+        };
       }),
     );
 
     const succeeded: PublishPlatform[] = [];
     const failed: { message: string; platform: PublishPlatform }[] = [];
+    const pendingPlatforms: PublishPlatform[] = [];
 
     results.forEach((result, index) => {
       const platform = selectedPlatforms[index];
       if (result.status === "fulfilled") {
-        succeeded.push(result.value);
+        if (result.value.status === "publishing") {
+          pendingPlatforms.push(platform);
+          return;
+        }
+        succeeded.push(result.value.platform);
         return;
       }
 
@@ -349,6 +358,40 @@ export function useContentPageController(projectId?: string) {
         platform,
       });
     });
+
+    if (pendingPlatforms.length > 0) {
+      const finalPublications = await waitForProjectPublications(
+        projectId,
+        selectedPlatforms,
+      );
+      const finalPublicationMap = new Map(
+        finalPublications.items.map((publication) => [
+          publication.platform,
+          publication,
+        ]),
+      );
+
+      pendingPlatforms.forEach((platform) => {
+        const publication = finalPublicationMap.get(platform);
+        if (!publication) {
+          failed.push({
+            message: `${platform} 发布状态未返回`,
+            platform,
+          });
+          return;
+        }
+
+        if (publication.status === "published") {
+          succeeded.push(platform);
+          return;
+        }
+
+        failed.push({
+          message: publication.error_message || `${platform} 发布失败`,
+          platform,
+        });
+      });
+    }
 
     return { failed, succeeded };
   };
@@ -437,14 +480,11 @@ export function useContentPageController(projectId?: string) {
         return;
       }
 
-      toast.success(
-        projectId ? "修改已保存，发布任务已提交" : "发布任务已提交",
-        {
-          description: `后台将继续发布到 ${getSelectedPlatformLabels(
-            result.succeeded,
-          ).join("、")}。`,
-        },
-      );
+      toast.success(projectId ? "修改并发布完成" : "发布完成", {
+        description: `已发布到 ${getSelectedPlatformLabels(
+          result.succeeded,
+        ).join("、")}。`,
+      });
     } catch (requestError) {
       toast.error("发布请求失败", {
         description:
