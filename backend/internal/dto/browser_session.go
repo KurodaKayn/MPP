@@ -34,3 +34,8 @@ type CompleteBrowserSessionResponse struct {
 	} `json:"account"`
 	Message string `json:"message"`
 }
+
+type CancelBrowserSessionResponse struct {
+	SessionID uuid.UUID `json:"session_id"`
+	Status    string    `json:"status"`
+}

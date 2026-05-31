@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -34,6 +36,9 @@ func setupBrowserSessionHandlerTest(t *testing.T) (*echo.Echo, *handlers.Browser
 	require.NoError(t, err)
 
 	worker := publisher.NewMockBrowserWorkerClient()
+	t.Cleanup(func() {
+		require.NoError(t, worker.Close())
+	})
 	store := publisher.NewCookieStore(db)
 	svc := services.NewBrowserSessionService(db, worker, store)
 	h := handlers.NewBrowserSessionHandler(svc)
@@ -81,7 +86,7 @@ func TestBrowserSessionHandler_FullFlow(t *testing.T) {
 	c.SetParamValues("douyin")
 	setHandlerUser(c, userID)
 	require.NoError(t, h.StartSession(c))
-	
+
 	var startResp dto.StartBrowserSessionResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &startResp))
 	sessionID := startResp.SessionID
@@ -105,4 +110,68 @@ func TestBrowserSessionHandler_FullFlow(t *testing.T) {
 	setHandlerUser(c, userID)
 	require.NoError(t, h.CompleteSession(c))
 	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestBrowserSessionHandler_CancelSessionReturnsStatus(t *testing.T) {
+	e, h, _ := setupBrowserSessionHandlerTest(t)
+	userID := uuid.New()
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("platform")
+	c.SetParamValues("douyin")
+	setHandlerUser(c, userID)
+	require.NoError(t, h.StartSession(c))
+
+	var startResp dto.StartBrowserSessionResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &startResp))
+
+	req = httptest.NewRequest(http.MethodDelete, "/", nil)
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(startResp.SessionID.String())
+	setHandlerUser(c, userID)
+	require.NoError(t, h.CancelSession(c))
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	var cancelResp dto.CancelBrowserSessionResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &cancelResp))
+	assert.Equal(t, startResp.SessionID, cancelResp.SessionID)
+	assert.Equal(t, models.BrowserSessionStatusExpired, cancelResp.Status)
+}
+
+func TestBrowserSessionHandler_StreamSessionUsesMockStream(t *testing.T) {
+	e, h, _ := setupBrowserSessionHandlerTest(t)
+	userID := uuid.New()
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("platform")
+	c.SetParamValues("douyin")
+	setHandlerUser(c, userID)
+	require.NoError(t, h.StartSession(c))
+
+	var startResp dto.StartBrowserSessionResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &startResp))
+	streamURL, err := url.Parse(startResp.StreamURL)
+	require.NoError(t, err)
+	streamPathParts := strings.SplitN(streamURL.Path, "/stream/", 2)
+	require.Len(t, streamPathParts, 2)
+	streamWildcard := strings.TrimPrefix(streamPathParts[1], "/")
+
+	req = httptest.NewRequest(http.MethodGet, startResp.StreamURL, nil)
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+	c.SetParamNames("id", "*")
+	c.SetParamValues(startResp.SessionID.String(), streamWildcard)
+	setHandlerUser(c, userID)
+
+	require.NoError(t, h.StreamSession(c))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "Mock remote browser session")
 }

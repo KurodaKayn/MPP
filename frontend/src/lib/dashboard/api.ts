@@ -156,6 +156,59 @@ export type XConnectionTestResult = {
   publish_access: RequirementStatus;
 };
 
+export type DouyinAccount = {
+  platform: "douyin";
+  username?: string;
+  avatar_url?: string;
+  status: "unconfigured" | "untested" | "connected" | "failed";
+  last_tested_at?: string;
+  last_test_error?: string;
+  updated_at?: string;
+};
+
+export type BrowserSessionStatus =
+  | "pending"
+  | "ready"
+  | "login_detected"
+  | "capturing"
+  | "connected"
+  | "expired"
+  | "failed";
+
+export type BrowserSession = {
+  session_id: string;
+  platform: string;
+  status: BrowserSessionStatus;
+  stream_url?: string;
+  stream_token_expires_at?: string;
+  expires_at: string;
+  message?: string;
+};
+
+export type StartBrowserSessionResult = {
+  session_id: string;
+  status: BrowserSessionStatus;
+  stream_url: string;
+  stream_token_expires_at: string;
+  expires_at: string;
+};
+
+export type CompleteBrowserSessionResult = {
+  session_id: string;
+  platform: string;
+  status: BrowserSessionStatus;
+  account: {
+    username: string;
+    avatar_url: string;
+  };
+  message: string;
+};
+
+export type CancelBrowserSessionResult = {
+  session_id: string;
+  status: BrowserSessionStatus;
+};
+
 export type ProjectListItem = {
   id: string;
   user_id: string;
@@ -378,6 +431,39 @@ export function testWechatConnection(input: SaveWechatAccountInput) {
       body: JSON.stringify(input),
       method: "POST",
     },
+  );
+}
+
+export function getDouyinAccount() {
+  return fetchDashboard<DouyinAccount>(
+    "/api/user/dashboard/settings/douyin/account",
+  );
+}
+
+export function startBrowserSession(platform: string) {
+  return fetchDashboard<StartBrowserSessionResult>(
+    `/api/user/dashboard/settings/platforms/${encodeURIComponent(platform)}/browser-session`,
+    { method: "POST" },
+  );
+}
+
+export function getBrowserSession(sessionId: string) {
+  return fetchDashboard<BrowserSession>(
+    `/api/user/dashboard/browser-sessions/${encodeURIComponent(sessionId)}`,
+  );
+}
+
+export function completeBrowserSession(sessionId: string) {
+  return fetchDashboard<CompleteBrowserSessionResult>(
+    `/api/user/dashboard/browser-sessions/${encodeURIComponent(sessionId)}/complete`,
+    { method: "POST" },
+  );
+}
+
+export function cancelBrowserSession(sessionId: string) {
+  return fetchDashboard<CancelBrowserSessionResult>(
+    `/api/user/dashboard/browser-sessions/${encodeURIComponent(sessionId)}`,
+    { method: "DELETE" },
   );
 }
 
