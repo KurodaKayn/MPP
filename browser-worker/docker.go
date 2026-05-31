@@ -66,7 +66,7 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 		return "", "", 0, 0, fmt.Errorf("failed to start container: %w", err)
 	}
 
-	// Fixed ports don't need a retry loop for discovery, but we wait for health
+	// Give Chromium and noVNC a moment to bind before discovering mapped ports.
 	time.Sleep(5 * time.Second)
 
 	json, err := m.cli.ContainerInspect(ctx, resp.ID)
