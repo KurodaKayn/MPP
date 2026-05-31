@@ -62,7 +62,7 @@ func NewAIServiceClient(baseURL string, httpClient *http.Client) *AIServiceClien
 }
 
 func (c *AIServiceClient) EditContent(ctx context.Context, req dto.AIEditContentRequest) (*dto.AIEditContentResponse, error) {
-	if strings.TrimSpace(req.Content) == "" || strings.TrimSpace(req.Message) == "" {
+	if strings.TrimSpace(req.Message) == "" {
 		return nil, ErrInvalidAIEditRequest
 	}
 
@@ -74,7 +74,7 @@ func (c *AIServiceClient) EditContent(ctx context.Context, req dto.AIEditContent
 }
 
 func (c *AIServiceClient) StreamEditContent(ctx context.Context, req dto.AIEditContentRequest) (*AIServiceStream, error) {
-	if strings.TrimSpace(req.Content) == "" || strings.TrimSpace(req.Message) == "" {
+	if strings.TrimSpace(req.Message) == "" {
 		return nil, ErrInvalidAIEditRequest
 	}
 	return c.postStream(ctx, "/content/edit/stream", req)
