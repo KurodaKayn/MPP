@@ -1,13 +1,14 @@
 "use client";
 
 import {
+  Bot,
   Check,
   FileText,
   GitCompareArrows,
   Loader2,
-  Sparkles,
   Square,
   X,
+  ArrowBigUpDash,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -24,7 +25,7 @@ type AIEditAssistantProps = {
   className?: string;
   disabled?: boolean;
   format?: AIProposalFormat;
-  onApply: (proposal: string) => void;
+  onApply: (proposal: string) => void | Promise<void>;
   onGenerate: (
     message: string,
     onChunk: (chunk: string, accumulated: string) => void,
@@ -52,9 +53,10 @@ export function AIEditAssistant({
   const [snapshot, setSnapshot] = useState(source);
   const [status, setStatus] = useState<AIEditStatus>("idle");
   const [view, setView] = useState<AIReviewView>("preview");
+  const [isApplying, setIsApplying] = useState(false);
   const isStreaming = status === "streaming";
   const canGenerate = Boolean(
-    !disabled && !isStreaming && message.trim() && source.trim(),
+    !disabled && !isStreaming && !isApplying && message.trim() && source.trim(),
   );
   const hasProposal = Boolean(proposal.trim());
 
@@ -99,14 +101,23 @@ export function AIEditAssistant({
     setStatus(proposal.trim() ? "ready" : "idle");
   };
 
-  const accept = () => {
+  const accept = async () => {
     if (!proposal.trim()) {
       return;
     }
-    onApply(proposal);
-    setMessage("");
-    setProposal("");
-    setStatus("idle");
+    setIsApplying(true);
+    try {
+      await onApply(proposal);
+      setMessage("");
+      setProposal("");
+      setStatus("idle");
+    } catch (error) {
+      toast.error("采纳失败", {
+        description: error instanceof Error ? error.message : "请稍后重试。",
+      });
+    } finally {
+      setIsApplying(false);
+    }
   };
 
   const reject = () => {
@@ -126,7 +137,7 @@ export function AIEditAssistant({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold">
-            <Sparkles className="size-4" />
+            <Bot className="size-4" />
             {title}
           </div>
         </div>
@@ -175,7 +186,7 @@ export function AIEditAssistant({
               {isStreaming ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                <Sparkles className="size-4" />
+                <ArrowBigUpDash className="size-4" />
               )}
               生成
             </Button>
@@ -193,10 +204,14 @@ export function AIEditAssistant({
               type="button"
               size="sm"
               variant="outline"
-              onClick={accept}
-              disabled={!hasProposal || isStreaming}
+              onClick={() => void accept()}
+              disabled={!hasProposal || isStreaming || isApplying}
             >
-              <Check className="size-4" />
+              {isApplying ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Check className="size-4" />
+              )}
               采纳
             </Button>
             <Button
