@@ -138,7 +138,8 @@ func (f *fakeWechatTester) Test(appID, appSecret string) dto.WechatConnectionTes
 }
 
 type fakePlatformPublisher struct {
-	config datatypes.JSON
+	config         datatypes.JSON
+	accountCookies datatypes.JSON
 }
 
 func (f *fakePlatformPublisher) ValidateConfig(config []byte) error {
@@ -151,6 +152,9 @@ func (f *fakePlatformPublisher) AdaptContent(project *models.Project) ([]byte, e
 
 func (f *fakePlatformPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
 	f.config = append(datatypes.JSON(nil), pub.Config...)
+	if account != nil {
+		f.accountCookies = append(datatypes.JSON(nil), account.Cookies...)
+	}
 	return "remote-id", "https://example.com/published", nil
 }
 
@@ -796,6 +800,52 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	assert.Equal(t, "wx-saved", config["app_id"])
 	assert.Equal(t, "saved-secret", config["app_secret"])
 	assert.Equal(t, "Title", config["title"])
+}
+
+func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &fakePlatformPublisher{}
+	publisher.Factory.Register("douyin", fakePublisher)
+	defer publisher.Factory.Register("douyin", &publisher.DouyinPublisher{})
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "douyin",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	cookies := []publisher.Cookie{
+		{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/", Secure: true},
+	}
+	require.NoError(t, publisher.NewCookieStore(db).Save(context.Background(), user.ID, "douyin", cookies, publisher.RemoteAccountProfile{
+		Username: "creator",
+	}))
+
+	result, err := s.PublishProject(project.ID, "douyin", &user.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Contains(t, string(fakePublisher.accountCookies), "secret-value")
+	assert.NotContains(t, string(fakePublisher.accountCookies), "ciphertext")
+
+	var passedCookies []publisher.Cookie
+	require.NoError(t, json.Unmarshal(fakePublisher.accountCookies, &passedCookies))
+	assert.Equal(t, cookies, passedCookies)
 }
 
 func TestPublishProjectAdaptsPendingPublicationBeforePublishing(t *testing.T) {
