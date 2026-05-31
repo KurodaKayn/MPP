@@ -70,6 +70,10 @@ export type UpdateProjectInput = CreateProjectInput;
 
 export type SaveProjectContentInput = Omit<CreateProjectInput, "platforms">;
 
+export type SaveProjectPlatformsInput = {
+  platforms: string[];
+};
+
 export type GetProjectPublicationsOptions = {
   includeContent?: boolean;
 };
@@ -430,6 +434,19 @@ export function saveDashboardProjectContent(
 ) {
   return fetchDashboard<ProjectDetail>(
     `/api/user/dashboard/projects/${projectId}/content`,
+    {
+      body: JSON.stringify(input),
+      method: "PATCH",
+    },
+  );
+}
+
+export function saveDashboardProjectPlatforms(
+  projectId: string,
+  input: SaveProjectPlatformsInput,
+) {
+  return fetchDashboard<ProjectDetail>(
+    `/api/user/dashboard/projects/${projectId}/platforms`,
     {
       body: JSON.stringify(input),
       method: "PATCH",
