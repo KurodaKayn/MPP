@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,13 +49,21 @@ type DomainRule struct {
 	Purpose string   `json:"purpose"`
 }
 
+type CookieRequirement struct {
+	Name           string   `json:"name"`
+	DomainSuffixes []string `json:"domain_suffixes"`
+	Required       bool     `json:"required"`
+	Preserve       bool     `json:"preserve"`
+}
+
 type StartWorkerSessionRequest struct {
-	SessionID      uuid.UUID    `json:"session_id"`
-	UserID         uuid.UUID    `json:"user_id"`
-	Platform       string       `json:"platform"`
-	LoginURL       string       `json:"login_url"`
-	AllowedDomains []DomainRule `json:"allowed_domains"`
-	TTLSeconds     int          `json:"ttl_seconds"`
+	SessionID       uuid.UUID           `json:"session_id"`
+	UserID          uuid.UUID           `json:"user_id"`
+	Platform        string              `json:"platform"`
+	LoginURL        string              `json:"login_url"`
+	AllowedDomains  []DomainRule        `json:"allowed_domains"`
+	RequiredCookies []CookieRequirement `json:"required_cookies"`
+	TTLSeconds      int                 `json:"ttl_seconds"`
 }
 
 type StartWorkerSessionResponse struct {
@@ -76,6 +85,7 @@ type WorkerSession struct {
 	ContainerID       string
 	CDPEndpointRef    string
 	StreamEndpointRef string
+	RequiredCookies   []CookieRequirement
 	ExpiresAt         time.Time
 	CancelFunc        context.CancelFunc
 }
@@ -126,6 +136,7 @@ func main() {
 			ContainerID:       containerID,
 			CDPEndpointRef:    fmt.Sprintf("ws://localhost:%d", cdpPort),
 			StreamEndpointRef: fmt.Sprintf("http://localhost:%d", streamPort),
+			RequiredCookies:   req.RequiredCookies,
 			ExpiresAt:         time.Now().Add(time.Duration(req.TTLSeconds) * time.Second),
 			CancelFunc:        sessCancel,
 		}
@@ -165,7 +176,7 @@ func main() {
 	e.POST("/internal/browser-sessions/:ref/capture", func(c echo.Context) error {
 		ref := c.Param("ref")
 		sm.mu.RLock()
-		_, ok := sm.sessions[ref]
+		session, ok := sm.sessions[ref]
 		sm.mu.RUnlock()
 
 		if !ok {
@@ -176,9 +187,12 @@ func main() {
 
 		// Get WebSocket URL using Host spoofing
 		var wsURL string
-		cdpPort := 9222 
+		cdpPort, err := endpointPort(session.CDPEndpointRef)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Invalid CDP endpoint: %v", err))
+		}
 		reqURL := fmt.Sprintf("http://127.0.0.1:%d/json", cdpPort)
-		
+
 		for i := 0; i < 5; i++ {
 			httpReq, _ := http.NewRequest("GET", reqURL, nil)
 			httpReq.Host = "localhost" // Bypass Host validation
@@ -202,9 +216,13 @@ func main() {
 					}
 				}
 				resp.Body.Close()
-				if wsURL != "" { break }
+				if wsURL != "" {
+					break
+				}
 			}
-			if err != nil { log.Printf("Capture check error: %v", err) }
+			if err != nil {
+				log.Printf("Capture check error: %v", err)
+			}
 			time.Sleep(1 * time.Second)
 		}
 
@@ -220,7 +238,7 @@ func main() {
 
 		var chromeCookies []*network.Cookie
 		var username string
-		
+
 		err = chromedp.Run(ctx,
 			chromedp.ActionFunc(func(ctx context.Context) error {
 				var err error
@@ -248,6 +266,16 @@ func main() {
 			cookies = append(cookies, Cookie{
 				Name: cc.Name, Value: cc.Value, Domain: cc.Domain, Path: cc.Path,
 				Expires: cc.Expires, Secure: cc.Secure, HttpOnly: cc.HTTPOnly,
+			})
+		}
+
+		if ok, _ := validateRequiredCookies(cookies, session.RequiredCookies); !ok {
+			return c.JSON(http.StatusOK, CaptureWorkerSessionResponse{
+				Status:  "login_not_detected",
+				Cookies: cookies,
+				Account: RemoteAccountProfile{
+					Username: username,
+				},
 			})
 		}
 
@@ -282,4 +310,49 @@ func main() {
 	})
 
 	e.Logger.Fatal(e.Start(":8081"))
+}
+
+func endpointPort(endpoint string) (int, error) {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return 0, err
+	}
+	var port int
+	if _, err := fmt.Sscanf(u.Port(), "%d", &port); err != nil {
+		return 0, fmt.Errorf("missing endpoint port")
+	}
+	return port, nil
+}
+
+func validateRequiredCookies(cookies []Cookie, requirements []CookieRequirement) (bool, []string) {
+	var missing []string
+	for _, req := range requirements {
+		if !req.Required {
+			continue
+		}
+		if !hasRequiredCookie(cookies, req) {
+			missing = append(missing, req.Name)
+		}
+	}
+	return len(missing) == 0, missing
+}
+
+func hasRequiredCookie(cookies []Cookie, req CookieRequirement) bool {
+	for _, cookie := range cookies {
+		if cookie.Name != req.Name || cookie.Value == "" {
+			continue
+		}
+		for _, suffix := range req.DomainSuffixes {
+			if domainMatches(cookie.Domain, suffix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func domainMatches(domain, suffix string) bool {
+	domain = strings.TrimPrefix(strings.ToLower(domain), ".")
+	suffix = strings.TrimPrefix(strings.ToLower(suffix), ".")
+	return domain == suffix || strings.HasSuffix(domain, "."+suffix)
 }

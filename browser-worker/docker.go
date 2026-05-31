@@ -29,9 +29,6 @@ func NewDockerManager() (*DockerManager, error) {
 
 func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID string, adapterLoginURL string) (containerID string, containerIP string, cdpPort, streamPort int, err error) {
 	imageName := "mpp-browser-runtime"
-	
-	fixedCDPPort := 9222
-	fixedStreamPort := 6080
 
 	config := &container.Config{
 		Image: imageName,
@@ -47,8 +44,8 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 
 	hostConfig := &container.HostConfig{
 		PortBindings: nat.PortMap{
-			"9222/tcp": []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: fmt.Sprintf("%d", fixedCDPPort)}}, 
-			"6080/tcp": []nat.PortBinding{{HostIP: "0.0.0.0", HostPort: fmt.Sprintf("%d", fixedStreamPort)}},
+			"9222/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
+			"6080/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
 		},
 		Resources: container.Resources{
 			Memory:   1024 * 1024 * 1024,
@@ -56,23 +53,9 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 		},
 	}
 
-	// Important: We must remove any existing container using these ports first
-	// We'll search for any container with our prefix or using our ports
 	containerName := "mpp-session-" + sessionID
-	
-	// Clean up previous attempts to avoid "port already allocated"
+
 	m.cli.ContainerRemove(ctx, containerName, types.ContainerRemoveOptions{Force: true})
-	
-	// Also clean up any other container that might be holding the ports
-	containers, _ := m.cli.ContainerList(ctx, types.ContainerListOptions{All: true})
-	for _, c := range containers {
-		for _, name := range c.Names {
-			if strings.Contains(name, "mpp-session") {
-				m.cli.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{Force: true})
-				break
-			}
-		}
-	}
 
 	resp, err := m.cli.ContainerCreate(ctx, config, hostConfig, nil, nil, containerName)
 	if err != nil {
@@ -99,9 +82,30 @@ func (m *DockerManager) StartBrowserContainer(ctx context.Context, sessionID str
 		}
 	}
 
-	log.Printf("Started container %s with FIXED PORTS: CDP=%d, Stream=%d", resp.ID[:12], fixedCDPPort, fixedStreamPort)
+	cdpPort, err = mappedHostPort(json.NetworkSettings.Ports, "9222/tcp")
+	if err != nil {
+		return "", "", 0, 0, err
+	}
+	streamPort, err = mappedHostPort(json.NetworkSettings.Ports, "6080/tcp")
+	if err != nil {
+		return "", "", 0, 0, err
+	}
 
-	return resp.ID, containerIPAddr, fixedCDPPort, fixedStreamPort, nil
+	log.Printf("Started container %s with ports: CDP=%d, Stream=%d", resp.ID[:12], cdpPort, streamPort)
+
+	return resp.ID, containerIPAddr, cdpPort, streamPort, nil
+}
+
+func mappedHostPort(ports nat.PortMap, port string) (int, error) {
+	bindings := ports[nat.Port(port)]
+	if len(bindings) == 0 || bindings[0].HostPort == "" {
+		return 0, fmt.Errorf("container port %s is not mapped", port)
+	}
+	var hostPort int
+	if _, err := fmt.Sscanf(bindings[0].HostPort, "%d", &hostPort); err != nil {
+		return 0, fmt.Errorf("invalid mapped port %q: %w", bindings[0].HostPort, err)
+	}
+	return hostPort, nil
 }
 
 func (m *DockerManager) StopContainer(ctx context.Context, id string) error {

@@ -2,9 +2,10 @@ package services
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
@@ -17,10 +18,10 @@ import (
 )
 
 var (
-	ErrActiveSessionExists = errors.New("an active session already exists for this platform")
+	ErrActiveSessionExists  = errors.New("an active session already exists for this platform")
 	ErrPlatformNotSupported = errors.New("platform does not support remote browser sessions")
-	ErrSessionNotFound     = errors.New("session not found")
-	ErrInvalidStreamToken  = errors.New("invalid or expired stream token")
+	ErrSessionNotFound      = errors.New("session not found")
+	ErrInvalidStreamToken   = errors.New("invalid or expired stream token")
 )
 
 type BrowserSessionService struct {
@@ -91,12 +92,13 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 
 	// 4. Call worker
 	req := publisher.StartWorkerSessionRequest{
-		SessionID:      sessionID,
-		UserID:         userID,
-		Platform:       platform,
-		LoginURL:       adapter.LoginURL(),
-		AllowedDomains: adapter.AllowedDomains(),
-		TTLSeconds:     900, // 15 mins
+		SessionID:       sessionID,
+		UserID:          userID,
+		Platform:        platform,
+		LoginURL:        adapter.LoginURL(),
+		AllowedDomains:  adapter.AllowedDomains(),
+		RequiredCookies: adapter.RequiredCookies(),
+		TTLSeconds:      900, // 15 mins
 	}
 	req.Viewport.Width = 1366
 	req.Viewport.Height = 768
@@ -156,6 +158,35 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 
 	// Rotated token logic could go here if needed for reconnect
 	return resp, nil
+}
+
+func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uuid.UUID, id uuid.UUID, token string) (string, error) {
+	if token == "" {
+		return "", ErrInvalidStreamToken
+	}
+
+	var session models.RemoteBrowserSession
+	if err := s.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&session).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", ErrSessionNotFound
+		}
+		return "", err
+	}
+
+	if time.Now().After(session.ExpiresAt) {
+		return "", ErrInvalidStreamToken
+	}
+
+	tokenHash := hashStreamToken(token)
+	if subtle.ConstantTimeCompare([]byte(tokenHash), []byte(session.ConnectTokenHash)) != 1 {
+		return "", ErrInvalidStreamToken
+	}
+
+	if session.StreamEndpointRef == "" {
+		return "", ErrSessionNotFound
+	}
+
+	return session.StreamEndpointRef, nil
 }
 
 func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid.UUID, id uuid.UUID) (*dto.CompleteBrowserSessionResponse, error) {
@@ -243,6 +274,10 @@ func generateStreamToken() (string, string, error) {
 		return "", "", err
 	}
 	token := base64.RawURLEncoding.EncodeToString(b)
+	return token, hashStreamToken(token), nil
+}
+
+func hashStreamToken(token string) string {
 	hash := sha256.Sum256([]byte(token))
-	return token, fmt.Sprintf("%x", hash), nil
+	return fmt.Sprintf("%x", hash)
 }

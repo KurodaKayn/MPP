@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
@@ -58,6 +60,51 @@ func (h *BrowserSessionHandler) GetSession(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid session id")
+	}
+
+	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, c.QueryParam("token"))
+	if err != nil {
+		if err == services.ErrSessionNotFound {
+			return sendError(c, http.StatusNotFound, "not_found", err.Error())
+		}
+		if err == services.ErrInvalidStreamToken {
+			return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	target, err := url.Parse(endpoint)
+	if err != nil {
+		return sendError(c, http.StatusInternalServerError, "internal_error", "invalid stream endpoint")
+	}
+
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.Director = func(req *http.Request) {
+		req.URL.Scheme = target.Scheme
+		req.URL.Host = target.Host
+		req.URL.Path = target.Path
+		if req.URL.Path == "" {
+			req.URL.Path = "/"
+		}
+		req.URL.RawQuery = target.RawQuery
+		req.Host = target.Host
+	}
+	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
+		http.Error(rw, "stream unavailable", http.StatusBadGateway)
+	}
+	proxy.ServeHTTP(c.Response(), c.Request())
+	return nil
 }
 
 func (h *BrowserSessionHandler) CompleteSession(c echo.Context) error {

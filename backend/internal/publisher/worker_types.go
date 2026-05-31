@@ -22,13 +22,14 @@ type CookieRequirement struct {
 }
 
 type StartWorkerSessionRequest struct {
-	SessionID      uuid.UUID    `json:"session_id"`
-	UserID         uuid.UUID    `json:"user_id"`
-	Platform       string       `json:"platform"`
-	LoginURL       string       `json:"login_url"`
-	AllowedDomains []DomainRule `json:"allowed_domains"`
-	TTLSeconds     int          `json:"ttl_seconds"`
-	Viewport       struct {
+	SessionID       uuid.UUID           `json:"session_id"`
+	UserID          uuid.UUID           `json:"user_id"`
+	Platform        string              `json:"platform"`
+	LoginURL        string              `json:"login_url"`
+	AllowedDomains  []DomainRule        `json:"allowed_domains"`
+	RequiredCookies []CookieRequirement `json:"required_cookies"`
+	TTLSeconds      int                 `json:"ttl_seconds"`
+	Viewport        struct {
 		Width  int `json:"width"`
 		Height int `json:"height"`
 	} `json:"viewport"`
