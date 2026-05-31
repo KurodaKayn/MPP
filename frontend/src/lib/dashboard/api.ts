@@ -201,6 +201,16 @@ export type DouyinAccount = {
   updated_at?: string;
 };
 
+export type ZhihuAccount = {
+  platform: "zhihu";
+  username?: string;
+  avatar_url?: string;
+  status: "unconfigured" | "untested" | "connected" | "failed";
+  last_tested_at?: string;
+  last_test_error?: string;
+  updated_at?: string;
+};
+
 export type BrowserSessionStatus =
   | "pending"
   | "ready"
@@ -607,6 +617,12 @@ export function testWechatConnection(input: SaveWechatAccountInput) {
 export function getDouyinAccount() {
   return fetchDashboard<DouyinAccount>(
     "/api/user/dashboard/settings/douyin/account",
+  );
+}
+
+export function getZhihuAccount() {
+  return fetchDashboard<ZhihuAccount>(
+    "/api/user/dashboard/settings/zhihu/account",
   );
 }
 
