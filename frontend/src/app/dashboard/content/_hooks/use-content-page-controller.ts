@@ -11,6 +11,7 @@ import {
   getProjectPublications,
   publishProject,
   saveDashboardProjectContent,
+  saveDashboardProjectPlatforms,
   syncProjectPrepublish,
   updateDashboardProject,
   waitForProjectPublications,
@@ -343,6 +344,9 @@ export function useContentPageController(projectId?: string) {
     }
 
     await saveDashboardProjectContent(projectId, buildProjectContentInput());
+    await saveDashboardProjectPlatforms(projectId, {
+      platforms: selectedPlatforms,
+    });
 
     const results = await Promise.allSettled(
       selectedPlatforms.map(async (platform) => {
