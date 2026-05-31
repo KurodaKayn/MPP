@@ -22,6 +22,10 @@
 
 MPP is a multi-platform content publishing system for creators and operations teams. It helps manage content projects, platform-specific adaptation, publishing status tracking, and AI-assisted processing from a unified workspace.
 
+## Architecture
+
+![MPP Overall Architecture](doc/assests/project-overall-architecture.png)
+
 ## How to Quick Start
 
 See [Setup Guide](doc/setup.md)
