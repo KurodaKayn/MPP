@@ -6,17 +6,23 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types"
 	dockercontainer "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 )
 
 type Manager struct {
-	cli *client.Client
+	cli            *client.Client
+	runtimeImage   string
+	runtimeNetwork string
+	runtimeBindIP  string
+	runtimeHost    string
 }
 
 func NewManager() (*Manager, error) {
@@ -24,14 +30,18 @@ func NewManager() (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{cli: cli}, nil
+	return &Manager{
+		cli:            cli,
+		runtimeImage:   envOrDefault("BROWSER_RUNTIME_IMAGE", "mpp-browser-runtime"),
+		runtimeNetwork: strings.TrimSpace(os.Getenv("BROWSER_RUNTIME_NETWORK")),
+		runtimeBindIP:  envOrDefault("BROWSER_RUNTIME_BIND_IP", "127.0.0.1"),
+		runtimeHost:    envOrDefault("BROWSER_RUNTIME_HOST", "127.0.0.1"),
+	}, nil
 }
 
 func (m *Manager) StartBrowserContainer(ctx context.Context, sessionID string) (containerID string, containerIP string, cdpPort, streamPort int, err error) {
-	imageName := "mpp-browser-runtime"
-
 	config := &dockercontainer.Config{
-		Image: imageName,
+		Image: m.runtimeImage,
 		ExposedPorts: nat.PortSet{
 			"9222/tcp": {},
 			"6080/tcp": {},
@@ -43,14 +53,18 @@ func (m *Manager) StartBrowserContainer(ctx context.Context, sessionID string) (
 	}
 
 	hostConfig := &dockercontainer.HostConfig{
-		PortBindings: nat.PortMap{
-			"9222/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
-			"6080/tcp": []nat.PortBinding{{HostIP: "127.0.0.1"}},
-		},
 		Resources: dockercontainer.Resources{
 			Memory:   1024 * 1024 * 1024,
 			NanoCPUs: 1000000000,
 		},
+	}
+	if m.runtimeNetwork != "" {
+		hostConfig.NetworkMode = dockercontainer.NetworkMode(m.runtimeNetwork)
+	} else {
+		hostConfig.PortBindings = nat.PortMap{
+			"9222/tcp": []nat.PortBinding{{HostIP: m.runtimeBindIP}},
+			"6080/tcp": []nat.PortBinding{{HostIP: m.runtimeBindIP}},
+		}
 	}
 
 	containerName := "mpp-session-" + sessionID
@@ -75,6 +89,14 @@ func (m *Manager) StartBrowserContainer(ctx context.Context, sessionID string) (
 		_ = m.StopContainer(context.Background(), resp.ID)
 		return "", "", 0, 0, fmt.Errorf("failed to inspect container ports: %w", err)
 	}
+	if m.runtimeNetwork != "" {
+		containerHost, err := containerNetworkIP(inspect.NetworkSettings.Networks, m.runtimeNetwork)
+		if err != nil {
+			_ = m.StopContainer(context.Background(), resp.ID)
+			return "", "", 0, 0, err
+		}
+		return resp.ID, containerHost, 9222, 6080, nil
+	}
 	cdpPort, err = mappedHostPort(inspect.NetworkSettings.Ports, "9222/tcp")
 	if err != nil {
 		_ = m.StopContainer(context.Background(), resp.ID)
@@ -86,7 +108,15 @@ func (m *Manager) StartBrowserContainer(ctx context.Context, sessionID string) (
 		return "", "", 0, 0, err
 	}
 
-	return resp.ID, "127.0.0.1", cdpPort, streamPort, nil
+	return resp.ID, m.runtimeHost, cdpPort, streamPort, nil
+}
+
+func containerNetworkIP(networks map[string]*network.EndpointSettings, networkName string) (string, error) {
+	endpoint, ok := networks[networkName]
+	if !ok || endpoint == nil || endpoint.IPAddress == "" {
+		return "", fmt.Errorf("container is not attached to runtime network %q", networkName)
+	}
+	return endpoint.IPAddress, nil
 }
 
 func mappedHostPort(ports nat.PortMap, port string) (int, error) {
@@ -131,4 +161,12 @@ func (m *Manager) GetBrowserUUID(ctx context.Context, containerID string) (strin
 		return strings.TrimSpace(lines[1]), nil
 	}
 	return "", fmt.Errorf("invalid DevToolsActivePort format")
+}
+
+func envOrDefault(name string, fallback string) string {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	return value
 }

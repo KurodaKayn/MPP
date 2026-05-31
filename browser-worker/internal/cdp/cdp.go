@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,8 +16,9 @@ import (
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
 
-func VersionWebSocketURL(cdpPort int) (string, error) {
-	reqURL := fmt.Sprintf("http://127.0.0.1:%d/json/version", cdpPort)
+func VersionWebSocketURL(cdpHost string, cdpPort int) (string, error) {
+	cdpAddr := net.JoinHostPort(cdpHost, fmt.Sprintf("%d", cdpPort))
+	reqURL := fmt.Sprintf("http://%s/json/version", cdpAddr)
 	client := &http.Client{Timeout: 2 * time.Second}
 
 	for i := 0; i < 10; i++ {
@@ -30,7 +32,7 @@ func VersionWebSocketURL(cdpPort int) (string, error) {
 			}
 			if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && result.WebSocketDebuggerUrl != "" {
 				u, _ := url.Parse(result.WebSocketDebuggerUrl)
-				u.Host = fmt.Sprintf("127.0.0.1:%d", cdpPort)
+				u.Host = cdpAddr
 				resp.Body.Close()
 				return u.String(), nil
 			}
@@ -41,11 +43,12 @@ func VersionWebSocketURL(cdpPort int) (string, error) {
 		time.Sleep(1 * time.Second)
 	}
 
-	return "", fmt.Errorf("no browser version websocket target found on CDP port %d", cdpPort)
+	return "", fmt.Errorf("no browser version websocket target found on CDP endpoint %s", cdpAddr)
 }
 
-func browserWebSocketURL(cdpPort int) (string, error) {
-	reqURL := fmt.Sprintf("http://127.0.0.1:%d/json", cdpPort)
+func browserWebSocketURL(cdpHost string, cdpPort int) (string, error) {
+	cdpAddr := net.JoinHostPort(cdpHost, fmt.Sprintf("%d", cdpPort))
+	reqURL := fmt.Sprintf("http://%s/json", cdpAddr)
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	for i := 0; i < 5; i++ {
@@ -75,7 +78,7 @@ func browserWebSocketURL(cdpPort int) (string, error) {
 			for _, t := range targets {
 				if t.Type == "page" && t.WebSocketDebuggerUrl != "" {
 					u, _ := url.Parse(t.WebSocketDebuggerUrl)
-					u.Host = fmt.Sprintf("127.0.0.1:%d", cdpPort)
+					u.Host = cdpAddr
 					reqURL = u.String()
 					break
 				}
@@ -88,7 +91,7 @@ func browserWebSocketURL(cdpPort int) (string, error) {
 		time.Sleep(1 * time.Second)
 	}
 
-	return "", fmt.Errorf("no page websocket target found on CDP port %d", cdpPort)
+	return "", fmt.Errorf("no page websocket target found on CDP endpoint %s", cdpAddr)
 }
 
 func Snapshot(ctx context.Context, workerSession *session.WorkerSession, includeAccount bool) (string, []session.Cookie, string, error) {
