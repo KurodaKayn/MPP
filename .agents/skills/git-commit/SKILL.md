@@ -1,11 +1,12 @@
 ---
 name: git-commit
-description: Draft Angular-style Git commit messages from staged changes and execute `git commit` safely after explicit approval. Use for commit message generation, staged-diff review for commit wording, and preferred-language previews of English commit messages for non-English users.
+description: Draft atomic Angular-style Git commit messages from staged changes and execute `git commit` safely after explicit approval. Use for commit message generation, staged-diff review for atomic scope and wording, and preferred-language previews of English commit messages for non-English users.
 ---
 
 # Git Commit Workflow
 
-Generate accurate Angular-style Git commit messages from staged changes only.
+Generate accurate, atomic Angular-style Git commit messages from staged
+changes only.
 
 ## Required Workflow
 
@@ -17,8 +18,13 @@ Follow this sequence exactly:
      `GIT_PAGER=cat git --no-pager diff --staged --no-ext-diff --no-textconv --unified=5`
    - `git branch --show-current`
    - `git log --oneline -10`
-2. If there are no staged changes, run `git add .` once, then collect
-   `git status` and the staged raw patch command again before continuing.
+2. If there are no staged changes, inspect `git status --short` and the
+   unstaged raw patch command:
+   `GIT_PAGER=cat git --no-pager diff --no-ext-diff --no-textconv --unified=5`.
+   Run `git add .` once only when the entire worktree clearly represents one
+   atomic change. If the worktree mixes unrelated changes or cannot be judged
+   from the visible diff, stop and ask the user to stage the first intended
+   atomic subset.
 3. If there were already staged changes in step 1, do not run `git add`. Keep
    the workflow limited to the current staged scope.
 4. Stop immediately if there are still no staged changes after the single
@@ -29,12 +35,15 @@ Follow this sequence exactly:
    - If you need to inspect a single staged path, reuse the same command shape
      and append `-- <path>` instead of falling back to bare `git diff --staged`.
    - Identify additions, deletions, and behavior impact.
+   - Decide whether the staged changes are atomic before drafting any message.
    - Infer the most accurate `type(scope): subject`.
-6. Draft the commit message in English using the format rules below.
-7. If `{USR_PREFERRED_LANGUAGE}` is not English, prepare a
+6. If the staged diff is not atomic, do not draft a commit message. Explain the
+   smallest sensible split and ask the user to stage one atomic subset.
+7. Draft the commit message in English using the format rules below.
+8. If `{USR_PREFERRED_LANGUAGE}` is not English, prepare a
    `{USR_PREFERRED_LANGUAGE}` preview that fully matches the English message.
-8. Present the result using the output rules below and wait for explicit approval.
-9. After approval, execute the commit in three separate steps:
+9. Present the result using the output rules below and wait for explicit approval.
+10. After approval, execute the commit in three separate steps:
    - Write only the English commit message to `commit_message.txt`
    - Run `git commit -F commit_message.txt`
    - Remove `commit_message.txt`
@@ -51,12 +60,17 @@ second preview block that repeats the English commit message.
 
 ## Hard Rules
 
-- Run `git add .` only when the initial staged diff is empty, and only once.
+- Run `git add .` only when the initial staged diff is empty, only once, and
+  only when all unstaged and untracked changes clearly belong to one atomic
+  commit.
 - Do not run `git add` when staged changes already exist.
 - Do not run `git push`.
 - Do not commit without explicit user authorization.
 - Do not include any non-English preview text in the actual commit message file.
 - Do not describe unstaged or unrelated changes.
+- Do not draft or execute a commit for non-atomic staged changes.
+- Do not hide mixed intent behind broad subjects such as `update files`,
+  `misc changes`, `cleanup`, or `apply fixes`.
 - If `{USR_PREFERRED_LANGUAGE}` is not English, keep that preview accurate and
   complete.
 - A commit message is incomplete unless it includes a body explaining what changed and why.
@@ -65,6 +79,33 @@ second preview block that repeats the English commit message.
 - The three body paragraphs must cover the current context, the main change,
   and the resulting impact in that order.
 - Do not chain `git commit` together with file creation or cleanup in a single shell command.
+
+## Atomic Scope Rules
+
+An atomic commit contains one coherent intent that can be reviewed, reverted,
+and described independently.
+
+Treat staged changes as atomic only when all of these are true:
+
+- They solve one problem, add one capability, or make one maintenance change.
+- They fit one primary `type(scope): subject` without vague wording.
+- They can be reverted together without undoing an unrelated improvement.
+- Supporting files such as tests, docs, fixtures, snapshots, migrations, or
+  lockfiles directly support the same primary change.
+
+Stop and ask for a smaller staged subset when any of these are true:
+
+- The staged diff mixes unrelated features, fixes, refactors, docs, formatting,
+  dependency updates, or test-only changes.
+- The staged files touch separate modules for unrelated reasons.
+- The best subject would need `and`, `/`, `misc`, `various`, or multiple scopes
+  to be honest.
+- Generated files, lockfiles, snapshots, or formatting churn appear without a
+  clear tie to the primary change.
+- A revert would reasonably need to keep part of the staged diff.
+
+When a split is needed, name the smallest next commit first. Do not propose a
+full release-sized plan unless the user asks for it.
 
 ## Commit Execution Rules
 
@@ -95,6 +136,7 @@ Apply these formatting rules:
 - Write the `subject` as an imperative summary, start it with a lowercase letter, and do not end it with a period.
 - Keep the title at or below 80 characters.
 - Keep the full commit message under 600 characters.
+- Make the title narrow enough that it describes only the staged atomic change.
 - The `body` is required for every commit and must use exactly three short
   paragraphs separated by one blank line.
 - The first paragraph should explain the current issue, context, or motivation.
@@ -130,7 +172,9 @@ Every commit must use three short natural paragraphs in this order:
 
 ## Commit Type Guidance
 
-Choose the narrowest commit `type` that matches the staged diff:
+Choose the narrowest commit `type` that matches the staged diff. If no single
+type honestly covers the staged diff, treat the diff as non-atomic unless the
+extra files directly support the primary change.
 
 - `feat`: introduce user-facing behavior or a new capability. Focus the three
   paragraphs on the missing capability, the feature added, and the user-facing
