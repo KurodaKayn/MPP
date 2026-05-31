@@ -40,14 +40,31 @@ func NewFromEnv(ctx context.Context) (*redis.Client, error) {
 	}
 
 	client := redis.NewClient(options)
-	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	if err := client.Ping(pingCtx).Err(); err != nil {
+	if err := pingWithRetry(ctx, client); err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
 
 	return client, nil
+}
+
+func pingWithRetry(ctx context.Context, client *redis.Client) error {
+	var lastErr error
+	for attempt := 0; attempt < 10; attempt++ {
+		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		lastErr = client.Ping(pingCtx).Err()
+		cancel()
+		if lastErr == nil {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+	return lastErr
 }
 
 func redisDBFromEnv() (int, error) {
