@@ -66,7 +66,8 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	assert.Equal(t, resp.ExpiresAt, resp.StreamTokenExpiresAt)
 	streamToken := streamTokenFromPath(t, streamURL.Path)
 	require.NotEmpty(t, streamToken)
-	assert.Contains(t, streamURL.Query().Get("path"), "/"+streamToken+"/websockify")
+	expectedProxyPath := strings.TrimSuffix(strings.TrimPrefix(streamURL.Path, "/"), "/vnc.html") + "/websockify"
+	assert.Equal(t, expectedProxyPath, streamURL.Query().Get("path"))
 
 	streamEndpoint, err := svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken)
 	require.NoError(t, err)
@@ -234,7 +235,8 @@ func streamTokenFromPath(t *testing.T, path string) string {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	for i, part := range parts {
 		if part == "browser-stream" {
-			require.GreaterOrEqual(t, len(parts), i+2)
+			require.GreaterOrEqual(t, len(parts), i+4)
+			assert.Equal(t, "vnc.html", parts[i+3])
 			return parts[i+2]
 		}
 	}
