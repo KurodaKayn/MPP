@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	"github.com/kurodakayn/mpp-backend/internal/redisclient"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
@@ -40,6 +42,15 @@ func main() {
 
 	// Initialize Services and Handlers
 	dashboardService := services.NewDashboardService(db.DB)
+	redisClient, err := redisclient.NewFromEnv(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	if redisClient != nil {
+		defer redisClient.Close()
+		dashboardService.UseRedis(redisClient)
+		dashboardService.StartPublishWorker(context.Background())
+	}
 	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
 	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
 	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
@@ -89,6 +100,7 @@ func main() {
 	userGroup.GET("/projects/:id", userDashboardHandler.GetMyProject)
 	userGroup.PUT("/projects/:id", userDashboardHandler.UpdateProject)
 	userGroup.GET("/projects/:id/publications", userDashboardHandler.GetMyProjectPublications)
+	userGroup.POST("/projects/:id/prepublish/sync", userDashboardHandler.SyncProjectPrepublish)
 	userGroup.POST("/projects/:id/publish", userDashboardHandler.PublishProject)
 	userGroup.GET("/settings/wechat/account", userDashboardHandler.GetWechatAccount)
 	userGroup.PUT("/settings/wechat/account", userDashboardHandler.SaveWechatAccount)

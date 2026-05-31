@@ -48,7 +48,7 @@ export async function publishContentToPlatforms(
   const results = await Promise.allSettled(
     input.platforms.map(async (platform) => {
       const result = await dependencies.publishProject(project.id, platform);
-      if (result.status === "failed") {
+      if (result.status === "failed" || result.status === "error") {
         throw new Error(result.error_message || `${platform} 发布失败`);
       }
       return platform;

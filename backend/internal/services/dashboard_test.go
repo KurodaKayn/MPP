@@ -254,7 +254,7 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 
 	var wechatPub models.ProjectPlatformPublication
 	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", resp.ID, "wechat").Error)
-	assert.Equal(t, models.PublicationStatusAdapted, wechatPub.Status)
+	assert.Equal(t, models.PublicationStatusPending, wechatPub.Status)
 
 	var config map[string]string
 	assert.NoError(t, json.Unmarshal(wechatPub.Config, &config))
@@ -264,8 +264,7 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 
 	var adapted map[string]string
 	assert.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &adapted))
-	assert.Equal(t, "html", adapted["format"])
-	assert.Equal(t, "<p>Hello WeChat</p>", adapted["html"])
+	assert.Empty(t, adapted)
 
 	var bilibiliPub models.ProjectPlatformPublication
 	assert.NoError(t, db.First(&bilibiliPub, "project_id = ? AND platform = ?", resp.ID, "bilibili").Error)
@@ -387,7 +386,7 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 	var zhihuPub models.ProjectPlatformPublication
 	assert.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
 	assert.True(t, zhihuPub.Enabled)
-	assert.Equal(t, models.PublicationStatusAdapted, zhihuPub.Status)
+	assert.Equal(t, models.PublicationStatusPending, zhihuPub.Status)
 	assert.Empty(t, zhihuPub.ErrorMessage)
 	assert.Empty(t, zhihuPub.PublishURL)
 	assert.Nil(t, zhihuPub.PublishedAt)
@@ -403,6 +402,81 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 		Platforms:     []string{"wechat"},
 	})
 	assert.ErrorIs(t, err, services.ErrForbidden)
+}
+
+func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner"}
+	db.Create(&owner)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Platform title",
+		SourceContent: `<h2>Heading</h2><p>Hello <strong>draft</strong></p>`,
+		Status:        models.ProjectStatusReady,
+	}
+	db.Create(&project)
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusPending,
+		Config:    datatypes.JSON(`{"title":"Platform title"}`),
+	})
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "zhihu",
+		Enabled:   true,
+		Status:    models.PublicationStatusPending,
+		Config:    datatypes.JSON(`{"title":"Platform title"}`),
+	})
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "x",
+		Enabled:   true,
+		Status:    models.PublicationStatusPending,
+		Config:    datatypes.JSON(`{"title":"Platform title"}`),
+	})
+
+	resp, err := s.SyncProjectPrepublish(project.ID, owner.ID, dto.SyncPrepublishRequest{
+		Platforms: []string{"wechat", "zhihu", "x"},
+		Actor:     dto.SyncActor{Type: "system"},
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, project.ID, resp.ProjectID)
+	assert.Len(t, resp.Items, 3)
+
+	var wechatPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	assert.Equal(t, models.PublicationStatusAdapted, wechatPub.Status)
+
+	var wechatContent map[string]interface{}
+	assert.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &wechatContent))
+	assert.Equal(t, "html", wechatContent["format"])
+	assert.Equal(t, `<h2>Heading</h2><p>Hello <strong>draft</strong></p>`, wechatContent["html"])
+
+	var zhihuPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	assert.Equal(t, models.PublicationStatusAdapted, zhihuPub.Status)
+
+	var zhihuContent map[string]interface{}
+	assert.NoError(t, json.Unmarshal(zhihuPub.AdaptedContent, &zhihuContent))
+	assert.Equal(t, "markdown", zhihuContent["format"])
+	assert.Contains(t, zhihuContent["markdown"], "## Heading")
+	assert.Contains(t, zhihuContent["markdown"], "**draft**")
+
+	var xPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&xPub, "project_id = ? AND platform = ?", project.ID, "x").Error)
+	assert.Equal(t, models.PublicationStatusAdapted, xPub.Status)
+
+	var xContent map[string]interface{}
+	assert.NoError(t, json.Unmarshal(xPub.AdaptedContent, &xContent))
+	assert.Equal(t, "text", xContent["format"])
+	assert.Contains(t, xContent["text"], "Platform title")
+	assert.Contains(t, xContent["text"], "Hello draft")
 }
 
 func TestGetProjectPublications(t *testing.T) {
@@ -430,17 +504,17 @@ func TestGetProjectPublications(t *testing.T) {
 	db.Create(&pub)
 
 	// Admin can see it
-	res, err := s.GetProjectPublications(p.ID, nil)
+	res, err := s.GetProjectPublications(p.ID, nil, false)
 	assert.NoError(t, err)
 	assert.Equal(t, p.ID, res.ProjectID)
 
 	// Owner can see it
-	resOwner, errOwner := s.GetProjectPublications(p.ID, &u1.ID)
+	resOwner, errOwner := s.GetProjectPublications(p.ID, &u1.ID, false)
 	assert.NoError(t, errOwner)
 	assert.Equal(t, p.ID, resOwner.ProjectID)
 
 	// Stranger gets Forbidden
-	_, errStranger := s.GetProjectPublications(p.ID, &u2.ID)
+	_, errStranger := s.GetProjectPublications(p.ID, &u2.ID, false)
 	assert.ErrorIs(t, errStranger, services.ErrForbidden)
 }
 
@@ -724,6 +798,43 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	assert.Equal(t, "Title", config["title"])
 }
 
+func TestPublishProjectAdaptsPendingPublicationBeforePublishing(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &fakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "<p>source</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusPending,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
+	assert.Equal(t, models.PublicationStatusPublished, saved.Status)
+	assert.Empty(t, saved.ErrorMessage)
+}
+
 func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
@@ -828,7 +939,7 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 	require.NoError(t, db.Create(&models.PlatformAccount{
 		UserID:      user.ID,
 		Platform:    "x",
-		Username: "X",
+		Username:    "X",
 		Status:      models.PlatformAccountStatusConnected,
 		Credentials: datatypes.JSON(credentials),
 		Metadata:    datatypes.JSON(`{"username":"creator"}`),
@@ -900,6 +1011,47 @@ func TestCreateXPostIntentReturnsManualPublishURL(t *testing.T) {
 	assert.Equal(t, models.PublicationStatusAdapted, saved.Status)
 	assert.Equal(t, publishURL, saved.PublishURL)
 	assert.Empty(t, saved.ErrorMessage)
+}
+
+func TestCreateXPostIntentAdaptsPendingPublication(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "pending x",
+		SourceContent: "<p>source content</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Enabled:        true,
+		Status:         models.PublicationStatusPending,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	result, err := s.CreateXPostIntent(project.ID, &user.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, "manual_required", result["status"])
+
+	publishURL, ok := result["publish_url"].(string)
+	require.True(t, ok)
+	parsed, err := url.Parse(publishURL)
+	require.NoError(t, err)
+	assert.Contains(t, parsed.Query().Get("text"), "pending x")
+	assert.Contains(t, parsed.Query().Get("text"), "source content")
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
+	assert.Equal(t, models.PublicationStatusAdapted, saved.Status)
+	assert.Contains(t, string(saved.AdaptedContent), `"format":"text"`)
 }
 
 func TestPublishProjectRejectsDisabledPublication(t *testing.T) {

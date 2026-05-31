@@ -29,12 +29,12 @@ function LoginContent() {
           <div className="relative flex items-center gap-3">
             <Image
               src="/icons/mpp.svg"
-              alt="multi-plantform poster"
+              alt="multi-platform poster"
               width={34}
               height={34}
             />
             <div className="leading-tight">
-              <div className="font-semibold">multi-plantform poster</div>
+              <div className="font-semibold">multi-platform poster</div>
             </div>
           </div>
 
@@ -61,12 +61,12 @@ function LoginContent() {
             <div className="mb-8 flex items-center gap-3 lg:hidden">
               <Image
                 src="/icons/mpp.svg"
-                alt="multi-plantform poster"
+                alt="multi-platform poster"
                 width={32}
                 height={32}
               />
               <div className="leading-tight">
-                <div className="font-semibold">multi-plantform poster</div>
+                <div className="font-semibold">multi-platform poster</div>
               </div>
             </div>
 

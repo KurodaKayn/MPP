@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "multi-plantform poster",
+  title: "multi-platform poster",
   description: "一键适配并分发内容到多个社交平台",
   icons: {
     icon: "/icons/mpp.svg",

@@ -1,0 +1,183 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 860" width="1280" height="860" role="img" aria-labelledby="title desc">
+  <title id="title">dashboard/content Platform Draft Multi-Format Adaptation Architecture</title>
+  <desc id="desc">Shows merging edit/preview into tabs, users explicitly syncing to generate WeChat HTML, Zhihu Markdown, X Text via the pre-publish section, and reserving extension points for AI agent intervention.</desc>
+  <style>
+    text {
+      font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Microsoft YaHei', 'Microsoft JhengHei', 'SimHei', sans-serif;
+      fill: #111827;
+    }
+    .title { font-size: 24px; font-weight: 700; }
+    .subtitle { font-size: 13px; fill: #6b7280; }
+    .layer-title { font-size: 15px; font-weight: 700; }
+    .node-title { font-size: 14px; font-weight: 700; }
+    .node-subtitle { font-size: 12px; fill: #6b7280; }
+    .label { font-size: 12px; fill: #374151; }
+    .legend { font-size: 12px; fill: #6b7280; }
+    .container { fill: #f9fafb; stroke: #d1d5db; stroke-width: 1.5; stroke-dasharray: 6 4; rx: 12; ry: 12; }
+    .node { fill: #ffffff; stroke: #d1d5db; stroke-width: 1.5; rx: 8; ry: 8; }
+    .blue { fill: #eff6ff; stroke: #bfdbfe; }
+    .green { fill: #f0fdf4; stroke: #bbf7d0; }
+    .purple { fill: #faf5ff; stroke: #e9d5ff; }
+    .orange { fill: #fff7ed; stroke: #fed7aa; }
+    .teal { fill: #f0fdfa; stroke: #99f6e4; }
+    .red { fill: #fef2f2; stroke: #fecaca; }
+    .chip { fill: #ffffff; stroke: #d1d5db; stroke-width: 1; rx: 12; ry: 12; }
+    .arrow-ui { stroke: #2563eb; stroke-width: 2; fill: none; marker-end: url(#arrow-blue); }
+    .arrow-sync { stroke: #16a34a; stroke-width: 2; fill: none; marker-end: url(#arrow-green); }
+    .arrow-agent { stroke: #9333ea; stroke-width: 2; fill: none; marker-end: url(#arrow-purple); }
+    .arrow-publish { stroke: #ea580c; stroke-width: 2; fill: none; marker-end: url(#arrow-orange); }
+    .arrow-status { stroke: #dc2626; stroke-width: 2; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrow-red); }
+  </style>
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#ea580c"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="860" fill="#ffffff"/>
+  <text x="40" y="44" class="title">dashboard/content Platform Draft Multi-Format Adaptation Architecture</text>
+  <text x="40" y="68" class="subtitle">Unified Edit/Preview, Pre-publish explicitly syncs formats, leaving stable write-back boundaries for AI agents</text>
+
+  <rect x="40" y="95" width="440" height="560" class="container"/>
+  <text x="62" y="124" class="layer-title">Frontend: Content Creation Page</text>
+
+  <rect x="70" y="145" width="380" height="170" class="node blue"/>
+  <text x="95" y="176" class="node-title">Content Workspace</text>
+  <text x="95" y="198" class="node-subtitle">Switch Edit/Source Preview in same module</text>
+  <rect x="95" y="220" width="110" height="34" class="chip"/>
+  <text x="124" y="242" class="label">Edit tab</text>
+  <rect x="220" y="220" width="110" height="34" class="chip"/>
+  <text x="240" y="242" class="label">Preview tab</text>
+  <text x="95" y="278" class="node-subtitle">TipTap outputs canonical HTML</text>
+  <text x="95" y="298" class="node-subtitle">Preview only shows source draft, not platform format</text>
+
+  <rect x="70" y="345" width="380" height="220" class="node green"/>
+  <text x="95" y="376" class="node-title">Pre-publish Section</text>
+  <text x="95" y="398" class="node-subtitle">Sync to generate &amp; view true derived drafts per platform</text>
+  <rect x="95" y="420" width="150" height="34" class="chip"/>
+  <text x="110" y="442" class="label">Sync to Pre-publish</text>
+  <rect x="260" y="420" width="150" height="34" class="chip"/>
+  <text x="292" y="442" class="label">Platform tabs</text>
+  <rect x="95" y="475" width="150" height="34" class="chip"/>
+  <text x="124" y="497" class="label">Original Format</text>
+  <rect x="260" y="475" width="150" height="34" class="chip"/>
+  <text x="295" y="497" class="label">Format Preview</text>
+  <text x="95" y="535" class="node-subtitle">HTML / Markdown / text from adapted_content</text>
+
+  <rect x="70" y="595" width="380" height="38" class="node orange"/>
+  <text x="95" y="620" class="node-title">Publish Section: Only publish synced/unexpired drafts</text>
+
+  <rect x="520" y="95" width="330" height="560" class="container"/>
+  <text x="542" y="124" class="layer-title">Backend: Save, Sync, Agent Extensions</text>
+
+  <rect x="550" y="145" width="270" height="74" class="node blue"/>
+  <text x="575" y="176" class="node-title">Project Save API</text>
+  <text x="575" y="198" class="node-subtitle">Save title / source_content / platforms</text>
+
+  <rect x="550" y="255" width="270" height="82" class="node green"/>
+  <text x="575" y="286" class="node-title">Prepublish Sync API</text>
+  <text x="575" y="308" class="node-subtitle">Explicitly sync adapted_content per platform</text>
+  <text x="575" y="328" class="node-subtitle">Failure does not overwrite old drafts</text>
+
+  <rect x="550" y="375" width="270" height="92" class="node purple"/>
+  <text x="575" y="406" class="node-title">AI Agent Hooks</text>
+  <text x="575" y="428" class="node-subtitle">pre-adapt / post-adapt / repair</text>
+  <text x="575" y="448" class="node-subtitle">Write back generated_by.type = agent</text>
+
+  <rect x="550" y="505" width="270" height="110" class="node"/>
+  <text x="575" y="536" class="node-title">Platform Adapters</text>
+  <text x="575" y="558" class="node-subtitle">wechat: HTML</text>
+  <text x="575" y="578" class="node-subtitle">zhihu: Markdown</text>
+  <text x="575" y="598" class="node-subtitle">x: text</text>
+
+  <rect x="890" y="95" width="350" height="560" class="container"/>
+  <text x="912" y="124" class="layer-title">Storage &amp; Publishing</text>
+
+  <rect x="920" y="145" width="290" height="74" class="node blue"/>
+  <text x="945" y="176" class="node-title">projects</text>
+  <text x="945" y="198" class="node-subtitle">source_content = HTML Source Draft</text>
+
+  <rect x="920" y="255" width="290" height="125" class="node green"/>
+  <text x="945" y="286" class="node-title">project_platform_publications</text>
+  <text x="945" y="308" class="node-subtitle">adapted_content JSONB</text>
+  <text x="945" y="328" class="node-subtitle">format / source_revision / generated_by</text>
+  <text x="945" y="348" class="node-subtitle">HTML / Markdown / text</text>
+
+  <rect x="920" y="415" width="290" height="74" class="node purple"/>
+  <text x="945" y="446" class="node-title">agent_runs (future)</text>
+  <text x="945" y="468" class="node-subtitle">agent input, output, audit, &amp; rollback</text>
+
+  <rect x="920" y="525" width="290" height="90" class="node orange"/>
+  <text x="945" y="556" class="node-title">PublishProject</text>
+  <text x="945" y="578" class="node-subtitle">Validate sync status, format, account</text>
+  <text x="945" y="598" class="node-subtitle">publisher consumes adapted_content</text>
+
+  <rect x="40" y="700" width="1200" height="95" class="container"/>
+  <text x="62" y="729" class="layer-title">Platform publisher</text>
+  <rect x="205" y="730" width="210" height="42" class="node orange"/>
+  <text x="237" y="756" class="node-title">WeChat: Consumes HTML</text>
+  <rect x="535" y="730" width="210" height="42" class="node teal"/>
+  <text x="565" y="756" class="node-title">Zhihu: Consumes Markdown</text>
+  <rect x="865" y="730" width="210" height="42" class="node"/>
+  <text x="910" y="756" class="node-title">X: Consumes text</text>
+
+  <path d="M450 238 L550 182" class="arrow-ui"/>
+  <rect x="462" y="195" width="116" height="20" fill="#ffffff" opacity="0.95"/>
+  <text x="468" y="210" class="label">Save source draft</text>
+
+  <path d="M820 182 L920 182" class="arrow-sync"/>
+  <rect x="840" y="158" width="62" height="20" fill="#ffffff" opacity="0.95"/>
+  <text x="846" y="173" class="label">source</text>
+
+  <path d="M450 437 L550 296" class="arrow-sync"/>
+  <rect x="462" y="352" width="100" height="20" fill="#ffffff" opacity="0.95"/>
+  <text x="468" y="367" class="label">Click sync</text>
+
+  <path d="M685 337 L685 375" class="arrow-agent"/>
+  <path d="M685 467 L685 505" class="arrow-agent"/>
+  <path d="M820 560 L920 318" class="arrow-sync"/>
+  <rect x="830" y="424" width="130" height="20" fill="#ffffff" opacity="0.95"/>
+  <text x="836" y="439" class="label">Write platform drafts</text>
+
+  <path d="M920 330 C790 690, 420 685, 260 565" class="arrow-sync"/>
+  <rect x="495" y="650" width="220" height="20" fill="#ffffff" opacity="0.95"/>
+  <text x="501" y="665" class="label">Read original format &amp; preview data</text>
+
+  <path d="M450 614 L920 570" class="arrow-publish"/>
+  <rect x="630" y="574" width="180" height="20" fill="#ffffff" opacity="0.95"/>
+  <text x="636" y="589" class="label">Publish synced platform draft</text>
+
+  <path d="M1065 615 L1065 700" class="arrow-publish"/>
+  <path d="M1065 700 L310 730" class="arrow-publish"/>
+  <path d="M1065 700 L640 730" class="arrow-publish"/>
+  <path d="M1065 700 L970 730" class="arrow-publish"/>
+
+  <path d="M1210 570 C1250 665, 1155 800, 1065 615" class="arrow-status"/>
+  <rect x="1120" y="690" width="110" height="20" fill="#ffffff" opacity="0.95"/>
+  <text x="1126" y="705" class="label">State write-back</text>
+
+  <g transform="translate(60, 825)">
+    <line x1="0" y1="8" x2="34" y2="8" class="arrow-ui"/>
+    <text x="44" y="12" class="legend">Edit/Save</text>
+    <line x1="120" y1="8" x2="154" y2="8" class="arrow-sync"/>
+    <text x="164" y="12" class="legend">Pre-publish Sync / Data R/W</text>
+    <line x1="360" y1="8" x2="394" y2="8" class="arrow-agent"/>
+    <text x="404" y="12" class="legend">AI Agent Intervention</text>
+    <line x1="550" y1="8" x2="584" y2="8" class="arrow-publish"/>
+    <text x="594" y="12" class="legend">Publish Call</text>
+    <line x1="680" y1="8" x2="714" y2="8" class="arrow-status"/>
+    <text x="724" y="12" class="legend">State/Error Write-back</text>
+  </g>
+</svg>

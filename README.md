@@ -1,4 +1,4 @@
-# MPP: multi-plantform-poster
+# MPP: multi-platform-poster
 
 <p align="center">
   <img src="doc/assests/mpp-with-name-white.svg" alt="MPP logo" width="360" />

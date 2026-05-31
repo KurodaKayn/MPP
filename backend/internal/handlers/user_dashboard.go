@@ -167,8 +167,43 @@ func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
 	}
 
 	// Personal view: enforce scopeUserID to check ownership
-	publications, err := h.dashboardService.GetProjectPublications(projectID, &userID)
+	includeContent := c.QueryParam("include_content") == "true"
+	publications, err := h.dashboardService.GetProjectPublications(projectID, &userID, includeContent)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, publications)
+}
+
+func (h *UserDashboardHandler) SyncProjectPrepublish(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	idParam := c.Param("id")
+	projectID, err := uuid.Parse(idParam)
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+
+	req := new(dto.SyncPrepublishRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	publications, err := h.dashboardService.SyncProjectPrepublish(projectID, userID, *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "at least one valid platform is required")
+		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
 		}
@@ -213,6 +248,9 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 			if errors.Is(err, services.ErrPublicationDisabled) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
 			}
+			if errors.Is(err, services.ErrPublicationRequiresSync) {
+				return sendError(c, http.StatusBadRequest, "invalid_request", "sync prepublish draft before publishing")
+			}
 			if errors.Is(err, services.ErrForbidden) {
 				return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 			}
@@ -222,7 +260,7 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	}
 
 	if len(req.Platforms) > 0 {
-		resp, err := h.dashboardService.BatchPublishProject(projectID, req.Platforms, &userID)
+		resp, err := h.dashboardService.BatchEnqueuePublishProject(c.Request().Context(), projectID, req.Platforms, &userID)
 		if err != nil {
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		}
@@ -230,10 +268,16 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	}
 
 	// Single platform fallback
-	resp, err := h.dashboardService.PublishProject(projectID, req.Platform, &userID)
+	resp, err := h.dashboardService.EnqueuePublishProject(c.Request().Context(), projectID, req.Platform, &userID)
 	if err != nil {
 		if errors.Is(err, services.ErrPublicationDisabled) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
+		}
+		if errors.Is(err, services.ErrPublicationAlreadyPublishing) {
+			return sendError(c, http.StatusConflict, "publish_in_progress", "publication is already publishing")
+		}
+		if errors.Is(err, services.ErrPublicationRequiresSync) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "sync prepublish draft before publishing")
 		}
 		if errors.Is(err, services.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
