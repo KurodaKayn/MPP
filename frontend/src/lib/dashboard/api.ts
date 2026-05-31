@@ -46,6 +46,9 @@ export type ProjectPublications = {
 
 export type PublishResult = {
   status: string;
+  job_id?: string;
+  platform?: string;
+  queued_at?: string;
   remote_id?: string;
   publish_url?: string;
   error_message?: string;
