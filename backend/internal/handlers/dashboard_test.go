@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -93,6 +94,30 @@ func setContextUser(c echo.Context, userID uuid.UUID) {
 		UserID: userID,
 		Role:   "user",
 	}))
+}
+
+type fakeAIContentEditor struct {
+	contentReq     dto.AIEditContentRequest
+	contentResp    *dto.AIEditContentResponse
+	prepublishReq  dto.AIEditPrepublishRequest
+	prepublishResp *dto.AIEditPrepublishResponse
+	err            error
+}
+
+func (f *fakeAIContentEditor) EditContent(ctx context.Context, req dto.AIEditContentRequest) (*dto.AIEditContentResponse, error) {
+	f.contentReq = req
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.contentResp, nil
+}
+
+func (f *fakeAIContentEditor) EditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*dto.AIEditPrepublishResponse, error) {
+	f.prepublishReq = req
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.prepublishResp, nil
 }
 
 func TestDashboardHandlerListProjectsNormalizesPagination(t *testing.T) {
@@ -367,6 +392,108 @@ func TestUserDashboardHandlerSyncProjectPrepublish(t *testing.T) {
 	require.Equal(t, models.PublicationStatusAdapted, resp.Items[0].Status)
 	require.Equal(t, "markdown", resp.Items[0].AdaptedContent["format"])
 	require.Contains(t, resp.Items[0].AdaptedContent["markdown"], "**sync**")
+}
+
+func TestUserDashboardHandlerEditContentWithAI(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	aiEditor := &fakeAIContentEditor{
+		contentResp: &dto.AIEditContentResponse{
+			Channel: "content",
+			Content: "<p>Sharper draft</p>",
+		},
+	}
+	handler.UseAIContentEditor(aiEditor)
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/ai/content/edit",
+		strings.NewReader(`{"title":"Draft","content":"<p>Draft</p>","message":"Make it sharper","conversation":[{"role":"user","content":"Keep it short"}]}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.EditContentWithAI(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "<p>Draft</p>", aiEditor.contentReq.Content)
+	require.Equal(t, "Make it sharper", aiEditor.contentReq.Message)
+	require.Len(t, aiEditor.contentReq.Conversation, 1)
+
+	var resp dto.AIEditContentResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "content", resp.Channel)
+	require.Equal(t, "<p>Sharper draft</p>", resp.Content)
+}
+
+func TestUserDashboardHandlerEditPrepublishWithAI(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	aiEditor := &fakeAIContentEditor{
+		prepublishResp: &dto.AIEditPrepublishResponse{
+			Channel:  "prepublish",
+			Platform: "wechat",
+			AdaptedContent: map[string]interface{}{
+				"format": "html",
+				"html":   "<p>Concise draft</p>",
+			},
+			Content: "<p>Concise draft</p>",
+		},
+	}
+	handler.UseAIContentEditor(aiEditor)
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/ai/prepublish/edit",
+		strings.NewReader(`{"title":"Draft","platform":"wechat","adapted_content":{"format":"html","html":"<p>Long draft</p>"},"message":"Make it concise"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.EditPrepublishWithAI(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "wechat", aiEditor.prepublishReq.Platform)
+	require.Equal(t, "Make it concise", aiEditor.prepublishReq.Message)
+	require.Equal(t, "html", aiEditor.prepublishReq.AdaptedContent["format"])
+
+	var resp dto.AIEditPrepublishResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "prepublish", resp.Channel)
+	require.Equal(t, "wechat", resp.Platform)
+	require.Equal(t, "<p>Concise draft</p>", resp.Content)
+}
+
+func TestUserDashboardHandlerEditContentWithAIRequiresConfiguredEditor(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/ai/content/edit",
+		strings.NewReader(`{"content":"Draft","message":"Edit"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.EditContentWithAI(c))
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
 }
 
 func TestUserDashboardHandlerPublishProjectRejectsDisabledPublication(t *testing.T) {
