@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strings"
 	"sync"
@@ -85,6 +86,7 @@ type WorkerSession struct {
 	ContainerID       string
 	CDPEndpointRef    string
 	StreamEndpointRef string
+	InternalStreamURL string
 	RequiredCookies   []CookieRequirement
 	ExpiresAt         time.Time
 	CancelFunc        context.CancelFunc
@@ -99,6 +101,29 @@ func NewSessionManager() *SessionManager {
 	return &SessionManager{
 		sessions: make(map[string]*WorkerSession),
 	}
+}
+
+func (sm *SessionManager) get(ref string) (*WorkerSession, bool) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	session, ok := sm.sessions[ref]
+	return session, ok
+}
+
+func (sm *SessionManager) put(session *WorkerSession) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.sessions[session.ID] = session
+}
+
+func (sm *SessionManager) remove(ref string) (*WorkerSession, bool) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	session, ok := sm.sessions[ref]
+	if ok {
+		delete(sm.sessions, ref)
+	}
+	return session, ok
 }
 
 func main() {
@@ -125,7 +150,27 @@ func main() {
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to start browser: %v", err))
 		}
 
-		_, sessCancel := context.WithCancel(context.Background())
+		cdpEndpointRef := fmt.Sprintf("ws://localhost:%d", cdpPort)
+		wsURL, err := browserWebSocketURL(cdpPort)
+		if err != nil {
+			_ = dm.StopContainer(context.Background(), containerID)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to reach Chromium: %v", err))
+		}
+
+		allocCtx, allocCancel := chromedp.NewRemoteAllocator(context.Background(), wsURL)
+		browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+		if err := SetupInterception(browserCtx, req.AllowedDomains); err != nil {
+			browserCancel()
+			allocCancel()
+			_ = dm.StopContainer(context.Background(), containerID)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to configure browser isolation: %v", err))
+		}
+
+		ttl := time.Duration(req.TTLSeconds) * time.Second
+		if ttl <= 0 {
+			ttl = 15 * time.Minute
+		}
+		expiresAt := time.Now().Add(ttl)
 
 		workerSession := &WorkerSession{
 			ID:                uuid.NewString(),
@@ -134,16 +179,26 @@ func main() {
 			Platform:          req.Platform,
 			Status:            "ready",
 			ContainerID:       containerID,
-			CDPEndpointRef:    fmt.Sprintf("ws://localhost:%d", cdpPort),
-			StreamEndpointRef: fmt.Sprintf("http://localhost:%d", streamPort),
+			CDPEndpointRef:    cdpEndpointRef,
+			StreamEndpointRef: "",
+			InternalStreamURL: fmt.Sprintf("http://127.0.0.1:%d", streamPort),
 			RequiredCookies:   req.RequiredCookies,
-			ExpiresAt:         time.Now().Add(time.Duration(req.TTLSeconds) * time.Second),
-			CancelFunc:        sessCancel,
+			ExpiresAt:         expiresAt,
+			CancelFunc: func() {
+				browserCancel()
+				allocCancel()
+			},
 		}
+		workerSession.StreamEndpointRef = fmt.Sprintf("/internal/browser-sessions/%s/stream", workerSession.ID)
 
-		sm.mu.Lock()
-		sm.sessions[workerSession.ID] = workerSession
-		sm.mu.Unlock()
+		sm.put(workerSession)
+		time.AfterFunc(ttl, func() {
+			session, ok := sm.remove(workerSession.ID)
+			if !ok {
+				return
+			}
+			cleanupSession(context.Background(), dm, session)
+		})
 
 		return c.JSON(http.StatusCreated, StartWorkerSessionResponse{
 			WorkerSessionRef:  workerSession.ID,
@@ -158,9 +213,7 @@ func main() {
 
 	e.GET("/internal/browser-sessions/:ref", func(c echo.Context) error {
 		ref := c.Param("ref")
-		sm.mu.RLock()
-		session, ok := sm.sessions[ref]
-		sm.mu.RUnlock()
+		session, ok := sm.get(ref)
 
 		if !ok {
 			return echo.NewHTTPError(http.StatusNotFound, "session not found")
@@ -173,11 +226,33 @@ func main() {
 		})
 	})
 
+	e.Any("/internal/browser-sessions/:ref/stream", func(c echo.Context) error {
+		ref := c.Param("ref")
+		session, ok := sm.get(ref)
+		if !ok {
+			return echo.NewHTTPError(http.StatusNotFound, "session not found")
+		}
+
+		target, err := url.Parse(session.InternalStreamURL)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "invalid stream endpoint")
+		}
+
+		proxy := httputil.NewSingleHostReverseProxy(target)
+		proxy.Director = func(req *http.Request) {
+			req.URL.Scheme = target.Scheme
+			req.URL.Host = target.Host
+			req.URL.Path = "/"
+			req.URL.RawQuery = c.Request().URL.RawQuery
+			req.Host = target.Host
+		}
+		proxy.ServeHTTP(c.Response(), c.Request())
+		return nil
+	})
+
 	e.POST("/internal/browser-sessions/:ref/capture", func(c echo.Context) error {
 		ref := c.Param("ref")
-		sm.mu.RLock()
-		session, ok := sm.sessions[ref]
-		sm.mu.RUnlock()
+		session, ok := sm.get(ref)
 
 		if !ok {
 			return echo.NewHTTPError(http.StatusNotFound, "session not found")
@@ -185,49 +260,13 @@ func main() {
 
 		log.Printf("Capture triggered for session %s", ref)
 
-		// Get WebSocket URL using Host spoofing
-		var wsURL string
 		cdpPort, err := endpointPort(session.CDPEndpointRef)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Invalid CDP endpoint: %v", err))
 		}
-		reqURL := fmt.Sprintf("http://127.0.0.1:%d/json", cdpPort)
-
-		for i := 0; i < 5; i++ {
-			httpReq, _ := http.NewRequest("GET", reqURL, nil)
-			httpReq.Host = "localhost" // Bypass Host validation
-
-			client := &http.Client{Timeout: 5 * time.Second}
-			resp, err := client.Do(httpReq)
-			if err == nil && resp.StatusCode == http.StatusOK {
-				var targets []struct {
-					Type                 string `json:"type"`
-					WebSocketDebuggerUrl string `json:"webSocketDebuggerUrl"`
-				}
-				if err := json.NewDecoder(resp.Body).Decode(&targets); err == nil {
-					for _, t := range targets {
-						if t.Type == "page" && t.WebSocketDebuggerUrl != "" {
-							// Correct the host in reported URL
-							u, _ := url.Parse(t.WebSocketDebuggerUrl)
-							u.Host = fmt.Sprintf("127.0.0.1:%d", cdpPort)
-							wsURL = u.String()
-							break
-						}
-					}
-				}
-				resp.Body.Close()
-				if wsURL != "" {
-					break
-				}
-			}
-			if err != nil {
-				log.Printf("Capture check error: %v", err)
-			}
-			time.Sleep(1 * time.Second)
-		}
-
-		if wsURL == "" {
-			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to reach Chromium for capture")
+		wsURL, err := browserWebSocketURL(cdpPort)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to reach Chromium for capture: %v", err))
 		}
 
 		log.Printf("Capture: Connecting to CDP at %s", wsURL)
@@ -290,26 +329,73 @@ func main() {
 
 	e.DELETE("/internal/browser-sessions/:ref", func(c echo.Context) error {
 		ref := c.Param("ref")
-		sm.mu.Lock()
-		session, ok := sm.sessions[ref]
+		session, ok := sm.remove(ref)
 		if ok {
-			delete(sm.sessions, ref)
-		}
-		sm.mu.Unlock()
-
-		if ok {
-			if session.CancelFunc != nil {
-				session.CancelFunc()
-			}
-			if session.ContainerID != "" {
-				dm.StopContainer(context.Background(), session.ContainerID)
-			}
+			cleanupSession(context.Background(), dm, session)
 		}
 
 		return c.NoContent(http.StatusNoContent)
 	})
 
 	e.Logger.Fatal(e.Start(":8081"))
+}
+
+func cleanupSession(ctx context.Context, dm *DockerManager, session *WorkerSession) {
+	if session.CancelFunc != nil {
+		session.CancelFunc()
+	}
+	if session.ContainerID != "" {
+		if err := dm.StopContainer(ctx, session.ContainerID); err != nil {
+			log.Printf("Failed to stop session container %s: %v", session.ContainerID, err)
+		}
+	}
+}
+
+func browserWebSocketURL(cdpPort int) (string, error) {
+	reqURL := fmt.Sprintf("http://127.0.0.1:%d/json", cdpPort)
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	for i := 0; i < 5; i++ {
+		httpReq, _ := http.NewRequest(http.MethodGet, reqURL, nil)
+		httpReq.Host = "localhost" // Bypass Host validation
+
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			log.Printf("CDP target check error: %v", err)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		func() {
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return
+			}
+
+			var targets []struct {
+				Type                 string `json:"type"`
+				WebSocketDebuggerUrl string `json:"webSocketDebuggerUrl"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&targets); err != nil {
+				return
+			}
+			for _, t := range targets {
+				if t.Type == "page" && t.WebSocketDebuggerUrl != "" {
+					u, _ := url.Parse(t.WebSocketDebuggerUrl)
+					u.Host = fmt.Sprintf("127.0.0.1:%d", cdpPort)
+					reqURL = u.String()
+					break
+				}
+			}
+		}()
+
+		if strings.HasPrefix(reqURL, "ws://") {
+			return reqURL, nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	return "", fmt.Errorf("no page websocket target found on CDP port %d", cdpPort)
 }
 
 func endpointPort(endpoint string) (int, error) {
