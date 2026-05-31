@@ -364,6 +364,53 @@ func TestBrowserSessionService_StartSessionPreservesReachableRedisActiveLock(t *
 	assert.Equal(t, resp.SessionID.String(), activeSessionID)
 }
 
+func TestBrowserSessionService_GetSessionKeepsLiveRedisStateOnTransientWorkerReadFailure(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	client := setupBrowserSessionRedis(t, svc)
+	userID := uuid.New()
+	platform := "douyin"
+	workerSessionRef := "worker-temporary-error"
+	session := models.RemoteBrowserSession{
+		UserID:            userID,
+		Platform:          platform,
+		Status:            models.BrowserSessionStatusReady,
+		WorkerSessionRef:  workerSessionRef,
+		StreamEndpointRef: "http://127.0.0.1:9/stream/worker-temporary-error",
+		ConnectTokenHash:  "stale-token",
+		CreatedAt:         time.Now().Add(-time.Minute),
+		ExpiresAt:         time.Now().Add(10 * time.Minute),
+	}
+	require.NoError(t, db.Create(&session).Error)
+	require.NoError(t, client.Set(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform, session.ID.String(), time.Hour).Err())
+	require.NoError(t, client.Set(context.Background(), "mpp:browser:worker-heartbeat:"+workerSessionRef, session.ID.String(), time.Hour).Err())
+	setRedisLiveSession(t, client, map[string]interface{}{
+		"session_id":          session.ID.String(),
+		"user_id":             userID.String(),
+		"platform":            platform,
+		"status":              models.BrowserSessionStatusReady,
+		"worker_session_ref":  workerSessionRef,
+		"stream_endpoint_ref": session.StreamEndpointRef,
+		"message":             "Waiting for login",
+		"created_at":          session.CreatedAt,
+		"expires_at":          session.ExpiresAt,
+	}, time.Hour)
+
+	resp, err := svc.GetSession(context.Background(), userID, session.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.BrowserSessionStatusReady, resp.Status)
+	assert.Equal(t, "Waiting for login", resp.Message)
+	assert.NotEmpty(t, resp.StreamURL)
+
+	var savedSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedSession, session.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusReady, savedSession.Status)
+	assert.Equal(t, "stale-token", savedSession.ConnectTokenHash)
+	assert.Equal(t, int64(1), client.Exists(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Val())
+	assert.Equal(t, int64(1), client.Exists(context.Background(), "mpp:browser:session:"+session.ID.String()).Val())
+	assert.Equal(t, int64(1), client.Exists(context.Background(), "mpp:browser:worker-heartbeat:"+workerSessionRef).Val())
+}
+
 func streamTokenFromPath(t *testing.T, path string) string {
 	t.Helper()
 
