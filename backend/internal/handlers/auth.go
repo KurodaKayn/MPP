@@ -31,6 +31,10 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "username is required")
 	}
 
+	if !h.usernameLoginEnabled {
+		return sendError(c, http.StatusUnauthorized, "invalid_credentials", "username login is disabled")
+	}
+
 	var user models.User
 	err := h.db.Where("username = ?", req.Username).First(&user).Error
 	if err != nil {

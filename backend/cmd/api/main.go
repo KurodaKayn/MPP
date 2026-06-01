@@ -55,7 +55,9 @@ func main() {
 	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
 	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
 	userDashboardHandler.UseAIContentEditor(services.NewAIServiceClientFromEnv())
+	mockLogin := mockLoginEnabled()
 	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
+	authHandler.SetUsernameLoginEnabled(mockLogin)
 
 	// Remote Browser Session (New)
 	var workerClient publisher.BrowserWorkerClient
@@ -90,7 +92,7 @@ func main() {
 			"message": "pong",
 		})
 	})
-	if mockLoginEnabled() {
+	if mockLogin {
 		e.POST("/api/auth/mock-login", authHandler.MockLogin)
 	}
 	e.POST("/api/auth/login", authHandler.Login)
