@@ -1,7 +1,7 @@
 "use client";
 
 import { LogOut, Moon, Sun, Globe, Monitor } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { useAuth } from "@/components/auth/auth-provider";
@@ -15,28 +15,35 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useTranslation } from "@/lib/i18n/client";
 
 export function PreferencesCard() {
+  const params = useParams();
+  const locale = (params?.locale as string) || "en";
+  const { t } = useTranslation(locale, "dashboard");
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>通用设置</CardTitle>
-        <CardDescription>配置界面的语言和主题风格。</CardDescription>
+        <CardTitle>{t("settings.preferences.title")}</CardTitle>
+        <CardDescription>
+          {t("settings.preferences.description")}
+        </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-6">
         <div className="flex items-center justify-between space-x-2">
           <div className="flex items-center space-x-4">
             <Globe className="h-5 w-5 text-muted-foreground" />
             <div className="flex flex-col space-y-1">
-              <Label>语言</Label>
+              <Label>{t("settings.preferences.language")}</Label>
               <span className="text-[0.8rem] text-muted-foreground">
-                选择您偏好的界面语言。
+                {t("settings.preferences.languageDesc")}
               </span>
             </div>
           </div>
           {/* Mock Select for Language */}
           <div className="w-32 border rounded-md px-3 py-2 text-sm flex items-center justify-between opacity-50 cursor-not-allowed">
-            <span>简体中文</span>
+            <span>{t("settings.preferences.languageValue")}</span>
           </div>
         </div>
 
@@ -44,9 +51,9 @@ export function PreferencesCard() {
           <div className="flex items-center space-x-4">
             <Moon className="h-5 w-5 text-muted-foreground" />
             <div className="flex flex-col space-y-1">
-              <Label>深色模式</Label>
+              <Label>{t("settings.preferences.theme")}</Label>
               <span className="text-[0.8rem] text-muted-foreground">
-                当前：跟随系统
+                {t("settings.preferences.themeDesc")}
               </span>
             </div>
           </div>
@@ -72,35 +79,38 @@ export function PreferencesCard() {
   );
 }
 
-export function DangerZoneCard() {
+export function AccountManagementCard() {
   const router = useRouter();
   const { logout } = useAuth();
+  const params = useParams();
+  const locale = (params?.locale as string) || "en";
+  const { t } = useTranslation(locale, "dashboard");
 
   const handleLogout = () => {
     logout();
-    toast.success("已退出登录");
-    router.replace("/login");
+    toast.success(t("settings.account.logoutSuccess"));
+    router.replace(`/${locale}/login`);
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>账号管理</CardTitle>
-        <CardDescription>管理您的登录状态。</CardDescription>
+        <CardTitle>{t("settings.account.title")}</CardTitle>
+        <CardDescription>{t("settings.account.description")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-6">
         <div className="flex items-center justify-between space-x-2">
           <div className="flex items-center space-x-4">
             <LogOut className="h-5 w-5 text-muted-foreground" />
             <div className="flex flex-col space-y-1">
-              <Label>退出账号</Label>
+              <Label>{t("settings.account.logout")}</Label>
               <span className="text-[0.8rem] text-muted-foreground">
-                在此设备上退出当前的管理员账号。
+                {t("settings.account.logoutDesc")}
               </span>
             </div>
           </div>
           <Button variant="outline" onClick={handleLogout}>
-            退出登录
+            {t("settings.account.logoutButton")}
           </Button>
         </div>
       </CardContent>

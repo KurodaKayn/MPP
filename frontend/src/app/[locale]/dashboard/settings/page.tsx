@@ -1,7 +1,7 @@
 import { SettingsPageHeader } from "./_components/settings-page-header";
 import {
   PreferencesCard,
-  DangerZoneCard,
+  AccountManagementCard,
 } from "./_components/preferences-card";
 
 export default function SettingsPage() {
@@ -10,7 +10,7 @@ export default function SettingsPage() {
       <SettingsPageHeader />
 
       <PreferencesCard />
-      <DangerZoneCard />
+      <AccountManagementCard />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,14 +29,8 @@ import {
   type DashboardStats,
   type ProjectListItem,
 } from "@/lib/dashboard/api";
-
-const statusLabels: Record<string, string> = {
-  draft: "草稿",
-  ready: "就绪",
-  publishing: "发布中",
-  published: "已发布",
-  failed: "失败",
-};
+import { useTranslation } from "@/lib/i18n/client";
+import { getIntlLocale } from "@/lib/i18n/settings";
 
 const statusVariants: Record<
   string,
@@ -48,12 +43,12 @@ const statusVariants: Record<
   failed: "destructive",
 };
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("zh-CN").format(value);
+function formatNumber(value: number, locale: string) {
+  return new Intl.NumberFormat(getIntlLocale(locale)).format(value);
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatDate(value: string, locale: string) {
+  return new Intl.DateTimeFormat(getIntlLocale(locale), {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -61,10 +56,9 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function getPlatformLabel(platform: string) {
-  return (
-    PLATFORM_TABS.find((item) => item.value === platform)?.label ?? platform
-  );
+function getPlatformLabel(platform: string, tCommon: any) {
+  const tab = PLATFORM_TABS.find((item) => item.value === platform);
+  return tab ? tCommon(tab.label) : platform;
 }
 
 function MetricCard({
@@ -73,12 +67,14 @@ function MetricCard({
   description,
   icon: Icon,
   loading,
+  locale,
 }: {
   title: string;
   value: number;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
   loading: boolean;
+  locale: string;
 }) {
   return (
     <Card>
@@ -90,7 +86,9 @@ function MetricCard({
         {loading ? (
           <Skeleton className="h-8 w-24" />
         ) : (
-          <div className="text-2xl font-bold">{formatNumber(value)}</div>
+          <div className="text-2xl font-bold">
+            {formatNumber(value, locale)}
+          </div>
         )}
         <p className="mt-1 text-xs text-muted-foreground">{description}</p>
       </CardContent>
@@ -98,21 +96,32 @@ function MetricCard({
   );
 }
 
-function ProjectStatus({ status }: { status: string }) {
+function ProjectStatus({ status, t }: { status: string; t: any }) {
+  const statusLabel = t(`overview.status.${status}`) || status;
   return (
-    <Badge variant={statusVariants[status] ?? "outline"}>
-      {statusLabels[status] ?? status}
-    </Badge>
+    <Badge variant={statusVariants[status] ?? "outline"}>{statusLabel}</Badge>
   );
 }
 
-function PublicationStatus({ project }: { project: ProjectListItem }) {
+function PublicationStatus({
+  project,
+  t,
+  tCommon,
+}: {
+  project: ProjectListItem;
+  t: any;
+  tCommon: any;
+}) {
   const enabledPublications = project.publications.filter(
     (publication) => publication.enabled,
   );
 
   if (enabledPublications.length === 0) {
-    return <span className="text-muted-foreground">未配置</span>;
+    return (
+      <span className="text-muted-foreground">
+        {t("overview.status.unconfigured")}
+      </span>
+    );
   }
 
   return (
@@ -122,7 +131,7 @@ function PublicationStatus({ project }: { project: ProjectListItem }) {
           key={publication.id}
           variant={publication.status === "failed" ? "destructive" : "outline"}
         >
-          {getPlatformLabel(publication.platform)}
+          {getPlatformLabel(publication.platform, tCommon)}
         </Badge>
       ))}
     </div>
@@ -140,6 +149,11 @@ function ProjectListSkeleton() {
 }
 
 export default function DashboardPage() {
+  const params = useParams();
+  const locale = (params?.locale as string) || "en";
+  const { t } = useTranslation(locale, "dashboard");
+  const { t: tCommon } = useTranslation(locale, "common");
+
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [totalProjects, setTotalProjects] = useState(0);
@@ -163,7 +177,7 @@ export default function DashboardPage() {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "无法加载控制台数据",
+          : t("overview.error.defaultMessage"),
       );
     } finally {
       setLoading(false);
@@ -203,7 +217,9 @@ export default function DashboardPage() {
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
               <div>
-                <div className="text-sm font-medium">控制台数据加载失败</div>
+                <div className="text-sm font-medium">
+                  {t("overview.error.title")}
+                </div>
                 <p className="text-sm text-muted-foreground">{error}</p>
               </div>
             </div>
@@ -214,7 +230,7 @@ export default function DashboardPage() {
               onClick={() => void loadDashboard()}
             >
               <RefreshCw className="h-4 w-4" />
-              重试
+              {t("overview.error.retry")}
             </Button>
           </CardContent>
         </Card>
@@ -222,41 +238,49 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          title="内容总数"
+          title={t("overview.stats.totalProjects")}
           value={stats?.total_projects ?? 0}
-          description="当前系统内的项目数量"
+          description={t("overview.stats.totalProjectsDesc")}
           icon={FileText}
           loading={loading}
+          locale={locale}
         />
         <MetricCard
-          title="活跃渠道"
+          title={t("overview.stats.activeChannels")}
           value={enabledChannelCount}
-          description="最近项目覆盖的平台数"
+          description={t("overview.stats.activeChannelsDesc")}
           icon={Share2}
           loading={loading}
+          locale={locale}
         />
         <MetricCard
-          title="发布成功"
+          title={t("overview.stats.publishSuccess")}
           value={publishedCount}
-          description={`成功率 ${successRate}%`}
+          description={t("overview.stats.publishSuccessDesc", {
+            rate: successRate,
+          })}
           icon={CheckCircle2}
           loading={loading}
+          locale={locale}
         />
         <MetricCard
-          title="发布失败"
+          title={t("overview.stats.publishFailed")}
           value={failedCount}
-          description="需要排查的分发记录"
+          description={t("overview.stats.publishFailedDesc")}
           icon={XCircle}
           loading={loading}
+          locale={locale}
         />
       </div>
 
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle>最近内容</CardTitle>
+            <CardTitle>{t("overview.recent.title")}</CardTitle>
             <CardDescription>
-              共 {formatNumber(totalProjects)} 篇内容，显示最近 8 篇。
+              {t("overview.recent.description", {
+                total: formatNumber(totalProjects, locale),
+              })}
             </CardDescription>
           </div>
           <div className="flex gap-2">
@@ -266,9 +290,9 @@ export default function DashboardPage() {
               size="sm"
               nativeButton={false}
               render={(buttonProps) => (
-                <Link href="/dashboard/posts" {...buttonProps}>
+                <Link href={`/${locale}/dashboard/posts`} {...buttonProps}>
                   <ExternalLink className="h-4 w-4" />
-                  查看发布
+                  {t("overview.recent.viewPosts")}
                 </Link>
               )}
             />
@@ -280,7 +304,7 @@ export default function DashboardPage() {
               disabled={loading}
             >
               <RefreshCw className="h-4 w-4" />
-              刷新
+              {t("overview.recent.refresh")}
             </Button>
           </div>
         </CardHeader>
@@ -289,21 +313,25 @@ export default function DashboardPage() {
             <ProjectListSkeleton />
           ) : projects.length === 0 ? (
             <div className="flex min-h-48 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-              暂无内容数据
+              {t("overview.recent.empty")}
             </div>
           ) : (
             <div className="overflow-hidden rounded-md border">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-left text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3 font-medium">标题</th>
+                    <th className="px-4 py-3 font-medium">
+                      {t("overview.table.title")}
+                    </th>
                     <th className="hidden px-4 py-3 font-medium md:table-cell">
-                      状态
+                      {t("overview.table.status")}
                     </th>
                     <th className="hidden px-4 py-3 font-medium lg:table-cell">
-                      渠道
+                      {t("overview.table.channel")}
                     </th>
-                    <th className="px-4 py-3 text-right font-medium">更新</th>
+                    <th className="px-4 py-3 text-right font-medium">
+                      {t("overview.table.updated")}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -314,17 +342,21 @@ export default function DashboardPage() {
                           {project.title}
                         </div>
                         <div className="mt-1 md:hidden">
-                          <ProjectStatus status={project.status} />
+                          <ProjectStatus status={project.status} t={t} />
                         </div>
                       </td>
                       <td className="hidden px-4 py-3 md:table-cell">
-                        <ProjectStatus status={project.status} />
+                        <ProjectStatus status={project.status} t={t} />
                       </td>
                       <td className="hidden px-4 py-3 lg:table-cell">
-                        <PublicationStatus project={project} />
+                        <PublicationStatus
+                          project={project}
+                          t={t}
+                          tCommon={tCommon}
+                        />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right text-muted-foreground">
-                        {formatDate(project.updated_at)}
+                        {formatDate(project.updated_at, locale)}
                       </td>
                     </tr>
                   ))}

@@ -1,0 +1,87 @@
+{
+  "overview": {
+    "title": "控制台",
+    "stats": {
+      "totalProjects": "内容总数",
+      "totalProjectsDesc": "当前系统内的项目数量",
+      "activeChannels": "活跃渠道",
+      "activeChannelsDesc": "最近项目覆盖的平台数",
+      "publishSuccess": "发布成功",
+      "publishSuccessDesc": "成功率 {{rate}}%",
+      "publishFailed": "发布失败",
+      "publishFailedDesc": "需要排查的分发记录"
+    },
+    "recent": {
+      "title": "最近内容",
+      "description": "共 {{total}} 篇内容，显示最近 8 篇。",
+      "viewPosts": "查看发布",
+      "refresh": "刷新",
+      "empty": "暂无内容数据"
+    },
+    "table": {
+      "title": "标题",
+      "status": "状态",
+      "channel": "渠道",
+      "updated": "更新"
+    },
+    "status": {
+      "draft": "草稿",
+      "ready": "就绪",
+      "publishing": "发布中",
+      "published": "已发布",
+      "failed": "失败",
+      "unconfigured": "未配置",
+      "adapted": "已适配",
+      "disabled": "已停用",
+      "pending": "待处理"
+    },
+    "error": {
+      "title": "控制台数据加载失败",
+      "defaultMessage": "无法加载控制台数据",
+      "retry": "重试"
+    }
+  },
+  "posts": {
+    "title": "我的内容",
+    "description": "以项目卡片查看发布结果，并继续编辑已有内容。",
+    "refresh": "刷新",
+    "error": {
+      "title": "内容列表加载失败",
+      "defaultMessage": "无法加载内容列表"
+    },
+    "stats": {
+      "totalProjects": "项目数量",
+      "publishSuccess": "发布成功",
+      "publishFailed": "发布失败"
+    },
+    "empty": "暂无内容数据",
+    "card": {
+      "updatedAt": "更新于 {{date}}",
+      "successList": "发布成功",
+      "failedList": "发布失败",
+      "edit": "编辑",
+      "none": "暂无"
+    }
+  },
+  "settings": {
+    "title": "设置",
+    "description": "管理您的偏好设置和账号安全。",
+    "preferences": {
+      "title": "通用设置",
+      "description": "配置界面的语言和主题风格。",
+      "language": "语言",
+      "languageDesc": "选择您偏好的界面语言。",
+      "languageValue": "简体中文",
+      "theme": "深色模式",
+      "themeDesc": "当前：跟随系统"
+    },
+    "account": {
+      "title": "账号管理",
+      "description": "管理您的账号和登录状态。",
+      "logout": "退出账号",
+      "logoutDesc": "在此设备上退出当前的管理员账号。",
+      "logoutButton": "退出登录",
+      "logoutSuccess": "已退出登录"
+    }
+  }
+}

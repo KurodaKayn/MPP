@@ -14,3 +14,11 @@ export function getOptions(lng = fallbackLng, ns = defaultNS) {
     ns,
   };
 }
+
+export function getIntlLocale(lng: string): string {
+  const map: Record<string, string> = {
+    zh: "zh-CN",
+    en: "en-US",
+  };
+  return map[lng] || "en-US";
+}

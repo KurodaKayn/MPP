@@ -15,6 +15,7 @@ import {
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import { siteConfig } from "@/lib/seo";
 import { useTranslation } from "@/lib/i18n";
+import { getIntlLocale } from "@/lib/i18n/settings";
 
 export async function generateMetadata({
   params,
@@ -234,7 +235,7 @@ export default async function Home({
       name: siteConfig.name,
       alternateName: siteConfig.shortName,
       url: siteConfig.url,
-      inLanguage: locale === "zh" ? "zh-CN" : "en-US",
+      inLanguage: getIntlLocale(locale),
     },
     {
       "@context": "https://schema.org",
@@ -245,7 +246,7 @@ export default async function Home({
       operatingSystem: "Web",
       url: siteConfig.url,
       description: t("description"),
-      inLanguage: locale === "zh" ? "zh-CN" : "en-US",
+      inLanguage: getIntlLocale(locale),
       featureList: [
         t("workflow.step1.title"),
         t("workflow.step2.title"),
