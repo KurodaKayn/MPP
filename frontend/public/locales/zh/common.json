@@ -1,0 +1,9 @@
+{
+  "title": "多平台海报发布工具",
+  "description": "一键分发你的内容到多个平台",
+  "login": {
+    "title": "登录",
+    "submit": "登录",
+    "forgotPassword": "忘记密码？"
+  }
+}

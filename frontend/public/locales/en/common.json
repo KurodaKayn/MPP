@@ -1,0 +1,9 @@
+{
+  "title": "Multi-Platform Poster Tool",
+  "description": "Distribute your content to multiple platforms with one click",
+  "login": {
+    "title": "Login",
+    "submit": "Login",
+    "forgotPassword": "Forgot password?"
+  }
+}
