@@ -143,6 +143,17 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 	if (platform == "douyin" || platform == "zhihu") && s.browserWorkerClient != nil {
 		fmt.Printf("Creating visible browser session for %s publishing...\n", platform)
 
+		// CLEANUP: Expire any existing active sessions for this user/platform to avoid unique constraint violation
+		// We do this in a transaction or ensure it's done before the next create.
+		if err := s.db.Model(&models.RemoteBrowserSession{}).
+			Where("user_id = ? AND platform = ? AND status IN ?", *scopeUserID, platform, []string{"pending", "ready", "login_detected", "capturing"}).
+			Updates(map[string]interface{}{
+				"status":      models.BrowserSessionStatusExpired,
+				"completed_at": time.Now(),
+			}).Error; err != nil {
+			fmt.Printf("Warning: failed to cleanup old sessions: %v\n", err)
+		}
+
 		// Generate stream token
 		token, tokenHash, err := browsersession.GenerateStreamToken()
 		if err != nil {
@@ -180,7 +191,13 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 				CreatedAt:             time.Now(),
 				ExpiresAt:             expiresAt,
 			}
-			s.db.Create(session)
+			if err := s.db.Create(session).Error; err != nil {
+				fmt.Printf("Error: failed to create session in DB: %v\n", err)
+				return nil, fmt.Errorf("failed to initialize browser session: %w", err)
+			}
+		} else {
+			fmt.Printf("Error: worker failed to create session: %v\n", err)
+			return nil, fmt.Errorf("failed to start browser worker: %w", err)
 		}
 	}
 

@@ -67,16 +67,15 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 
 		// 2. 根据用户提供的 HTML 源码，精准点击“上传图文”按钮
 		chromedp.ActionFunc(func(ctx context.Context) error {
+			fmt.Println("Douyin: Attempting to click upload button...")
 			script := `
 				(function() {
-					// 优先使用用户提供的精准类名锁定按钮
 					const btn = document.querySelector('.container-drag-btn-k6XmB4') || 
 					            document.querySelector('button.semi-button-primary');
 					if (btn) {
 						btn.click();
 						return "Target 'Upload Image Post' button clicked via class";
 					}
-					// 备选：点击整个拖拽容器
 					const container = document.querySelector('.container-drag-VAfIfu');
 					if (container) {
 						container.click();
@@ -86,18 +85,31 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 				})()
 			`
 			var res string
-			chromedp.Evaluate(script, &res).Do(ctx)
+			if err := chromedp.Evaluate(script, &res).Do(ctx); err != nil {
+				return err
+			}
 			fmt.Printf("Douyin Action: %s\n", res)
 			return nil
 		}),
 		chromedp.Sleep(2*time.Second),
 
-		// 3. 注入本地图片 (input[type="file"] 就在你提供的 HTML 底部)
-		chromedp.WaitVisible(`input[type="file"]`, chromedp.ByQuery),
-		chromedp.SetUploadFiles(`input[type="file"]`, []string{localImagePath}, chromedp.ByQuery),
+		// 3. 注入本地图片
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			fmt.Println("Douyin: Waiting for file input...")
+			return nil
+		}),
+		chromedp.WaitReady(`input[type="file"]`, chromedp.ByQuery),
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			fmt.Printf("Douyin: Uploading file: %s\n", localImagePath)
+			return chromedp.SetUploadFiles(`input[type="file"]`, []string{localImagePath}, chromedp.ByQuery).Do(ctx)
+		}),
 		chromedp.Sleep(10*time.Second), // 图片上传解析时间
 
 		// 4. 开始填写文字：标题
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			fmt.Println("Douyin: Waiting for title input...")
+			return nil
+		}),
 		chromedp.WaitVisible(`input[placeholder*="标题"]`, chromedp.ByQuery),
 		chromedp.SendKeys(`input[placeholder*="标题"]`, title),
 

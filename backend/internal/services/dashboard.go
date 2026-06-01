@@ -116,7 +116,19 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 	// 6. Execute Publish
 	remoteID, publishURL, err := p.Publish(ctx, &pub, &account)
 
-	// 7. Update DB
+	// 7. Update Session Status if exists
+	if browserSessionID != uuid.Nil {
+		sessionStatus := models.BrowserSessionStatusExpired
+		if err == nil {
+			sessionStatus = models.BrowserSessionStatusExpired // Or a 'finished' status if you have one
+		}
+		s.db.Model(&models.RemoteBrowserSession{}).Where("id = ?", browserSessionID).Updates(map[string]interface{}{
+			"status":       sessionStatus,
+			"completed_at": time.Now(),
+		})
+	}
+
+	// 8. Update DB
 	status := models.PublicationStatusPublished
 	errMsg := ""
 	if err != nil {
