@@ -153,7 +153,7 @@ func BrowserSessionStreamURL(sessionID uuid.UUID, token string) string {
 	)
 	query := url.Values{
 		"autoconnect": {"true"},
-		"path":        {streamBasePath + "/websockify"},
+		"path":        {"/" + streamBasePath + "/websockify"},
 		"resize":      {"scale"},
 	}
 	return fmt.Sprintf("/%s/vnc.html?%s", streamBasePath, query.Encode())

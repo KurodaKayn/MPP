@@ -55,6 +55,36 @@ func (s *BrowserSessionService) RegisterAdapter(a publisher.RemoteBrowserPlatfor
 	s.adapters[a.Platform()] = a
 }
 
+func (s *BrowserSessionService) RegisterSession(ctx context.Context, session *models.RemoteBrowserSession, tokenHash string) error {
+	if err := s.db.WithContext(ctx).Create(session).Error; err != nil {
+		return err
+	}
+
+	if s.redisClient != nil {
+		// Register in Redis live sessions
+		if err := s.saveRedisLiveSession(ctx, browserSessionLiveState{
+			SessionID:         session.ID,
+			UserID:            session.UserID,
+			Platform:          session.Platform,
+			Status:            session.Status,
+			WorkerSessionRef:  session.WorkerSessionRef,
+			ContainerID:       session.ContainerID,
+			CDPEndpointRef:    session.CDPEndpointRef,
+			StreamEndpointRef: session.StreamEndpointRef,
+			CreatedAt:         session.CreatedAt,
+			ExpiresAt:         session.ExpiresAt,
+		}); err != nil {
+			return err
+		}
+
+		// Register token in Redis
+		_, err := s.rotateRedisStreamToken(ctx, session.ID, session.UserID, session.Platform, tokenHash, session.ExpiresAt)
+		return err
+	}
+
+	return nil
+}
+
 func (s *BrowserSessionService) UseRedis(client *redis.Client) {
 	if client == nil {
 		return

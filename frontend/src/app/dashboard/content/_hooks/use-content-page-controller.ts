@@ -338,104 +338,162 @@ export function useContentPageController(projectId?: string) {
     });
   };
 
+  const [browserSession, setBrowserSession] = useState<{
+    session_id: string;
+    platform: string;
+    status: string;
+    expires_at?: string;
+    stream_url?: string;
+  } | null>(null);
+  const [browserError, setBrowserError] = useState<string>();
+
   const publishExistingProject = async () => {
     if (!projectId) {
       return;
     }
 
-    await saveDashboardProjectContent(projectId, buildProjectContentInput());
-    await saveDashboardProjectPlatforms(projectId, {
-      platforms: selectedPlatforms,
-    });
+    setIsPublishing(true);
+    try {
+      await saveDashboardProjectContent(projectId, buildProjectContentInput());
+      await saveDashboardProjectPlatforms(projectId, {
+        platforms: selectedPlatforms,
+      });
 
-    const results = await Promise.allSettled(
-      selectedPlatforms.map(async (platform) => {
-        const result = await publishProject(projectId, platform);
-        if (result.status === "failed" || result.status === "error") {
-          throw new Error(result.error_message || `${platform} 发布失败`);
-        }
+      const results = await Promise.allSettled(
+        selectedPlatforms.map(async (platform) => {
+          const result = await publishProject(projectId, platform);
+          if (result.status === "failed" || result.status === "error") {
+            throw new Error(result.error_message || `${platform} 发布失败`);
+          }
 
-        // Automatic Popup for visible browser sessions
-        if (result.stream_url) {
-          const popup = window.open(
-            result.stream_url,
-            `mpp-publish-${platform}`,
-            "width=1280,height=800,menubar=no,toolbar=no,location=no,status=no",
-          );
-          if (!popup) {
-            toast.warning(`已为 ${platform} 启动可视化发布，但浏览器拦截了弹窗`, {
-              description: "请允许弹窗以查看发布过程。",
+          // Trigger visible session modal if session ID is returned
+          if (result.browser_session_id) {
+            setBrowserSession({
+              expires_at: result.queued_at, // Use queued_at as a fallback for expiry
+              platform,
+              session_id: result.browser_session_id,
+              status: result.status,
+              stream_url: result.stream_url,
             });
           }
-        }
 
-        return {
-          platform,
-          status: result.status,
-        };
-      }),
-    );
-
-    const succeeded: PublishPlatform[] = [];
-    const failed: { message: string; platform: PublishPlatform }[] = [];
-    const pendingPlatforms: PublishPlatform[] = [];
-
-    results.forEach((result, index) => {
-      const platform = selectedPlatforms[index];
-      if (result.status === "fulfilled") {
-        if (result.value.status === "publishing") {
-          pendingPlatforms.push(platform);
-          return;
-        }
-        succeeded.push(result.value.platform);
-        return;
-      }
-
-      failed.push({
-        message:
-          result.reason instanceof Error
-            ? result.reason.message
-            : "请稍后重试。",
-        platform,
-      });
-    });
-
-    if (pendingPlatforms.length > 0) {
-      const finalPublications = await waitForProjectPublications(
-        projectId,
-        selectedPlatforms,
-      );
-      const finalPublicationMap = new Map(
-        finalPublications.items.map((publication) => [
-          publication.platform,
-          publication,
-        ]),
-      );
-
-      pendingPlatforms.forEach((platform) => {
-        const publication = finalPublicationMap.get(platform);
-        if (!publication) {
-          failed.push({
-            message: `${platform} 发布状态未返回`,
+          return {
             platform,
-          });
-          return;
-        }
+            status: result.status,
+          };
+        }),
+      );
 
-        if (publication.status === "published") {
-          succeeded.push(platform);
+      const succeeded: PublishPlatform[] = [];
+      const failed: { message: string; platform: PublishPlatform }[] = [];
+      const pendingPlatforms: PublishPlatform[] = [];
+
+      results.forEach((result, index) => {
+        const platform = selectedPlatforms[index];
+        if (result.status === "fulfilled") {
+          if (result.value.status === "publishing") {
+            pendingPlatforms.push(platform);
+            return;
+          }
+          succeeded.push(result.value.platform as PublishPlatform);
           return;
         }
 
         failed.push({
-          message: publication.error_message || `${platform} 发布失败`,
+          message:
+            result.reason instanceof Error
+              ? result.reason.message
+              : "请稍后重试。",
           platform,
         });
       });
+
+      if (pendingPlatforms.length > 0 && !browserSession) {
+        const finalPublications = await waitForProjectPublications(
+          projectId,
+          selectedPlatforms,
+        );
+        const finalPublicationMap = new Map(
+          finalPublications.items.map((publication) => [
+            publication.platform,
+            publication,
+          ]),
+        );
+
+        pendingPlatforms.forEach((platform) => {
+          const publication = finalPublicationMap.get(platform);
+          if (!publication) {
+            failed.push({
+              message: `${platform} 发布状态未返回`,
+              platform,
+            });
+            return;
+          }
+
+          if (publication.status === "published") {
+            succeeded.push(platform);
+            return;
+          }
+
+          failed.push({
+            message: publication.error_message || `${platform} 发布失败`,
+            platform,
+          });
+        });
+      }
+
+      return { failed, succeeded };
+    } catch (error) {
+      toast.error("发布失败", {
+        description: error instanceof Error ? error.message : "请稍后重试。",
+      });
+      return { failed: [], succeeded: [] };
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  // Poll for visible browser session status
+  useEffect(() => {
+    if (!browserSession) {
+      return;
     }
 
-    return { failed, succeeded };
-  };
+    // Terminal statuses for the modal
+    const finalStatuses = new Set(["published", "failed", "expired", "error"]);
+    if (finalStatuses.has(browserSession.status)) {
+      return;
+    }
+
+    let cancelled = false;
+    const interval = window.setInterval(() => {
+      void getBrowserSession(browserSession.session_id)
+        .then((nextSession) => {
+          if (cancelled) {
+            return;
+          }
+          setBrowserSession((prev) => 
+            prev ? { ...prev, ...nextSession } : null
+          );
+          if (nextSession.status === "expired") {
+            setBrowserError("发布会话已过期。");
+          }
+          if (nextSession.status === "failed") {
+            setBrowserError(nextSession.message || "浏览器操作失败。");
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            console.error("Failed to poll session status:", error);
+          }
+        });
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [browserSession]);
 
   const openXPostIntent = async () => {
     if (!validateContentFields()) {
@@ -567,5 +625,15 @@ export function useContentPageController(projectId?: string) {
     syncPrepublish,
     title,
     updatePrepublishDraft,
+    browserSession: browserSession ? {
+      completing: false,
+      error: browserError,
+      expiresAt: browserSession.expires_at,
+      platformLabel: PLATFORM_TABS.find(p => p.value === browserSession.platform)?.label || browserSession.platform,
+      status: browserSession.status as any,
+      streamURL: browserSession.stream_url,
+      onCancel: () => setBrowserSession(null),
+      onComplete: () => setBrowserSession(null),
+    } : null,
   };
 }

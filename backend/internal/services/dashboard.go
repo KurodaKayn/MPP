@@ -285,13 +285,14 @@ func sanitizeUserFacingErrorMessage(message string) string {
 }
 
 type DashboardService struct {
-	db                  *gorm.DB
-	wechatTester        WechatConnectionTester
-	xTester             XConnectionTester
-	xOAuth2Provider     XOAuth2Provider
-	xOAuth2States       XOAuth2StateStore
-	publishQueue        PublishQueue
-	browserWorkerClient publisher.BrowserWorkerClient
+	db                    *gorm.DB
+	wechatTester          WechatConnectionTester
+	xTester               XConnectionTester
+	xOAuth2Provider       XOAuth2Provider
+	xOAuth2States         XOAuth2StateStore
+	publishQueue          PublishQueue
+	browserWorkerClient   publisher.BrowserWorkerClient
+	browserSessionService *browsersession.BrowserSessionService
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
@@ -300,6 +301,10 @@ func NewDashboardService(db *gorm.DB) *DashboardService {
 
 func (s *DashboardService) SetBrowserWorkerClient(client publisher.BrowserWorkerClient) {
 	s.browserWorkerClient = client
+}
+
+func (s *DashboardService) SetBrowserSessionService(svc *browsersession.BrowserSessionService) {
+	s.browserSessionService = svc
 }
 
 func NewDashboardServiceWithWechatTester(db *gorm.DB, tester WechatConnectionTester) *DashboardService {
@@ -340,6 +345,9 @@ func (s *DashboardService) UseRedis(client *redis.Client) {
 	}
 	s.xOAuth2States = NewRedisXOAuth2StateStore(client)
 	s.publishQueue = NewRedisPublishQueue(client)
+	if s.browserSessionService != nil {
+		s.browserSessionService.UseRedis(client)
+	}
 }
 
 func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {

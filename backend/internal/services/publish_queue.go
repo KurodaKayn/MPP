@@ -187,9 +187,18 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 				CreatedAt:             time.Now(),
 				ExpiresAt:             expiresAt,
 			}
-			if err := s.db.Create(session).Error; err != nil {
-				fmt.Printf("Error: failed to create session in DB: %v\n", err)
-				return nil, fmt.Errorf("failed to initialize browser session: %w", err)
+			
+			// Use the service to register the session correctly (including Redis)
+			if s.browserSessionService != nil {
+				if err := s.browserSessionService.RegisterSession(ctx, session, tokenHash); err != nil {
+					fmt.Printf("Error: failed to register browser session: %v\n", err)
+					return nil, fmt.Errorf("failed to register browser session: %w", err)
+				}
+			} else {
+				if err := s.db.Create(session).Error; err != nil {
+					fmt.Printf("Error: failed to create session in DB: %v\n", err)
+					return nil, fmt.Errorf("failed to initialize browser session: %w", err)
+				}
 			}
 		} else {
 			fmt.Printf("Error: worker failed to create session: %v\n", err)

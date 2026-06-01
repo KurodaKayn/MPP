@@ -56,7 +56,9 @@ func main() {
 	} else {
 		workerClient = publisher.NewMockBrowserWorkerClient()
 	}
+	browserSessionService := browsersession.NewBrowserSessionService(db.DB, workerClient, publisher.NewCookieStore(db.DB))
 	dashboardService.SetBrowserWorkerClient(workerClient)
+	dashboardService.SetBrowserSessionService(browserSessionService)
 
 	if redisClient != nil {
 		defer redisClient.Close()
@@ -72,9 +74,7 @@ func main() {
 	authHandler.SetUsernameLoginEnabled(mockLogin)
 
 	cookieStore := publisher.NewCookieStore(db.DB)
-	browserSessionService := browsersession.NewBrowserSessionService(db.DB, workerClient, cookieStore)
 	if redisClient != nil {
-		browserSessionService.UseRedis(redisClient)
 		browserSessionService.StartCleanupWorker(context.Background())
 	}
 	browserSessionHandler := handlers.NewBrowserSessionHandler(browserSessionService)

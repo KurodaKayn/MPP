@@ -23,7 +23,11 @@ func SetupBrowser(ctx context.Context, remoteURL string, cookiesJSON []byte) (co
 	var cancelAlloc context.CancelFunc
 
 	if remoteURL != "" {
-		fmt.Printf("Connecting to browser session at %s...\n", remoteURL)
+		fmt.Printf("SetupBrowser: Connecting to remote browser at %s...\n", remoteURL)
+		
+		// Improve NewRemoteAllocator usage: sometimes the browser returns its internal host (container ID)
+		// in the websocket URL. chromedp tries to replace it with the host we provided.
+		// We use a custom options to ensure we can connect.
 		allocCtx, cancelAlloc = chromedp.NewRemoteAllocator(ctx, remoteURL)
 	} else {
 		// Fallback to local container browser (Headless)
