@@ -101,7 +101,7 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	assert.True(t, strings.HasPrefix(streamEndpoint, "http://127.0.0.1:"))
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, "bad-token", false)
-	assert.ErrorIs(t, err, browsersession.ErrInvalidStreamToken)
+	assert.ErrorIs(t, err, browsersession.ErrStreamTokenGone)
 
 	// Verify DB state
 	var session models.RemoteBrowserSession
@@ -174,7 +174,7 @@ func TestBrowserSessionService_GetStreamEndpointRejectsExpiredDatabaseToken(t *t
 		Update("connect_token_expires_at", time.Now().Add(-time.Second)).Error)
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
-	assert.ErrorIs(t, err, browsersession.ErrInvalidStreamToken)
+	assert.ErrorIs(t, err, browsersession.ErrStreamTokenGone)
 
 	status, err := svc.GetSession(context.Background(), userID, resp.SessionID)
 	require.NoError(t, err)
@@ -416,10 +416,10 @@ func streamTokenFromPath(t *testing.T, path string) string {
 
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	for i, part := range parts {
-		if part == "browser-stream" {
-			require.GreaterOrEqual(t, len(parts), i+4)
-			assert.Equal(t, "vnc.html", parts[i+3])
-			return parts[i+2]
+		if part == "stream" {
+			require.GreaterOrEqual(t, len(parts), i+3)
+			assert.Equal(t, "vnc.html", parts[i+2])
+			return parts[i+1]
 		}
 	}
 	require.Fail(t, "stream token path segment not found", path)

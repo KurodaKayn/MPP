@@ -127,27 +127,27 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 	if token == "" {
 		return "", ErrInvalidStreamToken
 	}
-
-	var session models.RemoteBrowserSession
-	query := s.db.WithContext(ctx).Where("id = ?", id)
-	// Only filter by userID if it's provided (not uuid.Nil)
-	if userID != uuid.Nil {
-		query = query.Where("user_id = ?", userID)
+	if userID == uuid.Nil {
+		return "", ErrSessionForbidden
 	}
 
-	if err := query.First(&session).Error; err != nil {
+	var session models.RemoteBrowserSession
+	if err := s.db.WithContext(ctx).Where("id = ?", id).First(&session).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", ErrSessionNotFound
 		}
 		return "", err
 	}
+	if session.UserID != userID {
+		return "", ErrSessionForbidden
+	}
 
 	now := time.Now()
 	if now.After(session.ExpiresAt) {
-		return "", ErrInvalidStreamToken
+		return "", ErrStreamTokenGone
 	}
 	if !isStreamableBrowserSessionStatus(session.Status) {
-		return "", ErrInvalidStreamToken
+		return "", ErrStreamTokenGone
 	}
 
 	tokenHash := hashStreamToken(token)
@@ -157,23 +157,23 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 			return "", err
 		}
 		if !ok {
-			return "", ErrInvalidStreamToken
+			return "", ErrStreamTokenGone
 		}
 		if meta.SessionID != id || meta.Platform != session.Platform || meta.Purpose != "stream" {
 			return "", ErrInvalidStreamToken
 		}
-		if userID != uuid.Nil && meta.UserID != userID {
-			return "", ErrInvalidStreamToken
+		if meta.UserID != userID {
+			return "", ErrSessionForbidden
 		}
 		if time.Now().After(meta.ExpiresAt) {
-			return "", ErrInvalidStreamToken
+			return "", ErrStreamTokenGone
 		}
 	} else {
 		if !streamTokenValidUntil(session).After(now) {
-			return "", ErrInvalidStreamToken
+			return "", ErrStreamTokenGone
 		}
 		if subtle.ConstantTimeCompare([]byte(tokenHash), []byte(session.ConnectTokenHash)) != 1 {
-			return "", ErrInvalidStreamToken
+			return "", ErrStreamTokenGone
 		}
 		if consume {
 			if err := s.db.Model(&session).Update("connect_token_hash", "").Error; err != nil {

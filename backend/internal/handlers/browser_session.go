@@ -70,7 +70,10 @@ func (h *BrowserSessionHandler) GetSession(c echo.Context) error {
 }
 
 func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
-	userID, _ := middleware.GetUserIDFromContext(c) // May be nil if coming from public route
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
 
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -79,11 +82,16 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 
 	streamToken, proxyPath := streamTokenAndProxyPath(c.QueryParam("token"), c.Param("*"))
 	isWebSocket := strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket"
-	// Keep the iframe URL stable while noVNC is connected; token expiry limits replay.
-	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken, false)
+	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken, isWebSocket)
 	if err != nil {
 		if err == browsersession.ErrSessionNotFound {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
+		}
+		if err == browsersession.ErrSessionForbidden {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		if err == browsersession.ErrStreamTokenGone {
+			return sendError(c, http.StatusGone, "gone", err.Error())
 		}
 		if err == browsersession.ErrInvalidStreamToken {
 			return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())

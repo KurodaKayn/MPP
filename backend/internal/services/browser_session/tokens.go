@@ -146,10 +146,11 @@ func (s *BrowserSessionService) hasCurrentStreamToken(ctx context.Context, sessi
 }
 
 func browserSessionStreamURL(sessionID uuid.UUID, token string) string {
+	escapedToken := url.PathEscape(token)
 	streamBasePath := fmt.Sprintf(
-		"api/browser-stream/%s/%s",
+		"api/user/dashboard/browser-sessions/%s/stream/%s",
 		sessionID,
-		url.PathEscape(token),
+		escapedToken,
 	)
 	query := url.Values{
 		"autoconnect": {"true"},
