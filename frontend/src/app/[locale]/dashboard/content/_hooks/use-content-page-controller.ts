@@ -10,7 +10,6 @@ import {
 import { emptyContentValue, type ContentValue } from "@/lib/content/types";
 import {
   createDashboardProject,
-  getBrowserSession,
   getDashboardProject,
   getProjectPublications,
   publishProject,
@@ -91,7 +90,6 @@ export function useContentPageController(projectId?: string) {
     content,
     isLoading,
     isOpeningXPostIntent,
-    isPublishing,
     isSaving,
     isSyncingPrepublish,
     loadedProjectId,
@@ -101,7 +99,6 @@ export function useContentPageController(projectId?: string) {
     setContent,
     setIsLoading,
     setIsOpeningXPostIntent,
-    setIsPublishing,
     setIsSaving,
     setIsSyncingPrepublish,
     setLoadedProjectId,
@@ -566,15 +563,5 @@ export function useContentPageController(projectId?: string) {
     syncPrepublish,
     title,
     updatePrepublishDraft,
-    browserSession: browserSession ? {
-      completing: false,
-      error: browserError,
-      expiresAt: browserSession.expires_at,
-      platformLabel: PLATFORM_TABS.find(p => p.value === browserSession.platform)?.label || browserSession.platform,
-      status: (browserSession.status === "publishing" || browserSession.status === "ready" ? "ready" : browserSession.status) as any,
-      streamURL: browserStreamURL,
-      onCancel: () => setBrowserSession(null),
-      onComplete: () => setBrowserSession(null),
-    } : null,
   };
 }
