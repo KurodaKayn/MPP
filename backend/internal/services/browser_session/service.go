@@ -14,6 +14,7 @@ var (
 	ErrPlatformNotSupported = errors.New("platform does not support remote browser sessions")
 	ErrSessionNotFound      = errors.New("session not found")
 	ErrSessionForbidden     = errors.New("session does not belong to the authenticated user")
+	ErrSessionGone          = errors.New("session has expired")
 	ErrInvalidStreamToken   = errors.New("invalid or expired stream token")
 	ErrStreamTokenGone      = errors.New("stream token has expired or already been consumed")
 	ErrSessionNotReady      = errors.New("session is not ready for capture")

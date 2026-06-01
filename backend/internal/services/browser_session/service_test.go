@@ -214,6 +214,35 @@ func TestBrowserSessionService_GetSessionPreservesTerminalAuditStatusAfterExpiry
 	assert.Equal(t, models.BrowserSessionStatusConnected, savedSession.Status)
 }
 
+func TestBrowserSessionService_GetSessionReturnsGoneForExpiredRedisSession(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	client := setupBrowserSessionRedis(t, svc)
+	userID := uuid.New()
+	platform := "douyin"
+	now := time.Now()
+	session := models.RemoteBrowserSession{
+		UserID:            userID,
+		Platform:          platform,
+		Status:            models.BrowserSessionStatusReady,
+		WorkerSessionRef:  "worker-expired",
+		StreamEndpointRef: "http://127.0.0.1:9/stream/worker-expired",
+		ConnectTokenHash:  "expired-token",
+		CreatedAt:         now.Add(-30 * time.Minute),
+		ExpiresAt:         now.Add(-15 * time.Minute),
+	}
+	require.NoError(t, db.Create(&session).Error)
+	require.NoError(t, client.Set(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform, session.ID.String(), time.Hour).Err())
+
+	_, err := svc.GetSession(context.Background(), userID, session.ID)
+
+	assert.ErrorIs(t, err, browsersession.ErrSessionGone)
+	assert.Equal(t, int64(0), client.Exists(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Val())
+
+	var savedSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedSession, session.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusExpired, savedSession.Status)
+}
+
 func TestBrowserSessionService_RedisStreamTokenIsConsumedOnce(t *testing.T) {
 	_, svc, _ := setupBrowserSessionTest(t)
 	setupBrowserSessionRedis(t, svc)

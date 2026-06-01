@@ -64,6 +64,9 @@ func (h *BrowserSessionHandler) GetSession(c echo.Context) error {
 		if err == browsersession.ErrSessionNotFound {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
 		}
+		if err == browsersession.ErrSessionGone {
+			return sendError(c, http.StatusGone, "gone", err.Error())
+		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 
