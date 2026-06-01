@@ -7,6 +7,7 @@ import { PLATFORM_TABS } from "@/lib/content/platforms";
 import { emptyContentValue, type ContentValue } from "@/lib/content/types";
 import {
   createDashboardProject,
+  getBrowserSession,
   getDashboardProject,
   getProjectPublications,
   publishProject,
