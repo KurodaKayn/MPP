@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -86,7 +86,7 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	}
 
 	streamToken, proxyPath := streamTokenAndProxyPath(c.QueryParam("token"), c.Param("*"))
-	fmt.Printf("StreamSession: id=%s, token=%s, path=%s\n", id, streamToken, proxyPath)
+	log.Printf("StreamSession: id=%s, path=%s", id, proxyPath)
 
 	isWebSocket := strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket"
 	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken, isWebSocket)
