@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import { emptyContentValue, type ContentValue } from "@/lib/content/types";
