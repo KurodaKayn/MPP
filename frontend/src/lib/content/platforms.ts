@@ -1,27 +1,27 @@
 export const PLATFORM_TABS = [
   {
     value: "wechat",
-    label: "公众号",
+    label: "platforms.wechat",
     icon: "/icons/platforms/wechat.svg",
   },
   {
     value: "zhihu",
-    label: "知乎",
+    label: "platforms.zhihu",
     icon: "/icons/platforms/zhihu.svg",
   },
   {
     value: "x",
-    label: "X",
+    label: "platforms.x",
     icon: "/icons/platforms/x.svg",
   },
   {
     value: "bilibili",
-    label: "B站",
+    label: "platforms.bilibili",
     icon: "/icons/platforms/bilibili.svg",
   },
   {
     value: "xiaohongshu",
-    label: "小红书",
+    label: "platforms.xiaohongshu",
     icon: "/icons/platforms/xiaohongshu.svg",
   },
 ] as const;

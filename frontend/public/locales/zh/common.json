@@ -1,9 +1,31 @@
 {
-  "title": "多平台海报发布工具",
-  "description": "一键分发你的内容到多个平台",
   "login": {
     "title": "登录",
-    "submit": "登录",
-    "forgotPassword": "忘记密码？"
+    "submit": "进入工作台",
+    "forgotPassword": "忘记密码？",
+    "mockDesc": "使用开发账号进入工作台。",
+    "tokenDesc": "使用访问令牌进入工作台。",
+    "username": "用户名",
+    "accessToken": "访问令牌",
+    "sideTitle": "从一篇内容开始，管理所有发布渠道。"
+  },
+  "nav": {
+    "workflow": "工作流",
+    "platforms": "平台",
+    "useCases": "场景",
+    "auth": "平台授权",
+    "content": "内容创作",
+    "overview": "概览",
+    "posts": "我的内容",
+    "settings": "设置",
+    "loggedIn": "已登录",
+    "creator": "创作者"
+  },
+  "platforms": {
+    "wechat": "公众号",
+    "zhihu": "知乎",
+    "x": "X",
+    "bilibili": "B站",
+    "xiaohongshu": "小红书"
   }
 }

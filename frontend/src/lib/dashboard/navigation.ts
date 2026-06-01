@@ -1,22 +1,22 @@
 export const dashboardRoutes = {
   auth: {
-    title: "平台授权",
+    title: "nav.auth",
     url: "/dashboard/auth",
   },
   content: {
-    title: "内容创作",
+    title: "nav.content",
     url: "/dashboard/content",
   },
   overview: {
-    title: "概览",
+    title: "nav.overview",
     url: "/dashboard",
   },
   posts: {
-    title: "我的内容",
+    title: "nav.posts",
     url: "/dashboard/posts",
   },
   settings: {
-    title: "设置",
+    title: "nav.settings",
     url: "/dashboard/settings",
   },
 } as const;

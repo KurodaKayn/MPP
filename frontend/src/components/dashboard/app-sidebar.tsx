@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { useAuth } from "@/components/auth/auth-provider";
+import { useTranslation } from "@/lib/i18n/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Sidebar,
@@ -52,7 +53,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { session } = useAuth();
   const params = useParams();
   const locale = (params?.locale as string) || "zh";
-  const username = session?.username ?? "Creator";
+  const { t } = useTranslation(locale, "common");
+  const username = session?.username ?? t("nav.creator");
   const initials = username.slice(0, 2).toUpperCase();
 
   const getLocalizedUrl = (url: string) => `/${locale}${url}`;
@@ -73,9 +75,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     <Image
                       src="/icons/mpp-with-name.svg"
                       alt="Multi-Poster"
-                      width={120}
-                      height={32}
-                      className="h-8 w-auto"
+                      width={140}
+                      height={38}
+                      className="h-9 w-auto"
                     />
                   </div>
                 </Link>
@@ -89,11 +91,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           {data.navMain.map((item) => (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton
-                tooltip={item.title}
+                tooltip={t(item.title)}
                 render={(buttonProps) => (
                   <Link href={getLocalizedUrl(item.url)} {...buttonProps}>
                     <item.icon />
-                    <span>{item.title}</span>
+                    <span>{t(item.title)}</span>
                   </Link>
                 )}
               />
@@ -106,7 +108,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              tooltip="设置"
+              tooltip={t("nav.settings")}
               render={(buttonProps) => (
                 <Link
                   href={getLocalizedUrl(dashboardRoutes.settings.url)}
@@ -119,7 +121,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </Avatar>
                   <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-semibold">{username}</span>
-                    <span className="truncate text-xs">已登录</span>
+                    <span className="truncate text-xs">
+                      {t("nav.loggedIn")}
+                    </span>
                   </div>
                   <Settings className="ml-auto size-4 text-sidebar-foreground/70" />
                 </Link>

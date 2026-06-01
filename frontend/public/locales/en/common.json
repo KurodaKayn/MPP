@@ -1,9 +1,31 @@
 {
-  "title": "Multi-Platform Poster Tool",
-  "description": "Distribute your content to multiple platforms with one click",
   "login": {
-    "title": "Login",
-    "submit": "Login",
-    "forgotPassword": "Forgot password?"
+    "title": "Login to Console",
+    "submit": "Enter Workbench",
+    "forgotPassword": "Forgot password?",
+    "mockDesc": "Use dev account to enter.",
+    "tokenDesc": "Use access token to enter.",
+    "username": "Username",
+    "accessToken": "Access Token",
+    "sideTitle": "Manage all channels from a single source."
+  },
+  "nav": {
+    "workflow": "Workflow",
+    "platforms": "Platforms",
+    "useCases": "Use Cases",
+    "auth": "Platform Auth",
+    "content": "Content Creation",
+    "overview": "Overview",
+    "posts": "My Posts",
+    "settings": "Settings",
+    "loggedIn": "Logged In",
+    "creator": "Creator"
+  },
+  "platforms": {
+    "wechat": "WeChat",
+    "zhihu": "Zhihu",
+    "x": "X",
+    "bilibili": "Bilibili",
+    "xiaohongshu": "Red (XHS)"
   }
 }
