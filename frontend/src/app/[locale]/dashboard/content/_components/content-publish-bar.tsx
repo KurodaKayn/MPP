@@ -128,7 +128,7 @@ export function ContentPublishBar({
                       className="size-[18px] shrink-0"
                     />
                     <span className="truncate font-medium">
-                      {platform.label}
+                      {platform.defaultLabel}
                     </span>
                   </label>
                 );

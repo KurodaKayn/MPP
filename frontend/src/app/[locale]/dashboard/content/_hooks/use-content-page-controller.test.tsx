@@ -366,7 +366,7 @@ describe("useContentPageController", () => {
       "zhihu",
     ]);
     expect(mocks.toastSuccess).toHaveBeenCalledWith("修改并发布完成", {
-      description: "已发布到 知乎。",
+      description: "已发布到 Zhihu。",
     });
 
     view.unmount();
