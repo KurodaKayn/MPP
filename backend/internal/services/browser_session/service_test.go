@@ -32,6 +32,13 @@ func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *browsersession.BrowserSes
 	)
 	require.NoError(t, err)
 
+	err = db.Exec(`
+		CREATE UNIQUE INDEX ux_remote_browser_sessions_active_user_platform
+		ON remote_browser_sessions (user_id, platform)
+		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
+	`).Error
+	require.NoError(t, err)
+
 	worker := publisher.NewMockBrowserWorkerClient()
 	t.Cleanup(func() {
 		require.NoError(t, worker.Close())
@@ -262,6 +269,37 @@ func TestBrowserSessionService_StartSessionPreservesInFlightPendingRows(t *testi
 	require.NoError(t, db.First(&savedPendingSession, pendingSession.ID).Error)
 	assert.Equal(t, models.BrowserSessionStatusPending, savedPendingSession.Status)
 	assert.Empty(t, savedPendingSession.ErrorMessage)
+}
+
+func TestBrowserSessionService_StartSessionMapsConcurrentDatabaseGuardToConflict(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	insertedConcurrentSession := false
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("test:browser-session-race", func(tx *gorm.DB) {
+		session, ok := tx.Statement.Dest.(*models.RemoteBrowserSession)
+		if !ok || insertedConcurrentSession || session.UserID != userID || session.Platform != platform {
+			return
+		}
+		insertedConcurrentSession = true
+		now := time.Now()
+		conflictingSession := models.RemoteBrowserSession{
+			UserID:           userID,
+			Platform:         platform,
+			Status:           models.BrowserSessionStatusReady,
+			ConnectTokenHash: "concurrent-token",
+			CreatedAt:        now,
+			ExpiresAt:        now.Add(15 * time.Minute),
+		}
+		_ = tx.Session(&gorm.Session{NewDB: true}).Create(&conflictingSession).Error
+	}))
+
+	_, err := svc.StartSession(context.Background(), userID, platform)
+
+	require.True(t, insertedConcurrentSession)
+	assert.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
 }
 
 func TestBrowserSessionService_StartSessionExpiresOldPendingRows(t *testing.T) {
