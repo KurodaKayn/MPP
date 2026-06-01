@@ -1,29 +1,41 @@
 export const PLATFORM_TABS = [
   {
     value: "wechat",
-    label: "公众号",
+    label: "platforms.wechat",
+    defaultLabel: "WeChat",
     icon: "/icons/platforms/wechat.svg",
   },
   {
     value: "zhihu",
-    label: "知乎",
+    label: "platforms.zhihu",
+    defaultLabel: "Zhihu",
     icon: "/icons/platforms/zhihu.svg",
   },
   {
     value: "x",
-    label: "X",
+    label: "platforms.x",
+    defaultLabel: "X",
     icon: "/icons/platforms/x.svg",
   },
   {
     value: "bilibili",
-    label: "B站",
+    label: "platforms.bilibili",
+    defaultLabel: "Bilibili",
     icon: "/icons/platforms/bilibili.svg",
   },
   {
     value: "xiaohongshu",
-    label: "小红书",
+    label: "platforms.xiaohongshu",
+    defaultLabel: "Red (XHS)",
     icon: "/icons/platforms/xiaohongshu.svg",
   },
 ] as const;
 
 export type PlatformTab = (typeof PLATFORM_TABS)[number];
+
+export function getPlatformDefaultLabel(platform: string) {
+  return (
+    PLATFORM_TABS.find((item) => item.value === platform)?.defaultLabel ??
+    platform
+  );
+}

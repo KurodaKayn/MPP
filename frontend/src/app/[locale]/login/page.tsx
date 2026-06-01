@@ -3,12 +3,16 @@
 import { Suspense } from "react";
 import { ArrowRight, Loader2, LogIn } from "lucide-react";
 import Image from "next/image";
+import { useTranslation, useAppLocale } from "@/lib/i18n/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLoginController } from "./_hooks/use-login-controller";
 
 function LoginContent() {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
+  const { t: tHome } = useTranslation(locale, "home");
   const {
     accessToken,
     handleMockLoginSubmit,
@@ -27,14 +31,9 @@ function LoginContent() {
         <section className="relative hidden overflow-hidden border-r border-[#d9d4c8] bg-[#1f2520] p-10 text-[#f6f4ee] lg:flex lg:flex-col lg:justify-between">
           <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(#f6f4ee_1px,transparent_1px),linear-gradient(90deg,#f6f4ee_1px,transparent_1px)] [background-size:42px_42px]" />
           <div className="relative flex items-center gap-3">
-            <Image
-              src="/icons/mpp.svg"
-              alt="multi-platform poster"
-              width={34}
-              height={34}
-            />
+            <Image src="/icons/mpp.svg" alt="MPP" width={34} height={34} />
             <div className="leading-tight">
-              <div className="font-semibold">multi-platform poster</div>
+              <div className="font-semibold">MPP</div>
             </div>
           </div>
 
@@ -43,12 +42,16 @@ function LoginContent() {
               Creator Console
             </div>
             <h1 className="max-w-xl text-5xl font-semibold leading-tight tracking-normal">
-              从一篇内容开始，管理所有发布渠道。
+              {t("login.sideTitle")}
             </h1>
           </div>
 
           <div className="relative grid grid-cols-3 gap-3 text-sm text-[#d8d2c2]">
-            {["草稿", "适配", "分发"].map((item) => (
+            {[
+              tHome("workflow.step1.title"),
+              tHome("workflow.step2.title"),
+              tHome("workflow.step4.title"),
+            ].map((item) => (
               <div key={item} className="border-t border-[#f0c75e]/40 pt-3">
                 {item}
               </div>
@@ -59,32 +62,25 @@ function LoginContent() {
         <section className="flex min-h-svh items-center justify-center px-5 py-10">
           <div className="w-full max-w-sm">
             <div className="mb-8 flex items-center gap-3 lg:hidden">
-              <Image
-                src="/icons/mpp.svg"
-                alt="multi-platform poster"
-                width={32}
-                height={32}
-              />
+              <Image src="/icons/mpp.svg" alt="MPP" width={32} height={32} />
               <div className="leading-tight">
-                <div className="font-semibold">multi-platform poster</div>
+                <div className="font-semibold">MPP</div>
               </div>
             </div>
 
             <div className="mb-7">
               <h2 className="text-2xl font-semibold tracking-normal">
-                登录控制台
+                {t("login.title")}
               </h2>
               <p className="mt-2 text-sm text-[#667064]">
-                {loginMethods.mock
-                  ? "使用开发账号进入工作台。"
-                  : "使用访问令牌进入工作台。"}
+                {loginMethods.mock ? t("login.mockDesc") : t("login.tokenDesc")}
               </p>
             </div>
 
             {loginMethods.mock ? (
               <form className="space-y-5" onSubmit={handleMockLoginSubmit}>
                 <div className="space-y-2">
-                  <Label htmlFor="username">用户名</Label>
+                  <Label htmlFor="username">{t("login.username")}</Label>
                   <Input
                     id="username"
                     autoComplete="username"
@@ -104,14 +100,14 @@ function LoginContent() {
                   ) : (
                     <LogIn className="h-4 w-4" />
                   )}
-                  进入工作台
+                  {t("login.submit")}
                   <ArrowRight className="ml-auto h-4 w-4" />
                 </Button>
               </form>
             ) : (
               <form className="space-y-5" onSubmit={handleTokenLoginSubmit}>
                 <div className="space-y-2">
-                  <Label htmlFor="access-token">访问令牌</Label>
+                  <Label htmlFor="access-token">{t("login.accessToken")}</Label>
                   <Input
                     id="access-token"
                     type="password"
@@ -132,7 +128,7 @@ function LoginContent() {
                   ) : (
                     <LogIn className="h-4 w-4" />
                   )}
-                  进入工作台
+                  {t("login.submit")}
                   <ArrowRight className="ml-auto h-4 w-4" />
                 </Button>
               </form>

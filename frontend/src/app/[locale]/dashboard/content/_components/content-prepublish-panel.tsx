@@ -55,7 +55,8 @@ function formatLabel(format: PrepublishFormat) {
 
 function platformLabel(platform: PublishPlatform) {
   return (
-    PLATFORM_TABS.find((item) => item.value === platform)?.label ?? platform
+    PLATFORM_TABS.find((item) => item.value === platform)?.defaultLabel ??
+    platform
   );
 }
 

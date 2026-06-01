@@ -3,7 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { PLATFORM_TABS } from "@/lib/content/platforms";
+import {
+  getPlatformDefaultLabel,
+  PLATFORM_TABS,
+} from "@/lib/content/platforms";
 import { emptyContentValue, type ContentValue } from "@/lib/content/types";
 import {
   createDashboardProject,
@@ -196,9 +199,7 @@ export function useContentPageController(projectId?: string) {
   }, [projectId]);
 
   const getSelectedPlatformLabels = (platforms: PublishPlatform[]) =>
-    PLATFORM_TABS.filter((platform) => platforms.includes(platform.value)).map(
-      (platform) => platform.label,
-    );
+    platforms.map((platform) => getPlatformDefaultLabel(platform));
 
   const openPublishPanel = () => {
     publishBarRef.current?.scrollIntoView({

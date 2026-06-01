@@ -1,0 +1,87 @@
+{
+  "overview": {
+    "title": "Dashboard",
+    "stats": {
+      "totalProjects": "Total Content",
+      "totalProjectsDesc": "Number of projects in the system",
+      "activeChannels": "Active Channels",
+      "activeChannelsDesc": "Platforms covered by recent projects",
+      "publishSuccess": "Publish Success",
+      "publishSuccessDesc": "Success rate {{rate}}%",
+      "publishFailed": "Publish Failed",
+      "publishFailedDesc": "Distribution records to troubleshoot"
+    },
+    "recent": {
+      "title": "Recent Content",
+      "description": "Total {{total}} items, showing the latest 8.",
+      "viewPosts": "View Posts",
+      "refresh": "Refresh",
+      "empty": "No content data available"
+    },
+    "table": {
+      "title": "Title",
+      "status": "Status",
+      "channel": "Channel",
+      "updated": "Updated"
+    },
+    "status": {
+      "draft": "Draft",
+      "ready": "Ready",
+      "publishing": "Publishing",
+      "published": "Published",
+      "failed": "Failed",
+      "unconfigured": "Unconfigured",
+      "adapted": "Adapted",
+      "disabled": "Disabled",
+      "pending": "Pending"
+    },
+    "error": {
+      "title": "Failed to load dashboard data",
+      "defaultMessage": "Unable to load dashboard data",
+      "retry": "Retry"
+    }
+  },
+  "posts": {
+    "title": "My Posts",
+    "description": "View publishing results and continue editing existing content.",
+    "refresh": "Refresh",
+    "error": {
+      "title": "Failed to load content list",
+      "defaultMessage": "Unable to load content list"
+    },
+    "stats": {
+      "totalProjects": "Projects",
+      "publishSuccess": "Publish Success",
+      "publishFailed": "Publish Failed"
+    },
+    "empty": "No content data available",
+    "card": {
+      "updatedAt": "Updated at {{date}}",
+      "successList": "Success",
+      "failedList": "Failed",
+      "edit": "Edit",
+      "none": "None"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Manage your preferences and account security.",
+    "preferences": {
+      "title": "General Settings",
+      "description": "Configure the interface language and theme.",
+      "language": "Language",
+      "languageDesc": "Select your preferred interface language.",
+      "languageValue": "English",
+      "theme": "Dark Mode",
+      "themeDesc": "Current: Follow system"
+    },
+    "account": {
+      "title": "Account Management",
+      "description": "Manage your account and login status.",
+      "logout": "Sign Out",
+      "logoutDesc": "Sign out of the current admin account on this device.",
+      "logoutButton": "Sign Out",
+      "logoutSuccess": "Signed out successfully"
+    }
+  }
+}

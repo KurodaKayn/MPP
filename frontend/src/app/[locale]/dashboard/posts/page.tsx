@@ -25,17 +25,8 @@ import {
   getDashboardProjects,
   type ProjectListItem,
 } from "@/lib/dashboard/api";
-
-const statusLabels: Record<string, string> = {
-  adapted: "已适配",
-  disabled: "已停用",
-  draft: "草稿",
-  failed: "失败",
-  pending: "待处理",
-  published: "已发布",
-  publishing: "发布中",
-  ready: "就绪",
-};
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
+import { getIntlLocale } from "@/lib/i18n/settings";
 
 const statusVariants: Record<
   string,
@@ -56,12 +47,12 @@ function getPlatform(platform: string) {
   return PLATFORM_TABS.find((item) => item.value === platform);
 }
 
-function formatDate(value?: string) {
+function formatDate(value: string | undefined, locale: string, t: any) {
   if (!value) {
-    return "暂无";
+    return t("posts.card.none");
   }
 
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(getIntlLocale(locale), {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -69,15 +60,20 @@ function formatDate(value?: string) {
   }).format(new Date(value));
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, t }: { status: string; t: any }) {
+  const statusLabel = t(`overview.status.${status}`) || status;
   return (
-    <Badge variant={statusVariants[status] ?? "outline"}>
-      {statusLabels[status] ?? status}
-    </Badge>
+    <Badge variant={statusVariants[status] ?? "outline"}>{statusLabel}</Badge>
   );
 }
 
-function PlatformIcon({ platform }: { platform: string }) {
+function PlatformIcon({
+  platform,
+  tCommon,
+}: {
+  platform: string;
+  tCommon: any;
+}) {
   const metadata = getPlatform(platform);
 
   if (!metadata) {
@@ -94,11 +90,11 @@ function PlatformIcon({ platform }: { platform: string }) {
   return (
     <span
       className="flex size-7 items-center justify-center rounded-md border bg-background"
-      title={metadata.label}
+      title={tCommon(metadata.label)}
     >
       <Image
         src={metadata.icon}
-        alt={metadata.label}
+        alt={tCommon(metadata.label)}
         width={18}
         height={18}
         className="size-[18px]"
@@ -110,9 +106,13 @@ function PlatformIcon({ platform }: { platform: string }) {
 function PlatformIconRow({
   label,
   publications,
+  t,
+  tCommon,
 }: {
   label: string;
   publications: PublicationSummary[];
+  t: any;
+  tCommon: any;
 }) {
   return (
     <div className="grid grid-cols-[4.75rem_minmax(0,1fr)] items-center gap-3 text-sm">
@@ -123,10 +123,13 @@ function PlatformIconRow({
             <PlatformIcon
               key={`${publication.id}-${publication.platform}`}
               platform={publication.platform}
+              tCommon={tCommon}
             />
           ))
         ) : (
-          <span className="text-xs text-muted-foreground">暂无</span>
+          <span className="text-xs text-muted-foreground">
+            {t("posts.card.none")}
+          </span>
         )}
       </div>
     </div>
@@ -144,6 +147,10 @@ function ProjectSkeleton() {
 }
 
 export default function PostsPage() {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "dashboard");
+  const { t: tCommon } = useTranslation(locale, "common");
+
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -159,7 +166,7 @@ export default function PostsPage() {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "无法加载内容列表",
+          : t("posts.error.defaultMessage"),
       );
     } finally {
       setLoading(false);
@@ -187,10 +194,10 @@ export default function PostsPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">我的内容</h2>
-          <p className="text-muted-foreground">
-            以项目卡片查看发布结果，并继续编辑已有内容。
-          </p>
+          <h2 className="text-3xl font-bold tracking-tight">
+            {t("posts.title")}
+          </h2>
+          <p className="text-muted-foreground">{t("posts.description")}</p>
         </div>
         <Button
           type="button"
@@ -199,7 +206,7 @@ export default function PostsPage() {
           disabled={loading}
         >
           <RefreshCw className="h-4 w-4" />
-          刷新
+          {t("posts.refresh")}
         </Button>
       </div>
 
@@ -208,7 +215,9 @@ export default function PostsPage() {
           <CardContent className="flex items-start gap-3 py-4">
             <AlertCircle className="mt-0.5 h-4 w-4 text-destructive" />
             <div>
-              <div className="text-sm font-medium">内容列表加载失败</div>
+              <div className="text-sm font-medium">
+                {t("posts.error.title")}
+              </div>
               <p className="text-sm text-muted-foreground">{error}</p>
             </div>
           </CardContent>
@@ -218,7 +227,9 @@ export default function PostsPage() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">项目数量</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("posts.stats.totalProjects")}
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-2xl font-bold">
             {loading ? <Skeleton className="h-8 w-16" /> : projects.length}
@@ -226,7 +237,9 @@ export default function PostsPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">发布成功</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("posts.stats.publishSuccess")}
+            </CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2 text-2xl font-bold">
             {loading ? (
@@ -241,7 +254,9 @@ export default function PostsPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">发布失败</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("posts.stats.publishFailed")}
+            </CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2 text-2xl font-bold">
             {loading ? (
@@ -260,7 +275,7 @@ export default function PostsPage() {
         <ProjectSkeleton />
       ) : projects.length === 0 ? (
         <div className="flex min-h-56 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-          暂无内容数据
+          {t("posts.empty")}
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -284,21 +299,27 @@ export default function PostsPage() {
                         {project.title}
                       </CardTitle>
                       <CardDescription>
-                        更新于 {formatDate(project.updated_at)}
+                        {t("posts.card.updatedAt", {
+                          date: formatDate(project.updated_at, locale, t),
+                        })}
                       </CardDescription>
                     </div>
-                    <StatusBadge status={project.status} />
+                    <StatusBadge status={project.status} t={t} />
                   </div>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col justify-between gap-5">
                   <div className="space-y-3">
                     <PlatformIconRow
-                      label="发布成功"
+                      label={t("posts.card.successList")}
                       publications={publishedPublications}
+                      t={t}
+                      tCommon={tCommon}
                     />
                     <PlatformIconRow
-                      label="发布失败"
+                      label={t("posts.card.failedList")}
                       publications={failedPublications}
+                      t={t}
+                      tCommon={tCommon}
                     />
                   </div>
                   <Button
@@ -308,11 +329,11 @@ export default function PostsPage() {
                     nativeButton={false}
                     render={(buttonProps) => (
                       <Link
-                        href={`/dashboard/content/${project.id}`}
+                        href={`/${locale}/dashboard/content/${project.id}`}
                         {...buttonProps}
                       >
                         <Pencil className="h-4 w-4" />
-                        编辑
+                        {t("posts.card.edit")}
                       </Link>
                     )}
                   />

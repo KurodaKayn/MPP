@@ -1,0 +1,65 @@
+{
+  "title": "Multi-Platform Poster Tool",
+  "description": "Distribute your content to multiple platforms with one click",
+  "workflow": {
+    "step1": {
+      "title": "Write Source Content",
+      "description": "Centralize project titles, bodies, and assets in one workbench."
+    },
+    "step2": {
+      "title": "Generate Drafts",
+      "description": "Maintain independent drafts for WeChat, Zhihu, X, Bilibili, and Red."
+    },
+    "step3": {
+      "title": "Review with AI",
+      "description": "AI outputs enter a proposal area for confirmation before updating."
+    },
+    "step4": {
+      "title": "Track Status",
+      "description": "Sync and view status: draft, ready, publishing, published, or failed."
+    }
+  },
+  "features": {
+    "group1": {
+      "title": "Unified Project Space",
+      "description": "Source, drafts, logs, and accounts in one workflow, reducing context switching."
+    },
+    "group2": {
+      "title": "Platform Visibility",
+      "description": "Independent drafts and status for different formats, lengths, and channels."
+    },
+    "group3": {
+      "title": "Controlled AI Rewrites",
+      "description": "AI generates reviewable proposals, allowing teams to compare before accepting."
+    }
+  },
+  "useCases": {
+    "case1": "Operations teams managing multi-channel schedules",
+    "case2": "Creators splitting long-form into platform versions",
+    "case3": "Brand teams tracking status and retrying failures",
+    "case4": "Tech teams extending new platform adapters"
+  },
+  "hero": {
+    "badge": "Unified management for projects, drafts, and status",
+    "cta": "Start Publishing",
+    "secondaryCta": "View Workflow"
+  },
+  "sections": {
+    "workflow": {
+      "overline": "Publishing Workflow",
+      "title": "Break publishing into four manageable steps."
+    },
+    "platforms": {
+      "overline": "Platform Drafts",
+      "title": "Independent drafts and status for every platform.",
+      "description": "MPP separates source content from logs, allowing unified editing while maintaining platform-specific results."
+    },
+    "useCases": {
+      "title": "Built for teams needing stable workflows."
+    },
+    "footer": {
+      "title": "Connect search traffic to your real product.",
+      "description": "The homepage provides SEO-optimized positioning, coverage, and structured data."
+    }
+  }
+}

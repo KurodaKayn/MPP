@@ -3,11 +3,13 @@ import { getDashboardPageTitle } from "./navigation";
 
 describe("dashboard navigation", () => {
   it.each([
-    ["/dashboard", "概览"],
-    ["/dashboard/content", "内容创作"],
-    ["/dashboard/content/project-1", "内容创作"],
-    ["/dashboard/posts", "我的内容"],
-    ["/dashboard/settings", "设置"],
+    ["/dashboard", "nav.overview"],
+    ["/zh/dashboard", "nav.overview"],
+    ["/dashboard/content", "nav.content"],
+    ["/zh/dashboard/content", "nav.content"],
+    ["/dashboard/content/project-1", "nav.content"],
+    ["/dashboard/posts", "nav.posts"],
+    ["/dashboard/settings", "nav.settings"],
   ])("returns the page title for %s", (pathname, title) => {
     expect(getDashboardPageTitle(pathname)).toBe(title);
   });
