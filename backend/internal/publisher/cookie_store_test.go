@@ -3,12 +3,14 @@ package publisher
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -39,14 +41,14 @@ func TestCookieStore(t *testing.T) {
 	t.Run("Full Cycle", func(t *testing.T) {
 		t.Setenv("COOKIE_ENCRYPTION_KEY", encryptionKey)
 		cookies := []Cookie{
-			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/", Secure: true, HttpOnly: true},
+			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/", Secure: true, HttpOnly: true, SameSite: "None"},
 			{Name: "sid_guard", Value: "guard-value", Domain: "creator.douyin.com", Path: "/", Secure: true, HttpOnly: true},
 			{Name: "passport_csrf_token", Value: "csrf-value", Domain: ".douyin.com", Path: "/", Secure: true},
 			{Name: "ignored", Value: "tracking-value", Domain: ".douyin.com", Path: "/"},
 			{Name: "sessionid", Value: "evil-value", Domain: "douyin.com.evil.test", Path: "/"},
 		}
 		expectedCookies := []Cookie{
-			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/", Secure: true, HttpOnly: true},
+			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/", Secure: true, HttpOnly: true, SameSite: "None"},
 			{Name: "sid_guard", Value: "guard-value", Domain: "creator.douyin.com", Path: "/", Secure: true, HttpOnly: true},
 			{Name: "passport_csrf_token", Value: "csrf-value", Domain: ".douyin.com", Path: "/", Secure: true},
 		}
@@ -73,12 +75,29 @@ func TestCookieStore(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, expectedCookies, loadedCookies)
 
+		testedAt := time.Now()
+		require.NoError(t, db.Model(&account).Updates(map[string]interface{}{
+			"last_tested_at":  testedAt,
+			"last_test_error": "previous validation failed",
+			"metadata":        datatypes.JSON([]byte(`{"profile":"cached"}`)),
+		}).Error)
+
 		// Test Delete
 		err = store.Delete(context.Background(), userID, platform)
 		assert.NoError(t, err)
 
 		_, err = store.Load(context.Background(), userID, platform)
 		assert.ErrorIs(t, err, ErrCookieNotFound)
+
+		var deletedAccount models.PlatformAccount
+		err = db.Where("user_id = ? AND platform = ?", userID, platform).First(&deletedAccount).Error
+		require.NoError(t, err)
+		assert.Equal(t, models.PlatformAccountStatusUntested, deletedAccount.Status)
+		assert.Equal(t, "", deletedAccount.Username)
+		assert.Equal(t, "", deletedAccount.AvatarURL)
+		assert.Nil(t, deletedAccount.LastTestedAt)
+		assert.Equal(t, "", deletedAccount.LastTestError)
+		assert.JSONEq(t, `{}`, string(deletedAccount.Metadata))
 	})
 
 	t.Run("Decryption Failure with Wrong Key", func(t *testing.T) {

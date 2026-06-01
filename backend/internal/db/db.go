@@ -56,12 +56,10 @@ func migrate(database *gorm.DB) error {
 		return err
 	}
 
-	// Create partial unique index for active sessions if it doesn't exist
-	// Note: PostgreSQL syntax. For SQLite in tests, we might need a different approach,
-	// but since the main DB is Postgres, we use its syntax.
+	// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
 	return database.Exec(`
-		CREATE UNIQUE INDEX IF NOT EXISTS ux_remote_browser_sessions_active_user_platform 
-		ON remote_browser_sessions (user_id, platform) 
+		CREATE UNIQUE INDEX IF NOT EXISTS ux_remote_browser_sessions_active_user_platform
+		ON remote_browser_sessions (user_id, platform)
 		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
 	`).Error
 }

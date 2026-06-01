@@ -80,10 +80,6 @@ func main() {
 	e.Use(echoMiddleware.Logger())
 	e.Use(echoMiddleware.Recover())
 
-	// Remote Browser Stream (Protected by one-time token, not JWT)
-	e.GET("/api/browser-stream/:id", browserSessionHandler.StreamSession)
-	e.GET("/api/browser-stream/:id/*", browserSessionHandler.StreamSession)
-
 	// Public Routes
 	e.GET("/ping", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
@@ -133,6 +129,8 @@ func main() {
 	// Remote Browser Session Routes
 	userGroup.POST("/settings/platforms/:platform/browser-session", browserSessionHandler.StartSession)
 	userGroup.GET("/browser-sessions/:id", browserSessionHandler.GetSession)
+	userGroup.GET("/browser-sessions/:id/stream", browserSessionHandler.StreamSession)
+	userGroup.GET("/browser-sessions/:id/stream/*", browserSessionHandler.StreamSession)
 	userGroup.POST("/browser-sessions/:id/complete", browserSessionHandler.CompleteSession)
 	userGroup.DELETE("/browser-sessions/:id", browserSessionHandler.CancelSession)
 

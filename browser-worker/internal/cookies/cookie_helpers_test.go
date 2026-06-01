@@ -2,6 +2,7 @@ package cookies
 
 import (
 	"testing"
+	"time"
 
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 	"github.com/stretchr/testify/assert"
@@ -26,6 +27,13 @@ func TestValidateRequired(t *testing.T) {
 	}, requirements)
 	assert.False(t, ok)
 	assert.ElementsMatch(t, []string{"sessionid", "sid_guard"}, missing)
+
+	ok, missing = ValidateRequired([]session.Cookie{
+		{Name: "sessionid", Value: "session", Domain: ".douyin.com", Expires: float64(time.Now().Add(-time.Hour).Unix())},
+		{Name: "sid_guard", Value: "guard", Domain: ".douyin.com"},
+	}, requirements)
+	assert.False(t, ok)
+	assert.ElementsMatch(t, []string{"sessionid"}, missing)
 }
 
 func TestFilterPreserved(t *testing.T) {
@@ -39,6 +47,7 @@ func TestFilterPreserved(t *testing.T) {
 		{Name: "sid_guard", Value: "guard", Domain: "creator.douyin.com"},
 		{Name: "unrelated", Value: "value", Domain: ".douyin.com"},
 		{Name: "sessionid", Value: "evil", Domain: "douyin.com.evil.test"},
+		{Name: "sid_guard", Value: "expired", Domain: ".douyin.com", Expires: float64(time.Now().Add(-time.Hour).Unix())},
 	}, requirements)
 
 	assert.Equal(t, []session.Cookie{

@@ -118,6 +118,7 @@ func Snapshot(ctx context.Context, workerSession *session.WorkerSession, include
 					Expires:  cc.Expires,
 					Secure:   cc.Secure,
 					HttpOnly: cc.HTTPOnly,
+					SameSite: cc.SameSite.String(),
 				})
 			}
 			return nil

@@ -112,6 +112,34 @@ func TestBrowserSessionHandler_FullFlow(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestBrowserSessionHandler_CompleteSessionReturnsInternalErrorOnCookieStoreFailure(t *testing.T) {
+	e, h, _ := setupBrowserSessionHandlerTest(t)
+	userID := uuid.New()
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("platform")
+	c.SetParamValues("douyin")
+	setHandlerUser(c, userID)
+	require.NoError(t, h.StartSession(c))
+
+	var startResp dto.StartBrowserSessionResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &startResp))
+
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "")
+	req = httptest.NewRequest(http.MethodPost, "/", nil)
+	rec = httptest.NewRecorder()
+	c = e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(startResp.SessionID.String())
+	setHandlerUser(c, userID)
+	require.NoError(t, h.CompleteSession(c))
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
 func TestBrowserSessionHandler_CancelSessionReturnsStatus(t *testing.T) {
 	e, h, _ := setupBrowserSessionHandlerTest(t)
 	userID := uuid.New()
@@ -160,7 +188,7 @@ func TestBrowserSessionHandler_StreamSessionUsesMockStream(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &startResp))
 	streamURL, err := url.Parse(startResp.StreamURL)
 	require.NoError(t, err)
-	streamPathParts := strings.SplitN(streamURL.Path, startResp.SessionID.String()+"/", 2)
+	streamPathParts := strings.SplitN(streamURL.Path, startResp.SessionID.String()+"/stream/", 2)
 	require.Len(t, streamPathParts, 2)
 	streamWildcard := streamPathParts[1]
 
@@ -176,7 +204,7 @@ func TestBrowserSessionHandler_StreamSessionUsesMockStream(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "Mock remote browser session")
 }
 
-func TestBrowserSessionHandler_WebSocketStreamDoesNotRotatePollingURL(t *testing.T) {
+func TestBrowserSessionHandler_WebSocketStreamRotatesPollingURLAfterConsumingToken(t *testing.T) {
 	e, h, _ := setupBrowserSessionHandlerTest(t)
 	userID := uuid.New()
 	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
@@ -194,12 +222,12 @@ func TestBrowserSessionHandler_WebSocketStreamDoesNotRotatePollingURL(t *testing
 
 	streamURL, err := url.Parse(startResp.StreamURL)
 	require.NoError(t, err)
-	streamPathParts := strings.SplitN(streamURL.Path, startResp.SessionID.String()+"/", 2)
+	streamPathParts := strings.SplitN(streamURL.Path, startResp.SessionID.String()+"/stream/", 2)
 	require.Len(t, streamPathParts, 2)
 	streamToken := strings.Split(streamPathParts[1], "/")[0]
 	websocketWildcard := streamToken + "/websockify"
 
-	req = httptest.NewRequest(http.MethodGet, "/api/browser-stream/"+startResp.SessionID.String()+"/"+websocketWildcard, nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/user/dashboard/browser-sessions/"+startResp.SessionID.String()+"/stream/"+websocketWildcard, nil)
 	req.Header.Set("Upgrade", "websocket")
 	req.Header.Set("Connection", "Upgrade")
 	rec = httptest.NewRecorder()
@@ -219,5 +247,5 @@ func TestBrowserSessionHandler_WebSocketStreamDoesNotRotatePollingURL(t *testing
 
 	var pollResp dto.BrowserSessionResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &pollResp))
-	assert.Empty(t, pollResp.StreamURL)
+	assert.NotEmpty(t, pollResp.StreamURL)
 }
