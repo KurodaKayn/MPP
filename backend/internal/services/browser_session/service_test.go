@@ -32,14 +32,6 @@ func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *browsersession.BrowserSes
 	)
 	require.NoError(t, err)
 
-	// Create the partial unique index as in production
-	err = db.Exec(`
-		CREATE UNIQUE INDEX ux_remote_browser_sessions_active_user_platform
-		ON remote_browser_sessions (user_id, platform)
-		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
-	`).Error
-	require.NoError(t, err)
-
 	worker := publisher.NewMockBrowserWorkerClient()
 	t.Cleanup(func() {
 		require.NoError(t, worker.Close())
