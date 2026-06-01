@@ -50,8 +50,9 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	}
 	defer cleanupImage()
 
-	// Setup headless browser with account cookies
-	browserCtx, cancel := SetupBrowser(ctx, account.Cookies)
+	// Setup browser with account cookies
+	remoteURL := os.Getenv("CHROME_REMOTE_URL")
+	browserCtx, cancel := SetupBrowser(ctx, remoteURL, account.Cookies)
 	defer cancel()
 
 	publishCtx, cancelPublish := context.WithTimeout(browserCtx, 180*time.Second)

@@ -319,6 +319,10 @@ func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider XOAuth2Provide
 	return service
 }
 
+func (s *DashboardService) SetPublishQueue(queue PublishQueue) {
+	s.publishQueue = queue
+}
+
 func (s *DashboardService) UseRedis(client *redis.Client) {
 	if client == nil {
 		return

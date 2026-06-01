@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -43,7 +44,9 @@ func (z *ZhihuPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfor
 		return "", "", fmt.Errorf("zhihu markdown content is empty")
 	}
 
-	browserCtx, cancel := SetupBrowser(ctx, account.Cookies)
+	// Setup browser with account cookies
+	remoteURL := os.Getenv("CHROME_REMOTE_URL")
+	browserCtx, cancel := SetupBrowser(ctx, remoteURL, account.Cookies)
 	defer cancel()
 
 	publishCtx, cancelPublish := context.WithTimeout(browserCtx, 150*time.Second)

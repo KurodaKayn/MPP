@@ -98,7 +98,7 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 		return nil, err
 	}
 	if isStreamableBrowserSessionStatus(session.Status) && session.StreamEndpointRef != "" && !hasCurrentToken {
-		token, tokenHash, err := generateStreamToken()
+		token, tokenHash, err := GenerateStreamToken()
 		if err != nil {
 			return nil, err
 		}
@@ -116,7 +116,7 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 			session.ConnectTokenHash = tokenHash
 			session.ConnectTokenExpiresAt = tokenExpiresAt
 		}
-		resp.StreamURL = browserSessionStreamURL(id, token)
+		resp.StreamURL = BrowserSessionStreamURL(id, token)
 		resp.StreamTokenExpiresAt = tokenExpiresAt
 	}
 
@@ -150,7 +150,7 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 		return "", ErrInvalidStreamToken
 	}
 
-	tokenHash := hashStreamToken(token)
+	tokenHash := HashStreamToken(token)
 	if s.redisClient != nil {
 		meta, ok, err := s.readRedisStreamToken(ctx, id, tokenHash, consume)
 		if err != nil {
@@ -169,7 +169,7 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 			return "", ErrInvalidStreamToken
 		}
 	} else {
-		if !streamTokenValidUntil(session).After(now) {
+		if !StreamTokenValidUntil(session).After(now) {
 			return "", ErrInvalidStreamToken
 		}
 		if subtle.ConstantTimeCompare([]byte(tokenHash), []byte(session.ConnectTokenHash)) != 1 {

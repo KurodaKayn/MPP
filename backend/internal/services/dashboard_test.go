@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
@@ -121,6 +122,24 @@ func setupTestDB() *gorm.DB {
 		published_at DATETIME,
 		created_at DATETIME,
 		updated_at DATETIME
+	)`)
+
+	db.Exec(`CREATE TABLE remote_browser_sessions (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		platform TEXT NOT NULL,
+		status TEXT NOT NULL,
+		worker_session_ref TEXT,
+		container_id TEXT,
+		cdp_endpoint_ref TEXT,
+		stream_endpoint_ref TEXT,
+		connect_token_hash TEXT,
+		connect_token_expires_at DATETIME,
+		error_message TEXT,
+		created_at DATETIME,
+		expires_at DATETIME,
+		completed_at DATETIME,
+		metadata TEXT NOT NULL DEFAULT '{}'
 	)`)
 
 	return db
@@ -808,7 +827,7 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	result, err := s.PublishProject(project.ID, "wechat", &user.ID)
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	assert.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
 
@@ -855,7 +874,7 @@ func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
 		Username: "creator",
 	}))
 
-	result, err := s.PublishProject(project.ID, "douyin", &user.ID)
+	result, err := s.PublishProject(project.ID, "douyin", &user.ID, uuid.Nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
@@ -919,7 +938,7 @@ func TestPublishProjectAdaptsPendingPublicationBeforePublishing(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&pub).Error)
 
-	result, err := s.PublishProject(project.ID, "wechat", &user.ID)
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
@@ -968,7 +987,7 @@ func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
 		Metadata: datatypes.JSON(`{"username":"creator"}`),
 	}).Error)
 
-	result, err := s.PublishProject(project.ID, "x", &user.ID)
+	result, err := s.PublishProject(project.ID, "x", &user.ID, uuid.Nil)
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
 
@@ -1040,7 +1059,7 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 		Metadata:    datatypes.JSON(`{"username":"creator"}`),
 	}).Error)
 
-	result, err := s.PublishProject(project.ID, "x", &user.ID)
+	result, err := s.PublishProject(project.ID, "x", &user.ID, uuid.Nil)
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
 	assert.Equal(t, "oauth2-refresh", provider.refreshToken)
@@ -1171,6 +1190,6 @@ func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
 		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
 	})
 
-	_, err := s.PublishProject(project.ID, "wechat", &user.ID)
+	_, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	assert.ErrorIs(t, err, services.ErrPublicationDisabled)
 }

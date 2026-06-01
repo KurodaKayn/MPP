@@ -356,10 +356,9 @@ export function useContentPageController(projectId?: string) {
         }
 
         // Automatic Popup for visible browser sessions
-        if (result.browser_session_id) {
-          const streamUrl = `/api/browser-stream/${result.browser_session_id}`;
+        if (result.stream_url) {
           const popup = window.open(
-            streamUrl,
+            result.stream_url,
             `mpp-publish-${platform}`,
             "width=1280,height=800,menubar=no,toolbar=no,location=no,status=no",
           );

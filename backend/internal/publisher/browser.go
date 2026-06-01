@@ -18,9 +18,7 @@ type BrowserAction func(ctx context.Context) error
 var runBrowserActions = chromedp.Run
 
 // SetupBrowser initializes a chromedp context with optional cookies
-func SetupBrowser(ctx context.Context, cookiesJSON []byte) (context.Context, context.CancelFunc) {
-	remoteURL := os.Getenv("CHROME_REMOTE_URL")
-
+func SetupBrowser(ctx context.Context, remoteURL string, cookiesJSON []byte) (context.Context, context.CancelFunc) {
 	var allocCtx context.Context
 	var cancelAlloc context.CancelFunc
 

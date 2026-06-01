@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -138,8 +139,16 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 
 	// Create a browser session if needed for headless platforms
 	var browserSessionID uuid.UUID
+	var streamURL string
 	if (platform == "douyin" || platform == "zhihu") && s.browserWorkerClient != nil {
 		fmt.Printf("Creating visible browser session for %s publishing...\n", platform)
+
+		// Generate stream token
+		token, tokenHash, err := browsersession.GenerateStreamToken()
+		if err != nil {
+			fmt.Printf("Warning: failed to generate stream token: %v\n", err)
+		}
+
 		req := publisher.StartWorkerSessionRequest{
 			SessionID:  uuid.New(),
 			UserID:     *scopeUserID,
@@ -153,16 +162,23 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 		resp, err := s.browserWorkerClient.CreateSession(ctx, req)
 		if err == nil {
 			browserSessionID = req.SessionID
+			expiresAt := time.Now().Add(10 * time.Minute)
+			tokenExpiresAt := browsersession.StreamTokenExpiresAt(expiresAt)
+			streamURL = browsersession.BrowserSessionStreamURL(browserSessionID, token)
+
 			session := &models.RemoteBrowserSession{
-				ID:               browserSessionID,
-				UserID:           *scopeUserID,
-				Platform:         platform,
-				Status:           models.BrowserSessionStatusReady,
-				WorkerSessionRef: resp.WorkerSessionRef,
-				ContainerID:      resp.ContainerID,
-				CDPEndpointRef:   resp.CDPEndpointRef,
-				CreatedAt:        time.Now(),
-				ExpiresAt:        time.Now().Add(10 * time.Minute),
+				ID:                    browserSessionID,
+				UserID:                *scopeUserID,
+				Platform:              platform,
+				Status:                models.BrowserSessionStatusReady,
+				WorkerSessionRef:      resp.WorkerSessionRef,
+				ContainerID:           resp.ContainerID,
+				CDPEndpointRef:        resp.CDPEndpointRef,
+				StreamEndpointRef:     resp.StreamEndpointRef,
+				ConnectTokenHash:      tokenHash,
+				ConnectTokenExpiresAt: tokenExpiresAt,
+				CreatedAt:             time.Now(),
+				ExpiresAt:             expiresAt,
 			}
 			s.db.Create(session)
 		}
@@ -202,6 +218,7 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 		"queued_at":          job.EnqueuedAt,
 		"publish_url":        pub.PublishURL,
 		"browser_session_id": browserSessionID,
+		"stream_url":         streamURL,
 	}, nil
 }
 
