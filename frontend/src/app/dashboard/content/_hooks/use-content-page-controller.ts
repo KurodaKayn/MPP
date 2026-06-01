@@ -344,8 +344,8 @@ export function useContentPageController(projectId?: string) {
     platform: string;
     status: string;
     expires_at?: string;
-    stream_url?: string;
   } | null>(null);
+  const [browserStreamURL, setBrowserStreamURL] = useState<string>();
   const [browserError, setBrowserError] = useState<string>();
 
   const publishExistingProject = async () => {
@@ -374,8 +374,10 @@ export function useContentPageController(projectId?: string) {
               platform,
               session_id: result.browser_session_id,
               status: "ready", // Force 'ready' so the modal shows the stream immediately
-              stream_url: result.stream_url,
             });
+            if (result.stream_url) {
+              setBrowserStreamURL(result.stream_url);
+            }
           }
 
           return {
@@ -473,9 +475,14 @@ export function useContentPageController(projectId?: string) {
           if (cancelled) {
             return;
           }
+          
           setBrowserSession((prev) => 
-            prev ? { ...prev, ...nextSession } : null
+            prev ? { ...prev, status: nextSession.status, expires_at: nextSession.expires_at } : null
           );
+          
+          if (nextSession.stream_url) {
+            setBrowserStreamURL(nextSession.stream_url);
+          }
           if (nextSession.status === "expired") {
             setBrowserError("发布会话已过期。");
           }
@@ -632,7 +639,7 @@ export function useContentPageController(projectId?: string) {
       expiresAt: browserSession.expires_at,
       platformLabel: PLATFORM_TABS.find(p => p.value === browserSession.platform)?.label || browserSession.platform,
       status: browserSession.status as any,
-      streamURL: browserSession.stream_url,
+      streamURL: browserStreamURL,
       onCancel: () => setBrowserSession(null),
       onComplete: () => setBrowserSession(null),
     } : null,
