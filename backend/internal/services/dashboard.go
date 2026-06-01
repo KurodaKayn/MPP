@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -16,6 +15,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -46,6 +46,10 @@ func (s *DashboardService) BatchPublishProject(projectID uuid.UUID, platforms []
 }
 
 func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, browserSessionID uuid.UUID) (map[string]interface{}, error) {
+	// Remote browser sessions are only for account connection and cookie capture.
+	// Publish jobs must be durable across Redis workers, so they load saved credentials instead.
+	browserSessionID = uuid.Nil
+
 	// 1. Check ownership
 	var proj models.Project
 	if err := s.db.Where("id = ? AND user_id = ?", projectID, *scopeUserID).First(&proj).Error; err != nil {
@@ -81,11 +85,17 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 
 	// 4. Get Platform Account (for Cookies/Session)
 	var account models.PlatformAccount
-	if err := s.db.Where("user_id = ? AND platform = ?", *scopeUserID, platform).First(&account).Error; err != nil {
-		// Non-blocking
+	accountErr := s.db.Where("user_id = ? AND platform = ?", *scopeUserID, platform).First(&account).Error
+	if accountErr != nil && !errors.Is(accountErr, gorm.ErrRecordNotFound) {
+		return nil, accountErr
 	}
-	if err := s.applySavedBrowserCookies(context.Background(), proj.UserID, platform, &account); err != nil {
-		return nil, err
+	if usesStoredBrowserCookies(platform) {
+		if errors.Is(accountErr, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("%w: %s account is not connected", ErrInvalidPlatformAccount, platform)
+		}
+		if err := s.applySavedBrowserCookies(context.Background(), proj.UserID, platform, &account); err != nil {
+			return nil, err
+		}
 	}
 
 	startedAt := time.Now().UTC()
@@ -97,31 +107,10 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 		return nil, err
 	}
 
-	// 5. Setup Remote Debugging if session provided
 	ctx := context.Background()
-	if browserSessionID != uuid.Nil {
-		var session models.RemoteBrowserSession
-		if err := s.db.First(&session, "id = ?", browserSessionID).Error; err == nil {
-			// Connect using the predictable container name that Docker DNS can resolve
-			remoteURL := fmt.Sprintf("http://mpp-session-%s:9222", session.ID.String())
-			ctx = context.WithValue(ctx, publisher.ContextKeyRemoteURL, remoteURL)
-		}
-	}
 
 	// 6. Execute Publish
 	remoteID, publishURL, err := p.Publish(ctx, &pub, &account)
-
-	// 7. Update Session Status if exists
-	if browserSessionID != uuid.Nil {
-		sessionStatus := models.BrowserSessionStatusExpired
-		if err == nil {
-			sessionStatus = models.BrowserSessionStatusExpired // Or a 'finished' status if you have one
-		}
-		s.db.Model(&models.RemoteBrowserSession{}).Where("id = ?", browserSessionID).Updates(map[string]interface{}{
-			"status":       sessionStatus,
-			"completed_at": time.Now(),
-		})
-	}
 
 	// 8. Update DB
 	status := models.PublicationStatusPublished

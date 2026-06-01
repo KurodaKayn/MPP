@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
-	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -32,10 +31,11 @@ var (
 )
 
 type PublishJob struct {
-	JobID            uuid.UUID `json:"job_id"`
-	ProjectID        uuid.UUID `json:"project_id"`
-	UserID           uuid.UUID `json:"user_id"`
-	Platform         string    `json:"platform"`
+	JobID     uuid.UUID `json:"job_id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Platform  string    `json:"platform"`
+	// Kept only so old Redis payloads still unmarshal; publishing never reuses live browser sessions.
 	BrowserSessionID uuid.UUID `json:"browser_session_id,omitempty"`
 	EnqueuedAt       time.Time `json:"enqueued_at"`
 }
@@ -137,17 +137,12 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 		return nil, err
 	}
 
-	// [DISABLED] Remote browser session creation for publishing
-	// Keeping the variable for job compatibility but setting it to Nil
-	var browserSessionID uuid.UUID
-
 	job := PublishJob{
-		JobID:            uuid.New(),
-		ProjectID:        project.ID,
-		UserID:           *scopeUserID,
-		Platform:         platform,
-		BrowserSessionID: browserSessionID,
-		EnqueuedAt:       time.Now().UTC(),
+		JobID:      uuid.New(),
+		ProjectID:  project.ID,
+		UserID:     *scopeUserID,
+		Platform:   platform,
+		EnqueuedAt: time.Now().UTC(),
 	}
 	lockKey := publishLockKey(project.ID, platform)
 	acquired, err := s.publishQueue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
@@ -237,7 +232,7 @@ func (s *DashboardService) processPublishJob(ctx context.Context, job PublishJob
 	stopRefreshing := s.startPublishLockRefresh(ctx, lockKey, job.JobID.String())
 	defer stopRefreshing()
 
-	if _, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID, job.BrowserSessionID); err != nil {
+	if _, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID, uuid.Nil); err != nil {
 		log.Printf("publish job %s failed: %v", job.JobID, err)
 		if markErr := s.markPublicationFailed(job.ProjectID, job.Platform, err.Error()); markErr != nil {
 			log.Printf("failed to mark publish job %s as failed: %v", job.JobID, markErr)
