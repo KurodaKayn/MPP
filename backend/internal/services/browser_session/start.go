@@ -3,6 +3,7 @@ package browsersession
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -78,6 +79,9 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 
 	if err := s.db.Create(session).Error; err != nil {
 		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, "")
+		if isActiveSessionUniquenessError(err) {
+			return nil, ErrActiveSessionExists
+		}
 		return nil, err
 	}
 	if err := s.saveRedisLiveSession(ctx, browserSessionLiveState{
@@ -173,4 +177,16 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 		StreamTokenExpiresAt: tokenExpiresAt,
 		ExpiresAt:            expiresAt,
 	}, nil
+}
+
+func isActiveSessionUniquenessError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "ux_remote_browser_sessions_active_user_platform") ||
+		(strings.Contains(message, "unique") &&
+			strings.Contains(message, "remote_browser_sessions") &&
+			strings.Contains(message, "user_id") &&
+			strings.Contains(message, "platform"))
 }
