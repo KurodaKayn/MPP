@@ -188,6 +188,32 @@ func TestBrowserSessionService_GetStreamEndpointRejectsExpiredDatabaseToken(t *t
 	assert.NoError(t, err)
 }
 
+func TestBrowserSessionService_GetSessionPreservesTerminalAuditStatusAfterExpiry(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	now := time.Now()
+	completedAt := now.Add(-20 * time.Minute)
+	session := models.RemoteBrowserSession{
+		UserID:           userID,
+		Platform:         "douyin",
+		Status:           models.BrowserSessionStatusConnected,
+		ConnectTokenHash: "",
+		CreatedAt:        now.Add(-30 * time.Minute),
+		ExpiresAt:        now.Add(-15 * time.Minute),
+		CompletedAt:      &completedAt,
+	}
+	require.NoError(t, db.Create(&session).Error)
+
+	resp, err := svc.GetSession(context.Background(), userID, session.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.BrowserSessionStatusConnected, resp.Status)
+
+	var savedSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedSession, session.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusConnected, savedSession.Status)
+}
+
 func TestBrowserSessionService_RedisStreamTokenIsConsumedOnce(t *testing.T) {
 	_, svc, _ := setupBrowserSessionTest(t)
 	setupBrowserSessionRedis(t, svc)
