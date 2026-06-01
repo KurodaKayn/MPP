@@ -156,29 +156,30 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 		if err != nil {
 			return "", err
 		}
-		if !ok {
-			return "", ErrInvalidStreamToken
-		}
-		if meta.SessionID != id || meta.Platform != session.Platform || meta.Purpose != "stream" {
-			return "", ErrInvalidStreamToken
-		}
-		if userID != uuid.Nil && meta.UserID != userID {
-			return "", ErrInvalidStreamToken
-		}
-		if time.Now().After(meta.ExpiresAt) {
-			return "", ErrInvalidStreamToken
-		}
-	} else {
-		if !StreamTokenValidUntil(session).After(now) {
-			return "", ErrInvalidStreamToken
-		}
-		if subtle.ConstantTimeCompare([]byte(tokenHash), []byte(session.ConnectTokenHash)) != 1 {
-			return "", ErrInvalidStreamToken
-		}
-		if consume {
-			if err := s.db.Model(&session).Update("connect_token_hash", "").Error; err != nil {
-				return "", err
+		if ok {
+			if meta.SessionID != id || meta.Platform != session.Platform || meta.Purpose != "stream" {
+				return "", ErrInvalidStreamToken
 			}
+			if userID != uuid.Nil && meta.UserID != userID {
+				return "", ErrInvalidStreamToken
+			}
+			if time.Now().After(meta.ExpiresAt) {
+				return "", ErrInvalidStreamToken
+			}
+			return session.StreamEndpointRef, nil
+		}
+	}
+
+	// Fallback to DB
+	if !StreamTokenValidUntil(session).After(now) {
+		return "", ErrInvalidStreamToken
+	}
+	if subtle.ConstantTimeCompare([]byte(tokenHash), []byte(session.ConnectTokenHash)) != 1 {
+		return "", ErrInvalidStreamToken
+	}
+	if consume {
+		if err := s.db.Model(&session).Update("connect_token_hash", "").Error; err != nil {
+			return "", err
 		}
 	}
 
