@@ -99,17 +99,17 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 
 	// 5. Setup Remote Debugging if session provided
 	ctx := context.Background()
+	var remoteURL string
 	if browserSessionID != uuid.Nil {
 		var session models.RemoteBrowserSession
 		if err := s.db.First(&session, "id = ?", browserSessionID).Error; err == nil {
-			// Connect using the predictable container name that Docker DNS can resolve
-			remoteURL := fmt.Sprintf("http://mpp-session-%s:9222", session.ID.String())
-			
-			// If we are in development and NOT running in Docker, we might need a different host,
-			// but since we are focusing on Docker support, this is the most reliable way.
-			os.Setenv("CHROME_REMOTE_URL", remoteURL)
-			defer os.Unsetenv("CHROME_REMOTE_URL")
+			remoteURL = fmt.Sprintf("http://mpp-session-%s:9222", session.ID.String())
 		}
+	}
+
+	if remoteURL != "" {
+		os.Setenv("CHROME_REMOTE_URL", remoteURL)
+		defer os.Unsetenv("CHROME_REMOTE_URL")
 	}
 
 	// 6. Execute Publish
