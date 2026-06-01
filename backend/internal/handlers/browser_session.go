@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -142,11 +143,13 @@ func (h *BrowserSessionHandler) CompleteSession(c echo.Context) error {
 
 	resp, err := h.service.CompleteSession(c.Request().Context(), userID, id)
 	if err != nil {
-		if err == browsersession.ErrSessionNotFound {
+		if errors.Is(err, browsersession.ErrSessionNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
 		}
-		// Assuming 422 for login not detected yet as per design
-		return sendError(c, http.StatusUnprocessableEntity, "unprocessable_entity", err.Error())
+		if errors.Is(err, browsersession.ErrLoginNotDetected) || errors.Is(err, browsersession.ErrSessionNotReady) {
+			return sendError(c, http.StatusUnprocessableEntity, "unprocessable_entity", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 
 	return c.JSON(http.StatusOK, resp)

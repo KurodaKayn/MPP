@@ -16,6 +16,8 @@ var (
 	ErrSessionForbidden     = errors.New("session does not belong to the authenticated user")
 	ErrInvalidStreamToken   = errors.New("invalid or expired stream token")
 	ErrStreamTokenGone      = errors.New("stream token has expired or already been consumed")
+	ErrSessionNotReady      = errors.New("session is not ready for capture")
+	ErrLoginNotDetected     = errors.New("login not detected")
 )
 
 const (
