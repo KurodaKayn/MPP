@@ -41,14 +41,14 @@ func TestCookieStore(t *testing.T) {
 	t.Run("Full Cycle", func(t *testing.T) {
 		t.Setenv("COOKIE_ENCRYPTION_KEY", encryptionKey)
 		cookies := []Cookie{
-			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/", Secure: true, HttpOnly: true},
+			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/", Secure: true, HttpOnly: true, SameSite: "None"},
 			{Name: "sid_guard", Value: "guard-value", Domain: "creator.douyin.com", Path: "/", Secure: true, HttpOnly: true},
 			{Name: "passport_csrf_token", Value: "csrf-value", Domain: ".douyin.com", Path: "/", Secure: true},
 			{Name: "ignored", Value: "tracking-value", Domain: ".douyin.com", Path: "/"},
 			{Name: "sessionid", Value: "evil-value", Domain: "douyin.com.evil.test", Path: "/"},
 		}
 		expectedCookies := []Cookie{
-			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/", Secure: true, HttpOnly: true},
+			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/", Secure: true, HttpOnly: true, SameSite: "None"},
 			{Name: "sid_guard", Value: "guard-value", Domain: "creator.douyin.com", Path: "/", Secure: true, HttpOnly: true},
 			{Name: "passport_csrf_token", Value: "csrf-value", Domain: ".douyin.com", Path: "/", Secure: true},
 		}

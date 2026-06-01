@@ -85,6 +85,9 @@ func setCookiesAction(cookies []Cookie) chromedp.Action {
 				t := cdp.TimeSinceEpoch(time.Unix(int64(c.Expires), 0))
 				expr = expr.WithExpires(&t)
 			}
+			if c.SameSite != "" {
+				expr = expr.WithSameSite(network.CookieSameSite(c.SameSite))
+			}
 
 			if err := expr.Do(ctx); err != nil {
 				return err
