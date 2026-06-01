@@ -75,6 +75,7 @@ func main() {
 
 	cookieStore := publisher.NewCookieStore(db.DB)
 	if redisClient != nil {
+		browserSessionService.UseRedis(redisClient)
 		browserSessionService.StartCleanupWorker(context.Background())
 	}
 	browserSessionHandler := handlers.NewBrowserSessionHandler(browserSessionService)
