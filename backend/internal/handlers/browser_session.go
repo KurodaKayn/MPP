@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -78,6 +79,8 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	}
 
 	streamToken, proxyPath := streamTokenAndProxyPath(c.QueryParam("token"), c.Param("*"))
+	fmt.Printf("StreamSession: id=%s, token=%s, path=%s\n", id, streamToken, proxyPath)
+
 	isWebSocket := strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket"
 	// Keep the iframe URL stable while noVNC is connected; token expiry limits replay.
 	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken, false)

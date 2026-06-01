@@ -45,8 +45,7 @@ func (z *ZhihuPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfor
 	}
 
 	// Setup browser with account cookies
-	remoteURL := os.Getenv("CHROME_REMOTE_URL")
-	browserCtx, cancel := SetupBrowser(ctx, remoteURL, account.Cookies)
+	browserCtx, cancel := SetupBrowser(ctx, "", account.Cookies)
 	defer cancel()
 
 	publishCtx, cancelPublish := context.WithTimeout(browserCtx, 150*time.Second)

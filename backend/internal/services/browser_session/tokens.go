@@ -146,14 +146,16 @@ func (s *BrowserSessionService) hasCurrentStreamToken(ctx context.Context, sessi
 }
 
 func BrowserSessionStreamURL(sessionID uuid.UUID, token string) string {
+	// Base64 RawURLEncoding is already URL-safe. 
+	// Escaping it again can lead to decoding issues in some proxy layers.
 	streamBasePath := fmt.Sprintf(
 		"api/browser-stream/%s/%s",
 		sessionID,
-		url.PathEscape(token),
+		token,
 	)
 	query := url.Values{
 		"autoconnect": {"true"},
-		"path":        {streamBasePath + "/websockify"},
+		"path":        {"/" + streamBasePath + "/websockify"},
 		"resize":      {"scale"},
 	}
 	return fmt.Sprintf("/%s/vnc.html?%s", streamBasePath, query.Encode())

@@ -17,17 +17,26 @@ type BrowserAction func(ctx context.Context) error
 
 var runBrowserActions = chromedp.Run
 
+type contextKey string
+
+const (
+	ContextKeyRemoteURL contextKey = "remote_browser_url"
+)
+
 // SetupBrowser initializes a chromedp context with optional cookies
 func SetupBrowser(ctx context.Context, remoteURL string, cookiesJSON []byte) (context.Context, context.CancelFunc) {
+	// Prioritize remoteURL argument, then context value
+	if remoteURL == "" {
+		if val, ok := ctx.Value(ContextKeyRemoteURL).(string); ok {
+			remoteURL = val
+		}
+	}
+
 	var allocCtx context.Context
 	var cancelAlloc context.CancelFunc
 
 	if remoteURL != "" {
 		fmt.Printf("SetupBrowser: Connecting to remote browser at %s...\n", remoteURL)
-		
-		// Improve NewRemoteAllocator usage: sometimes the browser returns its internal host (container ID)
-		// in the websocket URL. chromedp tries to replace it with the host we provided.
-		// We use a custom options to ensure we can connect.
 		allocCtx, cancelAlloc = chromedp.NewRemoteAllocator(ctx, remoteURL)
 	} else {
 		// Fallback to local container browser (Headless)
