@@ -2,6 +2,7 @@ package cookies
 
 import (
 	"strings"
+	"time"
 
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
@@ -9,8 +10,9 @@ import (
 func FilterPreserved(cookies []session.Cookie, requirements []session.CookieRequirement) []session.Cookie {
 	filtered := make([]session.Cookie, 0, len(cookies))
 	seen := make(map[string]int)
+	now := time.Now()
 	for _, cookie := range cookies {
-		if cookie.Name == "" || cookie.Value == "" || !cookiePreserved(cookie, requirements) {
+		if cookie.Name == "" || cookie.Value == "" || cookieExpired(cookie, now) || !cookiePreserved(cookie, requirements) {
 			continue
 		}
 		if cookie.Path == "" {
@@ -58,21 +60,22 @@ func cookiePreserved(cookie session.Cookie, requirements []session.CookieRequire
 func ValidateRequired(cookies []session.Cookie, requirements []session.CookieRequirement) (bool, []string) {
 	var missing []string
 	hasRequired := false
+	now := time.Now()
 	for _, req := range requirements {
 		if !req.Required {
 			continue
 		}
 		hasRequired = true
-		if !hasRequiredCookie(cookies, req) {
+		if !hasRequiredCookie(cookies, req, now) {
 			missing = append(missing, req.Name)
 		}
 	}
 	return hasRequired && len(missing) == 0, missing
 }
 
-func hasRequiredCookie(cookies []session.Cookie, req session.CookieRequirement) bool {
+func hasRequiredCookie(cookies []session.Cookie, req session.CookieRequirement, now time.Time) bool {
 	for _, cookie := range cookies {
-		if cookie.Name != req.Name || cookie.Value == "" {
+		if cookie.Name != req.Name || cookie.Value == "" || cookieExpired(cookie, now) {
 			continue
 		}
 		for _, suffix := range req.DomainSuffixes {
@@ -82,6 +85,10 @@ func hasRequiredCookie(cookies []session.Cookie, req session.CookieRequirement) 
 		}
 	}
 	return false
+}
+
+func cookieExpired(cookie session.Cookie, now time.Time) bool {
+	return cookie.Expires > 0 && !time.Unix(int64(cookie.Expires), 0).After(now)
 }
 
 func DomainMatches(domain, suffix string) bool {

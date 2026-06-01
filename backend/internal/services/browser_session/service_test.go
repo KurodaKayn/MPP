@@ -32,7 +32,6 @@ func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *browsersession.BrowserSes
 	)
 	require.NoError(t, err)
 
-	// Create the partial unique index as in production
 	err = db.Exec(`
 		CREATE UNIQUE INDEX ux_remote_browser_sessions_active_user_platform
 		ON remote_browser_sessions (user_id, platform)
@@ -101,7 +100,7 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	assert.True(t, strings.HasPrefix(streamEndpoint, "http://127.0.0.1:"))
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, "bad-token", false)
-	assert.ErrorIs(t, err, browsersession.ErrInvalidStreamToken)
+	assert.ErrorIs(t, err, browsersession.ErrStreamTokenGone)
 
 	// Verify DB state
 	var session models.RemoteBrowserSession
@@ -174,7 +173,7 @@ func TestBrowserSessionService_GetStreamEndpointRejectsExpiredDatabaseToken(t *t
 		Update("connect_token_expires_at", time.Now().Add(-time.Second)).Error)
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
-	assert.ErrorIs(t, err, browsersession.ErrInvalidStreamToken)
+	assert.ErrorIs(t, err, browsersession.ErrStreamTokenGone)
 
 	status, err := svc.GetSession(context.Background(), userID, resp.SessionID)
 	require.NoError(t, err)
@@ -187,6 +186,114 @@ func TestBrowserSessionService_GetStreamEndpointRejectsExpiredDatabaseToken(t *t
 	rotatedToken := streamTokenFromPath(t, rotatedURL.Path)
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, rotatedToken, false)
 	assert.NoError(t, err)
+}
+
+func TestBrowserSessionService_GetSessionPreservesTerminalAuditStatusAfterExpiry(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	now := time.Now()
+	completedAt := now.Add(-20 * time.Minute)
+	session := models.RemoteBrowserSession{
+		UserID:           userID,
+		Platform:         "douyin",
+		Status:           models.BrowserSessionStatusConnected,
+		ConnectTokenHash: "",
+		CreatedAt:        now.Add(-30 * time.Minute),
+		ExpiresAt:        now.Add(-15 * time.Minute),
+		CompletedAt:      &completedAt,
+	}
+	require.NoError(t, db.Create(&session).Error)
+
+	resp, err := svc.GetSession(context.Background(), userID, session.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.BrowserSessionStatusConnected, resp.Status)
+
+	var savedSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedSession, session.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusConnected, savedSession.Status)
+}
+
+func TestBrowserSessionService_GetSessionReturnsGoneForExpiredRedisSession(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	client := setupBrowserSessionRedis(t, svc)
+	userID := uuid.New()
+	platform := "douyin"
+	now := time.Now()
+	session := models.RemoteBrowserSession{
+		UserID:            userID,
+		Platform:          platform,
+		Status:            models.BrowserSessionStatusReady,
+		WorkerSessionRef:  "worker-expired",
+		StreamEndpointRef: "http://127.0.0.1:9/stream/worker-expired",
+		ConnectTokenHash:  "expired-token",
+		CreatedAt:         now.Add(-30 * time.Minute),
+		ExpiresAt:         now.Add(-15 * time.Minute),
+	}
+	require.NoError(t, db.Create(&session).Error)
+	require.NoError(t, client.Set(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform, session.ID.String(), time.Hour).Err())
+
+	_, err := svc.GetSession(context.Background(), userID, session.ID)
+
+	assert.ErrorIs(t, err, browsersession.ErrSessionGone)
+	assert.Equal(t, int64(0), client.Exists(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Val())
+
+	var savedSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedSession, session.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusExpired, savedSession.Status)
+}
+
+func TestBrowserSessionService_RedisStreamTokenIsConsumedOnce(t *testing.T) {
+	_, svc, _ := setupBrowserSessionTest(t)
+	setupBrowserSessionRedis(t, svc)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+	require.NoError(t, err)
+	streamURL, err := url.Parse(resp.StreamURL)
+	require.NoError(t, err)
+	streamToken := streamTokenFromPath(t, streamURL.Path)
+
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
+	require.NoError(t, err)
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, true)
+	require.NoError(t, err)
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
+	assert.ErrorIs(t, err, browsersession.ErrStreamTokenGone)
+
+	status, err := svc.GetSession(context.Background(), userID, resp.SessionID)
+	require.NoError(t, err)
+	require.NotEmpty(t, status.StreamURL)
+
+	rotatedURL, err := url.Parse(status.StreamURL)
+	require.NoError(t, err)
+	rotatedToken := streamTokenFromPath(t, rotatedURL.Path)
+	assert.NotEqual(t, streamToken, rotatedToken)
+
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, rotatedToken, false)
+	assert.NoError(t, err)
+}
+
+func TestBrowserSessionService_CancelSessionDeletesAllRedisStreamTokens(t *testing.T) {
+	_, svc, _ := setupBrowserSessionTest(t)
+	client := setupBrowserSessionRedis(t, svc)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+	require.NoError(t, err)
+	strayTokenKey := "mpp:browser:stream-token:" + resp.SessionID.String() + ":stray-token-hash"
+	require.NoError(t, client.Set(context.Background(), strayTokenKey, "{}", time.Hour).Err())
+
+	require.NoError(t, svc.CancelSession(context.Background(), userID, resp.SessionID))
+
+	tokenKeys, err := client.Keys(context.Background(), "mpp:browser:stream-token:"+resp.SessionID.String()+":*").Result()
+	require.NoError(t, err)
+	assert.Empty(t, tokenKeys)
+	assert.Equal(t, int64(0), client.Exists(context.Background(), "mpp:browser:stream-current:"+resp.SessionID.String()).Val())
 }
 
 func TestBrowserSessionService_UnsupportedPlatform(t *testing.T) {
@@ -270,6 +377,37 @@ func TestBrowserSessionService_StartSessionPreservesInFlightPendingRows(t *testi
 	require.NoError(t, db.First(&savedPendingSession, pendingSession.ID).Error)
 	assert.Equal(t, models.BrowserSessionStatusPending, savedPendingSession.Status)
 	assert.Empty(t, savedPendingSession.ErrorMessage)
+}
+
+func TestBrowserSessionService_StartSessionMapsConcurrentDatabaseGuardToConflict(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	insertedConcurrentSession := false
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("test:browser-session-race", func(tx *gorm.DB) {
+		session, ok := tx.Statement.Dest.(*models.RemoteBrowserSession)
+		if !ok || insertedConcurrentSession || session.UserID != userID || session.Platform != platform {
+			return
+		}
+		insertedConcurrentSession = true
+		now := time.Now()
+		conflictingSession := models.RemoteBrowserSession{
+			UserID:           userID,
+			Platform:         platform,
+			Status:           models.BrowserSessionStatusReady,
+			ConnectTokenHash: "concurrent-token",
+			CreatedAt:        now,
+			ExpiresAt:        now.Add(15 * time.Minute),
+		}
+		_ = tx.Session(&gorm.Session{NewDB: true}).Create(&conflictingSession).Error
+	}))
+
+	_, err := svc.StartSession(context.Background(), userID, platform)
+
+	require.True(t, insertedConcurrentSession)
+	assert.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
 }
 
 func TestBrowserSessionService_StartSessionExpiresOldPendingRows(t *testing.T) {
@@ -416,10 +554,10 @@ func streamTokenFromPath(t *testing.T, path string) string {
 
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	for i, part := range parts {
-		if part == "browser-stream" {
-			require.GreaterOrEqual(t, len(parts), i+4)
-			assert.Equal(t, "vnc.html", parts[i+3])
-			return parts[i+2]
+		if part == "stream" {
+			require.GreaterOrEqual(t, len(parts), i+3)
+			assert.Equal(t, "vnc.html", parts[i+2])
+			return parts[i+1]
 		}
 	}
 	require.Fail(t, "stream token path segment not found", path)

@@ -1,22 +1,22 @@
 export const dashboardRoutes = {
   auth: {
-    title: "平台授权",
+    title: "nav.auth",
     url: "/dashboard/auth",
   },
   content: {
-    title: "内容创作",
+    title: "nav.content",
     url: "/dashboard/content",
   },
   overview: {
-    title: "概览",
+    title: "nav.overview",
     url: "/dashboard",
   },
   posts: {
-    title: "我的内容",
+    title: "nav.posts",
     url: "/dashboard/posts",
   },
   settings: {
-    title: "设置",
+    title: "nav.settings",
     url: "/dashboard/settings",
   },
 } as const;
@@ -29,14 +29,25 @@ export const dashboardMainNavItems = [
 ] as const;
 
 export function getDashboardPageTitle(pathname: string) {
-  if (pathname === dashboardRoutes.overview.url) {
+  const normalizedPathname = pathname === "" ? "/" : pathname;
+  const unlocalizedPathname = normalizedPathname.replace(/^\/[^/]+/, "");
+  const candidatePathnames = [
+    normalizedPathname,
+    unlocalizedPathname === "" ? "/" : unlocalizedPathname,
+  ];
+
+  if (candidatePathnames.includes(dashboardRoutes.overview.url)) {
     return dashboardRoutes.overview.title;
   }
 
   const matchedRoute = Object.values(dashboardRoutes)
     .filter((route) => route.url !== dashboardRoutes.overview.url)
     .find(
-      (route) => pathname === route.url || pathname.startsWith(`${route.url}/`),
+      (route) =>
+        candidatePathnames.includes(route.url) ||
+        candidatePathnames.some((candidate) =>
+          candidate.startsWith(`${route.url}/`),
+        ),
     );
 
   return matchedRoute?.title ?? dashboardRoutes.overview.title;

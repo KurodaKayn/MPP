@@ -1,0 +1,183 @@
+import { Button } from "@/components/ui/button";
+import { PLATFORM_TABS, type PlatformTab } from "@/lib/content/platforms";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { Loader2, Send } from "lucide-react";
+import Image from "next/image";
+
+type PublishPlatform = PlatformTab["value"];
+
+type ContentPublishBarProps = {
+  canOpenXPostIntent: boolean;
+  canPublish: boolean;
+  canSelectPlatforms: boolean;
+  isOpeningXPostIntent: boolean;
+  isPublishing: boolean;
+  onOpenXPostIntent: () => void;
+  onPublish: () => void;
+  onSelectedPlatformsChange: (platforms: PublishPlatform[]) => void;
+  publishLabel?: string;
+  selectedPlatforms: PublishPlatform[];
+};
+
+export function ContentPublishBar({
+  canOpenXPostIntent,
+  canPublish,
+  canSelectPlatforms,
+  isOpeningXPostIntent,
+  isPublishing,
+  onOpenXPostIntent,
+  onPublish,
+  onSelectedPlatformsChange,
+  publishLabel = "一键发布",
+  selectedPlatforms,
+}: ContentPublishBarProps) {
+  const isBusy = isOpeningXPostIntent || isPublishing;
+  const selectedSet = new Set(selectedPlatforms);
+
+  const togglePlatform = (platform: PublishPlatform, checked: boolean) => {
+    if (!canSelectPlatforms) {
+      return;
+    }
+
+    if (checked) {
+      onSelectedPlatformsChange([...selectedPlatforms, platform]);
+      return;
+    }
+
+    onSelectedPlatformsChange(
+      selectedPlatforms.filter((item) => item !== platform),
+    );
+  };
+
+  return (
+    <section
+      aria-labelledby="publish-platforms-title"
+      className="sticky bottom-4 z-20 rounded-lg border bg-background/95 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80"
+    >
+      <div className="grid gap-5">
+        <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <h3
+                id="publish-platforms-title"
+                className="text-sm font-semibold"
+              >
+                自动发布
+              </h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                在这里勾选需要进入自动发布流程的平台。
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="lg"
+              onClick={onPublish}
+              disabled={!canPublish || isBusy}
+              className="h-9 w-full shrink-0 justify-center sm:w-48"
+            >
+              {isPublishing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              {publishLabel}
+            </Button>
+          </div>
+
+          <TooltipProvider>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {PLATFORM_TABS.map((platform) => {
+                const checked = selectedSet.has(platform.value);
+                const card = (
+                  <label
+                    key={platform.value}
+                    className={cn(
+                      "flex h-14 items-center gap-3 rounded-lg border px-3 text-sm transition-colors",
+                      canSelectPlatforms
+                        ? "cursor-pointer"
+                        : "cursor-not-allowed opacity-60",
+                      checked
+                        ? "border-primary bg-primary/5 text-foreground"
+                        : "border-border bg-background hover:bg-muted/50",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={!canSelectPlatforms}
+                      className="size-4 rounded border-input accent-primary"
+                      onChange={(event) =>
+                        togglePlatform(
+                          platform.value,
+                          event.currentTarget.checked,
+                        )
+                      }
+                    />
+                    <Image
+                      src={platform.icon}
+                      alt=""
+                      width={18}
+                      height={18}
+                      aria-hidden="true"
+                      className="size-[18px] shrink-0"
+                    />
+                    <span className="truncate font-medium">
+                      {platform.defaultLabel}
+                    </span>
+                  </label>
+                );
+
+                if (canSelectPlatforms) {
+                  return card;
+                }
+
+                return (
+                  <Tooltip key={platform.value}>
+                    <TooltipTrigger render={<div />}>{card}</TooltipTrigger>
+                    <TooltipContent>
+                      请先填写标题和正文内容，再选择自动发布平台。
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          </TooltipProvider>
+        </div>
+
+        <div className="border-t pt-4">
+          <h3 className="text-sm font-semibold">手动发布</h3>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              onClick={onOpenXPostIntent}
+              disabled={!canOpenXPostIntent || isBusy}
+              className="h-14 justify-start gap-3 rounded-lg px-3 text-sm font-medium"
+            >
+              {isOpeningXPostIntent ? (
+                <Loader2 className="size-[18px] animate-spin" />
+              ) : (
+                <Image
+                  src="/icons/platforms/x.svg"
+                  alt=""
+                  width={18}
+                  height={18}
+                  aria-hidden="true"
+                  className="size-[18px]"
+                />
+              )}
+              <span className="truncate">X</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}

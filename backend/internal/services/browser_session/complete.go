@@ -2,7 +2,6 @@ package browsersession
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -20,10 +19,10 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 	}
 
 	if session.Status == models.BrowserSessionStatusConnected {
-		return nil, errors.New("session already completed")
+		return nil, fmt.Errorf("%w: session already completed", ErrSessionNotReady)
 	}
 	if !isStreamableBrowserSessionStatus(session.Status) {
-		return nil, fmt.Errorf("session is not ready for capture")
+		return nil, ErrSessionNotReady
 	}
 
 	// 1. Transition to capturing
@@ -83,7 +82,7 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 			CreatedAt:         session.CreatedAt,
 			ExpiresAt:         session.ExpiresAt,
 		})
-		return nil, errors.New(message)
+		return nil, fmt.Errorf("%w: %s", ErrLoginNotDetected, message)
 	}
 
 	// 3. Save cookies via CookieStore

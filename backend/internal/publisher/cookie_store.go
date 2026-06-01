@@ -173,11 +173,15 @@ func (s *CookieStore) Load(ctx context.Context, userID uuid.UUID, platform strin
 func (s *CookieStore) Delete(ctx context.Context, userID uuid.UUID, platform string) error {
 	return s.db.WithContext(ctx).Model(&models.PlatformAccount{}).
 		Where("user_id = ? AND platform = ?", userID, platform).
+		Select("cookies", "status", "username", "avatar_url", "metadata", "last_tested_at", "last_test_error").
 		Updates(map[string]interface{}{
-			"cookies":    datatypes.JSON([]byte("[]")),
-			"status":     models.PlatformAccountStatusUntested,
-			"username":   "",
-			"avatar_url": "",
+			"cookies":         datatypes.JSON([]byte("[]")),
+			"status":          models.PlatformAccountStatusUntested,
+			"username":        "",
+			"avatar_url":      "",
+			"metadata":        datatypes.JSON([]byte("{}")),
+			"last_tested_at":  nil,
+			"last_test_error": "",
 		}).Error
 }
 

@@ -117,8 +117,23 @@ func (s *BrowserSessionService) deleteRedisStreamToken(ctx context.Context, sess
 		return err
 	}
 	keys := []string{browserSessionStreamCurrentKey(sessionID)}
+	seen := map[string]struct{}{browserSessionStreamCurrentKey(sessionID): {}}
 	if currentHash != "" {
-		keys = append(keys, browserSessionStreamTokenKey(sessionID, currentHash))
+		currentTokenKey := browserSessionStreamTokenKey(sessionID, currentHash)
+		keys = append(keys, currentTokenKey)
+		seen[currentTokenKey] = struct{}{}
+	}
+	iter := s.redisClient.Scan(ctx, 0, browserSessionStreamTokenKeyPrefixFor(sessionID)+"*", 100).Iterator()
+	for iter.Next(ctx) {
+		key := iter.Val()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		keys = append(keys, key)
+		seen[key] = struct{}{}
+	}
+	if err := iter.Err(); err != nil {
+		return err
 	}
 	return s.redisClient.Del(ctx, keys...).Err()
 }
@@ -146,10 +161,10 @@ func (s *BrowserSessionService) hasCurrentStreamToken(ctx context.Context, sessi
 }
 
 func BrowserSessionStreamURL(sessionID uuid.UUID, token string) string {
-	// Base64 RawURLEncoding is already URL-safe. 
+	// Base64 RawURLEncoding is already URL-safe.
 	// Escaping it again can lead to decoding issues in some proxy layers.
 	streamBasePath := fmt.Sprintf(
-		"api/browser-stream/%s/%s",
+		"api/user/dashboard/browser-sessions/%s/stream/%s",
 		sessionID,
 		token,
 	)
