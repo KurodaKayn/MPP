@@ -638,7 +638,7 @@ export function useContentPageController(projectId?: string) {
       error: browserError,
       expiresAt: browserSession.expires_at,
       platformLabel: PLATFORM_TABS.find(p => p.value === browserSession.platform)?.label || browserSession.platform,
-      status: browserSession.status as any,
+      status: (browserSession.status === "publishing" || browserSession.status === "ready" ? "ready" : browserSession.status) as any,
       streamURL: browserStreamURL,
       onCancel: () => setBrowserSession(null),
       onComplete: () => setBrowserSession(null),
