@@ -79,7 +79,7 @@ function LoginContent() {
               </p>
             </div>
 
-            {loginMethods.mock || true ? (
+            {loginMethods.mock ? (
               <form className="space-y-5" onSubmit={handleLoginSubmit}>
                 <div className="space-y-2">
                   <Label htmlFor="username">用户名</Label>

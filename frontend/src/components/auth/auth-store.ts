@@ -7,8 +7,6 @@ import {
   getCurrentAuthState,
   loginWithAccessToken,
   loginWithUsername,
-  loginWithPassword,
-  registerUser,
   type AuthLoginMethods,
   type AuthSession,
 } from "@/lib/auth/client";

@@ -281,8 +281,18 @@ export async function loginWithAccessToken(token: string) {
 }
 
 export async function loginWithUsername(username: string) {
+  const normalizedUsername = username.trim();
+  if (!normalizedUsername) {
+    throw new Error("请输入用户名");
+  }
+
+  const status = await getAuthStatus();
+  if (!status.loginMethods.mock) {
+    throw new Error("开发账号登录仅在本地开发环境可用");
+  }
+
   const response = await fetch("/api/auth/login", {
-    body: JSON.stringify({ username }),
+    body: JSON.stringify({ username: normalizedUsername }),
     cache: "no-store",
     credentials: "same-origin",
     headers: {
@@ -298,7 +308,7 @@ export async function loginWithUsername(username: string) {
     );
   }
 
-  const session = { token: body.token, username };
+  const session = { token: body.token, username: normalizedUsername };
   setAuthSession(session);
   return session;
 }
