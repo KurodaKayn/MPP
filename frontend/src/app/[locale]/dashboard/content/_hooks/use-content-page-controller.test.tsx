@@ -34,6 +34,9 @@ vi.mock("@/lib/i18n/client", () => ({
       if (key === "publish.publishedTo") {
         return `Published to ${options.platforms}.`;
       }
+      if (key === "platforms.zhihu") {
+        return "Zhihu";
+      }
       return key;
     },
   }),
