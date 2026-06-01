@@ -21,6 +21,7 @@ import type {
   PrepublishDraft,
   PrepublishFormat,
 } from "../_stores/content-page-store";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 type PublishPlatform = PlatformTab["value"];
 
@@ -51,13 +52,6 @@ function formatLabel(format: PrepublishFormat) {
     case "text":
       return "Text";
   }
-}
-
-function platformLabel(platform: PublishPlatform) {
-  return (
-    PLATFORM_TABS.find((item) => item.value === platform)?.defaultLabel ??
-    platform
-  );
 }
 
 function renderPreview(draft: PrepublishDraft, title: string) {
@@ -91,6 +85,8 @@ export function ContentPrepublishPanel({
   projectId,
   title,
 }: ContentPrepublishPanelProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
   const hasSourceContent = Boolean(
     content.text.trim() || content.firstImageSrc,
   );
@@ -105,6 +101,13 @@ export function ContentPrepublishPanel({
   const activeDraft = drafts[activePlatform];
   const expectedFormat = platformFormats[activePlatform];
   const canUseAI = Boolean(projectId && activeDraft);
+  const getPlatformLabel = (platform: PlatformTab) =>
+    t(platform.label, { defaultValue: platform.defaultLabel });
+  const activePlatformLabel =
+    getPlatformLabel(
+      PLATFORM_TABS.find((platform) => platform.value === activePlatform) ??
+        PLATFORM_TABS[0],
+    ) ?? activePlatform;
 
   return (
     <Card>
@@ -178,7 +181,9 @@ export function ContentPrepublishPanel({
                   className="size-[18px] shrink-0"
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{platform.label}</div>
+                  <div className="truncate font-medium">
+                    {getPlatformLabel(platform)}
+                  </div>
                   <div className="mt-0.5 text-[11px] text-muted-foreground">
                     {drafts[platform.value] ? "已同步" : "未同步"}
                   </div>
@@ -196,9 +201,7 @@ export function ContentPrepublishPanel({
           <section className="space-y-3">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-sm font-semibold">
-                  {platformLabel(activePlatform)}
-                </h3>
+                <h3 className="text-sm font-semibold">{activePlatformLabel}</h3>
                 <p className="text-sm text-muted-foreground">
                   {activeDraft
                     ? `${formatLabel(activeDraft.format)} · 已同步 ${new Date(

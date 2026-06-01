@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Card,
   CardContent,
@@ -11,6 +13,7 @@ import { Eye } from "lucide-react";
 import Image from "next/image";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import type { ContentValue } from "@/lib/content/types";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 type PlatformPreviewProps = {
   title: string;
@@ -39,6 +42,8 @@ export function PlatformPreview({
   content,
   viewSwitcher,
 }: PlatformPreviewProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
   const hasBodyContent = Boolean(content.text.trim() || content.firstImageSrc);
   const previewContent = (
     <div
@@ -71,7 +76,12 @@ export function PlatformPreview({
           >
             {PLATFORM_TABS.map((platform) => (
               <TabsTrigger key={platform.value} value={platform.value}>
-                <PlatformTabLabel icon={platform.icon} label={platform.label} />
+                <PlatformTabLabel
+                  icon={platform.icon}
+                  label={t(platform.label, {
+                    defaultValue: platform.defaultLabel,
+                  })}
+                />
               </TabsTrigger>
             ))}
           </TabsList>

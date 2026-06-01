@@ -1,3 +1,5 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
 import { PLATFORM_TABS, type PlatformTab } from "@/lib/content/platforms";
 import {
@@ -7,6 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import { Loader2, Send } from "lucide-react";
 import Image from "next/image";
 
@@ -37,6 +40,8 @@ export function ContentPublishBar({
   publishLabel = "一键发布",
   selectedPlatforms,
 }: ContentPublishBarProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
   const isBusy = isOpeningXPostIntent || isPublishing;
   const selectedSet = new Set(selectedPlatforms);
 
@@ -128,7 +133,9 @@ export function ContentPublishBar({
                       className="size-[18px] shrink-0"
                     />
                     <span className="truncate font-medium">
-                      {platform.defaultLabel}
+                      {t(platform.label, {
+                        defaultValue: platform.defaultLabel,
+                      })}
                     </span>
                   </label>
                 );
