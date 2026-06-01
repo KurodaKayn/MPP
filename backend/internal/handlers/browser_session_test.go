@@ -204,7 +204,7 @@ func TestBrowserSessionHandler_StreamSessionUsesMockStream(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "Mock remote browser session")
 }
 
-func TestBrowserSessionHandler_WebSocketStreamDoesNotRotatePollingURL(t *testing.T) {
+func TestBrowserSessionHandler_WebSocketStreamRotatesPollingURLAfterConsumingToken(t *testing.T) {
 	e, h, _ := setupBrowserSessionHandlerTest(t)
 	userID := uuid.New()
 	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
@@ -247,5 +247,5 @@ func TestBrowserSessionHandler_WebSocketStreamDoesNotRotatePollingURL(t *testing
 
 	var pollResp dto.BrowserSessionResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &pollResp))
-	assert.Empty(t, pollResp.StreamURL)
+	assert.NotEmpty(t, pollResp.StreamURL)
 }

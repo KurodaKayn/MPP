@@ -188,6 +188,39 @@ func TestBrowserSessionService_GetStreamEndpointRejectsExpiredDatabaseToken(t *t
 	assert.NoError(t, err)
 }
 
+func TestBrowserSessionService_RedisStreamTokenIsConsumedOnce(t *testing.T) {
+	_, svc, _ := setupBrowserSessionTest(t)
+	setupBrowserSessionRedis(t, svc)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+	require.NoError(t, err)
+	streamURL, err := url.Parse(resp.StreamURL)
+	require.NoError(t, err)
+	streamToken := streamTokenFromPath(t, streamURL.Path)
+
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
+	require.NoError(t, err)
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, true)
+	require.NoError(t, err)
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
+	assert.ErrorIs(t, err, browsersession.ErrStreamTokenGone)
+
+	status, err := svc.GetSession(context.Background(), userID, resp.SessionID)
+	require.NoError(t, err)
+	require.NotEmpty(t, status.StreamURL)
+
+	rotatedURL, err := url.Parse(status.StreamURL)
+	require.NoError(t, err)
+	rotatedToken := streamTokenFromPath(t, rotatedURL.Path)
+	assert.NotEqual(t, streamToken, rotatedToken)
+
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, rotatedToken, false)
+	assert.NoError(t, err)
+}
+
 func TestBrowserSessionService_UnsupportedPlatform(t *testing.T) {
 	_, svc, _ := setupBrowserSessionTest(t)
 	_, err := svc.StartSession(context.Background(), uuid.New(), "invalid-platform")

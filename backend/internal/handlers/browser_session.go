@@ -83,7 +83,7 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 
 	streamToken, proxyPath := streamTokenAndProxyPath(c.QueryParam("token"), c.Param("*"))
 	isWebSocket := strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket"
-	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken, false)
+	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken, isWebSocket)
 	if err != nil {
 		if err == browsersession.ErrSessionNotFound {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
