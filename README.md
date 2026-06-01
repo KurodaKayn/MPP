@@ -1,7 +1,11 @@
 # MPP: multi-platform-poster
 
 <p align="center">
-  <img src="doc/assests/mpp-with-name-white.svg" alt="MPP logo" width="360" />
+  <strong>English</strong> | <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+<p align="center">
+  <img src="doc/assests/mpp-with-name-white.svg" alt="MPP logo" width="640" />
   <br>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="License" />
 </p>
@@ -26,12 +30,15 @@
 
 MPP is a multi-platform content publishing system for creators and operations teams. It helps manage content projects, platform-specific adaptation, publishing status tracking, and AI-assisted processing from a unified workspace.
 
-## Demo Videos
+## Demo Video(Click to watch)
 
-- [Bilibili demo](https://www.bilibili.com/video/BV1wQVD6mEA6)
-- [YouTube demo](https://youtu.be/_Dh35Ksb9RQ)
+<p align="center">
+  <a href="https://youtu.be/_Dh35Ksb9RQ">
+    <img src="https://img.youtube.com/vi/_Dh35Ksb9RQ/maxresdefault.jpg" alt="Watch the MPP demo on YouTube" width="100%" />
+  </a>
+</p>
 
-## Project Innovations
+## Project Highlights
 
 MPP focuses on turning multi-platform publishing into a structured, automatable workflow. Each innovation introduces a specific technical layer to solve a concrete publishing problem.
 
@@ -62,6 +69,6 @@ For platforms without stable public publishing APIs, MPP uses a backend-controll
 For detailed design notes for each module, see [module-design.md](doc/module-design.md).
 For a module-by-module technology stack breakdown, see [tech-stack.md](doc/tech-stack.md).
 
-## How to Quick Start
+## Quick Start
 
 See [Setup Guide](doc/setup.md)
