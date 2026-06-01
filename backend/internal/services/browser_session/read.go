@@ -79,9 +79,9 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 		}
 	}
 
-	// If expired, check worker if we should update status
-	if time.Now().After(session.ExpiresAt) && session.Status != models.BrowserSessionStatusExpired {
-		s.CancelSession(ctx, userID, id)
+	// If expired, check worker if we should update status.
+	if time.Now().After(session.ExpiresAt) && !isTerminalBrowserSessionStatus(session.Status) {
+		_ = s.CancelSession(ctx, userID, id)
 		session.Status = models.BrowserSessionStatusExpired
 	}
 
