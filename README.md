@@ -16,6 +16,10 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.136-05998B?style=for-the-badge&logo=fastapi&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-1.3-1C3C3C?style=for-the-badge&logo=langchaincorporate&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![Redis](doc/assests/badges/redis.svg)
+![Echo](doc/assests/badges/echo.svg)
+![GORM](doc/assests/badges/gorm.svg)
+![Chromium](https://img.shields.io/badge/Chromium-Remote_Browser-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
 ## Overview
