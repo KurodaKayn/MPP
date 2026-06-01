@@ -369,10 +369,10 @@ export function useContentPageController(projectId?: string) {
           // Trigger visible session modal if session ID is returned
           if (result.browser_session_id) {
             setBrowserSession({
-              expires_at: result.queued_at, // Use queued_at as a fallback for expiry
+              expires_at: result.queued_at, 
               platform,
               session_id: result.browser_session_id,
-              status: result.status,
+              status: "ready", // Force 'ready' so the modal shows the stream immediately
               stream_url: result.stream_url,
             });
           }
