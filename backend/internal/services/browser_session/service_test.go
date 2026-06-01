@@ -92,7 +92,7 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	assert.WithinDuration(t, time.Now().Add(5*time.Minute), resp.StreamTokenExpiresAt, 2*time.Second)
 	streamToken := streamTokenFromPath(t, streamURL.Path)
 	require.NotEmpty(t, streamToken)
-	expectedProxyPath := strings.TrimSuffix(strings.TrimPrefix(streamURL.Path, "/"), "/vnc.html") + "/websockify"
+	expectedProxyPath := "/" + strings.TrimSuffix(strings.TrimPrefix(streamURL.Path, "/"), "/vnc.html") + "/websockify"
 	assert.Equal(t, expectedProxyPath, streamURL.Query().Get("path"))
 
 	streamEndpoint, err := svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
@@ -100,7 +100,7 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	assert.True(t, strings.HasPrefix(streamEndpoint, "http://127.0.0.1:"))
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, "bad-token", false)
-	assert.ErrorIs(t, err, browsersession.ErrStreamTokenGone)
+	assert.ErrorIs(t, err, browsersession.ErrInvalidStreamToken)
 
 	// Verify DB state
 	var session models.RemoteBrowserSession

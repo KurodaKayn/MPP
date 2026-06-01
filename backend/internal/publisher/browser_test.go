@@ -33,7 +33,7 @@ func TestSetupBrowserRestoresCookiesWithoutNavigationPreflight(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, cancel := SetupBrowser(context.Background(), cookiesJSON)
+	_, cancel := SetupBrowser(context.Background(), "", cookiesJSON)
 	cancel()
 
 	require.Len(t, capturedActions, 2)
