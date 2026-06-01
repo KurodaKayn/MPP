@@ -45,7 +45,7 @@ func main() {
 	dashboardService := services.NewDashboardService(db.DB)
 	redisClient, err := redisclient.NewFromEnv(context.Background())
 	if err != nil {
-	        log.Fatal(err)
+		log.Fatal(err)
 	}
 
 	// Remote Browser Session (New)
@@ -73,7 +73,6 @@ func main() {
 	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
 	authHandler.SetUsernameLoginEnabled(mockLogin)
 
-	cookieStore := publisher.NewCookieStore(db.DB)
 	if redisClient != nil {
 		browserSessionService.UseRedis(redisClient)
 		browserSessionService.StartCleanupWorker(context.Background())

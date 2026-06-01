@@ -173,7 +173,7 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 			}
 			return session.StreamEndpointRef, nil
 		}
-		// Not found in Redis, fall through to DB check
+		return "", ErrStreamTokenGone
 	}
 
 	// Fallback to DB
