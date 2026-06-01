@@ -3,16 +3,14 @@
 import { Suspense } from "react";
 import { ArrowRight, Loader2, LogIn } from "lucide-react";
 import Image from "next/image";
-import { useParams } from "next/navigation";
-import { useTranslation } from "@/lib/i18n/client";
+import { useTranslation, useAppLocale } from "@/lib/i18n/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLoginController } from "./_hooks/use-login-controller";
 
 function LoginContent() {
-  const params = useParams();
-  const locale = params?.locale as string;
+  const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
   const { t: tHome } = useTranslation(locale, "home");
   const {

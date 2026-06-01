@@ -1,11 +1,9 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { useTranslation } from "@/lib/i18n/client";
+import { useTranslation, useAppLocale } from "@/lib/i18n/client";
 
 export function SettingsPageHeader() {
-  const params = useParams();
-  const locale = (params?.locale as string) || "en";
+  const locale = useAppLocale();
   const { t } = useTranslation(locale, "dashboard");
 
   return (

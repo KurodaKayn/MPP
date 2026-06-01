@@ -11,7 +11,6 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +28,7 @@ import {
   type DashboardStats,
   type ProjectListItem,
 } from "@/lib/dashboard/api";
-import { useTranslation } from "@/lib/i18n/client";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import { getIntlLocale } from "@/lib/i18n/settings";
 
 const statusVariants: Record<
@@ -149,8 +148,7 @@ function ProjectListSkeleton() {
 }
 
 export default function DashboardPage() {
-  const params = useParams();
-  const locale = (params?.locale as string) || "en";
+  const locale = useAppLocale();
   const { t } = useTranslation(locale, "dashboard");
   const { t: tCommon } = useTranslation(locale, "common");
 

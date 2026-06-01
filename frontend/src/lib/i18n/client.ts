@@ -8,7 +8,8 @@ import {
 } from "react-i18next";
 import resourcesToBackend from "i18next-resources-to-backend";
 import LanguageDetector from "i18next-browser-languagedetector";
-import { getOptions, languages, cookieName } from "./settings";
+import { useParams } from "next/navigation";
+import { getOptions, languages, fallbackLng } from "./settings";
 
 const runsOnServerSide = typeof window === "undefined";
 
@@ -30,6 +31,11 @@ i18next
     },
     preload: runsOnServerSide ? languages : [],
   });
+
+export function useAppLocale(): string {
+  const params = useParams();
+  return (params?.locale as string) || fallbackLng;
+}
 
 export function useTranslation(lng: string, ns: string, options: any = {}) {
   const ret = useTranslationOrg(ns, options);

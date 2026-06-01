@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +25,7 @@ import {
   getDashboardProjects,
   type ProjectListItem,
 } from "@/lib/dashboard/api";
-import { useTranslation } from "@/lib/i18n/client";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import { getIntlLocale } from "@/lib/i18n/settings";
 
 const statusVariants: Record<
@@ -148,8 +147,7 @@ function ProjectSkeleton() {
 }
 
 export default function PostsPage() {
-  const params = useParams();
-  const locale = (params?.locale as string) || "en";
+  const locale = useAppLocale();
   const { t } = useTranslation(locale, "dashboard");
   const { t: tCommon } = useTranslation(locale, "common");
 

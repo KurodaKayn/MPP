@@ -29,14 +29,20 @@ export const dashboardMainNavItems = [
 ] as const;
 
 export function getDashboardPageTitle(pathname: string) {
-  if (pathname === dashboardRoutes.overview.url) {
+  const unlocalizedPathname = pathname.replace(/^\/[^/]+/, "");
+  const normalizedPathname =
+    unlocalizedPathname === "" ? "/" : unlocalizedPathname;
+
+  if (normalizedPathname === dashboardRoutes.overview.url) {
     return dashboardRoutes.overview.title;
   }
 
   const matchedRoute = Object.values(dashboardRoutes)
     .filter((route) => route.url !== dashboardRoutes.overview.url)
     .find(
-      (route) => pathname === route.url || pathname.startsWith(`${route.url}/`),
+      (route) =>
+        normalizedPathname === route.url ||
+        normalizedPathname.startsWith(`${route.url}/`),
     );
 
   return matchedRoute?.title ?? dashboardRoutes.overview.title;

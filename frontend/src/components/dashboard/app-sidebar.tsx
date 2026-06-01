@@ -11,10 +11,9 @@ import {
 
 import Image from "next/image";
 import Link from "next/link";
-import { useParams } from "next/navigation";
 
 import { useAuth } from "@/components/auth/auth-provider";
-import { useTranslation } from "@/lib/i18n/client";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Sidebar,
@@ -51,8 +50,7 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { session } = useAuth();
-  const params = useParams();
-  const locale = (params?.locale as string) || "zh";
+  const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
   const username = session?.username ?? t("nav.creator");
   const initials = username.slice(0, 2).toUpperCase();

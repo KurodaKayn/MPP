@@ -1,7 +1,7 @@
 "use client";
 
 import { LogOut, Moon, Sun, Globe, Monitor } from "lucide-react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { useAuth } from "@/components/auth/auth-provider";
@@ -15,11 +15,10 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useTranslation } from "@/lib/i18n/client";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 export function PreferencesCard() {
-  const params = useParams();
-  const locale = (params?.locale as string) || "en";
+  const locale = useAppLocale();
   const { t } = useTranslation(locale, "dashboard");
 
   return (
@@ -82,8 +81,7 @@ export function PreferencesCard() {
 export function AccountManagementCard() {
   const router = useRouter();
   const { logout } = useAuth();
-  const params = useParams();
-  const locale = (params?.locale as string) || "en";
+  const locale = useAppLocale();
   const { t } = useTranslation(locale, "dashboard");
 
   const handleLogout = () => {
