@@ -44,8 +44,6 @@ TARGET_URL=${LOGIN_URL:-"about:blank"}
     --no-default-browser-check \
     --disable-gpu \
     --disable-dev-shm-usage \
-    --disable-web-security \
-    --ignore-certificate-errors \
     --window-size=1366,768 \
     --window-position=0,0 \
     --kiosk \
