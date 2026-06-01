@@ -276,6 +276,26 @@ func TestBrowserSessionService_RedisStreamTokenIsConsumedOnce(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestBrowserSessionService_CancelSessionDeletesAllRedisStreamTokens(t *testing.T) {
+	_, svc, _ := setupBrowserSessionTest(t)
+	client := setupBrowserSessionRedis(t, svc)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+	require.NoError(t, err)
+	strayTokenKey := "mpp:browser:stream-token:" + resp.SessionID.String() + ":stray-token-hash"
+	require.NoError(t, client.Set(context.Background(), strayTokenKey, "{}", time.Hour).Err())
+
+	require.NoError(t, svc.CancelSession(context.Background(), userID, resp.SessionID))
+
+	tokenKeys, err := client.Keys(context.Background(), "mpp:browser:stream-token:"+resp.SessionID.String()+":*").Result()
+	require.NoError(t, err)
+	assert.Empty(t, tokenKeys)
+	assert.Equal(t, int64(0), client.Exists(context.Background(), "mpp:browser:stream-current:"+resp.SessionID.String()).Val())
+}
+
 func TestBrowserSessionService_UnsupportedPlatform(t *testing.T) {
 	_, svc, _ := setupBrowserSessionTest(t)
 	_, err := svc.StartSession(context.Background(), uuid.New(), "invalid-platform")
