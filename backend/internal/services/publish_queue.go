@@ -31,11 +31,12 @@ var (
 )
 
 type PublishJob struct {
-	JobID      uuid.UUID `json:"job_id"`
-	ProjectID  uuid.UUID `json:"project_id"`
-	UserID     uuid.UUID `json:"user_id"`
-	Platform   string    `json:"platform"`
-	EnqueuedAt time.Time `json:"enqueued_at"`
+	JobID            uuid.UUID `json:"job_id"`
+	ProjectID        uuid.UUID `json:"project_id"`
+	UserID           uuid.UUID `json:"user_id"`
+	Platform         string    `json:"platform"`
+	BrowserSessionID uuid.UUID `json:"browser_session_id,omitempty"`
+	EnqueuedAt       time.Time `json:"enqueued_at"`
 }
 
 type PublishQueue interface {
@@ -124,7 +125,7 @@ return 0
 
 func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
 	if s.publishQueue == nil {
-		return s.PublishProject(projectID, platform, scopeUserID)
+		return s.PublishProject(projectID, platform, scopeUserID, uuid.Nil)
 	}
 	if scopeUserID == nil {
 		return nil, ErrForbidden
@@ -135,12 +136,45 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 		return nil, err
 	}
 
+	// Create a browser session if needed for headless platforms
+	var browserSessionID uuid.UUID
+	if (platform == "douyin" || platform == "zhihu") && s.browserWorkerClient != nil {
+		fmt.Printf("Creating visible browser session for %s publishing...\n", platform)
+		req := publisher.StartWorkerSessionRequest{
+			SessionID:  uuid.New(),
+			UserID:     *scopeUserID,
+			Platform:   platform,
+			LoginURL:   "about:blank",
+			TTLSeconds: 600,
+		}
+		req.Viewport.Width = 1280
+		req.Viewport.Height = 800
+
+		resp, err := s.browserWorkerClient.CreateSession(ctx, req)
+		if err == nil {
+			browserSessionID = req.SessionID
+			session := &models.RemoteBrowserSession{
+				ID:               browserSessionID,
+				UserID:           *scopeUserID,
+				Platform:         platform,
+				Status:           models.BrowserSessionStatusReady,
+				WorkerSessionRef: resp.WorkerSessionRef,
+				ContainerID:      resp.ContainerID,
+				CDPEndpointRef:   resp.CDPEndpointRef,
+				CreatedAt:        time.Now(),
+				ExpiresAt:        time.Now().Add(10 * time.Minute),
+			}
+			s.db.Create(session)
+		}
+	}
+
 	job := PublishJob{
-		JobID:      uuid.New(),
-		ProjectID:  project.ID,
-		UserID:     *scopeUserID,
-		Platform:   platform,
-		EnqueuedAt: time.Now().UTC(),
+		JobID:            uuid.New(),
+		ProjectID:        project.ID,
+		UserID:           *scopeUserID,
+		Platform:         platform,
+		BrowserSessionID: browserSessionID,
+		EnqueuedAt:       time.Now().UTC(),
 	}
 	lockKey := publishLockKey(project.ID, platform)
 	acquired, err := s.publishQueue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
@@ -162,11 +196,12 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 	}
 
 	return map[string]interface{}{
-		"status":      models.PublicationStatusPublishing,
-		"job_id":      job.JobID.String(),
-		"platform":    platform,
-		"queued_at":   job.EnqueuedAt,
-		"publish_url": pub.PublishURL,
+		"status":             models.PublicationStatusPublishing,
+		"job_id":             job.JobID.String(),
+		"platform":           platform,
+		"queued_at":          job.EnqueuedAt,
+		"publish_url":        pub.PublishURL,
+		"browser_session_id": browserSessionID,
 	}, nil
 }
 
@@ -230,7 +265,7 @@ func (s *DashboardService) processPublishJob(ctx context.Context, job PublishJob
 	stopRefreshing := s.startPublishLockRefresh(ctx, lockKey, job.JobID.String())
 	defer stopRefreshing()
 
-	if _, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID); err != nil {
+	if _, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID, job.BrowserSessionID); err != nil {
 		log.Printf("publish job %s failed: %v", job.JobID, err)
 		if markErr := s.markPublicationFailed(job.ProjectID, job.Platform, err.Error()); markErr != nil {
 			log.Printf("failed to mark publish job %s as failed: %v", job.JobID, markErr)

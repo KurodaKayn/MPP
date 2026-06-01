@@ -45,19 +45,8 @@ func main() {
 	dashboardService := services.NewDashboardService(db.DB)
 	redisClient, err := redisclient.NewFromEnv(context.Background())
 	if err != nil {
-		log.Fatal(err)
+	        log.Fatal(err)
 	}
-	if redisClient != nil {
-		defer redisClient.Close()
-		dashboardService.UseRedis(redisClient)
-		dashboardService.StartPublishWorker(context.Background())
-	}
-	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
-	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
-	userDashboardHandler.UseAIContentEditor(services.NewAIServiceClientFromEnv())
-	mockLogin := mockLoginEnabled()
-	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
-	authHandler.SetUsernameLoginEnabled(mockLogin)
 
 	// Remote Browser Session (New)
 	var workerClient publisher.BrowserWorkerClient
@@ -67,6 +56,20 @@ func main() {
 	} else {
 		workerClient = publisher.NewMockBrowserWorkerClient()
 	}
+	dashboardService.SetBrowserWorkerClient(workerClient)
+
+	if redisClient != nil {
+		defer redisClient.Close()
+		dashboardService.UseRedis(redisClient)
+		dashboardService.StartPublishWorker(context.Background())
+	}
+
+	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
+	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
+	userDashboardHandler.UseAIContentEditor(services.NewAIServiceClientFromEnv())
+	mockLogin := mockLoginEnabled()
+	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
+	authHandler.SetUsernameLoginEnabled(mockLogin)
 
 	cookieStore := publisher.NewCookieStore(db.DB)
 	browserSessionService := browsersession.NewBrowserSessionService(db.DB, workerClient, cookieStore)

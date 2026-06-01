@@ -354,6 +354,22 @@ export function useContentPageController(projectId?: string) {
         if (result.status === "failed" || result.status === "error") {
           throw new Error(result.error_message || `${platform} 发布失败`);
         }
+
+        // Automatic Popup for visible browser sessions
+        if (result.browser_session_id) {
+          const streamUrl = `/api/browser-stream/${result.browser_session_id}`;
+          const popup = window.open(
+            streamUrl,
+            `mpp-publish-${platform}`,
+            "width=1280,height=800,menubar=no,toolbar=no,location=no,status=no",
+          );
+          if (!popup) {
+            toast.warning(`已为 ${platform} 启动可视化发布，但浏览器拦截了弹窗`, {
+              description: "请允许弹窗以查看发布过程。",
+            });
+          }
+        }
+
         return {
           platform,
           status: result.status,

@@ -22,6 +22,7 @@ services:
       - "8080:8080"
     env_file: .env
     environment:
+      DB_HOST: ${DB_HOST:-db}
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
@@ -30,13 +31,16 @@ services:
       - db
       - redis
       - browser-worker
+    networks:
+      - default
+      - browser-runtime
 
   browser-worker:
     build:
       context: ../browser-worker
       dockerfile: Dockerfile
-    expose:
-      - "8081"
+    ports:
+      - "8081:8081"
     env_file: .env
     environment:
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
@@ -45,8 +49,8 @@ services:
       DOCKER_HOST: unix:///var/run/docker.sock
       BROWSER_RUNTIME_IMAGE: ${BROWSER_RUNTIME_IMAGE:-mpp-browser-runtime}
       BROWSER_RUNTIME_NETWORK: ${BROWSER_RUNTIME_NETWORK:-mpp-browser-runtime}
-      BROWSER_RUNTIME_BIND_IP: ${BROWSER_RUNTIME_BIND_IP:-127.0.0.1}
-      BROWSER_RUNTIME_HOST: ${BROWSER_RUNTIME_HOST:-127.0.0.1}
+      BROWSER_RUNTIME_BIND_IP: 0.0.0.0
+      BROWSER_RUNTIME_HOST: ${BROWSER_RUNTIME_HOST:-host.docker.internal}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
