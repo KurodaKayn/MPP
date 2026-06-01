@@ -56,9 +56,11 @@ func migrate(database *gorm.DB) error {
 		return err
 	}
 
-	// Redis owns active-session locking; remove the legacy partial unique index if present.
+	// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
 	return database.Exec(`
-		DROP INDEX IF EXISTS ux_remote_browser_sessions_active_user_platform
+		CREATE UNIQUE INDEX IF NOT EXISTS ux_remote_browser_sessions_active_user_platform
+		ON remote_browser_sessions (user_id, platform)
+		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
 	`).Error
 }
 
