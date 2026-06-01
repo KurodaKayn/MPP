@@ -137,74 +137,9 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 		return nil, err
 	}
 
-	// Create a browser session if needed for headless platforms
+	// [DISABLED] Remote browser session creation for publishing
+	// Keeping the variable for job compatibility but setting it to Nil
 	var browserSessionID uuid.UUID
-	var streamURL string
-	if (platform == "douyin" || platform == "zhihu") && s.browserWorkerClient != nil {
-		fmt.Printf("Creating visible browser session for %s publishing...\n", platform)
-
-		// CLEANUP: Hard delete any existing active sessions for this user/platform to avoid unique constraint violation
-		if err := s.db.Unscoped().
-			Where("user_id = ? AND platform = ? AND status IN ?", *scopeUserID, platform, []string{"pending", "ready", "login_detected", "capturing"}).
-			Delete(&models.RemoteBrowserSession{}).Error; err != nil {
-			fmt.Printf("Warning: failed to cleanup old sessions: %v\n", err)
-		}
-
-		// Generate stream token
-		token, tokenHash, err := browsersession.GenerateStreamToken()
-		if err != nil {
-			fmt.Printf("Warning: failed to generate stream token: %v\n", err)
-		}
-
-		req := publisher.StartWorkerSessionRequest{
-			SessionID:  uuid.New(),
-			UserID:     *scopeUserID,
-			Platform:   platform,
-			LoginURL:   "about:blank",
-			TTLSeconds: 600,
-		}
-		req.Viewport.Width = 1280
-		req.Viewport.Height = 800
-
-		resp, err := s.browserWorkerClient.CreateSession(ctx, req)
-		if err == nil {
-			browserSessionID = req.SessionID
-			expiresAt := time.Now().Add(10 * time.Minute)
-			tokenExpiresAt := browsersession.StreamTokenExpiresAt(expiresAt)
-			streamURL = browsersession.BrowserSessionStreamURL(browserSessionID, token)
-
-			session := &models.RemoteBrowserSession{
-				ID:                    browserSessionID,
-				UserID:                *scopeUserID,
-				Platform:              platform,
-				Status:                models.BrowserSessionStatusReady,
-				WorkerSessionRef:      resp.WorkerSessionRef,
-				ContainerID:           resp.ContainerID,
-				CDPEndpointRef:        resp.CDPEndpointRef,
-				StreamEndpointRef:     resp.StreamEndpointRef,
-				ConnectTokenHash:      tokenHash,
-				ConnectTokenExpiresAt: tokenExpiresAt,
-				CreatedAt:             time.Now(),
-				ExpiresAt:             expiresAt,
-			}
-			
-			// Use the service to register the session correctly (including Redis)
-			if s.browserSessionService != nil {
-				if err := s.browserSessionService.RegisterSession(ctx, session, tokenHash); err != nil {
-					fmt.Printf("Error: failed to register browser session: %v\n", err)
-					return nil, fmt.Errorf("failed to register browser session: %w", err)
-				}
-			} else {
-				if err := s.db.Create(session).Error; err != nil {
-					fmt.Printf("Error: failed to create session in DB: %v\n", err)
-					return nil, fmt.Errorf("failed to initialize browser session: %w", err)
-				}
-			}
-		} else {
-			fmt.Printf("Error: worker failed to create session: %v\n", err)
-			return nil, fmt.Errorf("failed to start browser worker: %w", err)
-		}
-	}
 
 	job := PublishJob{
 		JobID:            uuid.New(),
@@ -234,13 +169,11 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 	}
 
 	return map[string]interface{}{
-		"status":             models.PublicationStatusPublishing,
-		"job_id":             job.JobID.String(),
-		"platform":           platform,
-		"queued_at":          job.EnqueuedAt,
-		"publish_url":        pub.PublishURL,
-		"browser_session_id": browserSessionID,
-		"stream_url":         streamURL,
+		"status":      models.PublicationStatusPublishing,
+		"job_id":      job.JobID.String(),
+		"platform":    platform,
+		"queued_at":   job.EnqueuedAt,
+		"publish_url": pub.PublishURL,
 	}, nil
 }
 

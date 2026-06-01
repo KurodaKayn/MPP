@@ -339,14 +339,7 @@ export function useContentPageController(projectId?: string) {
     });
   };
 
-  const [browserSession, setBrowserSession] = useState<{
-    session_id: string;
-    platform: string;
-    status: string;
-    expires_at?: string;
-  } | null>(null);
-  const [browserStreamURL, setBrowserStreamURL] = useState<string>();
-  const [browserError, setBrowserError] = useState<string>();
+  const [isPublishing, setIsPublishing] = useState(false);
 
   const publishExistingProject = async () => {
     if (!projectId) {
@@ -366,20 +359,6 @@ export function useContentPageController(projectId?: string) {
           if (result.status === "failed" || result.status === "error") {
             throw new Error(result.error_message || `${platform} 发布失败`);
           }
-
-          // Trigger visible session modal if session ID is returned
-          if (result.browser_session_id) {
-            setBrowserSession({
-              expires_at: result.queued_at, 
-              platform,
-              session_id: result.browser_session_id,
-              status: "ready", // Force 'ready' so the modal shows the stream immediately
-            });
-            if (result.stream_url) {
-              setBrowserStreamURL(result.stream_url);
-            }
-          }
-
           return {
             platform,
             status: result.status,
@@ -411,7 +390,7 @@ export function useContentPageController(projectId?: string) {
         });
       });
 
-      if (pendingPlatforms.length > 0 && !browserSession) {
+      if (pendingPlatforms.length > 0) {
         const finalPublications = await waitForProjectPublications(
           projectId,
           selectedPlatforms,
@@ -455,53 +434,6 @@ export function useContentPageController(projectId?: string) {
       setIsPublishing(false);
     }
   };
-
-  // Poll for visible browser session status
-  useEffect(() => {
-    if (!browserSession) {
-      return;
-    }
-
-    // Terminal statuses for the modal
-    const finalStatuses = new Set(["published", "failed", "expired", "error"]);
-    if (finalStatuses.has(browserSession.status)) {
-      return;
-    }
-
-    let cancelled = false;
-    const interval = window.setInterval(() => {
-      void getBrowserSession(browserSession.session_id)
-        .then((nextSession) => {
-          if (cancelled) {
-            return;
-          }
-          
-          setBrowserSession((prev) => 
-            prev ? { ...prev, status: nextSession.status, expires_at: nextSession.expires_at } : null
-          );
-          
-          if (nextSession.stream_url) {
-            setBrowserStreamURL(nextSession.stream_url);
-          }
-          if (nextSession.status === "expired") {
-            setBrowserError("发布会话已过期。");
-          }
-          if (nextSession.status === "failed") {
-            setBrowserError(nextSession.message || "浏览器操作失败。");
-          }
-        })
-        .catch((error) => {
-          if (!cancelled) {
-            console.error("Failed to poll session status:", error);
-          }
-        });
-    }, 3000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [browserSession]);
 
   const openXPostIntent = async () => {
     if (!validateContentFields()) {
