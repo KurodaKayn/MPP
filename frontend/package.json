@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "oxlint --nextjs-plugin",
+    "lint": "oxlint --nextjs-plugin && node scripts/lint-ascii.mjs",
     "lint:fix": "oxlint --nextjs-plugin --fix",
     "format": "oxfmt",
     "format:check": "oxfmt --check",

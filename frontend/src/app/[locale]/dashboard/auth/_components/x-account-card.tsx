@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type XAccount } from "@/lib/dashboard/api";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 type XAccountCardProps = {
   account: XAccount | null;
@@ -38,22 +39,6 @@ type XAccountCardProps = {
 
 const xOAuth2AuthorizePath = "/api/user/dashboard/settings/x/oauth2/start";
 
-function formatExpiresAt(value?: string) {
-  if (!value) {
-    return "尚未授权";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) {
-    return "未知";
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
 export function XAccountCard({
   account,
   accessToken,
@@ -73,16 +58,36 @@ export function XAccountCard({
   onTest,
   onUsernameChange,
 }: XAccountCardProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "dashboard");
   const disabled = loading || saving || testing;
+
   const handleOAuth2Authorize = () => {
     window.location.assign(xOAuth2AuthorizePath);
+  };
+
+  const formatExpiresAt = (value?: string) => {
+    if (!value) {
+      return t("auth.status.notAuthorized");
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.valueOf())) {
+      return t("auth.status.unknown");
+    }
+
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
   };
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <KeyRound className="size-4" />X
+          <KeyRound className="size-4" />
+          {t("auth.x.title")}
         </CardTitle>
         <CardAction>
           <Badge variant="outline">Official API</Badge>
@@ -104,10 +109,10 @@ export function XAccountCard({
                 className="w-full sm:w-auto"
               >
                 <ShieldCheck className="size-4" />
-                授权 X
+                {t("auth.x.authorize")}
               </Button>
               <div className="text-sm text-muted-foreground">
-                到期时间：
+                {t("auth.x.expiresAt")}
                 <span className="font-medium text-foreground">
                   {formatExpiresAt(account?.expires_at)}
                 </span>
@@ -159,7 +164,7 @@ export function XAccountCard({
                     }}
                     placeholder={
                       account?.has_api_secret
-                        ? "已保存，留空则沿用"
+                        ? t("auth.x.savedHint")
                         : "API Secret"
                     }
                     disabled={disabled}
@@ -177,7 +182,7 @@ export function XAccountCard({
                     }}
                     placeholder={
                       account?.has_access_token
-                        ? "已保存，留空则沿用"
+                        ? t("auth.x.savedHint")
                         : "Access Token"
                     }
                     disabled={disabled}
@@ -197,7 +202,7 @@ export function XAccountCard({
                     }}
                     placeholder={
                       account?.has_access_token_secret
-                        ? "已保存，留空则沿用"
+                        ? t("auth.x.savedHint")
                         : "Access Token Secret"
                     }
                     disabled={disabled}
@@ -216,7 +221,7 @@ export function XAccountCard({
                   ) : (
                     <Save className="size-4" />
                   )}
-                  保存配置
+                  {t("auth.actions.save")}
                 </Button>
                 <Button
                   type="button"
@@ -229,7 +234,7 @@ export function XAccountCard({
                   ) : (
                     <RefreshCw className="size-4" />
                   )}
-                  测试连接
+                  {t("auth.actions.test")}
                 </Button>
               </div>
             </div>

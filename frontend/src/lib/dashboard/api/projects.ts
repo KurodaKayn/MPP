@@ -137,7 +137,9 @@ export async function waitForProjectPublications(
     latestPublications = await fetchProjectPublications(projectId);
   }
 
-  throw new Error("发布任务超时，请稍后刷新查看状态");
+  throw new Error(
+    "Publish request timed out. Please refresh and check again later.",
+  );
 }
 
 export function syncProjectPrepublish(

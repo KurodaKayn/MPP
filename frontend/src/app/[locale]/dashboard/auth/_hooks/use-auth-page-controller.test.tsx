@@ -42,7 +42,16 @@ vi.mock("@/lib/dashboard/api", () => ({
   testXConnection: mocks.testXConnection,
 }));
 
+vi.mock("@/lib/i18n/client", () => ({
+  useAppLocale: () => "en",
+  useTranslation: () => ({
+    t: (key: string, options?: { platform?: string }) =>
+      options?.platform ? `${key} ${options.platform}` : key,
+  }),
+}));
+
 vi.mock("next/navigation", () => ({
+  useParams: () => ({ locale: "en" }),
   useRouter: () => ({
     replace: mocks.replace,
   }),

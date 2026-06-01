@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/react";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import {
   ChevronDown,
   Heading1,
@@ -20,7 +21,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function ContentEditorBlockMenu({ editor }: { editor: Editor | null }) {
-  const blockLabel = getCurrentBlockLabel(editor);
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
+  const blockLabel = getCurrentBlockLabel(editor, t);
 
   return (
     <DropdownMenu>
@@ -46,7 +49,7 @@ export function ContentEditorBlockMenu({ editor }: { editor: Editor | null }) {
           onClick={() => editor?.chain().focus().setParagraph().run()}
         >
           <Pilcrow className="size-4" />
-          正文
+          {t("editor.paragraph")}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() =>
@@ -54,7 +57,7 @@ export function ContentEditorBlockMenu({ editor }: { editor: Editor | null }) {
           }
         >
           <Heading1 className="size-4" />
-          标题 1
+          {t("editor.h1")}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() =>
@@ -62,7 +65,7 @@ export function ContentEditorBlockMenu({ editor }: { editor: Editor | null }) {
           }
         >
           <Heading2 className="size-4" />
-          标题 2
+          {t("editor.h2")}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() =>
@@ -70,60 +73,63 @@ export function ContentEditorBlockMenu({ editor }: { editor: Editor | null }) {
           }
         >
           <Heading3 className="size-4" />
-          标题 3
+          {t("editor.h3")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => editor?.chain().focus().toggleBulletList().run()}
         >
           <List className="size-4" />
-          项目符号
+          {t("editor.bulletList")}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => editor?.chain().focus().toggleOrderedList().run()}
         >
           <ListOrdered className="size-4" />
-          编号列表
+          {t("editor.orderedList")}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => editor?.chain().focus().toggleBlockquote().run()}
         >
           <Quote className="size-4" />
-          引用
+          {t("editor.quote")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-export function getCurrentBlockLabel(editor: Editor | null) {
+export function getCurrentBlockLabel(
+  editor: Editor | null,
+  t: (key: string) => string,
+) {
   if (!editor) {
-    return "正文";
+    return t("editor.paragraph");
   }
 
   if (editor.isActive("heading", { level: 1 })) {
-    return "标题 1";
+    return t("editor.h1");
   }
 
   if (editor.isActive("heading", { level: 2 })) {
-    return "标题 2";
+    return t("editor.h2");
   }
 
   if (editor.isActive("heading", { level: 3 })) {
-    return "标题 3";
+    return t("editor.h3");
   }
 
   if (editor.isActive("bulletList")) {
-    return "项目符号";
+    return t("editor.bulletList");
   }
 
   if (editor.isActive("orderedList")) {
-    return "编号列表";
+    return t("editor.orderedList");
   }
 
   if (editor.isActive("blockquote")) {
-    return "引用";
+    return t("editor.quote");
   }
 
-  return "正文";
+  return t("editor.paragraph");
 }

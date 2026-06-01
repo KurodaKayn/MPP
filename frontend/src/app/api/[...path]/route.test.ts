@@ -82,13 +82,13 @@ describe("api proxy route", () => {
 
     const response = await GET(
       request,
-      createContext(["dashboard", "项目 stats"]),
+      createContext(["dashboard", "project stats"]),
     );
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [targetUrl, init] = fetchMock.mock.calls[0];
     expect(String(targetUrl)).toBe(
-      "https://backend.example/api/dashboard/%E9%A1%B9%E7%9B%AE%20stats?search=a%20b",
+      "https://backend.example/api/dashboard/project%20stats?search=a%20b",
     );
     expect(init?.method).toBe("GET");
     expect(init?.body).toBeUndefined();

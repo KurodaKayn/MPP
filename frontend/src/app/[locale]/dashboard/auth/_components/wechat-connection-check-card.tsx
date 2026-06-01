@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { type RequirementStatus } from "@/lib/dashboard/api";
 import { cn } from "@/lib/utils";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 type WechatConnectionCheckCardProps = {
   lastTestedAt?: string;
@@ -25,17 +26,6 @@ type WechatConnectionCheckCardProps = {
   errCode?: number;
   errMsg?: string;
 };
-
-function formatDate(value?: string) {
-  if (!value) {
-    return "尚未测试";
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
 
 function hintStyle(status: RequirementStatus["status"]) {
   switch (status) {
@@ -87,14 +77,32 @@ export function WechatConnectionCheckCard({
   errCode,
   errMsg,
 }: WechatConnectionCheckCardProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "dashboard");
+
+  const formatDate = (value?: string) => {
+    if (!value) {
+      return t("auth.wechat.check.notTested");
+    }
+
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  };
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShieldCheck className="size-4" />
-          连接检查
+          {t("auth.wechat.check.title")}
         </CardTitle>
-        <CardDescription>最近测试：{formatDate(lastTestedAt)}</CardDescription>
+        <CardDescription>
+          {t("auth.wechat.check.lastTested", {
+            date: formatDate(lastTestedAt),
+          })}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid gap-3">
@@ -107,7 +115,7 @@ export function WechatConnectionCheckCard({
           ) : null}
           {errCode ? (
             <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-              微信错误码：{errCode}
+              {t("auth.wechat.check.errCode", { code: errCode })}
               {errMsg ? ` / ${errMsg}` : ""}
             </div>
           ) : null}

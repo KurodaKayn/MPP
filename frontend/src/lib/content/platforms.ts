@@ -26,7 +26,7 @@ export const PLATFORM_TABS = [
   {
     value: "xiaohongshu",
     label: "platforms.xiaohongshu",
-    defaultLabel: "Red (XHS)",
+    defaultLabel: "Rednote",
     icon: "/icons/platforms/xiaohongshu.svg",
   },
 ] as const;

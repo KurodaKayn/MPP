@@ -9,6 +9,7 @@ import { ContentPrepublishPanel } from "./content-prepublish-panel";
 import { ContentPublishBar } from "./content-publish-bar";
 import { PlatformPreview } from "./platform-preview";
 import { useContentPageController } from "../_hooks/use-content-page-controller";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import {
   type ContentView,
   useContentPageStore,
@@ -21,6 +22,8 @@ type ContentWorkspaceProps = {
 export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
   const contentPage = useContentPageController(projectId);
   const { contentView, setContentView } = useContentPageStore();
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
 
   if (contentPage.isLoading) {
     return (
@@ -98,7 +101,11 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           onOpenXPostIntent={contentPage.openXPostIntent}
           onPublish={contentPage.publish}
           onSelectedPlatformsChange={contentPage.setSelectedPlatforms}
-          publishLabel={contentPage.isEditing ? "保存并发布" : "一键发布"}
+          publishLabel={
+            contentPage.isEditing
+              ? t("publish.saveAndPublish")
+              : t("publish.buttonLabel")
+          }
         />
       </div>
     </div>
@@ -112,11 +119,14 @@ function ContentViewSwitcher({
   onValueChange: (value: ContentView) => void;
   value: ContentView;
 }) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
+
   return (
     <div className="inline-flex rounded-lg border bg-muted p-0.5">
       {[
-        ["editor", "编辑"],
-        ["preview", "预览"],
+        ["editor", t("common.edit")],
+        ["preview", t("common.preview")],
       ].map(([itemValue, label]) => (
         <Button
           key={itemValue}
