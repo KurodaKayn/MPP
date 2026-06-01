@@ -3,12 +3,17 @@
 import { Suspense } from "react";
 import { ArrowRight, Loader2, LogIn } from "lucide-react";
 import Image from "next/image";
+import { useParams } from "next/navigation";
+import { useTranslation } from "@/lib/i18n/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLoginController } from "./_hooks/use-login-controller";
 
 function LoginContent() {
+  const params = useParams();
+  const locale = params?.locale as string;
+  const { t } = useTranslation(locale, "common");
   const {
     accessToken,
     handleMockLoginSubmit,
@@ -72,7 +77,7 @@ function LoginContent() {
 
             <div className="mb-7">
               <h2 className="text-2xl font-semibold tracking-normal">
-                登录控制台
+                {t("login.title")}
               </h2>
               <p className="mt-2 text-sm text-[#667064]">
                 {loginMethods.mock
@@ -104,7 +109,7 @@ function LoginContent() {
                   ) : (
                     <LogIn className="h-4 w-4" />
                   )}
-                  进入工作台
+                  {t("login.submit")}
                   <ArrowRight className="ml-auto h-4 w-4" />
                 </Button>
               </form>
@@ -132,7 +137,7 @@ function LoginContent() {
                   ) : (
                     <LogIn className="h-4 w-4" />
                   )}
-                  进入工作台
+                  {t("login.submit")}
                   <ArrowRight className="ml-auto h-4 w-4" />
                 </Button>
               </form>

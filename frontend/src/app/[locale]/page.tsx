@@ -14,14 +14,24 @@ import {
 } from "lucide-react";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import { siteConfig } from "@/lib/seo";
+import { useTranslation } from "@/lib/i18n";
 
-export const metadata: Metadata = {
-  title: "多平台内容发布工作台",
-  description: siteConfig.description,
-  alternates: {
-    canonical: "/",
-  },
-};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const { t } = await useTranslation(locale, "common");
+
+  return {
+    title: t("title"),
+    description: t("description"),
+    alternates: {
+      canonical: "/",
+    },
+  };
+}
 
 const workflowSteps = [
   {
@@ -221,7 +231,14 @@ function StepCard({
   );
 }
 
-export default function Home() {
+export default async function Home({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  const { t } = await useTranslation(locale, "common");
+
   return (
     <main className="bg-[#f5f7f1] text-[#17211c]">
       <script
@@ -234,7 +251,7 @@ export default function Home() {
         <HeroScene />
         <div className="relative z-10 mx-auto flex min-h-[88svh] w-full max-w-7xl flex-col px-5 py-5 sm:px-8 lg:px-10">
           <header className="flex items-center justify-between gap-4">
-            <Link href="/" className="flex items-center gap-3">
+            <Link href={`/${locale}`} className="flex items-center gap-3">
               <Image
                 src="/icons/mpp.svg"
                 alt="multi-platform poster"
@@ -258,10 +275,10 @@ export default function Home() {
               </Link>
             </nav>
             <Link
-              href="/login"
+              href={`/${locale}/login`}
               className="inline-flex h-10 items-center gap-2 rounded-[8px] border border-[#17211c] bg-[#17211c] px-4 text-sm font-medium text-white transition hover:bg-[#0f6f78]"
             >
-              进入工作台
+              {t("login.submit")}
               <ArrowRight className="h-4 w-4" />
             </Link>
           </header>
@@ -273,16 +290,15 @@ export default function Home() {
                 内容项目、平台草稿、发布状态统一管理
               </div>
               <h1 className="text-5xl font-semibold leading-[1.02] tracking-normal text-[#17211c] md:text-7xl">
-                multi-platform poster
+                {t("title")}
               </h1>
               <p className="mt-6 max-w-2xl text-lg leading-8 text-[#3f4d46]">
-                从一篇原始内容出发，统一管理公众号、知乎、X、B站和小红书的草稿适配、发布准备、状态追踪与
-                AI 编辑。
+                {t("description")}
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Link
-                  href="/login"
+                  href={`/${locale}/login`}
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-[8px] bg-[#e5533d] px-5 text-sm font-semibold text-white transition hover:bg-[#c64230]"
                 >
                   开始发布管理

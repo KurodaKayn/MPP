@@ -11,6 +11,7 @@ import {
 
 import Image from "next/image";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 
 import { useAuth } from "@/components/auth/auth-provider";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -49,8 +50,12 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { session } = useAuth();
+  const params = useParams();
+  const locale = (params?.locale as string) || "zh";
   const username = session?.username ?? "Creator";
   const initials = username.slice(0, 2).toUpperCase();
+
+  const getLocalizedUrl = (url: string) => `/${locale}${url}`;
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -60,7 +65,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <SidebarMenuButton
               size="lg"
               render={(buttonProps) => (
-                <Link href={dashboardRoutes.overview.url} {...buttonProps}>
+                <Link
+                  href={getLocalizedUrl(dashboardRoutes.overview.url)}
+                  {...buttonProps}
+                >
                   <div className="flex items-center">
                     <Image
                       src="/icons/mpp-with-name.svg"
@@ -83,7 +91,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <SidebarMenuButton
                 tooltip={item.title}
                 render={(buttonProps) => (
-                  <Link href={item.url} {...buttonProps}>
+                  <Link href={getLocalizedUrl(item.url)} {...buttonProps}>
                     <item.icon />
                     <span>{item.title}</span>
                   </Link>
@@ -100,7 +108,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               size="lg"
               tooltip="设置"
               render={(buttonProps) => (
-                <Link href={dashboardRoutes.settings.url} {...buttonProps}>
+                <Link
+                  href={getLocalizedUrl(dashboardRoutes.settings.url)}
+                  {...buttonProps}
+                >
                   <Avatar className="h-8 w-8 rounded-lg">
                     <AvatarFallback className="rounded-lg">
                       {initials}
