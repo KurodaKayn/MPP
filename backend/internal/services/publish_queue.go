@@ -143,14 +143,10 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 	if (platform == "douyin" || platform == "zhihu") && s.browserWorkerClient != nil {
 		fmt.Printf("Creating visible browser session for %s publishing...\n", platform)
 
-		// CLEANUP: Expire any existing active sessions for this user/platform to avoid unique constraint violation
-		// We do this in a transaction or ensure it's done before the next create.
-		if err := s.db.Model(&models.RemoteBrowserSession{}).
+		// CLEANUP: Hard delete any existing active sessions for this user/platform to avoid unique constraint violation
+		if err := s.db.Unscoped().
 			Where("user_id = ? AND platform = ? AND status IN ?", *scopeUserID, platform, []string{"pending", "ready", "login_detected", "capturing"}).
-			Updates(map[string]interface{}{
-				"status":      models.BrowserSessionStatusExpired,
-				"completed_at": time.Now(),
-			}).Error; err != nil {
+			Delete(&models.RemoteBrowserSession{}).Error; err != nil {
 			fmt.Printf("Warning: failed to cleanup old sessions: %v\n", err)
 		}
 
