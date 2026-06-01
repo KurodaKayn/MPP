@@ -8,7 +8,6 @@ import { ContentPageHeader } from "./content-page-header";
 import { ContentPrepublishPanel } from "./content-prepublish-panel";
 import { ContentPublishBar } from "./content-publish-bar";
 import { PlatformPreview } from "./platform-preview";
-import { RemoteBrowserSessionModal } from "../../auth/_components/remote-browser-session-modal";
 import { useContentPageController } from "../_hooks/use-content-page-controller";
 import {
   type ContentView,
@@ -102,10 +101,6 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           publishLabel={contentPage.isEditing ? "保存并发布" : "一键发布"}
         />
       </div>
-
-      {contentPage.browserSession ? (
-        <RemoteBrowserSessionModal {...contentPage.browserSession} />
-      ) : null}
     </div>
   );
 }
