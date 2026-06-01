@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useAuth } from "@/components/auth/auth-provider";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 export function resolveNextPath(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
@@ -18,6 +19,8 @@ export function useLoginController() {
     useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
   const nextPath = useMemo(
     () => resolveNextPath(searchParams.get("next")),
     [searchParams],
@@ -37,7 +40,7 @@ export function useLoginController() {
     const normalizedUsername = username.trim();
 
     if (!normalizedUsername) {
-      toast.error("请输入用户名");
+      toast.error(t("login.usernameRequired"));
       return;
     }
 
@@ -46,9 +49,9 @@ export function useLoginController() {
       await login(normalizedUsername);
       router.replace(nextPath);
     } catch (error) {
-      toast.error("登录失败", {
+      toast.error(t("login.failed"), {
         description:
-          error instanceof Error ? error.message : "请检查开发账号是否存在。",
+          error instanceof Error ? error.message : t("login.mockDescError"),
       });
     } finally {
       setSubmitting(false);
@@ -60,7 +63,7 @@ export function useLoginController() {
     const normalizedToken = accessToken.trim();
 
     if (!normalizedToken) {
-      toast.error("请输入访问令牌");
+      toast.error(t("login.tokenRequired"));
       return;
     }
 
@@ -69,9 +72,9 @@ export function useLoginController() {
       await loginWithToken(normalizedToken);
       router.replace(nextPath);
     } catch (error) {
-      toast.error("登录失败", {
+      toast.error(t("login.failed"), {
         description:
-          error instanceof Error ? error.message : "请检查访问令牌是否有效。",
+          error instanceof Error ? error.message : t("login.tokenDescError"),
       });
     } finally {
       setSubmitting(false);

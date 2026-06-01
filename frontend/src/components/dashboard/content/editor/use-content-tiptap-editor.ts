@@ -1,6 +1,7 @@
 import { useEditor, type Editor } from "@tiptap/react";
 import { useEffect, useMemo, type ChangeEvent } from "react";
 import { toast } from "sonner";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 import { createContentEditorExtensions } from "@/components/dashboard/content/editor/content-editor-extensions";
 import {
@@ -22,12 +23,16 @@ export function useContentTipTapEditor({
   content,
   onContentChange,
 }: UseContentTipTapEditorOptions) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
+
   const extensions = useMemo(
     () =>
       createContentEditorExtensions({
         emptyEditorClassName: styles.emptyEditor,
         imageClassName: styles.image,
         linkClassName: styles.link,
+        placeholder: t("editor.placeholder"),
       }),
     [],
   );
@@ -36,7 +41,7 @@ export function useContentTipTapEditor({
     content: normalizeStoredHtml(content.html),
     editorProps: {
       attributes: {
-        "aria-label": "正文编辑器",
+        "aria-label": t("editor.ariaLabel"),
         class: styles.prose,
       },
       handleDrop: (_view, event) => {
@@ -97,7 +102,7 @@ export function useContentTipTapEditor({
     const imageFiles = files.filter((file) => file.type.startsWith("image/"));
 
     if (imageFiles.length === 0) {
-      toast.error("请选择图片文件");
+      toast.error(t("editor.selectImageError"));
       return false;
     }
 
@@ -106,7 +111,7 @@ export function useContentTipTapEditor({
     );
 
     if (oversizeFile) {
-      toast.error("图片不能超过 8MB");
+      toast.error(t("editor.imageSizeError"));
       return false;
     }
 
@@ -122,7 +127,7 @@ export function useContentTipTapEditor({
           .chain()
           .focus()
           .setImage({
-            alt: file.name || "插入图片",
+            alt: file.name || t("toolbar.insertImage"),
             src: reader.result,
           })
           .run();
@@ -152,7 +157,7 @@ export function useContentTipTapEditor({
 
     const currentHref = editor.getAttributes("link").href;
     const href = window.prompt(
-      "链接地址",
+      t("editor.linkPrompt"),
       typeof currentHref === "string" ? currentHref : "",
     );
 
@@ -168,7 +173,7 @@ export function useContentTipTapEditor({
     const safeHref = normalizeUrl(href);
 
     if (!safeHref) {
-      toast.error("请输入有效的链接地址");
+      toast.error(t("editor.linkError"));
       return;
     }
 

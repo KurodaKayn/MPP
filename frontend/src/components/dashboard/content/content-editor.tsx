@@ -13,6 +13,7 @@ import { contentValueFromHtml } from "@/components/dashboard/content/editor/cont
 import { useContentTipTapEditor } from "@/components/dashboard/content/editor/use-content-tiptap-editor";
 import { Card } from "@/components/ui/card";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import { streamAIContentEdit } from "@/lib/dashboard/api";
 import type { ContentValue } from "@/lib/content/types";
 
@@ -32,12 +33,14 @@ export function ContentEditor({
   viewSwitcher,
 }: ContentEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
   const { editor, handleImageSelect, imageCount, setLink } =
     useContentTipTapEditor({
       content,
       onContentChange,
     });
-  const blockLabel = getCurrentBlockLabel(editor);
+  const blockLabel = getCurrentBlockLabel(editor, t);
   const aiSource = editor?.getMarkdown?.() || content.text || content.html;
 
   const applyAIProposal = (proposal: string) => {
@@ -66,7 +69,7 @@ export function ContentEditor({
         />
 
         <AIEditAssistant
-          title="AI 编辑正文"
+          title={t("ai.editTitle")}
           source={aiSource}
           disabled={!editor}
           onApply={applyAIProposal}
@@ -118,15 +121,16 @@ function ContentEditorDescription({
   characterCount: number;
   imageCount: number;
 }) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-muted-foreground">
-        像文档一样编写正文，发布前可切换到预览查看效果
-      </p>
+      <p className="text-sm text-muted-foreground">{t("editor.desc")}</p>
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>{blockLabel}</span>
-        <span>{characterCount} 字</span>
-        <span>{imageCount} 图</span>
+        <span>{t("editor.wordCount", { count: characterCount })}</span>
+        <span>{t("editor.imageCount", { count: imageCount })}</span>
       </div>
     </div>
   );

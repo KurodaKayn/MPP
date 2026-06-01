@@ -60,7 +60,7 @@ describe("auth client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(loginWithUsername("test_user")).rejects.toThrow(
-      "开发账号登录仅在本地开发环境可用",
+      "Dev account login is only available in local development",
     );
 
     expect(fetchMock).toHaveBeenCalledOnce();

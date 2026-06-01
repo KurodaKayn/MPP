@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { type BrowserSessionStatus } from "@/lib/dashboard/api";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 type RemoteBrowserSessionModalProps = {
   completing: boolean;
@@ -17,31 +18,6 @@ type RemoteBrowserSessionModalProps = {
   onComplete: () => void;
 };
 
-const statusText: Record<BrowserSessionStatus, string> = {
-  capturing: "正在验证登录",
-  connected: "已连接",
-  expired: "已过期",
-  failed: "连接失败",
-  login_detected: "检测到登录",
-  pending: "正在启动",
-  ready: "等待登录",
-};
-
-function formatCountdown(value?: string) {
-  if (!value) {
-    return "15 分钟内完成";
-  }
-
-  const ms = new Date(value).valueOf() - Date.now();
-  if (!Number.isFinite(ms) || ms <= 0) {
-    return "即将过期";
-  }
-
-  const minutes = Math.floor(ms / 60000);
-  const seconds = Math.floor((ms % 60000) / 1000);
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
 export function RemoteBrowserSessionModal({
   completing,
   error,
@@ -52,8 +28,26 @@ export function RemoteBrowserSessionModal({
   onCancel,
   onComplete,
 }: RemoteBrowserSessionModalProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "dashboard");
+
   const canComplete =
     status === "ready" || status === "login_detected" || status === "capturing";
+
+  const formatCountdown = (value?: string) => {
+    if (!value) {
+      return t("auth.remoteBrowser.countdown.default");
+    }
+
+    const ms = new Date(value).valueOf() - Date.now();
+    if (!Number.isFinite(ms) || ms <= 0) {
+      return t("auth.remoteBrowser.countdown.expiring");
+    }
+
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-background/85 p-3 backdrop-blur-sm sm:p-6">
@@ -63,20 +57,22 @@ export function RemoteBrowserSessionModal({
             <div className="flex items-center gap-2">
               <Badge variant="secondary">{platformLabel}</Badge>
               <Badge variant="outline" className="border-white/30 text-white">
-                {statusText[status]}
+                {t(`auth.remoteBrowser.status.${status}`)}
               </Badge>
             </div>
             <p className="mt-2 text-sm text-white/70">
-              在远程浏览器中完成官方登录，完成后点击“我已登录”。
+              {t("auth.remoteBrowser.description")}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <div className="rounded-full border border-white/20 px-3 py-1 text-sm text-white/80">
-              剩余 {formatCountdown(expiresAt)}
+              {t("auth.remoteBrowser.countdown.remaining", {
+                time: formatCountdown(expiresAt),
+              })}
             </div>
             <Button type="button" variant="secondary" onClick={onCancel}>
               <X className="size-4" />
-              取消
+              {t("auth.actions.cancel")}
             </Button>
           </div>
         </div>
@@ -92,7 +88,7 @@ export function RemoteBrowserSessionModal({
           ) : (
             <div className="flex h-full items-center justify-center rounded-xl border border-white/10 text-white">
               <Loader2 className="mr-2 size-5 animate-spin" />
-              正在启动远程浏览器
+              {t("auth.remoteBrowser.starting")}
             </div>
           )}
         </div>
@@ -107,11 +103,11 @@ export function RemoteBrowserSessionModal({
             ) : status === "connected" ? (
               <span className="inline-flex items-center gap-2 text-emerald-600">
                 <CheckCircle2 className="size-4" />
-                Cookie 已保存，账号可用于发布。
+                {t("auth.remoteBrowser.success")}
               </span>
             ) : (
               <span className="text-muted-foreground">
-                页面内不会显示或返回原始 VNC/CDP 地址。
+                {t("auth.remoteBrowser.privacyHint")}
               </span>
             )}
           </div>
@@ -126,7 +122,7 @@ export function RemoteBrowserSessionModal({
             ) : (
               <CheckCircle2 className="size-4" />
             )}
-            我已登录
+            {t("auth.remoteBrowser.complete")}
           </Button>
         </div>
       </div>

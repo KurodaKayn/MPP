@@ -83,5 +83,207 @@
       "logoutButton": "退出登录",
       "logoutSuccess": "已退出登录"
     }
+  },
+  "auth": {
+    "header": {
+      "description": "管理平台接口凭证和发布前置条件。",
+      "connectedSuffix": "已连接"
+    },
+    "actions": {
+      "save": "保存配置",
+      "test": "测试连接",
+      "cancel": "取消",
+      "close": "关闭"
+    },
+    "status": {
+      "notAuthorized": "尚未授权",
+      "unknown": "未知",
+      "notConnected": "尚未连接",
+      "connected": "已连接",
+      "failed": "连接失效",
+      "untested": "待验证",
+      "unconnected": "未连接"
+    },
+    "douyin": {
+      "title": "抖音创作者中心",
+      "description": "在隔离浏览器中扫码或登录，MPP 只保存发布所需 Cookie。",
+      "unconnected": "尚未连接",
+      "notConnectedUsername": "尚未连接抖音账号",
+      "lastUpdated": "最近更新",
+      "reconnect": "重新连接",
+      "connect": "连接抖音"
+    },
+    "wechat": {
+      "title": "微信公众号",
+      "description": "使用公众平台开发者凭证连接官方接口。",
+      "saved": "已保存，留空则继续沿用",
+      "placeholder": "请输入 AppSecret",
+      "secretHint": "AppSecret 不会在页面回显；保存后再次修改时重新填写即可。",
+      "saveConfig": "保存配置",
+      "testConnection": "测试连接",
+      "check": {
+        "title": "连接检查",
+        "lastTested": "最近测试：{{date}}",
+        "notTested": "尚未测试",
+        "errCode": "微信错误码：{{code}}"
+      },
+      "guide": {
+        "trigger": "获取凭证",
+        "title": "如何获取 AppID 和 AppSecret",
+        "description": "在微信公众平台开发设置中获取凭证，并按测试报错提示配置 IP 白名单。",
+        "step1": "1. 打开开发设置",
+        "link": "微信公众平台开发设置",
+        "step2": "2. 点击公众号",
+        "step2Desc": "如果还没有公众号，先按微信公众平台流程完成注册。",
+        "step2Alt": "微信公众平台控制台中点击公众号入口",
+        "step3": "3. 获取密钥并设置 IP 白名单",
+        "step3Desc": "可以先保存密钥后点击测试连接，再用报错信息中的 IP 设置白名单。",
+        "step3Alt": "微信公众平台开发设置中获取密钥并配置 IP 白名单"
+      }
+    },
+    "x": {
+      "title": "X",
+      "authorize": "授权 X",
+      "expiresAt": "到期时间：",
+      "savedHint": "已保存，留空则沿用"
+    },
+    "zhihu": {
+      "title": "知乎创作者中心",
+      "description": "在隔离浏览器中扫码或登录，MPP 只保存发布所需 Cookie。",
+      "notConnectedUsername": "尚未连接知乎账号",
+      "lastUpdated": "最近更新：{{date}}",
+      "reconnect": "重新连接",
+      "connect": "连接知乎"
+    },
+    "remoteBrowser": {
+      "status": {
+        "capturing": "正在验证登录",
+        "connected": "已连接",
+        "expired": "已过期",
+        "failed": "连接失败",
+        "login_detected": "检测到登录",
+        "pending": "正在启动",
+        "ready": "等待登录"
+      },
+      "countdown": {
+        "default": "15 分钟内完成",
+        "expiring": "即将过期",
+        "remaining": "剩余 {{time}}"
+      },
+      "description": "在远程浏览器中完成官方登录，完成后点击“我已登录”。",
+      "starting": "正在启动远程浏览器",
+      "success": "Cookie 已保存，账号可用于发布。",
+      "privacyHint": "页面内不会显示或返回原始 VNC/CDP 地址。",
+      "complete": "我已登录"
+    },
+    "toast": {
+      "loadFailed": "无法加载平台账号",
+      "loadFailedDesc": "请稍后刷新页面。",
+      "sessionExpired": "远程浏览器会话已过期，请重新连接。",
+      "sessionStartFailed": "远程浏览器启动失败。",
+      "sessionRefreshFailed": "无法刷新会话状态。",
+      "xSuccess": "X 授权成功",
+      "xSuccessDesc": "账号已连接，正在更新设置。",
+      "xFailed": "X 授权失败",
+      "xFailedDesc": "请重新点击授权按钮。",
+      "saveSuccess": "账号已保存",
+      "saveFailed": "保存失败",
+      "saveFailedDesc": "请检查输入。",
+      "connectSuccess": "连接成功",
+      "wechatConnectSuccessDesc": "微信接口已接受当前 AppID/AppSecret。",
+      "connectFailed": "连接失败",
+      "testFailed": "测试失败",
+      "xConnectSuccess": "X 连接成功",
+      "xConnectSuccessDesc": "X API 已接受当前凭证。",
+      "xConnectedAt": "已连接 @{{username}}",
+      "browserStarted": "远程浏览器已启动",
+      "browserStartedDesc": "请在弹窗中完成{{platform}}登录。",
+      "browserStartFailed": "无法启动{{platform}}连接",
+      "browserStartFailedDesc": "请稍后再试。",
+      "browserConnected": "{{platform}}账号已连接",
+      "browserConnectedDesc": "Cookie 已安全保存。",
+      "browserLoginNotDetected": "还没有检测到登录状态。",
+      "browserCancelFailed": "取消远程会话失败",
+      "browserCancelFailedDesc": "浏览器会话可能已经结束。"
+    },
+    "hints": {
+      "cookieAuth": "Cookie 发布凭据",
+      "cookieConnected": "已保存加密 Cookie，发布时会在服务边界解密后交给发布器。",
+      "cookieNotConnected": "点击连接后在官方页面完成扫码或登录。",
+      "remoteBrowser": "远程浏览器连接",
+      "remoteBrowserDesc": "{{platform}}使用隔离 Chromium 登录，不需要手工复制 Cookie 或输入密码到 MPP 表单。"
+    }
+  },
+  "content": {
+    "header": {
+      "titleCreate": "内容创作",
+      "titleEdit": "编辑内容",
+      "descCreate": "在此编写您的内容，我们将为您自动适配各平台格式。",
+      "descEdit": "修改当前项目内容，并重新选择需要同步的平台。",
+      "saveChanges": "保存修改",
+      "publishSettings": "发布设置"
+    },
+    "prepublish": {
+      "title": "预发布",
+      "description": "点击平台进入专属预发布区块，左侧查看原始格式，右侧查看预览。",
+      "syncToPlatform": "同步到该平台",
+      "syncAll": "一键同步到所有平台",
+      "statusSynced": "已同步",
+      "statusNotSynced": "未同步",
+      "pleaseFillContent": "请先填写内容，再同步平台草稿。",
+      "targetFormat": "{{format}} · 已同步 {{date}}",
+      "notSyncedTarget": "尚未同步。目标格式：{{format}}。",
+      "aiEditTitle": "AI 编辑预发布",
+      "errorSyncFirst": "请先同步该平台草稿",
+      "aiSaveSuccess": "AI 修改已保存到预发布",
+      "originalFormat": "原始格式",
+      "originalDesc": "当前平台目标格式：{{format}}。\n点击上方按钮同步后，这里会显示真正保存到数据库中的原始格式内容。",
+      "preview": "预览",
+      "previewPlaceholder": "当前平台还没有同步草稿，预览将在同步完成后显示。"
+    },
+    "publish": {
+      "bar": {
+        "oneClickPublish": "一键发布",
+        "saveAndPublish": "保存并发布",
+        "autoPublish": "自动发布",
+        "autoPublishDesc": "在这里勾选需要进入自动发布流程的平台。",
+        "manualPublish": "手动发布",
+        "fillContentFirst": "请先填写标题和正文内容，再选择自动发布平台。"
+      }
+    },
+    "editor": {
+      "tabEditor": "编辑",
+      "tabPreview": "预览",
+      "title": "标题",
+      "titlePlaceholder": "输入文章标题...",
+      "contentPlaceholder": "在这里开始创作...",
+      "wordCount": "{{count}} 字",
+      "imageCount": "{{count}} 图",
+      "desc": "像文档一样编写正文，发布前可切换到预览查看效果"
+    },
+    "toast": {
+      "loadFailed": "无法加载项目内容",
+      "loadFailedDesc": "请稍后重试。",
+      "incomplete": "内容不完整",
+      "incompleteDesc": "请填写标题和正文后再发布。",
+      "selectPlatform": "请选择发布平台",
+      "selectPlatformDesc": "在底部发布渠道中勾选至少一个平台。",
+      "saveSuccess": "修改已保存",
+      "saveFailed": "保存失败",
+      "syncSuccess": "已同步到预发布",
+      "syncSuccessDesc": "平台草稿已由后端适配并保存。",
+      "syncFailed": "同步到预发布失败",
+      "xWindowBlocked": "浏览器拦截了新窗口",
+      "xWindowBlockedDesc": "X 发帖链接已复制，请粘贴到浏览器打开。",
+      "xWindowOpened": "X 发帖窗口已打开",
+      "xWindowOpenedDesc": "确认内容后在 X 页面点击 Post。",
+      "xWindowFailed": "无法打开 X 发帖窗口",
+      "publishPartiallyFailed": "部分平台发布失败",
+      "publishFailed": "发布失败",
+      "publishSuccess": "发布完成",
+      "publishEditSuccess": "修改并发布完成",
+      "publishedTo": "已发布到 {{platforms}}。",
+      "publishRequestFailed": "发布请求失败"
+    }
   }
 }

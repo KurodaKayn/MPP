@@ -57,8 +57,8 @@ export function PlatformPreview({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>预览</CardTitle>
-            <CardDescription>预览在不同平台的适配效果</CardDescription>
+            <CardTitle>{t("common.preview")}</CardTitle>
+            <CardDescription>{t("preview.desc")}</CardDescription>
           </div>
           <div className="flex items-center gap-3">
             {viewSwitcher}
@@ -88,7 +88,7 @@ export function PlatformPreview({
           <ScrollArea className="h-[500px] w-full rounded-md border p-4 mt-4">
             {!title && !hasBodyContent ? (
               <div className="h-full flex items-center justify-center text-muted-foreground italic min-h-[400px]">
-                输入内容以预览效果
+                {t("preview.emptyHint")}
               </div>
             ) : (
               <>
@@ -133,7 +133,9 @@ export function PlatformPreview({
                 </TabsContent>
                 <TabsContent value="bilibili" className="mt-0">
                   <div className="space-y-4">
-                    <div className="font-bold">动态预览：</div>
+                    <div className="font-bold">
+                      {t("preview.bilibiliDynamic")}
+                    </div>
                     <div className="p-3 bg-muted rounded-lg whitespace-pre-wrap">
                       {title ? `#${title}#\n` : ""}
                       {content.text}
@@ -148,18 +150,20 @@ export function PlatformPreview({
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={content.firstImageSrc}
-                          alt="首图预览"
+                          alt={t("preview.coverAlt")}
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <span className="text-muted-foreground">首图预览</span>
+                        <span className="text-muted-foreground">
+                          {t("preview.coverPlaceholder")}
+                        </span>
                       )}
                     </div>
                     <div className="font-bold">{title}</div>
                     <div className="whitespace-pre-wrap">
                       {content.text}
                       <div className="text-blue-500 mt-2">
-                        #内容发布 #效率工具
+                        {t("preview.xhsTags")}
                       </div>
                     </div>
                   </div>

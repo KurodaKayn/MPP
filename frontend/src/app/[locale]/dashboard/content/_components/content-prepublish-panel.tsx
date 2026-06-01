@@ -15,13 +15,14 @@ import {
   streamAIPrepublishEdit,
   updateProjectPrepublishDraft,
   type AdaptedContent,
+  type ProjectPublications,
 } from "@/lib/dashboard/api";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import { cn } from "@/lib/utils";
 import type {
   PrepublishDraft,
   PrepublishFormat,
 } from "../_stores/content-page-store";
-import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 type PublishPlatform = PlatformTab["value"];
 
@@ -76,6 +77,68 @@ function renderPreview(draft: PrepublishDraft, title: string) {
   );
 }
 
+function isPrepublishFormat(
+  format: AdaptedContent["format"],
+): format is PrepublishFormat {
+  return format === "html" || format === "markdown" || format === "text";
+}
+
+function adaptedContentFromDraft(
+  draft: PrepublishDraft,
+  raw = draft.raw,
+): AdaptedContent {
+  switch (draft.format) {
+    case "html":
+      return {
+        format: draft.format,
+        html: raw,
+      };
+    case "markdown":
+      return {
+        format: draft.format,
+        markdown: raw,
+      };
+    case "text":
+      return {
+        format: draft.format,
+        text: raw,
+      };
+  }
+}
+
+function draftFromPublications(
+  publications: ProjectPublications,
+  platform: PublishPlatform,
+  fallback: PrepublishDraft,
+): PrepublishDraft {
+  const publication = publications.items.find(
+    (item) => item.platform === platform,
+  );
+  const adaptedContent = publication?.adapted_content;
+  if (!publication || !adaptedContent) {
+    return fallback;
+  }
+
+  const format = isPrepublishFormat(adaptedContent.format)
+    ? adaptedContent.format
+    : fallback.format;
+  const raw =
+    adaptedContent.html ??
+    adaptedContent.markdown ??
+    adaptedContent.text ??
+    adaptedContent.summary ??
+    fallback.raw;
+
+  return {
+    format,
+    raw,
+    syncedAt:
+      adaptedContent.source_revision ??
+      publication.updated_at ??
+      fallback.syncedAt,
+  };
+}
+
 export function ContentPrepublishPanel({
   content,
   drafts,
@@ -86,7 +149,9 @@ export function ContentPrepublishPanel({
   title,
 }: ContentPrepublishPanelProps) {
   const locale = useAppLocale();
-  const { t } = useTranslation(locale, "common");
+  const { t: tCommon } = useTranslation(locale, "common");
+  const { t } = useTranslation(locale, "dashboard");
+
   const hasSourceContent = Boolean(
     content.text.trim() || content.firstImageSrc,
   );
@@ -102,21 +167,16 @@ export function ContentPrepublishPanel({
   const expectedFormat = platformFormats[activePlatform];
   const canUseAI = Boolean(projectId && activeDraft);
   const getPlatformLabel = (platform: PlatformTab) =>
-    t(platform.label, { defaultValue: platform.defaultLabel });
-  const activePlatformLabel =
-    getPlatformLabel(
-      PLATFORM_TABS.find((platform) => platform.value === activePlatform) ??
-        PLATFORM_TABS[0],
-    ) ?? activePlatform;
+    tCommon(platform.label, { defaultValue: platform.defaultLabel });
 
   return (
     <Card>
       <CardHeader className="gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <CardTitle>预发布</CardTitle>
+            <CardTitle>{t("content.prepublish.title")}</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              点击平台进入专属预发布区块，左侧查看原始格式，右侧查看预览。
+              {t("content.prepublish.description")}
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
@@ -133,7 +193,7 @@ export function ContentPrepublishPanel({
               ) : (
                 <RefreshCw className="size-4" />
               )}
-              同步到该平台
+              {t("content.prepublish.syncToPlatform")}
             </Button>
             <Button
               type="button"
@@ -149,155 +209,174 @@ export function ContentPrepublishPanel({
               ) : (
                 <RefreshCw className="size-4" />
               )}
-              一键同步到所有平台
+              {t("content.prepublish.syncAll")}
             </Button>
           </div>
         </div>
-      </CardHeader>
 
-      <CardContent className="space-y-5">
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-          {PLATFORM_TABS.map((platform) => {
-            const isActive = activePlatform === platform.value;
-
-            return (
-              <button
-                type="button"
-                key={platform.value}
-                onClick={() => activatePlatform(platform.value)}
-                className={cn(
-                  "flex h-14 items-center gap-3 rounded-lg border px-3 text-left text-sm transition-colors",
-                  isActive
-                    ? "border-foreground/50 bg-muted text-foreground shadow-sm"
-                    : "border-border bg-background hover:bg-muted/50",
-                )}
-              >
+        <div className="flex flex-wrap gap-2 pt-2">
+          {PLATFORM_TABS.map((platform) => (
+            <button
+              key={platform.value}
+              onClick={() => activatePlatform(platform.value)}
+              className={cn(
+                "group relative flex min-w-[120px] flex-col rounded-lg border p-3 text-left transition-all hover:bg-muted/50",
+                activePlatform === platform.value
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-muted-foreground/10 bg-muted/20",
+              )}
+            >
+              <div className="flex items-center gap-2">
                 <Image
                   src={platform.icon}
-                  alt=""
-                  width={18}
-                  height={18}
-                  aria-hidden="true"
-                  className="size-[18px] shrink-0"
+                  alt={getPlatformLabel(platform)}
+                  width={16}
+                  height={16}
+                  className={cn(
+                    "grayscale transition-all group-hover:grayscale-0",
+                    activePlatform === platform.value && "grayscale-0",
+                  )}
                 />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">
-                    {getPlatformLabel(platform)}
-                  </div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground">
-                    {drafts[platform.value] ? "已同步" : "未同步"}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+                <span className="text-sm font-medium">
+                  {getPlatformLabel(platform)}
+                </span>
+              </div>
+              <div className="mt-1 text-[10px] text-muted-foreground">
+                {drafts[platform.value]
+                  ? t("content.prepublish.statusSynced")
+                  : t("content.prepublish.statusNotSynced")}
+              </div>
+            </button>
+          ))}
         </div>
+      </CardHeader>
 
+      <CardContent className="grid h-[600px] gap-4 p-4 pt-0 md:grid-cols-2">
         {!hasSourceContent ? (
-          <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            请先填写内容，再同步平台草稿。
+          <div className="col-span-2 flex h-full items-center justify-center text-sm text-muted-foreground">
+            {t("content.prepublish.pleaseFillContent")}
           </div>
         ) : (
-          <section className="space-y-3">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-sm font-semibold">{activePlatformLabel}</h3>
-                <p className="text-sm text-muted-foreground">
-                  {activeDraft
-                    ? `${formatLabel(activeDraft.format)} · 已同步 ${new Date(
-                        activeDraft.syncedAt,
-                      ).toLocaleString()}`
-                    : `尚未同步。目标格式：${formatLabel(expectedFormat)}。`}
-                </p>
+          <>
+            <div className="flex flex-col gap-4 overflow-hidden">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-medium">
+                    {activeDraft
+                      ? t("content.prepublish.targetFormat", {
+                          date: new Date(
+                            activeDraft.syncedAt,
+                          ).toLocaleTimeString(),
+                          format: formatLabel(activeDraft.format),
+                        })
+                      : t("content.prepublish.notSyncedTarget", {
+                          format: formatLabel(expectedFormat),
+                        })}
+                  </h3>
+                </div>
+                {canUseAI ? (
+                  <AIEditAssistant
+                    title={t("content.prepublish.aiEditTitle")}
+                    format={activeDraft?.format}
+                    source={activeDraft?.raw ?? ""}
+                    onGenerate={(message, onChunk, signal) => {
+                      if (!projectId || !activeDraft) {
+                        throw new Error(t("content.prepublish.errorSyncFirst"));
+                      }
+                      return streamAIPrepublishEdit(
+                        {
+                          adapted_content: adaptedContentFromDraft(activeDraft),
+                          message,
+                          platform: activePlatform,
+                          title,
+                        },
+                        {
+                          onChunk,
+                          signal,
+                        },
+                      );
+                    }}
+                    onApply={async (newContent) => {
+                      if (!projectId || !activeDraft) {
+                        throw new Error(t("content.prepublish.errorSyncFirst"));
+                      }
+                      const fallbackDraft: PrepublishDraft = {
+                        ...activeDraft,
+                        raw: newContent,
+                        syncedAt: new Date().toISOString(),
+                      };
+                      const publications = await updateProjectPrepublishDraft(
+                        projectId,
+                        activePlatform,
+                        {
+                          adapted_content: adaptedContentFromDraft(
+                            activeDraft,
+                            newContent,
+                          ),
+                        },
+                      );
+                      onDraftChange(
+                        activePlatform,
+                        draftFromPublications(
+                          publications,
+                          activePlatform,
+                          fallbackDraft,
+                        ),
+                      );
+                      toast.success(t("content.prepublish.aiSaveSuccess"));
+                    }}
+                  />
+                ) : null}
               </div>
+              <Card className="flex-1 overflow-hidden bg-muted/30">
+                <CardHeader className="py-2">
+                  <CardTitle className="text-xs text-muted-foreground">
+                    {t("content.prepublish.originalFormat")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="h-full p-0">
+                  <ScrollArea className="h-[480px] w-full">
+                    {activeDraft ? (
+                      <pre className="p-4 text-xs leading-5">
+                        {activeDraft.raw}
+                      </pre>
+                    ) : (
+                      <div className="flex h-full items-center justify-center p-8 text-center text-xs text-muted-foreground">
+                        {t("content.prepublish.originalDesc", {
+                          format: formatLabel(expectedFormat),
+                        })}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </CardContent>
+              </Card>
             </div>
 
-            <AIEditAssistant
-              title="AI 编辑预发布"
-              source={activeDraft?.raw ?? ""}
-              format={activeDraft?.format ?? expectedFormat}
-              disabled={!canUseAI}
-              onGenerate={(message, onChunk, signal) => {
-                if (!activeDraft) {
-                  throw new Error("请先同步该平台草稿");
-                }
-                return streamAIPrepublishEdit(
-                  {
-                    adapted_content: adaptedContentFromDraft(activeDraft),
-                    message,
-                    platform: activePlatform,
-                    title,
-                  },
-                  {
-                    onChunk,
-                    signal,
-                  },
-                );
-              }}
-              onApply={async (proposal) => {
-                if (!projectId || !activeDraft) {
-                  throw new Error("请先同步该平台草稿");
-                }
-                await updateProjectPrepublishDraft(projectId, activePlatform, {
-                  adapted_content: adaptedContentFromDraft(
-                    activeDraft,
-                    proposal,
-                  ),
-                });
-                onDraftChange(activePlatform, {
-                  ...activeDraft,
-                  raw: proposal,
-                  syncedAt: new Date().toISOString(),
-                });
-                toast.success("AI 修改已保存到预发布");
-              }}
-            />
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              <section className="space-y-2">
-                <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  原始格式
-                </h4>
-                <ScrollArea className="h-96 rounded-lg border bg-muted/30">
-                  <pre className="p-4 text-xs leading-5 whitespace-pre-wrap">
-                    {activeDraft?.raw ??
-                      `当前平台目标格式：${formatLabel(expectedFormat)}。\n点击上方按钮同步后，这里会显示真正保存到数据库中的原始格式内容。`}
-                  </pre>
-                </ScrollArea>
-              </section>
-
-              <section className="space-y-2">
-                <h4 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  预览
-                </h4>
-                <ScrollArea className="h-96 rounded-lg border p-4">
-                  {activeDraft ? (
-                    renderPreview(activeDraft, title)
-                  ) : (
-                    <div className="text-sm leading-6 text-muted-foreground">
-                      当前平台还没有同步草稿，预览将在同步完成后显示。
+            <div className="flex flex-col gap-4 overflow-hidden">
+              <div className="flex h-8 items-center px-1">
+                <h3 className="text-sm font-medium">
+                  {t("content.prepublish.preview")}
+                </h3>
+              </div>
+              <Card className="flex-1 overflow-hidden border-primary/20 shadow-inner">
+                <CardContent className="h-full p-0">
+                  <ScrollArea className="h-[520px] w-full">
+                    <div className="p-6">
+                      {activeDraft ? (
+                        renderPreview(activeDraft, title)
+                      ) : (
+                        <div className="flex h-[400px] items-center justify-center text-center text-sm text-muted-foreground">
+                          {t("content.prepublish.previewPlaceholder")}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </ScrollArea>
-              </section>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
             </div>
-          </section>
+          </>
         )}
       </CardContent>
     </Card>
   );
-}
-
-function adaptedContentFromDraft(
-  draft: PrepublishDraft,
-  raw = draft.raw,
-): AdaptedContent {
-  return {
-    format: draft.format,
-    [draft.format]: raw,
-    source_revision: new Date().toISOString(),
-    generated_by: {
-      type: "ai-editor",
-    },
-  };
 }

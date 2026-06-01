@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { type WechatAccount } from "@/lib/dashboard/api";
+import { useTranslation, useAppLocale } from "@/lib/i18n/client";
 
 import { WechatCredentialGuideDialog } from "./wechat-credential-guide-dialog";
 
@@ -45,14 +46,17 @@ export function WechatAccountCard({
   onSave,
   onTest,
 }: WechatAccountCardProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "dashboard");
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <KeyRound className="size-4" />
-          微信公众号
+          {t("auth.wechat.title")}
         </CardTitle>
-        <CardDescription>使用公众平台开发者凭证连接官方接口。</CardDescription>
+        <CardDescription>{t("auth.wechat.description")}</CardDescription>
         <CardAction>
           <div className="flex items-center gap-2">
             <Badge variant="outline">Official API</Badge>
@@ -88,13 +92,13 @@ export function WechatAccountCard({
               }}
               placeholder={
                 account?.has_app_secret
-                  ? "已保存，留空则继续沿用"
-                  : "请输入 AppSecret"
+                  ? t("auth.wechat.saved")
+                  : t("auth.wechat.placeholder")
               }
               disabled={loading || saving || testing}
             />
             <p className="text-xs leading-5 text-muted-foreground">
-              AppSecret 不会在页面回显；保存后再次修改时重新填写即可。
+              {t("auth.wechat.secretHint")}
             </p>
           </div>
 
@@ -109,7 +113,7 @@ export function WechatAccountCard({
               ) : (
                 <Save className="size-4" />
               )}
-              保存配置
+              {t("auth.wechat.saveConfig")}
             </Button>
             <Button
               type="button"
@@ -122,7 +126,7 @@ export function WechatAccountCard({
               ) : (
                 <RefreshCw className="size-4" />
               )}
-              测试连接
+              {t("auth.wechat.testConnection")}
             </Button>
           </div>
         </div>

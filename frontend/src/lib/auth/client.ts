@@ -261,7 +261,10 @@ async function verifyAuthToken(token: string) {
 
   if (!response.ok) {
     throw new Error(
-      await getResponseErrorMessage(response, `登录失败 (${response.status})`),
+      await getResponseErrorMessage(
+        response,
+        `Login failed (${response.status})`,
+      ),
     );
   }
 }
@@ -270,7 +273,7 @@ export async function loginWithAccessToken(token: string) {
   const normalizedToken = token.trim();
 
   if (!normalizedToken) {
-    throw new Error("请输入访问令牌");
+    throw new Error("Please enter access token");
   }
 
   await verifyAuthToken(normalizedToken);
@@ -283,7 +286,7 @@ export async function loginWithAccessToken(token: string) {
 export async function loginWithUsername(username: string) {
   const status = await getAuthStatus();
   if (!status.loginMethods.mock) {
-    throw new Error("开发账号登录仅在本地开发环境可用");
+    throw new Error("Dev account login is only available in local development");
   }
 
   const response = await fetch("/api/auth/mock-login", {
@@ -299,7 +302,7 @@ export async function loginWithUsername(username: string) {
 
   if (!response.ok || !body.token) {
     throw new Error(
-      body.error?.message || body.error?.code || body.message || "登录失败",
+      body.error?.message || body.error?.code || body.message || "Login failed",
     );
   }
 

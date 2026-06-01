@@ -1,12 +1,23 @@
 import type { Metadata } from "next";
 
-export const metadata: Metadata = {
-  title: "登录控制台",
-  robots: {
-    index: false,
-    follow: false,
-  },
-};
+import { useTranslation } from "@/lib/i18n";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const { t } = await useTranslation(locale, "common");
+
+  return {
+    title: t("login.title"),
+    robots: {
+      index: false,
+      follow: false,
+    },
+  };
+}
 
 export default function LoginLayout({
   children,

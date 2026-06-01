@@ -37,7 +37,7 @@ export function ContentPublishBar({
   onOpenXPostIntent,
   onPublish,
   onSelectedPlatformsChange,
-  publishLabel = "一键发布",
+  publishLabel,
   selectedPlatforms,
 }: ContentPublishBarProps) {
   const locale = useAppLocale();
@@ -73,10 +73,10 @@ export function ContentPublishBar({
                 id="publish-platforms-title"
                 className="text-sm font-semibold"
               >
-                自动发布
+                {t("publish.autoTitle")}
               </h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                在这里勾选需要进入自动发布流程的平台。
+                {t("publish.autoDesc")}
               </p>
             </div>
             <Button
@@ -91,7 +91,7 @@ export function ContentPublishBar({
               ) : (
                 <Send className="h-4 w-4" />
               )}
-              {publishLabel}
+              {publishLabel || t("publish.buttonLabel")}
             </Button>
           </div>
 
@@ -148,7 +148,7 @@ export function ContentPublishBar({
                   <Tooltip key={platform.value}>
                     <TooltipTrigger render={<div />}>{card}</TooltipTrigger>
                     <TooltipContent>
-                      请先填写标题和正文内容，再选择自动发布平台。
+                      {t("publish.selectPlatformHint")}
                     </TooltipContent>
                   </Tooltip>
                 );
@@ -158,7 +158,7 @@ export function ContentPublishBar({
         </div>
 
         <div className="border-t pt-4">
-          <h3 className="text-sm font-semibold">手动发布</h3>
+          <h3 className="text-sm font-semibold">{t("publish.manualTitle")}</h3>
           <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
             <Button
               type="button"

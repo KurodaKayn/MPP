@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import { AIDiffPreview } from "./ai-diff-preview";
 import { AIMarkdownPreview } from "./ai-markdown-preview";
 
@@ -53,6 +54,8 @@ export function AIEditAssistant({
   const [status, setStatus] = useState<AIEditStatus>("idle");
   const [view, setView] = useState<AIReviewView>("preview");
   const [isApplying, setIsApplying] = useState(false);
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
   const isStreaming = status === "streaming";
   const canGenerate = Boolean(
     !disabled && !isStreaming && !isApplying && message.trim(),
@@ -87,8 +90,9 @@ export function AIEditAssistant({
         return;
       }
       setStatus("idle");
-      toast.error("AI 编辑失败", {
-        description: error instanceof Error ? error.message : "请稍后重试。",
+      toast.error(t("ai.editFailed"), {
+        description:
+          error instanceof Error ? error.message : t("common.retryLater"),
       });
     } finally {
       abortControllerRef.current = null;
@@ -111,8 +115,9 @@ export function AIEditAssistant({
       setProposal("");
       setStatus("idle");
     } catch (error) {
-      toast.error("采纳失败", {
-        description: error instanceof Error ? error.message : "请稍后重试。",
+      toast.error(t("ai.applyFailed"), {
+        description:
+          error instanceof Error ? error.message : t("common.retryLater"),
       });
     } finally {
       setIsApplying(false);
@@ -150,7 +155,7 @@ export function AIEditAssistant({
             disabled={!hasProposal}
           >
             <FileText className="size-3.5" />
-            预览
+            {t("common.preview")}
           </Button>
           <Button
             type="button"
@@ -161,7 +166,7 @@ export function AIEditAssistant({
             disabled={!hasProposal}
           >
             <GitCompareArrows className="size-3.5" />
-            差异
+            {t("ai.diff")}
           </Button>
         </div>
       </div>
@@ -171,7 +176,7 @@ export function AIEditAssistant({
           <Textarea
             value={message}
             onChange={(event) => setMessage(event.target.value)}
-            placeholder="让 AI 怎么改"
+            placeholder={t("ai.placeholder")}
             disabled={disabled || isStreaming}
             className="min-h-24 resize-none bg-background text-sm"
           />
@@ -187,7 +192,7 @@ export function AIEditAssistant({
               ) : (
                 <Bot className="size-4" />
               )}
-              生成
+              {t("ai.generate")}
             </Button>
             <Button
               type="button"
@@ -197,7 +202,7 @@ export function AIEditAssistant({
               disabled={!isStreaming}
             >
               <Square className="size-4" />
-              停止
+              {t("ai.stop")}
             </Button>
             <Button
               type="button"
@@ -211,7 +216,7 @@ export function AIEditAssistant({
               ) : (
                 <Check className="size-4" />
               )}
-              采纳
+              {t("ai.accept")}
             </Button>
             <Button
               type="button"
@@ -221,7 +226,7 @@ export function AIEditAssistant({
               disabled={!hasProposal && !isStreaming}
             >
               <X className="size-4" />
-              放弃
+              {t("ai.reject")}
             </Button>
           </div>
         </div>
@@ -235,7 +240,7 @@ export function AIEditAssistant({
             )
           ) : (
             <div className="flex h-full min-h-40 items-center justify-center text-sm text-muted-foreground">
-              {isStreaming ? "正在接收..." : "AI 提案会显示在这里"}
+              {isStreaming ? t("ai.streaming") : t("ai.emptyHint")}
             </div>
           )}
         </div>

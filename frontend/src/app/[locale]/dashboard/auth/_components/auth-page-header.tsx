@@ -3,15 +3,9 @@
 import { type ComponentProps } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { useTranslation, useAppLocale } from "@/lib/i18n/client";
 
 type AccountStatus = "unconfigured" | "untested" | "connected" | "failed";
-
-const statusLabel: Record<AccountStatus, string> = {
-  connected: "已连接",
-  failed: "测试失败",
-  unconfigured: "未配置",
-  untested: "待测试",
-};
 
 const statusVariant: Record<
   AccountStatus,
@@ -32,16 +26,24 @@ export function AuthPageHeader({
   status: AccountStatus;
   totalCount: number;
 }) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "dashboard");
+
+  const statusLabel: Record<AccountStatus, string> = {
+    connected: t("auth.status.connected"),
+    failed: t("auth.status.failed"),
+    unconfigured: t("auth.status.unconnected"),
+    untested: t("auth.status.untested"),
+  };
+
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <p className="text-muted-foreground">
-          管理平台接口凭证和发布前置条件。
-        </p>
+        <p className="text-muted-foreground">{t("auth.header.description")}</p>
       </div>
       <div className="flex items-center gap-2">
         <Badge variant="outline">
-          {connectedCount}/{totalCount} 已连接
+          {connectedCount}/{totalCount} {t("auth.header.connectedSuffix")}
         </Badge>
         <Badge variant={statusVariant[status]}>{statusLabel[status]}</Badge>
       </div>

@@ -12,15 +12,15 @@ declare global {
 }
 
 const commonTranslations: Record<string, string> = {
-  "platforms.bilibili": "B站",
-  "platforms.wechat": "公众号",
+  "platforms.bilibili": "Bilibili",
+  "platforms.wechat": "WeChat",
   "platforms.x": "X",
-  "platforms.xiaohongshu": "小红书",
-  "platforms.zhihu": "知乎",
+  "platforms.xiaohongshu": "Rednote",
+  "platforms.zhihu": "Zhihu",
 };
 
 vi.mock("@/lib/i18n/client", () => ({
-  useAppLocale: () => "zh",
+  useAppLocale: () => "en",
   useTranslation: () => ({
     t: (key: string) => commonTranslations[key] ?? key,
   }),
@@ -78,8 +78,7 @@ describe("content platform labels", () => {
       />,
     );
 
-    expect(view.text()).toContain("公众号");
-    expect(view.text()).not.toContain("WeChat");
+    expect(view.text()).toContain("WeChat");
     expect(view.text()).not.toContain("platforms.wechat");
 
     view.unmount();
@@ -91,19 +90,18 @@ describe("content platform labels", () => {
       <ContentPrepublishPanel
         content={{
           firstImageSrc: "",
-          html: "<p>正文</p>",
-          text: "正文",
+          html: "<p>Body</p>",
+          text: "Body",
         }}
         drafts={{}}
         isSyncing={false}
         onDraftChange={vi.fn()}
         onSync={vi.fn()}
-        title="标题"
+        title="Title"
       />,
     );
 
-    expect(view.text()).toContain("公众号");
-    expect(view.text()).not.toContain("WeChat");
+    expect(view.text()).toContain("WeChat");
     expect(view.text()).not.toContain("platforms.wechat");
 
     view.unmount();
@@ -113,16 +111,16 @@ describe("content platform labels", () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const view = render(
       <PlatformPreview
-        title="标题"
+        title="Title"
         content={{
           firstImageSrc: "",
-          html: "<p>正文</p>",
-          text: "正文",
+          html: "<p>Body</p>",
+          text: "Body",
         }}
       />,
     );
 
-    expect(view.text()).toContain("公众号");
+    expect(view.text()).toContain("WeChat");
     expect(view.text()).not.toContain("platforms.wechat");
 
     view.unmount();

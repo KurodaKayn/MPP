@@ -9,12 +9,14 @@ type ContentEditorExtensionOptions = {
   emptyEditorClassName: string;
   imageClassName: string;
   linkClassName: string;
+  placeholder?: string;
 };
 
 export function createContentEditorExtensions({
   emptyEditorClassName,
   imageClassName,
   linkClassName,
+  placeholder = "Start writing...",
 }: ContentEditorExtensionOptions) {
   return [
     StarterKit.configure({
@@ -51,7 +53,7 @@ export function createContentEditorExtensions({
       types: ["heading", "paragraph"],
     }),
     Placeholder.configure({
-      placeholder: "在这里开始创作...",
+      placeholder,
       emptyEditorClass: emptyEditorClassName,
     }),
     Markdown,
