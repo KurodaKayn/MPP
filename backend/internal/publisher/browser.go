@@ -25,7 +25,14 @@ const (
 
 // SetupBrowser initializes a chromedp context with optional cookies
 func SetupBrowser(ctx context.Context, remoteURL string, cookiesJSON []byte) (context.Context, context.CancelFunc) {
-	// Prioritize remoteURL argument, then context value
+	// 1. HIGH PRIORITY: Try global environment variable (e.g. host.docker.internal for local Chrome)
+	globalRemoteURL := os.Getenv("CHROME_REMOTE_URL")
+	if globalRemoteURL != "" {
+		fmt.Printf("SetupBrowser: Connecting to GLOBAL remote browser at %s...\n", globalRemoteURL)
+		remoteURL = globalRemoteURL
+	}
+
+	// 2. SECOND PRIORITY: Try passed-in argument or context value (Docker dynamic sessions)
 	if remoteURL == "" {
 		if val, ok := ctx.Value(ContextKeyRemoteURL).(string); ok {
 			remoteURL = val
@@ -36,7 +43,7 @@ func SetupBrowser(ctx context.Context, remoteURL string, cookiesJSON []byte) (co
 	var cancelAlloc context.CancelFunc
 
 	if remoteURL != "" {
-		fmt.Printf("SetupBrowser: Connecting to remote browser at %s...\n", remoteURL)
+		fmt.Printf("SetupBrowser: Initializing allocator for %s...\n", remoteURL)
 		allocCtx, cancelAlloc = chromedp.NewRemoteAllocator(ctx, remoteURL)
 	} else {
 		// Fallback to local container browser (Headless)
