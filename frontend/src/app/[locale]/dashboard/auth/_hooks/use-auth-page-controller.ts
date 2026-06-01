@@ -195,7 +195,9 @@ export function useAuthPageController() {
           }
           setBrowserSession(nextSession);
           if (nextSession.stream_url) {
-            setBrowserStreamURL(nextSession.stream_url);
+            setBrowserStreamURL(
+              (currentStreamURL) => currentStreamURL ?? nextSession.stream_url,
+            );
           }
           if (nextSession.status === "expired") {
             setBrowserError("远程浏览器会话已过期，请重新连接。");
