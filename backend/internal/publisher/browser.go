@@ -19,35 +19,37 @@ var runBrowserActions = chromedp.Run
 
 // SetupBrowser initializes a chromedp context with optional cookies
 func SetupBrowser(ctx context.Context, cookiesJSON []byte) (context.Context, context.CancelFunc) {
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.NoFirstRun,
-		chromedp.NoDefaultBrowserCheck,
-		// Force a standard User-Agent to ensure cookies remain valid across environments
-		chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"),
-	)
+	remoteURL := os.Getenv("CHROME_REMOTE_URL")
 
-	// Use CHROME_BIN environment variable if provided, otherwise let chromedp find the browser
-	if browserPath := os.Getenv("CHROME_BIN"); browserPath != "" {
-		opts = append(opts, chromedp.ExecPath(browserPath))
-	} else if browserPath := os.Getenv("BROWSER_BIN"); browserPath != "" {
-		opts = append(opts, chromedp.ExecPath(browserPath))
+	var allocCtx context.Context
+	var cancelAlloc context.CancelFunc
+
+	if remoteURL != "" {
+		fmt.Printf("Connecting to browser session at %s...\n", remoteURL)
+		allocCtx, cancelAlloc = chromedp.NewRemoteAllocator(ctx, remoteURL)
+	} else {
+		// Fallback to local container browser (Headless)
+		opts := append(chromedp.DefaultExecAllocatorOptions[:],
+			chromedp.NoFirstRun,
+			chromedp.NoDefaultBrowserCheck,
+			chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"),
+		)
+		if browserPath := os.Getenv("CHROME_BIN"); browserPath != "" {
+			opts = append(opts, chromedp.ExecPath(browserPath))
+		}
+		allocCtx, cancelAlloc = chromedp.NewExecAllocator(ctx, opts...)
 	}
 
-	// Disable headless mode for visual debugging if HEADLESS=false is set
-	if os.Getenv("HEADLESS") == "false" {
-		opts = append(opts, chromedp.Flag("headless", false))
+	ctx, cancelCtx := chromedp.NewContext(allocCtx)
+
+	combinedCancel := func() {
+		cancelCtx()
+		cancelAlloc()
 	}
 
-	allocCtx, _ := chromedp.NewExecAllocator(ctx, opts...)
-
-	ctx, cancel := chromedp.NewContext(allocCtx)
-
-	// Set cookies if provided
 	if len(cookiesJSON) > 0 {
 		var cookies []Cookie
 		if err := json.Unmarshal(cookiesJSON, &cookies); err == nil {
-			fmt.Printf("Attempting to set %d cookies...\n", len(cookies))
-
 			err := runBrowserActions(ctx,
 				network.Enable(),
 				setCookiesAction(cookies),
@@ -58,7 +60,7 @@ func SetupBrowser(ctx context.Context, cookiesJSON []byte) (context.Context, con
 		}
 	}
 
-	return ctx, cancel
+	return ctx, combinedCancel
 }
 
 type Cookie struct {

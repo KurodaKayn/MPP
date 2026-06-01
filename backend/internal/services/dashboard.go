@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -29,7 +30,7 @@ func (s *DashboardService) BatchPublishProject(projectID uuid.UUID, platforms []
 		wg.Add(1)
 		go func(p string) {
 			defer wg.Done()
-			resp, err := s.PublishProject(projectID, p, scopeUserID)
+			resp, err := s.PublishProject(projectID, p, scopeUserID, uuid.Nil)
 			mu.Lock()
 			if err != nil {
 				results[p] = map[string]interface{}{"status": "error", "message": err.Error()}
@@ -44,7 +45,7 @@ func (s *DashboardService) BatchPublishProject(projectID uuid.UUID, platforms []
 	return results, nil
 }
 
-func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
+func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, browserSessionID uuid.UUID) (map[string]interface{}, error) {
 	// 1. Check ownership
 	var proj models.Project
 	if err := s.db.Where("id = ? AND user_id = ?", projectID, *scopeUserID).First(&proj).Error; err != nil {
@@ -81,8 +82,7 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 	// 4. Get Platform Account (for Cookies/Session)
 	var account models.PlatformAccount
 	if err := s.db.Where("user_id = ? AND platform = ?", *scopeUserID, platform).First(&account).Error; err != nil {
-		// Non-blocking: some publishers might not need a pre-stored account (using config instead)
-		// but headless ones usually do.
+		// Non-blocking
 	}
 	if err := s.applySavedBrowserCookies(context.Background(), proj.UserID, platform, &account); err != nil {
 		return nil, err
@@ -97,10 +97,26 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 		return nil, err
 	}
 
-	// 5. Execute Publish
-	remoteID, publishURL, err := p.Publish(context.Background(), &pub, &account)
+	// 5. Setup Remote Debugging if session provided
+	ctx := context.Background()
+	if browserSessionID != uuid.Nil {
+		var session models.RemoteBrowserSession
+		if err := s.db.First(&session, "id = ?", browserSessionID).Error; err == nil {
+			// Connect to the worker's CDP endpoint
+			remoteURL := fmt.Sprintf("http://%s:9222", session.ContainerID)
+			// For Docker Compose internal networking, use container ID or service name
+			if os.Getenv("APP_ENV") == "development" {
+				remoteURL = fmt.Sprintf("http://%s:9222", session.ContainerID)
+			}
+			os.Setenv("CHROME_REMOTE_URL", remoteURL)
+			defer os.Unsetenv("CHROME_REMOTE_URL")
+		}
+	}
 
-	// 6. Update DB
+	// 6. Execute Publish
+	remoteID, publishURL, err := p.Publish(ctx, &pub, &account)
+
+	// 7. Update DB
 	status := models.PublicationStatusPublished
 	errMsg := ""
 	if err != nil {
@@ -109,10 +125,11 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 	}
 
 	response := map[string]interface{}{
-		"status":        status,
-		"remote_id":     remoteID,
-		"publish_url":   publishURL,
-		"error_message": errMsg,
+		"status":             status,
+		"remote_id":          remoteID,
+		"publish_url":        publishURL,
+		"error_message":      errMsg,
+		"browser_session_id": browserSessionID,
 	}
 	updates := map[string]interface{}{
 		"status":        status,
@@ -257,16 +274,21 @@ func sanitizeUserFacingErrorMessage(message string) string {
 }
 
 type DashboardService struct {
-	db              *gorm.DB
-	wechatTester    WechatConnectionTester
-	xTester         XConnectionTester
-	xOAuth2Provider XOAuth2Provider
-	xOAuth2States   XOAuth2StateStore
-	publishQueue    PublishQueue
+	db                  *gorm.DB
+	wechatTester        WechatConnectionTester
+	xTester             XConnectionTester
+	xOAuth2Provider     XOAuth2Provider
+	xOAuth2States       XOAuth2StateStore
+	publishQueue        PublishQueue
+	browserWorkerClient publisher.BrowserWorkerClient
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
 	return NewDashboardServiceWithPlatformTesters(db, WechatAPITester{}, XAPITester{})
+}
+
+func (s *DashboardService) SetBrowserWorkerClient(client publisher.BrowserWorkerClient) {
+	s.browserWorkerClient = client
 }
 
 func NewDashboardServiceWithWechatTester(db *gorm.DB, tester WechatConnectionTester) *DashboardService {
