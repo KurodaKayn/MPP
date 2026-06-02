@@ -12,6 +12,7 @@ import type {
   SaveProjectContentInput,
   SaveProjectPlatformsInput,
   SyncPrepublishInput,
+  StartPublishBrowserSessionResult,
   UpdatePrepublishDraftInput,
   UpdateProjectInput,
   WaitForProjectPublicationsOptions,
@@ -185,5 +186,12 @@ export function publishProject(
       body: JSON.stringify(body),
       method: "POST",
     },
+  );
+}
+
+export function startDouyinPublishSession(projectId: string) {
+  return fetchDashboard<StartPublishBrowserSessionResult>(
+    `/api/user/dashboard/projects/${projectId}/publish-sessions/douyin`,
+    { method: "POST" },
   );
 }

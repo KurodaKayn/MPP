@@ -71,6 +71,7 @@ describe("content platform labels", () => {
         canSelectPlatforms
         isOpeningXPostIntent={false}
         isPublishing={false}
+        onOpenDouyinPublishSession={vi.fn()}
         onOpenXPostIntent={vi.fn()}
         onPublish={vi.fn()}
         onSelectedPlatformsChange={vi.fn()}

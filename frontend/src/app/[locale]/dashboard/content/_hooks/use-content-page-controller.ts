@@ -10,16 +10,19 @@ import {
 } from "@/lib/content/platforms";
 import { emptyContentValue, type ContentValue } from "@/lib/content/types";
 import {
+  cancelBrowserSession,
   createDashboardProject,
   getDashboardProject,
   getProjectPublications,
   publishProject,
   saveDashboardProjectContent,
   saveDashboardProjectPlatforms,
+  startDouyinPublishSession,
   syncProjectPrepublish,
   updateDashboardProject,
   waitForProjectPublications,
   type AdaptedContent,
+  type BrowserSessionStatus,
   type CreateProjectInput,
   type ProjectPublications,
 } from "@/lib/dashboard/api";
@@ -32,6 +35,50 @@ import {
 function isPublishPlatform(platform: string): platform is PublishPlatform {
   return PLATFORM_TABS.some((item) => item.value === platform);
 }
+
+function getBrowserStreamBackendOrigin() {
+  const configuredOrigin =
+    process.env.NEXT_PUBLIC_BROWSER_STREAM_BASE_URL?.replace(/\/$/, "");
+  if (configuredOrigin) {
+    return configuredOrigin;
+  }
+
+  if (typeof window === "undefined" || process.env.NODE_ENV !== "development") {
+    return "";
+  }
+
+  const { hostname, port, protocol } = window.location;
+  if (
+    (hostname === "localhost" || hostname === "127.0.0.1") &&
+    port === "3000"
+  ) {
+    return `${protocol}//${hostname}:8080`;
+  }
+
+  return "";
+}
+
+function resolveBrowserStreamURL(streamURL: string) {
+  if (/^https?:\/\//i.test(streamURL)) {
+    return streamURL;
+  }
+
+  const backendOrigin = getBrowserStreamBackendOrigin();
+  if (!backendOrigin) {
+    return streamURL;
+  }
+
+  return new URL(streamURL, backendOrigin).toString();
+}
+
+type DouyinBrowserSessionState = {
+  completing: boolean;
+  error?: string;
+  expiresAt?: string;
+  sessionId: string;
+  status: BrowserSessionStatus;
+  streamURL?: string;
+};
 
 function contentValueFromSource(sourceContent: string): ContentValue {
   const container = document.createElement("div");
@@ -119,13 +166,16 @@ export function useContentPageController(projectId?: string) {
   const hasRequiredContent = Boolean(
     !isPageLoading && title.trim() && hasBodyContent,
   );
-  const hasSyncedSelectedPlatforms = selectedPlatforms.every(
+  const automaticPublishPlatforms = selectedPlatforms.filter(
+    (platform) => platform !== "douyin",
+  );
+  const hasSyncedSelectedPlatforms = automaticPublishPlatforms.every(
     (platform) => prepublishDrafts[platform],
   );
   const canPublish = Boolean(
     projectId &&
     hasRequiredContent &&
-    selectedPlatforms.length > 0 &&
+    automaticPublishPlatforms.length > 0 &&
     hasSyncedSelectedPlatforms,
   );
   const canSelectPlatforms = hasRequiredContent;
@@ -266,10 +316,12 @@ export function useContentPageController(projectId?: string) {
     };
   };
 
-  const saveOrCreateProjectForXPostIntent = async () => {
-    const platforms: PublishPlatform[] = selectedPlatforms.includes("x")
+  const saveOrCreateProjectForManualPlatform = async (
+    platform: PublishPlatform,
+  ) => {
+    const platforms: PublishPlatform[] = selectedPlatforms.includes(platform)
       ? selectedPlatforms
-      : [...selectedPlatforms, "x"];
+      : [...selectedPlatforms, platform];
     const input = buildProjectInput(platforms);
 
     if (projectId) {
@@ -350,6 +402,8 @@ export function useContentPageController(projectId?: string) {
   };
 
   const [isPublishing, setIsPublishing] = useState(false);
+  const [douyinBrowserSession, setDouyinBrowserSession] =
+    useState<DouyinBrowserSessionState | null>(null);
 
   const publishExistingProject = async () => {
     if (!projectId) {
@@ -358,11 +412,11 @@ export function useContentPageController(projectId?: string) {
 
     await saveDashboardProjectContent(projectId, buildProjectContentInput());
     await saveDashboardProjectPlatforms(projectId, {
-      platforms: selectedPlatforms,
+      platforms: automaticPublishPlatforms,
     });
 
     const results = await Promise.allSettled(
-      selectedPlatforms.map(async (platform) => {
+      automaticPublishPlatforms.map(async (platform) => {
         const result = await publishProject(projectId, platform);
         if (result.status === "failed" || result.status === "error") {
           throw new Error(
@@ -382,7 +436,7 @@ export function useContentPageController(projectId?: string) {
     const pendingPlatforms: PublishPlatform[] = [];
 
     results.forEach((result, index) => {
-      const platform = selectedPlatforms[index];
+      const platform = automaticPublishPlatforms[index];
       if (result.status === "fulfilled") {
         if (result.value.status === "publishing") {
           pendingPlatforms.push(platform);
@@ -404,7 +458,7 @@ export function useContentPageController(projectId?: string) {
     if (pendingPlatforms.length > 0) {
       const finalPublications = await waitForProjectPublications(
         projectId,
-        selectedPlatforms,
+        automaticPublishPlatforms,
       );
       const finalPublicationMap = new Map(
         finalPublications.items.map((publication) => [
@@ -455,7 +509,7 @@ export function useContentPageController(projectId?: string) {
 
     setIsOpeningXPostIntent(true);
     try {
-      const targetProject = await saveOrCreateProjectForXPostIntent();
+      const targetProject = await saveOrCreateProjectForManualPlatform("x");
       const result = await publishProject(targetProject.id, "x", {
         mode: "manual",
       });
@@ -499,8 +553,77 @@ export function useContentPageController(projectId?: string) {
     }
   };
 
+  const openDouyinPublishSession = async () => {
+    if (!validateContentFields()) {
+      return;
+    }
+
+    setIsOpeningXPostIntent(true);
+    setDouyinBrowserSession(null);
+    try {
+      const targetProject =
+        await saveOrCreateProjectForManualPlatform("douyin");
+      const platforms = Array.from(
+        new Set<PublishPlatform>([...selectedPlatforms, "douyin"]),
+      );
+      await saveDashboardProjectPlatforms(targetProject.id, { platforms });
+      const publications = await syncProjectPrepublish(targetProject.id, {
+        platforms: ["douyin"],
+      });
+      setSelectedPlatforms(platforms);
+      setPrepublishDrafts({
+        ...prepublishDrafts,
+        ...draftsFromPublications(publications),
+      });
+
+      const session = await startDouyinPublishSession(targetProject.id);
+      setDouyinBrowserSession({
+        completing: false,
+        expiresAt: session.expires_at,
+        sessionId: session.session_id,
+        status: session.status,
+        streamURL: resolveBrowserStreamURL(session.stream_url),
+      });
+      toast.success(t("publish.douyinSessionOpened"));
+      if (targetProject.isNew) {
+        router.replace(`/dashboard/content/${targetProject.id}`);
+      }
+    } catch (requestError) {
+      toast.error(t("publish.douyinOpenFailed"), {
+        description:
+          requestError instanceof Error
+            ? requestError.message
+            : t("common.retryLater"),
+      });
+    } finally {
+      setIsOpeningXPostIntent(false);
+    }
+  };
+
+  const closeDouyinPublishSession = async () => {
+    const sessionId = douyinBrowserSession?.sessionId;
+    setDouyinBrowserSession(null);
+    if (!sessionId) {
+      return;
+    }
+    try {
+      await cancelBrowserSession(sessionId);
+    } catch (requestError) {
+      toast.error(t("publish.douyinCloseFailed"), {
+        description:
+          requestError instanceof Error
+            ? requestError.message
+            : t("common.retryLater"),
+      });
+    }
+  };
+
+  const completeDouyinPublishSession = () => {
+    toast.success(t("publish.douyinReviewHint"));
+  };
+
   const publish = async () => {
-    if (!validateContent()) {
+    if (!validateContent(automaticPublishPlatforms)) {
       return;
     }
     if (!canPublish) {
@@ -559,7 +682,10 @@ export function useContentPageController(projectId?: string) {
     canOpenXPostIntent,
     canPublish,
     canSelectPlatforms,
+    closeDouyinPublishSession: () => void closeDouyinPublishSession(),
     content,
+    completeDouyinPublishSession,
+    douyinBrowserSession,
     isEditing: Boolean(projectId),
     isLoading: isPageLoading,
     isOpeningXPostIntent,
@@ -567,6 +693,7 @@ export function useContentPageController(projectId?: string) {
     isSaving,
     isSyncingPrepublish,
     openPublishPanel,
+    openDouyinPublishSession: () => void openDouyinPublishSession(),
     openXPostIntent: () => void openXPostIntent(),
     prepublishDrafts,
     publish: () => void publish(),

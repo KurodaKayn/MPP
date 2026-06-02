@@ -11,6 +11,7 @@ declare global {
 }
 
 const mocks = vi.hoisted(() => ({
+  cancelBrowserSession: vi.fn(),
   createDashboardProject: vi.fn(),
   getDashboardProject: vi.fn(),
   getProjectPublications: vi.fn(),
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   replace: vi.fn(),
   saveDashboardProjectContent: vi.fn(),
   saveDashboardProjectPlatforms: vi.fn(),
+  startDouyinPublishSession: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
   syncProjectPrepublish: vi.fn(),
@@ -43,12 +45,14 @@ vi.mock("@/lib/i18n/client", () => ({
 }));
 
 vi.mock("@/lib/dashboard/api", () => ({
+  cancelBrowserSession: mocks.cancelBrowserSession,
   createDashboardProject: mocks.createDashboardProject,
   getDashboardProject: mocks.getDashboardProject,
   getProjectPublications: mocks.getProjectPublications,
   publishProject: mocks.publishProject,
   saveDashboardProjectContent: mocks.saveDashboardProjectContent,
   saveDashboardProjectPlatforms: mocks.saveDashboardProjectPlatforms,
+  startDouyinPublishSession: mocks.startDouyinPublishSession,
   syncProjectPrepublish: mocks.syncProjectPrepublish,
   updateDashboardProject: mocks.updateDashboardProject,
   waitForProjectPublications: mocks.waitForProjectPublications,
@@ -70,6 +74,10 @@ vi.mock("sonner", () => ({
 }));
 
 type Controller = ReturnType<typeof useContentPageController>;
+
+function flushPromises() {
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
 
 function renderController(projectId?: string) {
   let controller: Controller | undefined;
@@ -105,6 +113,7 @@ function renderController(projectId?: string) {
 describe("useContentPageController", () => {
   beforeEach(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    mocks.cancelBrowserSession.mockReset();
     mocks.createDashboardProject.mockReset();
     mocks.getDashboardProject.mockReset();
     mocks.getProjectPublications.mockReset();
@@ -114,6 +123,7 @@ describe("useContentPageController", () => {
     mocks.refresh.mockReset();
     mocks.saveDashboardProjectContent.mockReset();
     mocks.saveDashboardProjectPlatforms.mockReset();
+    mocks.startDouyinPublishSession.mockReset();
     mocks.toastError.mockReset();
     mocks.toastSuccess.mockReset();
     mocks.syncProjectPrepublish.mockReset();
@@ -275,7 +285,7 @@ describe("useContentPageController", () => {
     view.unmount();
   });
 
-  it("saves the current platform selection before publishing", async () => {
+  it("excludes Douyin from automatic publishing", async () => {
     mocks.getDashboardProject.mockResolvedValue({
       created_at: "2026-05-30T12:00:00.000Z",
       id: "project-1",
@@ -356,13 +366,18 @@ describe("useContentPageController", () => {
           text: "Rendered body",
         },
         prepublishDrafts: {
+          douyin: {
+            format: "text",
+            raw: "Rendered body",
+            syncedAt: "2026-05-30T12:00:00.000Z",
+          },
           zhihu: {
             format: "markdown",
             raw: "Rendered body",
             syncedAt: "2026-05-30T12:00:00.000Z",
           },
         },
-        selectedPlatforms: ["zhihu"],
+        selectedPlatforms: ["zhihu", "douyin"],
         title: "Post title",
       });
     });
@@ -388,6 +403,10 @@ describe("useContentPageController", () => {
     );
     expect(mocks.updateDashboardProject).not.toHaveBeenCalled();
     expect(mocks.publishProject).toHaveBeenCalledWith("project-1", "zhihu");
+    expect(mocks.publishProject).not.toHaveBeenCalledWith(
+      "project-1",
+      "douyin",
+    );
     expect(
       mocks.saveDashboardProjectContent.mock.invocationCallOrder[0],
     ).toBeLessThan(mocks.publishProject.mock.invocationCallOrder[0]);
@@ -403,6 +422,84 @@ describe("useContentPageController", () => {
         description: "Published to Zhihu.",
       },
     );
+
+    view.unmount();
+  });
+
+  it("opens Douyin manual publishing without adding X", async () => {
+    mocks.createDashboardProject.mockResolvedValue({ id: "project-1" });
+    mocks.saveDashboardProjectPlatforms.mockResolvedValue({
+      id: "project-1",
+    });
+    mocks.syncProjectPrepublish.mockResolvedValue({
+      items: [
+        {
+          adapted_content: {
+            format: "text",
+            source_revision: "2026-05-30T12:00:00.000Z",
+            text: "Rendered body",
+          },
+          enabled: true,
+          platform: "douyin",
+          updated_at: "2026-05-30T12:00:00.000Z",
+        },
+      ],
+      project_id: "project-1",
+    });
+    mocks.startDouyinPublishSession.mockResolvedValue({
+      expires_at: "2026-05-30T12:30:00.000Z",
+      session_id: "session-1",
+      status: "active",
+      stream_url: "/browser/session-1",
+    });
+
+    const view = renderController();
+
+    act(() => {
+      useContentPageStore.setState({
+        content: {
+          firstImageSrc: "",
+          html: "<p>Rendered body</p>",
+          text: "Rendered body",
+        },
+        selectedPlatforms: [],
+        title: "Post title",
+      });
+    });
+
+    await act(async () => {
+      view.getController().openDouyinPublishSession();
+      await flushPromises();
+    });
+
+    expect(mocks.createDashboardProject).toHaveBeenCalledWith({
+      platforms: ["douyin"],
+      source_content: "<p>Rendered body</p>",
+      summary: "Rendered body",
+      title: "Post title",
+    });
+    expect(mocks.saveDashboardProjectPlatforms).toHaveBeenCalledWith(
+      "project-1",
+      {
+        platforms: ["douyin"],
+      },
+    );
+    expect(mocks.syncProjectPrepublish).toHaveBeenCalledWith("project-1", {
+      platforms: ["douyin"],
+    });
+    expect(mocks.publishProject).not.toHaveBeenCalledWith(
+      "project-1",
+      "x",
+      expect.anything(),
+    );
+    expect(useContentPageStore.getState().selectedPlatforms).toEqual([
+      "douyin",
+    ]);
+    expect(view.getController().douyinBrowserSession).toMatchObject({
+      sessionId: "session-1",
+      status: "active",
+      streamURL: "/browser/session-1",
+    });
 
     view.unmount();
   });

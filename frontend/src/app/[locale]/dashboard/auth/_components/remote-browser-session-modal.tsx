@@ -9,6 +9,7 @@ import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 type RemoteBrowserSessionModalProps = {
   completing: boolean;
+  completeLabel?: string;
   error?: string;
   expiresAt?: string;
   platformLabel: string;
@@ -20,6 +21,7 @@ type RemoteBrowserSessionModalProps = {
 
 export function RemoteBrowserSessionModal({
   completing,
+  completeLabel,
   error,
   expiresAt,
   platformLabel,
@@ -122,7 +124,7 @@ export function RemoteBrowserSessionModal({
             ) : (
               <CheckCircle2 className="size-4" />
             )}
-            {t("auth.remoteBrowser.complete")}
+            {completeLabel ?? t("auth.remoteBrowser.complete")}
           </Button>
         </div>
       </div>

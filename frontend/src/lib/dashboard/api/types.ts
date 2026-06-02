@@ -243,6 +243,11 @@ export type StartBrowserSessionResult = {
   expires_at: string;
 };
 
+export type StartPublishBrowserSessionResult = StartBrowserSessionResult & {
+  platform: string;
+  project_id: string;
+};
+
 export type CompleteBrowserSessionResult = {
   session_id: string;
   platform: string;
