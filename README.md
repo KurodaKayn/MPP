@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="doc/assests/mpp-with-name-white.svg" alt="MPP logo" width="640" />
+  <img src="doc/assets/mpp-with-name-white.svg" alt="MPP logo" width="640" />
   <br>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="License" />
 </p>
@@ -20,9 +20,9 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.136-05998B?style=for-the-badge&logo=fastapi&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-1.3-1C3C3C?style=for-the-badge&logo=langchaincorporate&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
-![Redis](doc/assests/badges/redis.svg)
-![Echo](doc/assests/badges/echo.svg)
-![GORM](doc/assests/badges/gorm.svg)
+![Redis](doc/assets/badges/redis.svg)
+![Echo](doc/assets/badges/echo.svg)
+![GORM](doc/assets/badges/gorm.svg)
 ![Chromium](https://img.shields.io/badge/Chromium-Remote_Browser-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
@@ -64,7 +64,7 @@ For platforms without stable public publishing APIs, MPP uses a backend-controll
 
 ## Architecture
 
-![MPP Overall Architecture](doc/assests/project-overall-architecture.png)
+![MPP Overall Architecture](doc/assets/project-overall-architecture.png)
 
 For detailed design notes for each module, see [module-design.md](doc/module-design.md).
 For a module-by-module technology stack breakdown, see [tech-stack.md](doc/tech-stack.md).

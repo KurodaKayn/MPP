@@ -1,7 +1,7 @@
 # MPP: multi-platform-poster
 
 <p align="center">
-  <img src="doc/assests/mpp-with-name-white.svg" alt="MPP logo" width="640" />
+  <img src="doc/assets/mpp-with-name-white.svg" alt="MPP logo" width="640" />
   <br>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="License" />
 </p>
@@ -20,9 +20,9 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.136-05998B?style=for-the-badge&logo=fastapi&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-1.3-1C3C3C?style=for-the-badge&logo=langchaincorporate&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
-![Redis](doc/assests/badges/redis.svg)
-![Echo](doc/assests/badges/echo.svg)
-![GORM](doc/assests/badges/gorm.svg)
+![Redis](doc/assets/badges/redis.svg)
+![Echo](doc/assets/badges/echo.svg)
+![GORM](doc/assets/badges/gorm.svg)
 ![Chromium](https://img.shields.io/badge/Chromium-Remote_Browser-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
@@ -60,7 +60,7 @@ MPP 使用独立的 FastAPI AI 服务、流式响应和“生成建议后确认�
 
 ## 架构
 
-![MPP Overall Architecture](doc/assests/project-overall-architecture.png)
+![MPP Overall Architecture](doc/assets/project-overall-architecture.png)
 
 模块设计说明见 [module-design.md](doc/module-design.md)。
 按模块拆分的技术栈说明见 [tech-stack.md](doc/tech-stack.md)。

@@ -20,7 +20,7 @@ The target requirements are:
 - The pre-publish section can view both the platform's original format (e.g., HTML, Markdown, text) and the preview result of that format.
 - The pre-publish pipeline needs to leave stable extension points for future AI agent intervention.
 
-![platform-draft-format-architecture.svg](./assests/platform-draft-format-architecture.svg)
+![platform-draft-format-architecture.svg](./assets/module-architecture/platform-draft-format-architecture.svg)
 
 ## 2. Current Status Assessment
 

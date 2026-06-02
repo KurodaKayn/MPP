@@ -32,7 +32,7 @@ Preferred MVP: **one browser container per connection session**.
 
 ## Architecture
 
-![Remote browser session architecture](./assests/remote_browser_session_architecture.svg)
+![Remote browser session architecture](./assets/module-architecture/remote_browser_session_architecture.svg)
 
 ## User Flow
 
