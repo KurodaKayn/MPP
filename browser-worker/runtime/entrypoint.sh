@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 # Configuration
@@ -9,18 +9,18 @@ STREAM_PORT=${STREAM_PORT:-"6080"}
 BROWSER_PROFILE="/tmp/browser-profile"
 
 echo "Starting Xvfb with resolution $RESOLUTION..."
-Xvfb :99 -screen 0 $RESOLUTION &
+Xvfb :99 -screen 0 "$RESOLUTION" &
 sleep 2
 
 echo "Starting Openbox window manager..."
 openbox &
 
 echo "Starting x11vnc on port $VNC_PORT..."
-x11vnc -display :99 -nopw -forever -localhost -rfbport $VNC_PORT &
+x11vnc -display :99 -nopw -forever -localhost -rfbport "$VNC_PORT" &
 sleep 1
 
 echo "Starting websockify (noVNC) on port $STREAM_PORT..."
-websockify --web /usr/share/novnc/ $STREAM_PORT localhost:$VNC_PORT &
+websockify --web /usr/share/novnc/ "$STREAM_PORT" localhost:"$VNC_PORT" &
 
 echo "Starting Python CDP Proxy on port $CDP_PORT forwarding to 9223..."
 # We use this proxy because Chromium ignores 0.0.0.0 and enforces Host checks.
@@ -32,14 +32,13 @@ echo "Starting Chromium with CDP on port 9223..."
 # Use LOGIN_URL env var if provided, otherwise about:blank
 TARGET_URL=${LOGIN_URL:-"about:blank"}
 
-# By passing the wrapper script to ensure arguments are parsed correctly
-# EXTREMELY IMPORTANT: --remote-allow-origins=* must be set
+# --remote-allow-origins=* is required for remote CDP clients.
 /usr/lib/chromium/chromium \
     --no-sandbox \
     --disable-setuid-sandbox \
     --remote-debugging-port=9223 \
     --remote-allow-origins=* \
-    --user-data-dir=$BROWSER_PROFILE \
+    --user-data-dir="$BROWSER_PROFILE" \
     --no-first-run \
     --no-default-browser-check \
     --disable-gpu \

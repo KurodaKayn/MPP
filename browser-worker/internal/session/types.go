@@ -53,6 +53,7 @@ type StartWorkerSessionRequest struct {
 	LoginURL        string              `json:"login_url"`
 	AllowedDomains  []DomainRule        `json:"allowed_domains"`
 	RequiredCookies []CookieRequirement `json:"required_cookies"`
+	InitialCookies  []Cookie            `json:"initial_cookies,omitempty"`
 	TTLSeconds      int                 `json:"ttl_seconds"`
 	Viewport        struct {
 		Width  int `json:"width"`

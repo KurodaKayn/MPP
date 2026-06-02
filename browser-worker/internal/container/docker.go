@@ -58,8 +58,12 @@ func (m *Manager) StartBrowserContainer(ctx context.Context, sessionID string) (
 			NanoCPUs: 1000000000,
 		},
 	}
+	networkingConfig := &network.NetworkingConfig{}
 	if m.runtimeNetwork != "" {
 		hostConfig.NetworkMode = dockercontainer.NetworkMode(m.runtimeNetwork)
+		networkingConfig.EndpointsConfig = map[string]*network.EndpointSettings{
+			m.runtimeNetwork: {},
+		}
 	} else {
 		hostConfig.PortBindings = nat.PortMap{
 			"9222/tcp": []nat.PortBinding{{HostIP: m.runtimeBindIP}},
@@ -72,7 +76,7 @@ func (m *Manager) StartBrowserContainer(ctx context.Context, sessionID string) (
 	// 1. Clean up ONLY the specific container for this session if it somehow exists
 	m.cli.ContainerRemove(ctx, containerName, types.ContainerRemoveOptions{Force: true})
 
-	resp, err := m.cli.ContainerCreate(ctx, config, hostConfig, nil, nil, containerName)
+	resp, err := m.cli.ContainerCreate(ctx, config, hostConfig, networkingConfig, nil, containerName)
 	if err != nil {
 		return "", "", 0, 0, fmt.Errorf("failed to create container: %w", err)
 	}
