@@ -66,7 +66,7 @@ Dev 模式的 Compose project name 为 `mpp-dev`。
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml --profile extension up extension-dev
 ```
 
-该服务运行 `extension` 目录下的 WXT dev server，默认端口为 `3010`，可通过 `docker/.env` 中的 `EXTENSION_DEV_PORT` 调整。浏览器仍需在宿主机加载 `extension/.output/chrome-mv3` 作为 unpacked extension。
+该服务运行 `extension` 目录下的 WXT dev server，默认端口为 `3010`，可通过 `docker/.env` 中的 `EXTENSION_DEV_PORT` 调整。Docker dev 模式会禁用 WXT 的容器内浏览器 runner，浏览器仍需在宿主机加载 `extension/.output/chrome-mv3-dev` 作为 unpacked extension。
 
 如果只想后台启动 dev 容器（源码热重载仍会生效，但依赖文件变化不会自动触发 Compose rebuild），可以执行：
 
