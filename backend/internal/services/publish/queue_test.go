@@ -1,4 +1,4 @@
-package services
+package publish
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -139,11 +140,15 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func newPublishTestService(db *gorm.DB) *Service {
+	return NewService(db, platformaccount.NewService(db))
+}
+
 func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
-	service := NewDashboardService(db)
+	service := newPublishTestService(db)
 	queue := newTestPublishQueue()
-	service.publishQueue = queue
+	service.queue = queue
 
 	publisher.Factory.Register("wechat", queueTestPublisher{})
 	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
@@ -185,8 +190,8 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 
 func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
-	service := NewDashboardService(db)
-	service.publishQueue = newTestPublishQueue()
+	service := newPublishTestService(db)
+	service.queue = newTestPublishQueue()
 
 	publisher.Factory.Register("wechat", queueTestPublisher{})
 	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
@@ -218,9 +223,9 @@ func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing
 
 func TestProcessPublishJobPublishesAndReleasesLock(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
-	service := NewDashboardService(db)
+	service := newPublishTestService(db)
 	queue := newTestPublishQueue()
-	service.publishQueue = queue
+	service.queue = queue
 
 	publisher.Factory.Register("wechat", queueTestPublisher{})
 	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
@@ -265,9 +270,9 @@ func TestProcessPublishJobPublishesAndReleasesLock(t *testing.T) {
 
 func TestProcessPublishJobReacquiresExpiredLock(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
-	service := NewDashboardService(db)
+	service := newPublishTestService(db)
 	queue := newTestPublishQueue()
-	service.publishQueue = queue
+	service.queue = queue
 
 	publisher.Factory.Register("wechat", queueTestPublisher{})
 	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})

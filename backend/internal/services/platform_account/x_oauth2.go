@@ -1,4 +1,4 @@
-package services
+package platformaccount
 
 import (
 	"context"
@@ -64,7 +64,7 @@ func (XOAuth2API) Me(ctx context.Context, accessToken string) (pkgx.User, error)
 	return pkgx.NewOAuth2Client(pkgx.OAuth2Credentials{AccessToken: accessToken}).Me(ctx)
 }
 
-func (s *DashboardService) StartXOAuth2(userID uuid.UUID, redirectURI string) (string, error) {
+func (s *Service) StartXOAuth2(userID uuid.UUID, redirectURI string) (string, error) {
 	config, err := xOAuth2ConfigFromEnv(redirectURI)
 	if err != nil {
 		return "", err
@@ -100,7 +100,7 @@ func (s *DashboardService) StartXOAuth2(userID uuid.UUID, redirectURI string) (s
 	return authURL, nil
 }
 
-func (s *DashboardService) CompleteXOAuth2(ctx context.Context, state, code string) (*dto.XAccountResponse, error) {
+func (s *Service) CompleteXOAuth2(ctx context.Context, state, code string) (*dto.XAccountResponse, error) {
 	pending, ok, err := s.xOAuth2States.Consume(ctx, strings.TrimSpace(state))
 	if err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func (s *DashboardService) CompleteXOAuth2(ctx context.Context, state, code stri
 	return s.saveXOAuth2Account(pending.UserID, token, user)
 }
 
-func (s *DashboardService) saveXOAuth2Account(userID uuid.UUID, token pkgx.OAuth2Token, user pkgx.User) (*dto.XAccountResponse, error) {
+func (s *Service) saveXOAuth2Account(userID uuid.UUID, token pkgx.OAuth2Token, user pkgx.User) (*dto.XAccountResponse, error) {
 	var account models.PlatformAccount
 	err := s.db.Where("user_id = ? AND platform = ?", userID, xPlatform).First(&account).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -241,7 +241,7 @@ func shouldRefreshXOAuth2Credentials(credentials xCredentials) bool {
 	return time.Now().Add(xOAuth2RefreshSkew).After(*credentials.OAuth2ExpiresAt)
 }
 
-func (s *DashboardService) refreshXOAuth2CredentialsIfNeeded(ctx context.Context, account *models.PlatformAccount, credentials xCredentials) (xCredentials, error) {
+func (s *Service) refreshXOAuth2CredentialsIfNeeded(ctx context.Context, account *models.PlatformAccount, credentials xCredentials) (xCredentials, error) {
 	if !shouldRefreshXOAuth2Credentials(credentials) {
 		return credentials, nil
 	}

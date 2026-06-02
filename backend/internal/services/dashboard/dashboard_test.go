@@ -1,4 +1,4 @@
-package services_test
+package dashboard_test
 
 import (
 	"context"
