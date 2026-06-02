@@ -18,3 +18,14 @@ def test_observability_propagates_request_id_and_exposes_metrics():
     assert 'service="ai-service"' in metrics
     assert "mpp_http_requests_total" in metrics
     assert 'route="/health"' in metrics
+
+
+def test_observability_uses_bounded_route_label_for_unmatched_paths():
+    response = client.get("/missing/trace-test")
+
+    assert response.status_code == 404
+
+    metrics = client.get("/metrics").text
+
+    assert 'route="not_found"' in metrics
+    assert 'route="/missing/trace-test"' not in metrics

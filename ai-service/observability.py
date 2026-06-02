@@ -90,7 +90,7 @@ def _trace_id_from_request(request: Request) -> str:
 def _route_path(request: Request) -> str:
     route = request.scope.get("route")
     route_path = getattr(route, "path", None)
-    return route_path or request.url.path or "unknown"
+    return route_path or "not_found"
 
 
 def _log_request(
