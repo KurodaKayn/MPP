@@ -25,6 +25,8 @@ services:
       args:
         FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://127.0.0.1}
     env_file: .env
+    environment:
+      PORT: "3000"
     depends_on:
       - backend
       - ai-service
