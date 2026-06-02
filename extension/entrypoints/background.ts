@@ -2,6 +2,7 @@ import {
   clearExecutionState,
   getCurrentHandoff,
   getExecutionEvents,
+  isHandoffExpired,
   storeAcceptedHandoff,
   validateHandoff,
 } from "../src/background/handoff";
@@ -34,6 +35,8 @@ function getManifestVersion(): string {
 }
 
 async function getMonitorState() {
+  await recordCurrentHandoffExpiration();
+
   return {
     extension_id: browser.runtime.id,
     version: getManifestVersion(),
@@ -41,6 +44,39 @@ async function getMonitorState() {
     events: await getExecutionEvents(),
     trusted_origins: await listTrustedOrigins(),
   };
+}
+
+async function recordCurrentHandoffExpiration(): Promise<boolean> {
+  const currentHandoff = await getCurrentHandoff();
+
+  if (!currentHandoff || !isHandoffExpired(currentHandoff.handoff)) {
+    return false;
+  }
+
+  const events = await getExecutionEvents();
+
+  for (const platform of currentHandoff.handoff.platforms) {
+    const alreadyExpired = events.some(
+      (event) =>
+        event.platform === platform.platform && event.status === "expired",
+    );
+
+    if (alreadyExpired) {
+      continue;
+    }
+
+    await recordAndCallbackEvent(platform, {
+      platform: platform.platform,
+      status: "expired",
+      message: "Handoff expired before extension publishing completed.",
+      metadata: {
+        execution_id: currentHandoff.handoff.execution_id,
+        expires_at: currentHandoff.handoff.expires_at,
+      },
+    });
+  }
+
+  return true;
 }
 
 async function acceptBridgeHandoff(
@@ -90,6 +126,13 @@ async function acceptBridgeHandoff(
 async function handleAdapterEvent(
   message: Extract<BackgroundMessage, { type: "adapter.event" }>,
 ) {
+  if (await recordCurrentHandoffExpiration()) {
+    return {
+      ok: false,
+      error: "Current handoff has expired.",
+    };
+  }
+
   const currentHandoff = await getCurrentHandoff();
 
   if (
