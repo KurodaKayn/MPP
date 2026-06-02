@@ -46,6 +46,41 @@ const finalBrowserSessionStatuses = new Set<BrowserSession["status"]>([
   "failed",
 ]);
 
+function getBrowserStreamBackendOrigin() {
+  const configuredOrigin =
+    process.env.NEXT_PUBLIC_BROWSER_STREAM_BASE_URL?.replace(/\/$/, "");
+  if (configuredOrigin) {
+    return configuredOrigin;
+  }
+
+  if (typeof window === "undefined" || process.env.NODE_ENV !== "development") {
+    return "";
+  }
+
+  const { hostname, port, protocol } = window.location;
+  if (
+    (hostname === "localhost" || hostname === "127.0.0.1") &&
+    port === "3000"
+  ) {
+    return `${protocol}//${hostname}:8080`;
+  }
+
+  return "";
+}
+
+function resolveBrowserStreamURL(streamURL?: string) {
+  if (!streamURL || /^https?:\/\//i.test(streamURL)) {
+    return streamURL;
+  }
+
+  const backendOrigin = getBrowserStreamBackendOrigin();
+  if (!backendOrigin) {
+    return streamURL;
+  }
+
+  return new URL(streamURL, backendOrigin).toString();
+}
+
 function getErrorDescription(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
@@ -205,7 +240,8 @@ export function useAuthPageController() {
           setBrowserSession(nextSession);
           if (nextSession.stream_url) {
             setBrowserStreamURL(
-              (currentStreamURL) => currentStreamURL ?? nextSession.stream_url,
+              (currentStreamURL) =>
+                currentStreamURL ?? resolveBrowserStreamURL(nextSession.stream_url),
             );
           }
           if (nextSession.status === "expired") {
@@ -462,15 +498,16 @@ export function useAuthPageController() {
     setBrowserError(undefined);
     try {
       const session = await startBrowserSession(platform);
+      const streamURL = resolveBrowserStreamURL(session.stream_url);
       setBrowserSession({
         expires_at: session.expires_at,
         platform,
         session_id: session.session_id,
         status: session.status,
         stream_token_expires_at: session.stream_token_expires_at,
-        stream_url: session.stream_url,
+        stream_url: streamURL,
       });
-      setBrowserStreamURL(session.stream_url);
+      setBrowserStreamURL(streamURL);
       toast.success(t("auth.toast.browserStarted"), {
         description: t("auth.toast.browserStartedDesc", {
           platform: platformLabel,

@@ -91,6 +91,30 @@ func (c *HttpBrowserWorkerClient) CaptureSession(ctx context.Context, ref string
 	return &result, nil
 }
 
+func (c *HttpBrowserWorkerClient) StartDouyinPublish(ctx context.Context, ref string, req StartDouyinPublishRequest) error {
+	body, _ := json.Marshal(req)
+	hReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/internal/browser-sessions/"+ref+"/publish/douyin", bytes.NewReader(body))
+	hReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(hReq)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusAccepted {
+		var errResp struct {
+			Message string `json:"message"`
+		}
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		if errResp.Message != "" {
+			return fmt.Errorf("worker error: %s", errResp.Message)
+		}
+		return fmt.Errorf("worker returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (c *HttpBrowserWorkerClient) StopSession(ctx context.Context, ref string) error {
 	hReq, _ := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/internal/browser-sessions/"+ref, nil)
 

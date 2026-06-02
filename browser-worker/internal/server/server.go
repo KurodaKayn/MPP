@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"time"
 
+	cdpproto "github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-browser-worker/internal/cdp"
 	browsercontainer "github.com/kurodakayn/mpp-browser-worker/internal/container"
 	"github.com/kurodakayn/mpp-browser-worker/internal/cookies"
 	"github.com/kurodakayn/mpp-browser-worker/internal/isolation"
+	workerpublish "github.com/kurodakayn/mpp-browser-worker/internal/publish"
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 	"github.com/kurodakayn/mpp-browser-worker/internal/sessionstate"
 	"github.com/kurodakayn/mpp-browser-worker/internal/stream"
@@ -39,6 +42,7 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	e.Any("/internal/browser-sessions/:ref/stream", stream.Handler(s.sessions))
 	e.Any("/internal/browser-sessions/:ref/stream/*", stream.Handler(s.sessions))
 	e.POST("/internal/browser-sessions/:ref/capture", s.captureSession)
+	e.POST("/internal/browser-sessions/:ref/publish/douyin", s.startDouyinPublish)
 	e.DELETE("/internal/browser-sessions/:ref", s.deleteSession)
 }
 
@@ -75,6 +79,14 @@ func (s *Server) createSession(c echo.Context) error {
 		allocCancel()
 		_ = s.containers.StopContainer(context.Background(), containerID)
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to configure browser isolation: %v", err))
+	}
+	if len(req.InitialCookies) > 0 {
+		if err := chromedp.Run(browserCtx, restoreCookiesAction(req.InitialCookies)); err != nil {
+			browserCancel()
+			allocCancel()
+			_ = s.containers.StopContainer(context.Background(), containerID)
+			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to restore browser cookies: %v", err))
+		}
 	}
 	if err := chromedp.Run(browserCtx, chromedp.Navigate(req.LoginURL)); err != nil {
 		browserCancel()
@@ -202,6 +214,33 @@ func (s *Server) captureSession(c echo.Context) error {
 	})
 }
 
+func (s *Server) startDouyinPublish(c echo.Context) error {
+	ref := c.Param("ref")
+	workerSession, ok := s.sessions.Get(ref)
+	if !ok {
+		return echo.NewHTTPError(http.StatusNotFound, "session not found")
+	}
+	if workerSession.Platform != "douyin" {
+		return echo.NewHTTPError(http.StatusBadRequest, "session platform is not douyin")
+	}
+
+	var req workerpublish.DouyinDraftRequest
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+
+	go func() {
+		if err := workerpublish.RunDouyinDraft(context.Background(), workerSession, req); err != nil {
+			log.Printf("Douyin publish script failed for session %s: %v", ref, err)
+		}
+	}()
+
+	return c.JSON(http.StatusAccepted, map[string]string{
+		"status":  "started",
+		"message": "douyin publish script started",
+	})
+}
+
 func (s *Server) deleteSession(c echo.Context) error {
 	ref := c.Param("ref")
 	workerSession, ok := s.sessions.Remove(ref)
@@ -224,4 +263,29 @@ func cleanupSession(ctx context.Context, containers *browsercontainer.Manager, w
 			log.Printf("Failed to stop session container %s: %v", workerSession.ContainerID, err)
 		}
 	}
+}
+
+func restoreCookiesAction(cookies []session.Cookie) chromedp.Action {
+	return chromedp.ActionFunc(func(ctx context.Context) error {
+		for _, cookie := range cookies {
+			expr := network.SetCookie(cookie.Name, cookie.Value).
+				WithDomain(cookie.Domain).
+				WithPath(cookie.Path).
+				WithHTTPOnly(cookie.HttpOnly).
+				WithSecure(cookie.Secure)
+
+			if cookie.Expires > 0 {
+				expires := cdpproto.TimeSinceEpoch(time.Unix(int64(cookie.Expires), 0))
+				expr = expr.WithExpires(&expires)
+			}
+			if cookie.SameSite != "" {
+				expr = expr.WithSameSite(network.CookieSameSite(cookie.SameSite))
+			}
+
+			if err := expr.Do(ctx); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

@@ -8,6 +8,7 @@ import { ContentPageHeader } from "./content-page-header";
 import { ContentPrepublishPanel } from "./content-prepublish-panel";
 import { ContentPublishBar } from "./content-publish-bar";
 import { PlatformPreview } from "./platform-preview";
+import { RemoteBrowserSessionModal } from "../../auth/_components/remote-browser-session-modal";
 import { useContentPageController } from "../_hooks/use-content-page-controller";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import {
@@ -98,6 +99,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           isOpeningXPostIntent={contentPage.isOpeningXPostIntent}
           isPublishing={contentPage.isPublishing}
           selectedPlatforms={contentPage.selectedPlatforms}
+          onOpenDouyinPublishSession={contentPage.openDouyinPublishSession}
           onOpenXPostIntent={contentPage.openXPostIntent}
           onPublish={contentPage.publish}
           onSelectedPlatformsChange={contentPage.setSelectedPlatforms}
@@ -108,6 +110,19 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           }
         />
       </div>
+      {contentPage.douyinBrowserSession ? (
+        <RemoteBrowserSessionModal
+          completing={contentPage.douyinBrowserSession.completing}
+          completeLabel={t("publish.douyinPublishedAction")}
+          error={contentPage.douyinBrowserSession.error}
+          expiresAt={contentPage.douyinBrowserSession.expiresAt}
+          platformLabel={t("platforms.douyin", { defaultValue: "Douyin" })}
+          status={contentPage.douyinBrowserSession.status}
+          streamURL={contentPage.douyinBrowserSession.streamURL}
+          onCancel={contentPage.closeDouyinPublishSession}
+          onComplete={contentPage.completeDouyinPublishSession}
+        />
+      ) : null}
     </div>
   );
 }

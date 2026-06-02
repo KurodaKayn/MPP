@@ -14,6 +14,7 @@ import (
 
 type MockBrowserWorkerClient struct {
 	mu             sync.RWMutex
+	douyinStarts   map[string]StartDouyinPublishRequest
 	sessions       map[string]*StartWorkerSessionResponse
 	streamBaseURL  string
 	streamServer   *http.Server
@@ -22,7 +23,8 @@ type MockBrowserWorkerClient struct {
 
 func NewMockBrowserWorkerClient() *MockBrowserWorkerClient {
 	m := &MockBrowserWorkerClient{
-		sessions: make(map[string]*StartWorkerSessionResponse),
+		douyinStarts: make(map[string]StartDouyinPublishRequest),
+		sessions:     make(map[string]*StartWorkerSessionResponse),
 	}
 	m.startStreamServer()
 	return m
@@ -87,6 +89,17 @@ func (m *MockBrowserWorkerClient) CaptureSession(ctx context.Context, ref string
 			Username: "Mock User",
 		},
 	}, nil
+}
+
+func (m *MockBrowserWorkerClient) StartDouyinPublish(ctx context.Context, ref string, req StartDouyinPublishRequest) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.sessions[ref]; !ok {
+		return errors.New("session not found")
+	}
+	m.douyinStarts[ref] = req
+	return nil
 }
 
 func (m *MockBrowserWorkerClient) StopSession(ctx context.Context, ref string) error {

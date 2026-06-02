@@ -1,7 +1,10 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { PLATFORM_TABS, type PlatformTab } from "@/lib/content/platforms";
+import {
+  AUTO_PUBLISH_PLATFORM_TABS,
+  type PlatformTab,
+} from "@/lib/content/platforms";
 import {
   Tooltip,
   TooltipContent,
@@ -21,6 +24,7 @@ type ContentPublishBarProps = {
   canSelectPlatforms: boolean;
   isOpeningXPostIntent: boolean;
   isPublishing: boolean;
+  onOpenDouyinPublishSession: () => void;
   onOpenXPostIntent: () => void;
   onPublish: () => void;
   onSelectedPlatformsChange: (platforms: PublishPlatform[]) => void;
@@ -34,6 +38,7 @@ export function ContentPublishBar({
   canSelectPlatforms,
   isOpeningXPostIntent,
   isPublishing,
+  onOpenDouyinPublishSession,
   onOpenXPostIntent,
   onPublish,
   onSelectedPlatformsChange,
@@ -97,7 +102,7 @@ export function ContentPublishBar({
 
           <TooltipProvider>
             <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              {PLATFORM_TABS.map((platform) => {
+              {AUTO_PUBLISH_PLATFORM_TABS.map((platform) => {
                 const checked = selectedSet.has(platform.value);
                 const card = (
                   <label
@@ -181,6 +186,30 @@ export function ContentPublishBar({
                 />
               )}
               <span className="truncate">X</span>
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              onClick={onOpenDouyinPublishSession}
+              disabled={!canOpenXPostIntent || isBusy}
+              className="h-14 justify-start gap-3 rounded-lg px-3 text-sm font-medium"
+            >
+              {isOpeningXPostIntent ? (
+                <Loader2 className="size-[18px] animate-spin" />
+              ) : (
+                <Image
+                  src="/icons/platforms/douyin.svg"
+                  alt=""
+                  width={18}
+                  height={18}
+                  aria-hidden="true"
+                  className="size-[18px]"
+                />
+              )}
+              <span className="truncate">
+                {t("platforms.douyin", { defaultValue: "Douyin" })}
+              </span>
             </Button>
           </div>
         </div>

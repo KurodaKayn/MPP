@@ -28,6 +28,7 @@ type MockBrowserWorkerClient = browser.MockBrowserWorkerClient
 type RemoteAccountProfile = browser.RemoteAccountProfile
 type RemoteBrowserPlatformAdapter = browser.RemoteBrowserPlatformAdapter
 type RemoteLoginState = browser.RemoteLoginState
+type StartDouyinPublishRequest = browser.StartDouyinPublishRequest
 type StartWorkerSessionRequest = browser.StartWorkerSessionRequest
 type StartWorkerSessionResponse = browser.StartWorkerSessionResponse
 

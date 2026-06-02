@@ -2,6 +2,7 @@ package browsersession
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -106,6 +107,15 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 		AllowedDomains:  adapter.AllowedDomains(),
 		RequiredCookies: adapter.RequiredCookies(),
 		TTLSeconds:      900, // 15 mins
+	}
+	if s.cookieStore != nil {
+		cookies, err := s.cookieStore.Load(ctx, userID, platform)
+		if err != nil && !errors.Is(err, publisher.ErrCookieNotFound) && !errors.Is(err, publisher.ErrCookieValidationFailed) {
+			_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed)
+			_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, "")
+			return nil, err
+		}
+		req.InitialCookies = cookies
 	}
 	req.Viewport.Width = 1366
 	req.Viewport.Height = 768

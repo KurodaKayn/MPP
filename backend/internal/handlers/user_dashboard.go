@@ -12,6 +12,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
@@ -518,6 +519,47 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) StartDouyinPublishSession(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+
+	resp, err := h.dashboardService.StartDouyinPublishSession(c.Request().Context(), projectID, userID)
+	if err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		if errors.Is(err, services.ErrPublicationDisabled) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
+		}
+		if errors.Is(err, services.ErrPublicationRequiresSync) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "sync douyin prepublish draft before publishing")
+		}
+		if errors.Is(err, browsersession.ErrActiveSessionExists) {
+			return sendError(c, http.StatusConflict, "conflict", err.Error())
+		}
+		if errors.Is(err, browsersession.ErrPlatformNotSupported) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"project_id":              projectID,
+		"platform":                "douyin",
+		"session_id":              resp.SessionID,
+		"status":                  resp.Status,
+		"stream_url":              resp.StreamURL,
+		"stream_token_expires_at": resp.StreamTokenExpiresAt,
+		"expires_at":              resp.ExpiresAt,
+	})
 }
 
 func (h *UserDashboardHandler) GetWechatAccount(c echo.Context) error {
