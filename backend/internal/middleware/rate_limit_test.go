@@ -49,6 +49,15 @@ func TestApplicationRateLimiterSharesTenantBuckets(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, performRateLimitedRequest(t, config, uuid.New(), "tenant-acme", http.MethodGet, "/api/user/dashboard/stats"))
 }
 
+func TestApplicationRateLimiterSharesDefaultTenantBucketWhenClaimMissing(t *testing.T) {
+	client := setupRateLimitRedis(t)
+	config := rateLimitTestConfig(client)
+	config.GeneralTenantPerMinute = 1
+
+	require.Equal(t, http.StatusOK, performRateLimitedRequest(t, config, uuid.New(), "", http.MethodGet, "/api/user/dashboard/stats"))
+	require.Equal(t, http.StatusTooManyRequests, performRateLimitedRequest(t, config, uuid.New(), "", http.MethodGet, "/api/user/dashboard/stats"))
+}
+
 func TestApplicationRateLimiterUsesInterfaceBuckets(t *testing.T) {
 	client := setupRateLimitRedis(t)
 	config := rateLimitTestConfig(client)
