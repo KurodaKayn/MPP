@@ -17,6 +17,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       - frontend
+      - redis
 
   frontend:
     build:
@@ -34,10 +35,18 @@ services:
       - traefik.enable=true
       - traefik.http.routers.frontend-web.entrypoints=web
       - traefik.http.routers.frontend-web.rule=PathPrefix(`/`)
+      - traefik.http.routers.frontend-web.middlewares=mpp-gateway-ratelimit@docker
       - traefik.http.routers.frontend-websecure.entrypoints=websecure
       - traefik.http.routers.frontend-websecure.rule=PathPrefix(`/`)
       - traefik.http.routers.frontend-websecure.tls=true
+      - traefik.http.routers.frontend-websecure.middlewares=mpp-gateway-ratelimit@docker
       - traefik.http.services.frontend.loadbalancer.server.port=3000
+      - traefik.http.middlewares.mpp-gateway-ratelimit.ratelimit.average=${TRAEFIK_RATE_LIMIT_AVERAGE:-100}
+      - traefik.http.middlewares.mpp-gateway-ratelimit.ratelimit.period=${TRAEFIK_RATE_LIMIT_PERIOD:-1s}
+      - traefik.http.middlewares.mpp-gateway-ratelimit.ratelimit.burst=${TRAEFIK_RATE_LIMIT_BURST:-200}
+      - traefik.http.middlewares.mpp-gateway-ratelimit.ratelimit.redis.endpoints=${TRAEFIK_RATE_LIMIT_REDIS_ENDPOINTS:-redis:6379}
+      - traefik.http.middlewares.mpp-gateway-ratelimit.ratelimit.redis.password=${REDIS_PASSWORD:-}
+      - traefik.http.middlewares.mpp-gateway-ratelimit.ratelimit.redis.db=${TRAEFIK_RATE_LIMIT_REDIS_DB:-0}
 
   backend:
     build:

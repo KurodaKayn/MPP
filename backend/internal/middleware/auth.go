@@ -13,8 +13,9 @@ const jwtTokenLookup = "header:Authorization:Bearer ,cookie:sevenoxcloud.auth_to
 
 // JWTCustomClaims are custom claims extending default ones.
 type JWTCustomClaims struct {
-	UserID uuid.UUID `json:"user_id"`
-	Role   string    `json:"role"`
+	UserID   uuid.UUID `json:"user_id"`
+	TenantID string    `json:"tenant_id,omitempty"`
+	Role     string    `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -31,20 +32,29 @@ func GetJWTConfig(signingKey []byte) echojwt.Config {
 
 // GetUserIDFromContext extracts the user UUID securely from the Echo context.
 func GetUserIDFromContext(c echo.Context) (uuid.UUID, error) {
+	claims, err := jwtClaimsFromContext(c)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	return claims.UserID, nil
+}
+
+func jwtClaimsFromContext(c echo.Context) (*JWTCustomClaims, error) {
 	user := c.Get("user")
 	if user == nil {
-		return uuid.Nil, errors.New("user context not found")
+		return nil, errors.New("user context not found")
 	}
 
 	token, ok := user.(*jwt.Token)
 	if !ok {
-		return uuid.Nil, errors.New("invalid jwt token format in context")
+		return nil, errors.New("invalid jwt token format in context")
 	}
 
 	claims, ok := token.Claims.(*JWTCustomClaims)
 	if !ok {
-		return uuid.Nil, errors.New("invalid jwt claims format")
+		return nil, errors.New("invalid jwt claims format")
 	}
 
-	return claims.UserID, nil
+	return claims, nil
 }

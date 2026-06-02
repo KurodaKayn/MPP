@@ -1,0 +1,25 @@
+general:
+  user_per_minute: 600
+  tenant_per_minute: 3000
+
+interface:
+  user_per_minute: 120
+  tenant_per_minute: 600
+
+ai:
+  user_per_minute: 20
+  tenant_per_minute: 100
+  user_per_day: 200
+  tenant_per_day: 1000
+
+publish:
+  user_per_minute: 5
+  tenant_per_minute: 30
+  user_per_day: 100
+  tenant_per_day: 500
+
+browser_session:
+  user_per_minute: 3
+  tenant_per_minute: 20
+  user_per_day: 30
+  tenant_per_day: 150

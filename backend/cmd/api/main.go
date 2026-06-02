@@ -106,6 +106,13 @@ func main() {
 	// User / Personal Center APIs (Protected by JWT)
 	userGroup := e.Group("/api/user/dashboard")
 	userGroup.Use(echojwt.WithConfig(middleware.GetJWTConfig(jwtSigningKey)))
+	rateLimitConfig, err := middleware.RateLimitConfigFromEnv(redisClient)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if rateLimitConfig.Enabled {
+		userGroup.Use(middleware.ApplicationRateLimiter(rateLimitConfig))
+	}
 
 	userGroup.GET("/stats", userDashboardHandler.GetMyStats)
 	userGroup.GET("/projects", userDashboardHandler.ListMyProjects)

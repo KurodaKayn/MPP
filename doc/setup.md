@@ -29,6 +29,8 @@ docker compose logs -f
 
 `frontend`、`backend`、`ai-service`、`browser-worker`、PostgreSQL 和 Redis 都作为 Compose 内网服务运行，不再默认暴露到宿主机。如果宿主机的 `80` 或 `443` 端口已被占用，可以在 `docker/.env` 中设置 `TRAEFIK_HTTP_PORT` 或 `TRAEFIK_HTTPS_PORT`，例如 `TRAEFIK_HTTP_PORT=8088`。当前 HTTPS 入口使用 Traefik 默认 TLS 行为，生产环境还需要继续配置真实证书或证书解析器。
 
+Traefik 入口默认启用 IP 级限流，参数来自 `TRAEFIK_RATE_LIMIT_AVERAGE`、`TRAEFIK_RATE_LIMIT_PERIOD` 和 `TRAEFIK_RATE_LIMIT_BURST`，并用 `TRAEFIK_RATE_LIMIT_REDIS_ENDPOINTS` 连接 Redis 保存分布式限流状态。backend 在 `/api/user/dashboard` 用户路由下默认启用 Redis 配额，覆盖通用用户/租户限额、单接口限额，以及 AI、发布任务、browser session 的分钟级和日级配额。应用侧配额只来自 backend 内置的 `rate_limits.yml` 矩阵；环境变量只保留 `APP_RATE_LIMIT_ENABLED` 和 `APP_RATE_LIMIT_KEY_PREFIX`。
+
 生产或网关部署时，请把 `FRONTEND_BASE_URL` 和 `X_OAUTH2_REDIRECT_URL` 调整为真实公开入口，例如：
 
 ```env
