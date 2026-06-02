@@ -137,8 +137,6 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.12.0
-    profiles:
-      - observability
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -149,15 +147,12 @@ services:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     depends_on:
-      - traefik
       - backend
       - ai-service
       - browser-worker
 
   loki:
     image: grafana/loki:3.7.0
-    profiles:
-      - observability
     command:
       - -config.file=/etc/loki/local-config.yaml
     ports:
@@ -168,8 +163,6 @@ services:
 
   alloy:
     image: grafana/alloy:v1.16.1
-    profiles:
-      - observability
     user: "0:0"
     command:
       - run
@@ -187,8 +180,6 @@ services:
 
   grafana:
     image: grafana/grafana:13.0.1-ubuntu
-    profiles:
-      - observability
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
