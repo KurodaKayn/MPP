@@ -5,6 +5,7 @@ import (
 	"log"
 
 	browsercontainer "github.com/kurodakayn/mpp-browser-worker/internal/container"
+	"github.com/kurodakayn/mpp-browser-worker/internal/observability"
 	"github.com/kurodakayn/mpp-browser-worker/internal/server"
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 	"github.com/labstack/echo/v4"
@@ -13,7 +14,9 @@ import (
 
 func main() {
 	e := echo.New()
-	e.Use(middleware.Logger())
+	observabilitySuite := observability.New("browser-worker")
+	observabilitySuite.RegisterRoutes(e)
+	e.Use(observabilitySuite.Middleware())
 	e.Use(middleware.Recover())
 
 	containers, err := browsercontainer.NewManager()

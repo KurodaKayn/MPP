@@ -12,6 +12,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/observability"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/redisclient"
 	"github.com/kurodakayn/mpp-backend/internal/services"
@@ -80,9 +81,11 @@ func main() {
 	browserSessionHandler := handlers.NewBrowserSessionHandler(browserSessionService)
 
 	e := echo.New()
+	observabilitySuite := observability.New("backend")
+	observabilitySuite.RegisterRoutes(e)
 
 	// Middleware
-	e.Use(echoMiddleware.Logger())
+	e.Use(observabilitySuite.Middleware())
 	e.Use(echoMiddleware.Recover())
 
 	// Public Routes
