@@ -7,10 +7,12 @@ services:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
       - --accesslog=true
       - --log.level=${TRAEFIK_LOG_LEVEL:-INFO}
     ports:
       - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_HTTPS_PORT:-443}:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
@@ -28,8 +30,11 @@ services:
       - ai-service
     labels:
       - traefik.enable=true
-      - traefik.http.routers.frontend.entrypoints=web
-      - traefik.http.routers.frontend.rule=PathPrefix(`/`)
+      - traefik.http.routers.frontend-web.entrypoints=web
+      - traefik.http.routers.frontend-web.rule=PathPrefix(`/`)
+      - traefik.http.routers.frontend-websecure.entrypoints=websecure
+      - traefik.http.routers.frontend-websecure.rule=PathPrefix(`/`)
+      - traefik.http.routers.frontend-websecure.tls=true
       - traefik.http.services.frontend.loadbalancer.server.port=3000
 
   backend:
