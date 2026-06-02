@@ -51,8 +51,9 @@ func TestGetUserIDFromContextReturnsClaimUserID(t *testing.T) {
 	c := e.NewContext(nil, nil)
 	expectedUserID := uuid.New()
 	c.Set("user", jwt.NewWithClaims(jwt.SigningMethodHS256, &JWTCustomClaims{
-		UserID: expectedUserID,
-		Role:   "user",
+		UserID:   expectedUserID,
+		TenantID: "tenant-acme",
+		Role:     "user",
 	}))
 
 	userID, err := GetUserIDFromContext(c)
