@@ -78,6 +78,24 @@ export async function trustOrigin(origin: string): Promise<TrustedOrigin> {
   return trustedOrigin;
 }
 
+export async function removeTrustedOrigin(
+  origin: string,
+): Promise<TrustedOrigin[]> {
+  const normalized = normalizeOrigin(origin);
+
+  if (!normalized) {
+    throw new Error("Origin is invalid.");
+  }
+
+  const trustedOrigins = await trustedOriginsItem.getValue();
+  const nextTrustedOrigins = trustedOrigins.filter(
+    (item) => item.origin !== normalized,
+  );
+
+  await trustedOriginsItem.setValue(nextTrustedOrigins);
+  return nextTrustedOrigins;
+}
+
 export function getTrustOriginPageUrl(origin: string): string {
   return browser.runtime.getURL(
     `/trust-origin.html?origin=${encodeURIComponent(origin)}`,

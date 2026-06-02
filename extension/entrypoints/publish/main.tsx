@@ -93,6 +93,11 @@ function PublishMonitor() {
     await load();
   };
 
+  const removeOrigin = async (origin: string) => {
+    await sendBackgroundMessage({ type: "origin.remove", origin });
+    await load();
+  };
+
   return (
     <main className="min-h-screen">
       <header className="border-b border-zinc-200 bg-white px-5 py-4">
@@ -164,10 +169,17 @@ function PublishMonitor() {
                   className="flex items-center justify-between gap-3 rounded-md bg-zinc-50 px-3 py-2 text-sm"
                 >
                   <span className="truncate">{origin.origin}</span>
-                  <CheckCircle2
-                    className="shrink-0 text-emerald-600"
-                    size={16}
-                  />
+                  <div className="flex shrink-0 items-center gap-2">
+                    <CheckCircle2 className="text-emerald-600" size={16} />
+                    <Button
+                      variant="outline"
+                      className="h-8 w-8 px-0 text-zinc-500 hover:text-red-700"
+                      onClick={() => removeOrigin(origin.origin)}
+                      aria-label={`Remove trusted origin ${origin.origin}`}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
                 </div>
               ))
             ) : (
