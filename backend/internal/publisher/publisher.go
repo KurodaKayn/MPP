@@ -1,55 +1,59 @@
 package publisher
 
 import (
-	"context"
-	"time"
-
-	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/browser"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
+	douyinpub "github.com/kurodakayn/mpp-backend/internal/publisher/platforms/douyin"
+	wechatpub "github.com/kurodakayn/mpp-backend/internal/publisher/platforms/wechat"
+	xpub "github.com/kurodakayn/mpp-backend/internal/publisher/platforms/x"
+	zhihupub "github.com/kurodakayn/mpp-backend/internal/publisher/platforms/zhihu"
 )
 
-// PlatformPublisher defines the interface for all platform-specific publishing logic
-type PlatformPublisher interface {
-	ValidateConfig(config []byte) error
-	AdaptContent(project *models.Project) ([]byte, error)
-	Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error)
-}
+type PlatformPublisher = core.PlatformPublisher
+type AdaptedContent = core.AdaptedContent
+type GeneratedBy = core.GeneratedBy
+type AdaptedAsset = core.AdaptedAsset
 
-type AdaptedContent struct {
-	SchemaVersion  int            `json:"schema_version"`
-	Format         string         `json:"format"`
-	Summary        string         `json:"summary"`
-	SourceRevision string         `json:"source_revision"`
-	GeneratedBy    GeneratedBy    `json:"generated_by"`
-	HTML           string         `json:"html,omitempty"`
-	Markdown       string         `json:"markdown,omitempty"`
-	Text           string         `json:"text,omitempty"`
-	Assets         []AdaptedAsset `json:"assets,omitempty"`
-}
+type BrowserAction = browser.BrowserAction
+type BrowserWorkerClient = browser.BrowserWorkerClient
+type CaptureWorkerSessionResponse = browser.CaptureWorkerSessionResponse
+type Cookie = browser.Cookie
+type CookieRequirement = browser.CookieRequirement
+type CookieStore = browser.CookieStore
+type DomainRule = browser.DomainRule
+type EncryptedEnvelope = browser.EncryptedEnvelope
+type GetWorkerSessionResponse = browser.GetWorkerSessionResponse
+type HttpBrowserWorkerClient = browser.HttpBrowserWorkerClient
+type MockBrowserWorkerClient = browser.MockBrowserWorkerClient
+type RemoteAccountProfile = browser.RemoteAccountProfile
+type RemoteBrowserPlatformAdapter = browser.RemoteBrowserPlatformAdapter
+type RemoteLoginState = browser.RemoteLoginState
+type StartWorkerSessionRequest = browser.StartWorkerSessionRequest
+type StartWorkerSessionResponse = browser.StartWorkerSessionResponse
 
-type GeneratedBy struct {
-	Type         string `json:"type"`
-	ID           string `json:"id"`
-	Version      string `json:"version,omitempty"`
-	AgentRunID   string `json:"agent_run_id,omitempty"`
-	Instructions string `json:"instructions,omitempty"`
-}
+type DouyinAdapter = douyinpub.DouyinAdapter
+type DouyinPublisher = douyinpub.DouyinPublisher
+type WechatConfig = wechatpub.WechatConfig
+type WechatPublisher = wechatpub.WechatPublisher
+type XConfig = xpub.XConfig
+type XPublisher = xpub.XPublisher
+type ZhihuAdapter = zhihupub.ZhihuAdapter
+type ZhihuPublisher = zhihupub.ZhihuPublisher
 
-type AdaptedAsset struct {
-	Type      string `json:"type"`
-	SourceURL string `json:"source_url"`
-	Alt       string `json:"alt,omitempty"`
-}
+var ErrCookieEncryptionKeyMissing = browser.ErrCookieEncryptionKeyMissing
+var ErrCookieEncryptionKeyInvalid = browser.ErrCookieEncryptionKeyInvalid
+var ErrCookieValidationFailed = browser.ErrCookieValidationFailed
+var ErrCookieNotFound = browser.ErrCookieNotFound
 
-func systemAdaptedContent(project *models.Project, format, adapterID, summary string) AdaptedContent {
-	return AdaptedContent{
-		SchemaVersion:  1,
-		Format:         format,
-		Summary:        summary,
-		SourceRevision: project.UpdatedAt.UTC().Format(time.RFC3339Nano),
-		GeneratedBy: GeneratedBy{
-			Type:    "system",
-			ID:      adapterID,
-			Version: "1",
-		},
-	}
-}
+var BuildXPostIntentURL = xpub.BuildXPostIntentURL
+var ContextKeyRemoteURL = browser.ContextKeyRemoteURL
+var NewCookieStore = browser.NewCookieStore
+var NewHttpBrowserWorkerClient = browser.NewHttpBrowserWorkerClient
+var NewMockBrowserWorkerClient = browser.NewMockBrowserWorkerClient
+var NormalizePlatformCookies = browser.NormalizePlatformCookies
+var PasteContent = browser.PasteContent
+var PasteFile = browser.PasteFile
+var SetupBrowser = browser.SetupBrowser
+var ValidateDouyinCookies = douyinpub.ValidateDouyinCookies
+var ValidateZhihuCookies = zhihupub.ValidateZhihuCookies
+var WaitForElement = browser.WaitForElement
