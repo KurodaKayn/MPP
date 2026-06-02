@@ -1,4 +1,7 @@
-import { ADAPTER_SCRIPT_FILES } from "../platforms/capabilities";
+import {
+  ADAPTER_SCRIPT_FILES,
+  isCapabilityInjectUrl,
+} from "../platforms/capabilities";
 import type { ExtensionExecutionEventInput } from "../types/events";
 import type {
   ExtensionPublishHandoff,
@@ -53,6 +56,17 @@ export async function recordAndCallbackEvent(
   }
 }
 
+async function assertInjectableTabUrl(
+  tabId: number,
+  platform: ExtensionPublishPlatformHandoff,
+): Promise<void> {
+  const tab = await browser.tabs.get(tabId);
+
+  if (!tab.url || !isCapabilityInjectUrl(platform.adapter_key, tab.url)) {
+    throw new Error("Platform tab did not load the expected publishing page.");
+  }
+}
+
 async function injectPlatformAdapter(
   executionId: string,
   projectTitle: string,
@@ -100,6 +114,7 @@ async function openAndInjectPlatform(
   }
 
   await waitForTabComplete(tab.id);
+  await assertInjectableTabUrl(tab.id, platform);
 
   await recordAndCallbackEvent(platform, {
     platform: platform.platform,
