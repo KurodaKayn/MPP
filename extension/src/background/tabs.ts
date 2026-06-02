@@ -8,7 +8,8 @@ import type {
   ExtensionPublishPlatformHandoff,
 } from "../types/handoff";
 import type { AdapterRunMessage } from "../types/messages";
-import { appendExecutionEvent } from "./handoff";
+import { createExecutionEvent } from "../types/events";
+import { appendStoredExecutionEvent } from "./handoff";
 import { sanitizeError, sendEventCallback } from "./callback";
 
 const TAB_LOAD_TIMEOUT_MS = 45_000;
@@ -47,13 +48,26 @@ export async function recordAndCallbackEvent(
   platform: ExtensionPublishPlatformHandoff,
   input: ExtensionExecutionEventInput,
 ): Promise<void> {
-  const event = await appendExecutionEvent(input);
+  const event = createExecutionEvent(input);
 
   try {
     await sendEventCallback(platform, event);
   } catch (error) {
-    console.warn("MPP extension callback failed.", sanitizeError(error));
+    const callbackError = sanitizeError(error);
+
+    console.warn("MPP extension callback failed.", callbackError);
+    await appendStoredExecutionEvent({
+      ...event,
+      metadata: {
+        ...event.metadata,
+        callback_failed: true,
+        callback_error: callbackError,
+      },
+    });
+    return;
   }
+
+  await appendStoredExecutionEvent(event);
 }
 
 async function assertInjectableTabUrl(

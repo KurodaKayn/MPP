@@ -360,6 +360,13 @@ export async function appendExecutionEvent(
   input: ExtensionExecutionEventInput,
 ): Promise<ExtensionExecutionEvent> {
   const event = createExecutionEvent(input);
+
+  return appendStoredExecutionEvent(event);
+}
+
+export async function appendStoredExecutionEvent(
+  event: ExtensionExecutionEvent,
+): Promise<ExtensionExecutionEvent> {
   const events = await executionEventsItem.getValue();
   await executionEventsItem.setValue([...events, event]);
   return event;

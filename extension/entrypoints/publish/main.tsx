@@ -53,6 +53,23 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function getCallbackFailureMessage(
+  event: ExtensionExecutionEvent,
+): string | null {
+  if (!event.metadata.callback_failed) {
+    return null;
+  }
+
+  const callbackError =
+    typeof event.metadata.callback_error === "string"
+      ? event.metadata.callback_error
+      : "";
+
+  return callbackError
+    ? `Callback failed: ${callbackError}`
+    : "Callback failed.";
+}
+
 function useMonitorState() {
   const [state, setState] = React.useState<MonitorState | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -240,6 +257,11 @@ function PublishMonitor() {
                     key={event.event_id}
                     className="rounded-md bg-zinc-50 p-3"
                   >
+                    {getCallbackFailureMessage(event) ? (
+                      <p className="mb-2 text-xs text-amber-700">
+                        {getCallbackFailureMessage(event)}
+                      </p>
+                    ) : null}
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-zinc-950">
