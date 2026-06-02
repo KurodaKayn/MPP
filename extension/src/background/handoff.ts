@@ -87,6 +87,16 @@ function validateUrl(value: string): boolean {
   }
 }
 
+function isExpiredTimestamp(value: string): boolean {
+  const expiresAtTime = Date.parse(value);
+
+  return Number.isFinite(expiresAtTime) && expiresAtTime <= Date.now();
+}
+
+export function isHandoffExpired(handoff: ExtensionPublishHandoff): boolean {
+  return isExpiredTimestamp(handoff.expires_at);
+}
+
 function validateAdaptedContent(
   value: unknown,
   adapterKey: ExtensionPublishPlatformHandoff["adapter_key"],
@@ -283,7 +293,7 @@ export function validateHandoff(input: unknown): HandoffValidationResult {
     return reject("invalid_handoff", "Handoff expiration is invalid.");
   }
 
-  if (expiresAtTime <= Date.now()) {
+  if (isExpiredTimestamp(expiresAt)) {
     return reject("expired", "Handoff has expired.");
   }
 
