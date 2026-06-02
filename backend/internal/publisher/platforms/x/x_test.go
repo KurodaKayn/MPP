@@ -1,4 +1,4 @@
-package publisher
+package x
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 	"gorm.io/datatypes"
 )
 
@@ -80,7 +81,7 @@ func TestXPublisherAdaptContentUsesUnifiedSchema(t *testing.T) {
 		t.Fatalf("expected x content to adapt, got %v", err)
 	}
 
-	var adapted AdaptedContent
+	var adapted core.AdaptedContent
 	if err := json.Unmarshal(content, &adapted); err != nil {
 		t.Fatalf("expected adapted content json, got %v", err)
 	}

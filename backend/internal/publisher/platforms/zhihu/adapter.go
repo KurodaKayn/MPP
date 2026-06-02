@@ -1,4 +1,4 @@
-package publisher
+package zhihu
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	pubbrowser "github.com/kurodakayn/mpp-backend/internal/publisher/browser"
 )
 
 type ZhihuAdapter struct{}
@@ -18,8 +19,8 @@ func (a *ZhihuAdapter) LoginURL() string {
 	return "https://www.zhihu.com/signin"
 }
 
-func (a *ZhihuAdapter) AllowedDomains() []DomainRule {
-	return []DomainRule{
+func (a *ZhihuAdapter) AllowedDomains() []pubbrowser.DomainRule {
+	return []pubbrowser.DomainRule{
 		{Host: "zhihu.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "first-party web and auth"},
 		{Host: "zhimg.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "images and static assets"},
 		{Host: "zhihuusercontent.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "user content and avatars"},
@@ -29,23 +30,23 @@ func (a *ZhihuAdapter) AllowedDomains() []DomainRule {
 	}
 }
 
-func (a *ZhihuAdapter) RequiredCookies() []CookieRequirement {
-	return []CookieRequirement{
+func (a *ZhihuAdapter) RequiredCookies() []pubbrowser.CookieRequirement {
+	return []pubbrowser.CookieRequirement{
 		{Name: "z_c0", DomainSuffixes: []string{".zhihu.com"}, Required: true, Preserve: true},
 		{Name: "q_c1", DomainSuffixes: []string{".zhihu.com"}, Required: false, Preserve: true},
 		{Name: "d_c0", DomainSuffixes: []string{".zhihu.com"}, Required: false, Preserve: true},
 	}
 }
 
-func (a *ZhihuAdapter) DetectLogin(ctx context.Context) (RemoteLoginState, error) {
+func (a *ZhihuAdapter) DetectLogin(ctx context.Context) (pubbrowser.RemoteLoginState, error) {
 	var currentURL string
 	if err := chromedp.Run(ctx, chromedp.Location(&currentURL)); err != nil {
-		return RemoteLoginState{}, err
+		return pubbrowser.RemoteLoginState{}, err
 	}
 
 	// 1. Check if we have been redirected away from the signin page, which usually happens after successful login
 	if strings.Contains(currentURL, "/signin") {
-		return RemoteLoginState{LoggedIn: false, CurrentURL: currentURL, Message: "Waiting for user to sign in"}, nil
+		return pubbrowser.RemoteLoginState{LoggedIn: false, CurrentURL: currentURL, Message: "Waiting for user to sign in"}, nil
 	}
 
 	// 2. Get all cookies from the browser
@@ -55,13 +56,13 @@ func (a *ZhihuAdapter) DetectLogin(ctx context.Context) (RemoteLoginState, error
 		chromeCookies, err = network.GetCookies().Do(ctx)
 		return err
 	})); err != nil {
-		return RemoteLoginState{}, err
+		return pubbrowser.RemoteLoginState{}, err
 	}
 
 	// 3. Map to our internal Cookie type and validate
-	var cookies []Cookie
+	var cookies []pubbrowser.Cookie
 	for _, cc := range chromeCookies {
-		cookies = append(cookies, Cookie{
+		cookies = append(cookies, pubbrowser.Cookie{
 			Name:   cc.Name,
 			Value:  cc.Value,
 			Domain: cc.Domain,
@@ -71,7 +72,7 @@ func (a *ZhihuAdapter) DetectLogin(ctx context.Context) (RemoteLoginState, error
 
 	ok, missing := ValidateZhihuCookies(cookies)
 	if !ok {
-		return RemoteLoginState{
+		return pubbrowser.RemoteLoginState{
 			LoggedIn:       false,
 			CurrentURL:     currentURL,
 			MissingCookies: missing,
@@ -79,7 +80,7 @@ func (a *ZhihuAdapter) DetectLogin(ctx context.Context) (RemoteLoginState, error
 		}, nil
 	}
 
-	return RemoteLoginState{
+	return pubbrowser.RemoteLoginState{
 		LoggedIn:   true,
 		Status:     "login_detected",
 		CurrentURL: currentURL,
@@ -88,7 +89,7 @@ func (a *ZhihuAdapter) DetectLogin(ctx context.Context) (RemoteLoginState, error
 }
 
 // ExtractAccount attempts to get profile info from the page
-func (a *ZhihuAdapter) ExtractAccount(ctx context.Context) (RemoteAccountProfile, error) {
+func (a *ZhihuAdapter) ExtractAccount(ctx context.Context) (pubbrowser.RemoteAccountProfile, error) {
 	var username string
 	// Try to extract username from the Zhihu header or profile menu
 	script := `(function() {
@@ -100,19 +101,19 @@ func (a *ZhihuAdapter) ExtractAccount(ctx context.Context) (RemoteAccountProfile
 
 	err := chromedp.Run(ctx, chromedp.Evaluate(script, &username))
 	if err != nil {
-		return RemoteAccountProfile{}, err
+		return pubbrowser.RemoteAccountProfile{}, err
 	}
 
 	if username == "" {
 		username = "Connected Zhihu Account"
 	}
 
-	return RemoteAccountProfile{
+	return pubbrowser.RemoteAccountProfile{
 		Username: username,
 	}, nil
 }
 
-func ValidateZhihuCookies(cookies []Cookie) (bool, []string) {
+func ValidateZhihuCookies(cookies []pubbrowser.Cookie) (bool, []string) {
 	required := map[string]bool{
 		"z_c0": false, // This is the main authentication cookie for Zhihu
 	}

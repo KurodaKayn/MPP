@@ -1,4 +1,4 @@
-package publisher
+package douyin
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/datatypes"
 )
@@ -38,7 +39,7 @@ func TestDouyinPublisher_AdaptContent(t *testing.T) {
 	content, err := p.AdaptContent(project)
 
 	assert.NoError(t, err)
-	var adapted AdaptedContent
+	var adapted core.AdaptedContent
 	assert.NoError(t, json.Unmarshal(content, &adapted))
 	assert.Equal(t, 1, adapted.SchemaVersion)
 	assert.Equal(t, "text", adapted.Format)

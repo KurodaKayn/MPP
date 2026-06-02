@@ -1,4 +1,4 @@
-package publisher
+package douyin
 
 import (
 	"context"
@@ -12,6 +12,9 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/media"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/browser"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/content"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 )
 
 type DouyinPublisher struct{}
@@ -22,13 +25,13 @@ func (d *DouyinPublisher) ValidateConfig(config []byte) error {
 }
 
 func (d *DouyinPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	text := htmlToText(project.SourceContent)
+	text := content.HTMLToText(project.SourceContent)
 	if text == "" {
 		text = strings.TrimSpace(project.SourceContent)
 	}
-	content := systemAdaptedContent(project, "text", "douyin-text-adapter", text)
-	content.Text = text
-	return json.Marshal(content)
+	adapted := core.SystemAdaptedContent(project, "text", "douyin-text-adapter", text)
+	adapted.Text = text
+	return json.Marshal(adapted)
 }
 
 func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
@@ -36,7 +39,7 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 		return "", "", fmt.Errorf("douyin headless publishing requires an account with cookies")
 	}
 
-	title := extractPublicationTitle(pub.Config)
+	title := content.ExtractPublicationTitle(pub.Config)
 	if title == "" {
 		title = "抖音图文"
 	}
@@ -51,7 +54,7 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	defer cleanupImage()
 
 	// Setup browser with account cookies
-	browserCtx, cancel := SetupBrowser(ctx, "", account.Cookies)
+	browserCtx, cancel := browser.SetupBrowser(ctx, "", account.Cookies)
 	defer cancel()
 
 	publishCtx, cancelPublish := context.WithTimeout(browserCtx, 180*time.Second)
@@ -127,7 +130,7 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 			`
 			return chromedp.Evaluate(script, nil).Do(ctx)
 		}),
-		PasteContent(`div[contenteditable="true"]`, content, false),
+		browser.PasteContent(`div[contenteditable="true"]`, content, false),
 		chromedp.Sleep(3*time.Second),
 
 		// 6. 暂存离开
@@ -161,7 +164,7 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 }
 
 func extractDouyinText(raw []byte) string {
-	var structured AdaptedContent
+	var structured core.AdaptedContent
 	if err := json.Unmarshal(raw, &structured); err == nil {
 		if text := strings.TrimSpace(structured.Text); text != "" {
 			return text

@@ -1,11 +1,9 @@
-package publisher
+package x
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	stdhtml "html"
 	"net/url"
 	"regexp"
 	"strings"
@@ -14,7 +12,8 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
-	nethtml "golang.org/x/net/html"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/content"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 )
 
 const xCharacterLimit = 280
@@ -57,12 +56,12 @@ type XConfig struct {
 }
 
 type xAdaptedContent struct {
-	SchemaVersion  int         `json:"schema_version"`
-	Format         string      `json:"format"`
-	Summary        string      `json:"summary"`
-	SourceRevision string      `json:"source_revision"`
-	GeneratedBy    GeneratedBy `json:"generated_by"`
-	Text           string      `json:"text"`
+	SchemaVersion  int              `json:"schema_version"`
+	Format         string           `json:"format"`
+	Summary        string           `json:"summary"`
+	SourceRevision string           `json:"source_revision"`
+	GeneratedBy    core.GeneratedBy `json:"generated_by"`
+	Text           string           `json:"text"`
 }
 
 func (x *XPublisher) ValidateConfig(config []byte) error {
@@ -74,10 +73,10 @@ func (x *XPublisher) ValidateConfig(config []byte) error {
 }
 
 func (x *XPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	text := buildXPostText(project.Title, htmlToText(project.SourceContent), xCharacterLimit)
-	content := systemAdaptedContent(project, "text", "x-text-adapter", text)
-	content.Text = text
-	return json.Marshal(content)
+	text := buildXPostText(project.Title, content.HTMLToText(project.SourceContent), xCharacterLimit)
+	adapted := core.SystemAdaptedContent(project, "text", "x-text-adapter", text)
+	adapted.Text = text
+	return json.Marshal(adapted)
 }
 
 func BuildXPostIntentURL(raw []byte) (string, error) {
@@ -302,57 +301,6 @@ func xRuneWeight(r rune) int {
 		return 1
 	}
 	return 2
-}
-
-func htmlToText(source string) string {
-	doc, err := nethtml.Parse(strings.NewReader(source))
-	if err != nil {
-		return strings.TrimSpace(stdhtml.UnescapeString(source))
-	}
-
-	var buffer bytes.Buffer
-	var walk func(*nethtml.Node)
-	walk = func(n *nethtml.Node) {
-		if n.Type == nethtml.TextNode {
-			text := strings.TrimSpace(n.Data)
-			if text != "" {
-				if buffer.Len() > 0 {
-					buffer.WriteByte(' ')
-				}
-				buffer.WriteString(text)
-			}
-		}
-		if n.Type == nethtml.ElementNode && n.Data == "br" {
-			buffer.WriteByte('\n')
-		}
-		for child := n.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-		if n.Type == nethtml.ElementNode && isBlockElement(n.Data) && buffer.Len() > 0 {
-			buffer.WriteByte('\n')
-		}
-	}
-	walk(doc)
-
-	lines := strings.FieldsFunc(stdhtml.UnescapeString(buffer.String()), func(r rune) bool {
-		return r == '\n' || r == '\r'
-	})
-	cleaned := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if line = strings.Join(strings.Fields(line), " "); line != "" {
-			cleaned = append(cleaned, line)
-		}
-	}
-	return strings.Join(cleaned, "\n")
-}
-
-func isBlockElement(tag string) bool {
-	switch tag {
-	case "article", "blockquote", "div", "figcaption", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "li", "p", "section":
-		return true
-	default:
-		return false
-	}
 }
 
 func xStatusURL(username, tweetID string) string {

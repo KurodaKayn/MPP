@@ -1,14 +1,16 @@
-package publisher
+package content
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	stdhtml "html"
 	"strings"
 
 	nethtml "golang.org/x/net/html"
 )
 
-func htmlToMarkdown(source string) (string, error) {
+func HTMLToMarkdown(source string) (string, error) {
 	nodes, err := nethtml.ParseFragment(strings.NewReader(source), nil)
 	if err != nil {
 		return "", err
@@ -19,6 +21,67 @@ func htmlToMarkdown(source string) (string, error) {
 		renderer.render(node)
 	}
 	return strings.TrimSpace(renderer.buf.String()), nil
+}
+
+func HTMLToText(source string) string {
+	doc, err := nethtml.Parse(strings.NewReader(source))
+	if err != nil {
+		return strings.TrimSpace(stdhtml.UnescapeString(source))
+	}
+
+	var buffer bytes.Buffer
+	var walk func(*nethtml.Node)
+	walk = func(n *nethtml.Node) {
+		if n.Type == nethtml.TextNode {
+			text := strings.TrimSpace(n.Data)
+			if text != "" {
+				if buffer.Len() > 0 {
+					buffer.WriteByte(' ')
+				}
+				buffer.WriteString(text)
+			}
+		}
+		if n.Type == nethtml.ElementNode && n.Data == "br" {
+			buffer.WriteByte('\n')
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+		if n.Type == nethtml.ElementNode && isBlockElement(n.Data) && buffer.Len() > 0 {
+			buffer.WriteByte('\n')
+		}
+	}
+	walk(doc)
+
+	lines := strings.FieldsFunc(stdhtml.UnescapeString(buffer.String()), func(r rune) bool {
+		return r == '\n' || r == '\r'
+	})
+	cleaned := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if line = strings.Join(strings.Fields(line), " "); line != "" {
+			cleaned = append(cleaned, line)
+		}
+	}
+	return strings.Join(cleaned, "\n")
+}
+
+func ExtractPublicationTitle(raw []byte) string {
+	var config struct {
+		Title string `json:"title"`
+	}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(config.Title)
+}
+
+func isBlockElement(tag string) bool {
+	switch tag {
+	case "article", "blockquote", "div", "figcaption", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "li", "p", "section":
+		return true
+	default:
+		return false
+	}
 }
 
 type markdownRenderer struct {

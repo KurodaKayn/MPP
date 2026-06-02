@@ -1,4 +1,4 @@
-package publisher
+package zhihu
 
 import (
 	"context"
@@ -9,6 +9,9 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/browser"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/content"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 )
 
 type ZhihuPublisher struct{}
@@ -18,18 +21,18 @@ func (z *ZhihuPublisher) ValidateConfig(config []byte) error {
 }
 
 func (z *ZhihuPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	markdown, err := htmlToMarkdown(project.SourceContent)
+	markdown, err := content.HTMLToMarkdown(project.SourceContent)
 	if err != nil {
 		return nil, err
 	}
-	content := systemAdaptedContent(
+	adapted := core.SystemAdaptedContent(
 		project,
 		"markdown",
 		"zhihu-markdown-adapter",
-		htmlToText(project.SourceContent),
+		content.HTMLToText(project.SourceContent),
 	)
-	content.Markdown = markdown
-	return json.Marshal(content)
+	adapted.Markdown = markdown
+	return json.Marshal(adapted)
 }
 
 func (z *ZhihuPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
@@ -37,14 +40,14 @@ func (z *ZhihuPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfor
 		return "", "", fmt.Errorf("account information is required for headless publishing")
 	}
 
-	title := extractPublicationTitle(pub.Config)
+	title := content.ExtractPublicationTitle(pub.Config)
 	content := extractZhihuMarkdown(pub.AdaptedContent)
 	if content == "" {
 		return "", "", fmt.Errorf("zhihu markdown content is empty")
 	}
 
 	// Setup browser with account cookies
-	browserCtx, cancel := SetupBrowser(ctx, "", account.Cookies)
+	browserCtx, cancel := browser.SetupBrowser(ctx, "", account.Cookies)
 	defer cancel()
 
 	publishCtx, cancelPublish := context.WithTimeout(browserCtx, 150*time.Second)
@@ -65,12 +68,12 @@ func (z *ZhihuPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfor
 		}),
 
 		// 1. 填标题
-		WaitForElement(`textarea[placeholder*="标题"]`, 30*time.Second),
+		browser.WaitForElement(`textarea[placeholder*="标题"]`, 30*time.Second),
 		chromedp.SendKeys(`textarea[placeholder*="标题"]`, title),
 
 		// 2. 聚焦并填充文本
 		chromedp.Click(`div[data-contents="true"]`, chromedp.ByQuery),
-		PasteContent(`div[data-contents="true"]`, content, false),
+		browser.PasteContent(`div[data-contents="true"]`, content, false),
 		chromedp.Sleep(2*time.Second),
 		chromedp.Click(`//button[contains(text(), "发布")]`, chromedp.BySearch),
 
@@ -108,14 +111,4 @@ func extractZhihuMarkdown(raw []byte) string {
 	}
 
 	return strings.TrimSpace(string(raw))
-}
-
-func extractPublicationTitle(raw []byte) string {
-	var config struct {
-		Title string `json:"title"`
-	}
-	if err := json.Unmarshal(raw, &config); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(config.Title)
 }

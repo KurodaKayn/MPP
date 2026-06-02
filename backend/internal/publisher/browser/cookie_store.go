@@ -1,4 +1,4 @@
-package publisher
+package browser
 
 import (
 	"context"
@@ -222,9 +222,17 @@ func NormalizePlatformCookies(platform string, cookies []Cookie) ([]Cookie, erro
 func cookieRequirementsForPlatform(platform string) []CookieRequirement {
 	switch platform {
 	case "douyin":
-		return (&DouyinAdapter{}).RequiredCookies()
+		return []CookieRequirement{
+			{Name: "sessionid", DomainSuffixes: []string{".douyin.com"}, Required: true, Preserve: true},
+			{Name: "sid_guard", DomainSuffixes: []string{".douyin.com"}, Required: true, Preserve: true},
+			{Name: "passport_csrf_token", DomainSuffixes: []string{".douyin.com"}, Required: true, Preserve: true},
+		}
 	case "zhihu":
-		return (&ZhihuAdapter{}).RequiredCookies()
+		return []CookieRequirement{
+			{Name: "z_c0", DomainSuffixes: []string{".zhihu.com"}, Required: true, Preserve: true},
+			{Name: "q_c1", DomainSuffixes: []string{".zhihu.com"}, Required: false, Preserve: true},
+			{Name: "d_c0", DomainSuffixes: []string{".zhihu.com"}, Required: false, Preserve: true},
+		}
 	default:
 		return nil
 	}

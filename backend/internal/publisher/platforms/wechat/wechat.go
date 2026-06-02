@@ -1,4 +1,4 @@
-package publisher
+package wechat
 
 import (
 	"context"
@@ -6,9 +6,11 @@ import (
 	"fmt"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/pkg/html"
+	htmlutil "github.com/kurodakayn/mpp-backend/internal/pkg/html"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/media"
-	"github.com/kurodakayn/mpp-backend/internal/pkg/wechat"
+	pkgwechat "github.com/kurodakayn/mpp-backend/internal/pkg/wechat"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/content"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 )
 
 type WechatPublisher struct{}
@@ -34,14 +36,14 @@ func (w *WechatPublisher) ValidateConfig(config []byte) error {
 }
 
 func (w *WechatPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	content := systemAdaptedContent(
+	adapted := core.SystemAdaptedContent(
 		project,
 		"html",
 		"wechat-html-adapter",
-		htmlToText(project.SourceContent),
+		content.HTMLToText(project.SourceContent),
 	)
-	content.HTML = project.SourceContent
-	return json.Marshal(content)
+	adapted.HTML = project.SourceContent
+	return json.Marshal(adapted)
 }
 
 func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
@@ -50,11 +52,11 @@ func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 		return "", "", fmt.Errorf("failed to parse wechat config: %w", err)
 	}
 
-	client := wechat.NewClient(cfg.AppID, cfg.AppSecret)
+	client := pkgwechat.NewClient(cfg.AppID, cfg.AppSecret)
 	sourceHTML := extractWechatHTML(pub.AdaptedContent)
 
 	// 1. Process HTML images (Download -> Compress -> Upload to WeChat -> Replace URL)
-	processedHTML, err := html.ProcessHTMLImages(
+	processedHTML, err := htmlutil.ProcessHTMLImages(
 		sourceHTML,
 		media.DownloadAndProcess,
 		func(imgData []byte) (string, error) {
@@ -83,7 +85,7 @@ func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	}
 
 	// 3. Create Draft
-	articles := []wechat.Article{
+	articles := []pkgwechat.Article{
 		{
 			Title:              cfg.Title,
 			ThumbMediaID:       thumbMediaID,

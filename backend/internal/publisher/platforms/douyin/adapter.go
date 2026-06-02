@@ -1,4 +1,4 @@
-package publisher
+package douyin
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+	pubbrowser "github.com/kurodakayn/mpp-backend/internal/publisher/browser"
 )
 
 type DouyinAdapter struct{}
@@ -18,8 +19,8 @@ func (a *DouyinAdapter) LoginURL() string {
 	return "https://creator.douyin.com/creator-micro/home"
 }
 
-func (a *DouyinAdapter) AllowedDomains() []DomainRule {
-	return []DomainRule{
+func (a *DouyinAdapter) AllowedDomains() []pubbrowser.DomainRule {
+	return []pubbrowser.DomainRule{
 		{Host: "douyin.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "first-party web and auth"},
 		{Host: "douyinpic.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "images and avatars"},
 		{Host: "douyinstatic.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "static assets"},
@@ -28,7 +29,7 @@ func (a *DouyinAdapter) AllowedDomains() []DomainRule {
 		{Host: "bytegoofy.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "frontend bundles"},
 		{Host: "snssdk.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "captcha and verification"},
 		{Host: "bytedance.net", Match: "suffix", Schemes: []string{"https"}, Purpose: "verification and static dependencies"},
-		
+
 		// Newly discovered domains required for React/UI rendering and security checks
 		{Host: "bytetos.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "security glue scripts"},
 		{Host: "byted-static.com", Match: "suffix", Schemes: []string{"https"}, Purpose: "react and systemjs bundles"},
@@ -43,8 +44,8 @@ func (a *DouyinAdapter) AllowedDomains() []DomainRule {
 	}
 }
 
-func (a *DouyinAdapter) RequiredCookies() []CookieRequirement {
-	return []CookieRequirement{
+func (a *DouyinAdapter) RequiredCookies() []pubbrowser.CookieRequirement {
+	return []pubbrowser.CookieRequirement{
 		{Name: "sessionid", DomainSuffixes: []string{".douyin.com"}, Required: true, Preserve: true},
 		{Name: "sid_guard", DomainSuffixes: []string{".douyin.com"}, Required: true, Preserve: true},
 		{Name: "passport_csrf_token", DomainSuffixes: []string{".douyin.com"}, Required: true, Preserve: true},
@@ -52,15 +53,15 @@ func (a *DouyinAdapter) RequiredCookies() []CookieRequirement {
 }
 
 // DetectLogin checks if the user has successfully logged in by verifying cookies and URL
-func (a *DouyinAdapter) DetectLogin(ctx context.Context) (RemoteLoginState, error) {
+func (a *DouyinAdapter) DetectLogin(ctx context.Context) (pubbrowser.RemoteLoginState, error) {
 	var currentURL string
 	if err := chromedp.Run(ctx, chromedp.Location(&currentURL)); err != nil {
-		return RemoteLoginState{}, err
+		return pubbrowser.RemoteLoginState{}, err
 	}
 
 	// 1. Check if we are on the creator domain
 	if !strings.Contains(currentURL, "douyin.com") {
-		return RemoteLoginState{LoggedIn: false, CurrentURL: currentURL, Message: "Waiting for platform navigation"}, nil
+		return pubbrowser.RemoteLoginState{LoggedIn: false, CurrentURL: currentURL, Message: "Waiting for platform navigation"}, nil
 	}
 
 	// 2. Get all cookies from the browser
@@ -70,13 +71,13 @@ func (a *DouyinAdapter) DetectLogin(ctx context.Context) (RemoteLoginState, erro
 		chromeCookies, err = network.GetCookies().Do(ctx)
 		return err
 	})); err != nil {
-		return RemoteLoginState{}, err
+		return pubbrowser.RemoteLoginState{}, err
 	}
 
 	// 3. Map to our internal Cookie type and validate
-	var cookies []Cookie
+	var cookies []pubbrowser.Cookie
 	for _, cc := range chromeCookies {
-		cookies = append(cookies, Cookie{
+		cookies = append(cookies, pubbrowser.Cookie{
 			Name:   cc.Name,
 			Value:  cc.Value,
 			Domain: cc.Domain,
@@ -86,7 +87,7 @@ func (a *DouyinAdapter) DetectLogin(ctx context.Context) (RemoteLoginState, erro
 
 	ok, missing := ValidateDouyinCookies(cookies)
 	if !ok {
-		return RemoteLoginState{
+		return pubbrowser.RemoteLoginState{
 			LoggedIn:       false,
 			CurrentURL:     currentURL,
 			MissingCookies: missing,
@@ -94,7 +95,7 @@ func (a *DouyinAdapter) DetectLogin(ctx context.Context) (RemoteLoginState, erro
 		}, nil
 	}
 
-	return RemoteLoginState{
+	return pubbrowser.RemoteLoginState{
 		LoggedIn:   true,
 		Status:     "login_detected",
 		CurrentURL: currentURL,
@@ -103,7 +104,7 @@ func (a *DouyinAdapter) DetectLogin(ctx context.Context) (RemoteLoginState, erro
 }
 
 // ExtractAccount attempts to get profile info from the page
-func (a *DouyinAdapter) ExtractAccount(ctx context.Context) (RemoteAccountProfile, error) {
+func (a *DouyinAdapter) ExtractAccount(ctx context.Context) (pubbrowser.RemoteAccountProfile, error) {
 	var username string
 	// Try to extract username from the creator dashboard UI
 	script := `(function() {
@@ -115,19 +116,19 @@ func (a *DouyinAdapter) ExtractAccount(ctx context.Context) (RemoteAccountProfil
 
 	err := chromedp.Run(ctx, chromedp.Evaluate(script, &username))
 	if err != nil {
-		return RemoteAccountProfile{}, err
+		return pubbrowser.RemoteAccountProfile{}, err
 	}
 
 	if username == "" {
 		username = "Connected Douyin Account"
 	}
 
-	return RemoteAccountProfile{
+	return pubbrowser.RemoteAccountProfile{
 		Username: username,
 	}, nil
 }
 
-func ValidateDouyinCookies(cookies []Cookie) (bool, []string) {
+func ValidateDouyinCookies(cookies []pubbrowser.Cookie) (bool, []string) {
 	required := map[string]bool{
 		"sessionid":           false,
 		"sid_guard":           false,

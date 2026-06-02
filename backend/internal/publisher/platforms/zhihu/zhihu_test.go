@@ -1,4 +1,4 @@
-package publisher
+package zhihu
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/datatypes"
 )
@@ -38,7 +39,7 @@ func TestZhihuPublisher_AdaptContent(t *testing.T) {
 	content, err := p.AdaptContent(project)
 
 	assert.NoError(t, err)
-	var adapted AdaptedContent
+	var adapted core.AdaptedContent
 	assert.NoError(t, json.Unmarshal(content, &adapted))
 	assert.Equal(t, 1, adapted.SchemaVersion)
 	assert.Equal(t, "markdown", adapted.Format)
@@ -64,7 +65,7 @@ func TestZhihuPublisherAdaptContentPreservesPreformattedCode(t *testing.T) {
 	content, err := p.AdaptContent(project)
 
 	assert.NoError(t, err)
-	var adapted AdaptedContent
+	var adapted core.AdaptedContent
 	assert.NoError(t, json.Unmarshal(content, &adapted))
 	assert.Contains(t, adapted.Markdown, "```\nfor _, item := range items {\n\tif item.Enabled {\n\t\tfmt.Println(item.Platform)\n\t}\n}\n```")
 }
