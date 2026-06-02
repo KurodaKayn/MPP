@@ -67,7 +67,7 @@ jobs:
             fi
           }
 
-          shared_pattern='^(\.github/|docker/)'
+          shared_pattern='^\.github/'
           mark frontend "^(frontend/|${shared_pattern#^})"
           mark backend "^(backend/|${shared_pattern#^})"
           mark browser_worker "^(browser-worker/|${shared_pattern#^})"
