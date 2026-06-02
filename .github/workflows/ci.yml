@@ -3,9 +3,6 @@ name: CI
 on:
   workflow_dispatch:
   pull_request:
-  push:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -49,14 +46,7 @@ jobs:
             exit 0
           fi
 
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            base="${{ github.event.pull_request.base.sha }}"
-          else
-            base="${{ github.event.before }}"
-            if [[ "$base" =~ ^0+$ ]]; then
-              base="$(git rev-list --max-parents=0 HEAD)"
-            fi
-          fi
+          base="${{ github.event.pull_request.base.sha }}"
 
           git diff --name-only "$base" "$GITHUB_SHA" > changed-files.txt
           echo "Changed files:"
