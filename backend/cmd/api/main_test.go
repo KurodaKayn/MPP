@@ -1,6 +1,76 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestBackendProcessRoleFromEnvDefaultsToAll(t *testing.T) {
+	t.Setenv(backendProcessRoleEnv, "")
+
+	role, err := backendProcessRoleFromEnv()
+	if err != nil {
+		t.Fatalf("expected default role to be accepted: %v", err)
+	}
+	if role != backendProcessRoleAll {
+		t.Fatalf("expected default role %q, got %q", backendProcessRoleAll, role)
+	}
+}
+
+func TestBackendProcessRoleFromEnvAcceptsKnownRoles(t *testing.T) {
+	for _, role := range []string{backendProcessRoleAll, backendProcessRoleAPI, backendProcessRoleWorker, " API "} {
+		t.Run(role, func(t *testing.T) {
+			t.Setenv(backendProcessRoleEnv, role)
+
+			got, err := backendProcessRoleFromEnv()
+			if err != nil {
+				t.Fatalf("expected role to be accepted: %v", err)
+			}
+			expected := strings.ToLower(strings.TrimSpace(role))
+			if got != expected {
+				t.Fatalf("expected normalized role %q, got %q", expected, got)
+			}
+		})
+	}
+}
+
+func TestBackendProcessRoleFromEnvRejectsUnknownRole(t *testing.T) {
+	t.Setenv(backendProcessRoleEnv, "sidecar")
+
+	if _, err := backendProcessRoleFromEnv(); err == nil {
+		t.Fatal("expected unknown backend process role to be rejected")
+	}
+}
+
+func TestBackendRuntimeConfigRoleCapabilities(t *testing.T) {
+	api := backendRuntimeConfig{processRole: backendProcessRoleAPI}
+	if !api.servesAPI() || api.runsWorkers() {
+		t.Fatal("api role must serve API without running workers")
+	}
+
+	worker := backendRuntimeConfig{processRole: backendProcessRoleWorker}
+	if worker.servesAPI() || !worker.runsWorkers() {
+		t.Fatal("worker role must run workers without serving API")
+	}
+
+	all := backendRuntimeConfig{processRole: backendProcessRoleAll}
+	if !all.servesAPI() || !all.runsWorkers() {
+		t.Fatal("all role must serve API and run workers")
+	}
+}
+
+func TestBackendRuntimeConfigReadsRequireRedisFlag(t *testing.T) {
+	t.Setenv(backendProcessRoleEnv, backendProcessRoleAPI)
+	t.Setenv(backendRequireRedisEnv, "true")
+
+	config, err := backendRuntimeConfigFromEnv()
+	if err != nil {
+		t.Fatalf("expected runtime config: %v", err)
+	}
+	if !config.requireRedis {
+		t.Fatal("expected redis to be required when flag is true")
+	}
+}
 
 func TestRequiredEnvRejectsMissingAndBlankValues(t *testing.T) {
 	t.Setenv("TEST_REQUIRED_ENV", "")
