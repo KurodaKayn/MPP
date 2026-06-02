@@ -9,31 +9,50 @@ cd "$ROOT_DIR"
 ACTION="${1:-up}"
 
 export COMPOSE_PROFILES="${COMPOSE_PROFILES:-gateway}"
-export TRAEFIK_HTTP_PORT="${TRAEFIK_HTTP_PORT:-8088}"
-export TRAEFIK_HTTPS_PORT="${TRAEFIK_HTTPS_PORT:-8443}"
+
+ensure_env_file() {
+  cp -n docker/.env.dev.example docker/.env
+}
+
+env_value() {
+  name="$1"
+  default="$2"
+  eval "value=\${$name:-}"
+  if [ -n "$value" ]; then
+    printf '%s\n' "$value"
+    return
+  fi
+
+  value=$(
+    awk -F= -v key="$name" '$1 == key { print substr($0, length(key) + 2); exit }' docker/.env 2>/dev/null || true
+  )
+  if [ -n "$value" ]; then
+    printf '%s\n' "$value"
+    return
+  fi
+
+  printf '%s\n' "$default"
+}
 
 compose() {
+  ensure_env_file
+  export TRAEFIK_HTTP_PORT="$(env_value TRAEFIK_HTTP_PORT 8088)"
+  export TRAEFIK_HTTPS_PORT="$(env_value TRAEFIK_HTTPS_PORT 8443)"
   docker compose \
-    --env-file docker/.env.dev.example \
+    --env-file docker/.env \
     -f docker/docker-compose.yml \
     -f docker/docker-compose.dev.yml \
     --profile gateway \
     "$@"
 }
 
-ensure_env_file() {
-  cp -n docker/.env.dev.example docker/.env
-}
-
 case "$ACTION" in
   up|start)
-    ensure_env_file
     compose up -d --no-deps traefik
     printf 'Traefik dev gateway: http://localhost:%s\n' "$TRAEFIK_HTTP_PORT"
     printf 'Traefik dev HTTPS: https://localhost:%s\n' "$TRAEFIK_HTTPS_PORT"
     ;;
   restart)
-    ensure_env_file
     compose up -d --no-deps --force-recreate traefik
     ;;
   stop)
