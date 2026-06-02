@@ -1,3 +1,219 @@
+import {
+  clearExecutionState,
+  getCurrentHandoff,
+  getExecutionEvents,
+  storeAcceptedHandoff,
+  validateHandoff,
+} from "../src/background/handoff";
+import {
+  getTrustOriginPageUrl,
+  isTrustedOrigin,
+  isTrustableOrigin,
+  listTrustedOrigins,
+  trustOrigin,
+} from "../src/background/origins";
+import {
+  recordAndCallbackEvent,
+  startPublishingTabs,
+} from "../src/background/tabs";
+import { HANDOFF_SCHEMA_VERSION } from "../src/types/handoff";
+import type { BackgroundMessage, HandoffResponse } from "../src/types/messages";
+
+function isBackgroundMessage(value: unknown): value is BackgroundMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    typeof value.type === "string"
+  );
+}
+
+function getManifestVersion(): string {
+  return browser.runtime.getManifest().version ?? "0.0.0";
+}
+
+async function getMonitorState() {
+  return {
+    extension_id: browser.runtime.id,
+    version: getManifestVersion(),
+    current_handoff: await getCurrentHandoff(),
+    events: await getExecutionEvents(),
+    trusted_origins: await listTrustedOrigins(),
+  };
+}
+
+async function acceptBridgeHandoff(
+  origin: string,
+  rawHandoff: unknown,
+): Promise<HandoffResponse> {
+  if (!(await isTrustedOrigin(origin))) {
+    return {
+      accepted: false,
+      reason: "origin_untrusted",
+      message: "Approve this MPP origin before sending handoff data.",
+      trust_url: getTrustOriginPageUrl(origin),
+    };
+  }
+
+  const validation = validateHandoff(rawHandoff);
+
+  if (!validation.ok) {
+    return validation.rejection;
+  }
+
+  await storeAcceptedHandoff(validation.handoff, origin);
+
+  for (const platform of validation.handoff.platforms) {
+    await recordAndCallbackEvent(platform, {
+      platform: platform.platform,
+      status: "accepted",
+      message: "Extension accepted the publishing handoff.",
+      metadata: {
+        execution_id: validation.handoff.execution_id,
+        source_origin: origin,
+      },
+    });
+  }
+
+  startPublishingTabs(validation.handoff).catch((error) => {
+    console.warn("MPP extension publishing failed.", error);
+  });
+
+  return {
+    accepted: true,
+    execution_id: validation.handoff.execution_id,
+    platforms: validation.handoff.platforms,
+  };
+}
+
+async function handleAdapterEvent(
+  message: Extract<BackgroundMessage, { type: "adapter.event" }>,
+) {
+  const currentHandoff = await getCurrentHandoff();
+
+  if (
+    !currentHandoff ||
+    currentHandoff.handoff.execution_id !== message.execution_id
+  ) {
+    return {
+      ok: false,
+      error: "Adapter event does not match the current execution.",
+    };
+  }
+
+  const platform = currentHandoff.handoff.platforms.find(
+    (item) => item.platform === message.event.platform,
+  );
+
+  if (!platform) {
+    return {
+      ok: false,
+      error: "Adapter event platform is not in the handoff.",
+    };
+  }
+
+  await recordAndCallbackEvent(platform, message.event);
+  return { ok: true };
+}
+
+async function handleBackgroundMessage(message: unknown): Promise<unknown> {
+  if (!isBackgroundMessage(message)) {
+    throw new Error("Unsupported background message.");
+  }
+
+  if (message.type === "bridge.detect") {
+    return {
+      installed: true,
+      extension_id: browser.runtime.id,
+      version: getManifestVersion(),
+      schema_version: HANDOFF_SCHEMA_VERSION,
+      trusted: await isTrustedOrigin(message.origin),
+      trustable: isTrustableOrigin(message.origin),
+      trust_url: getTrustOriginPageUrl(message.origin),
+    };
+  }
+
+  if (message.type === "bridge.request_trust") {
+    if (!isTrustableOrigin(message.origin)) {
+      throw new Error("Origin is not eligible for trust.");
+    }
+
+    const trustUrl = getTrustOriginPageUrl(message.origin);
+    await browser.tabs.create({ active: true, url: trustUrl });
+    return { trust_url: trustUrl };
+  }
+
+  if (message.type === "bridge.publish_handoff") {
+    return acceptBridgeHandoff(message.origin, message.handoff);
+  }
+
+  if (message.type === "bridge.get_status") {
+    if (!(await isTrustedOrigin(message.origin))) {
+      return {
+        trusted: false,
+        trust_url: getTrustOriginPageUrl(message.origin),
+      };
+    }
+
+    return getMonitorState();
+  }
+
+  if (message.type === "monitor.get") {
+    return getMonitorState();
+  }
+
+  if (message.type === "monitor.clear") {
+    await clearExecutionState();
+    return getMonitorState();
+  }
+
+  if (message.type === "origin.trust") {
+    const origin = await trustOrigin(message.origin);
+    return { origin, trusted_origins: await listTrustedOrigins() };
+  }
+
+  if (message.type === "origin.list") {
+    return { trusted_origins: await listTrustedOrigins() };
+  }
+
+  if (message.type === "adapter.event") {
+    return handleAdapterEvent(message);
+  }
+
+  throw new Error("Unknown background message type.");
+}
+
+async function openPublishMonitor(tabId?: number): Promise<void> {
+  const sidePanel = browser.sidePanel;
+
+  if (sidePanel?.open && tabId) {
+    await sidePanel.open({ tabId });
+    return;
+  }
+
+  await browser.tabs.create({
+    active: true,
+    url: browser.runtime.getURL("/publish.html"),
+  });
+}
+
 export default defineBackground(() => {
-  console.log('Hello background!', { id: browser.runtime.id });
+  browser.action.onClicked.addListener((tab) => {
+    openPublishMonitor(tab.id).catch((error) => {
+      console.warn("Failed to open MPP publish monitor.", error);
+    });
+  });
+
+  browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    handleBackgroundMessage(message)
+      .then(sendResponse)
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+
+    return true;
+  });
 });
