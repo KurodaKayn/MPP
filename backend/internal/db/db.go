@@ -2,6 +2,7 @@ package db
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -16,6 +17,8 @@ var DB *gorm.DB
 
 //go:embed seed/seed_data.sql
 var seedDataSQL string
+
+const migrationAdvisoryLockKey = 776770001
 
 func InitDB() {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Shanghai",
@@ -45,23 +48,38 @@ func InitDB() {
 }
 
 func migrate(database *gorm.DB) error {
-	if err := database.AutoMigrate(
-		&models.User{},
-		&models.PlatformAccount{},
-		&models.Project{},
-		&models.ProjectPlatformPublication{},
-		&models.PlatformAccount{},
-		&models.RemoteBrowserSession{},
-	); err != nil {
-		return err
-	}
+	return withMigrationLock(database, func() error {
+		if err := database.AutoMigrate(
+			&models.User{},
+			&models.PlatformAccount{},
+			&models.Project{},
+			&models.ProjectPlatformPublication{},
+			&models.PlatformAccount{},
+			&models.RemoteBrowserSession{},
+		); err != nil {
+			return err
+		}
 
-	// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
-	return database.Exec(`
+		// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
+		return database.Exec(`
 		CREATE UNIQUE INDEX IF NOT EXISTS ux_remote_browser_sessions_active_user_platform
 		ON remote_browser_sessions (user_id, platform)
 		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
 	`).Error
+	})
+}
+
+func withMigrationLock(database *gorm.DB, run func() error) error {
+	if database.Dialector.Name() != "postgres" {
+		return run()
+	}
+
+	if err := database.Exec("SELECT pg_advisory_lock(?)", migrationAdvisoryLockKey).Error; err != nil {
+		return err
+	}
+	runErr := run()
+	unlockErr := database.Exec("SELECT pg_advisory_unlock(?)", migrationAdvisoryLockKey).Error
+	return errors.Join(runErr, unlockErr)
 }
 
 func seed(database *gorm.DB) error {
