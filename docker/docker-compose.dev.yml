@@ -1,9 +1,15 @@
 name: mpp-dev
 
 services:
+  traefik:
+    profiles:
+      - gateway
+
   frontend:
     build:
       target: dev
+    ports:
+      - "3000:3000"
     environment:
       NODE_ENV: development
       BACKEND_API_BASE_URL: http://backend:8080
@@ -23,6 +29,8 @@ services:
   backend:
     build:
       target: dev
+    ports:
+      - "8080:8080"
     environment:
       APP_ENV: development
       ENABLE_DEV_SEED: "true"
@@ -40,6 +48,8 @@ services:
   browser-worker:
     build:
       target: dev
+    ports:
+      - "8081:8081"
     environment:
       APP_ENV: development
     volumes:
@@ -57,6 +67,8 @@ services:
   ai-service:
     build:
       target: dev
+    ports:
+      - "8000:8000"
     volumes:
       - ../ai-service:/app
       - ai_service_venv:/app/.venv
@@ -67,6 +79,14 @@ services:
           path: ../ai-service/pyproject.toml
         - action: rebuild
           path: ../ai-service/uv.lock
+
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
 
 volumes:
   frontend_node_modules:

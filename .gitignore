@@ -2,7 +2,7 @@
 .DS_Store
 *.pem
 .env*
-!.env.example
+!.env.*.example
 
 # Frontend (Next.js)
 frontend/node_modules
