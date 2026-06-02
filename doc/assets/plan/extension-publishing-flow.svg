@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 620" width="1260" height="620" role="img" aria-labelledby="title desc">
+  <title id="title">Plugin Publishing Flow</title>
+  <desc id="desc">A left to right flow from user action to dashboard, publish API, handoff envelope, browser extension, platform tabs, platform editor, event callback, publish execution, and status panel.</desc>
+  <style>
+    text {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      fill: #111827;
+    }
+    .title {
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .subtitle {
+      font-size: 13px;
+      fill: #6b7280;
+    }
+    .node-title {
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .node-subtitle {
+      font-size: 12px;
+      fill: #4b5563;
+    }
+    .label {
+      font-size: 12px;
+      fill: #374151;
+    }
+    .legend {
+      font-size: 12px;
+      fill: #6b7280;
+    }
+    .node {
+      fill: #ffffff;
+      stroke: #d1d5db;
+      stroke-width: 1.5;
+    }
+    .blue {
+      fill: #eff6ff;
+      stroke: #bfdbfe;
+    }
+    .purple {
+      fill: #faf5ff;
+      stroke: #d8b4fe;
+    }
+    .green {
+      fill: #f0fdf4;
+      stroke: #bbf7d0;
+    }
+    .orange {
+      fill: #fff7ed;
+      stroke: #fed7aa;
+    }
+    .teal {
+      fill: #f0fdfa;
+      stroke: #99f6e4;
+    }
+    .label-bg {
+      fill: #ffffff;
+      opacity: 0.96;
+    }
+  </style>
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#9333ea"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1260" height="620" fill="#ffffff"/>
+
+  <text x="40" y="44" class="title">Plugin Publishing Flow</text>
+  <text x="40" y="68" class="subtitle">MPP creates a handoff, the browser extension executes local page automation, and status events return to MPP.</text>
+
+  <!-- Top row -->
+  <g transform="translate(40,110)">
+    <rect class="node blue" x="0" y="0" width="150" height="86" rx="8" ry="8"/>
+    <text class="node-title" x="75" y="32" text-anchor="middle">User Action</text>
+    <text class="node-subtitle" x="75" y="54" text-anchor="middle">Choose plugin mode</text>
+  </g>
+
+  <g transform="translate(250,110)">
+    <rect class="node" x="0" y="0" width="170" height="86" rx="8" ry="8"/>
+    <text class="node-title" x="85" y="32" text-anchor="middle">MPP Dashboard</text>
+    <text class="node-subtitle" x="85" y="54" text-anchor="middle">Bridge and UI state</text>
+  </g>
+
+  <g transform="translate(480,110)">
+    <rect class="node purple" x="0" y="0" width="180" height="86" rx="8" ry="8"/>
+    <text class="node-title" x="90" y="32" text-anchor="middle">Plugin Publish API</text>
+    <text class="node-subtitle" x="90" y="54" text-anchor="middle">Validate capability</text>
+  </g>
+
+  <g transform="translate(720,110)">
+    <rect class="node orange" x="0" y="0" width="180" height="86" rx="8" ry="8"/>
+    <text class="node-title" x="90" y="32" text-anchor="middle">Handoff Envelope</text>
+    <text class="node-subtitle" x="90" y="54" text-anchor="middle">Draft and callback</text>
+  </g>
+
+  <g transform="translate(960,110)">
+    <rect class="node green" x="0" y="0" width="190" height="86" rx="8" ry="8"/>
+    <text class="node-title" x="95" y="32" text-anchor="middle">Browser Extension</text>
+    <text class="node-subtitle" x="95" y="54" text-anchor="middle">Local runtime</text>
+  </g>
+
+  <!-- Bottom row -->
+  <g transform="translate(960,330)">
+    <rect class="node green" x="0" y="0" width="190" height="86" rx="8" ry="8"/>
+    <text class="node-title" x="95" y="32" text-anchor="middle">Platform Tabs</text>
+    <text class="node-subtitle" x="95" y="54" text-anchor="middle">Open and group</text>
+  </g>
+
+  <g transform="translate(720,330)">
+    <rect class="node teal" x="0" y="0" width="180" height="86" rx="8" ry="8"/>
+    <text class="node-title" x="90" y="32" text-anchor="middle">Platform Editor</text>
+    <text class="node-subtitle" x="90" y="54" text-anchor="middle">Fill native page</text>
+  </g>
+
+  <g transform="translate(480,330)">
+    <rect class="node purple" x="0" y="0" width="180" height="86" rx="8" ry="8"/>
+    <text class="node-title" x="90" y="32" text-anchor="middle">Event Callback API</text>
+    <text class="node-subtitle" x="90" y="54" text-anchor="middle">Progress events</text>
+  </g>
+
+  <g transform="translate(250,330)">
+    <rect class="node orange" x="0" y="0" width="170" height="86" rx="8" ry="8"/>
+    <text class="node-title" x="85" y="32" text-anchor="middle">Publish Execution</text>
+    <text class="node-subtitle" x="85" y="54" text-anchor="middle">Attempt state</text>
+  </g>
+
+  <g transform="translate(40,330)">
+    <rect class="node blue" x="0" y="0" width="150" height="86" rx="8" ry="8"/>
+    <text class="node-title" x="75" y="32" text-anchor="middle">Status Panel</text>
+    <text class="node-subtitle" x="75" y="54" text-anchor="middle">Progress result</text>
+  </g>
+
+  <!-- Main handoff flow -->
+  <path d="M190 153 H250" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <path d="M420 153 H480" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <path d="M660 153 H720" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+  <path d="M900 153 H960" stroke="#2563eb" stroke-width="2" fill="none" marker-end="url(#arrow-blue)"/>
+
+  <rect class="label-bg" x="205" y="131" width="30" height="18" rx="4"/>
+  <text class="label" x="220" y="144" text-anchor="middle">Start</text>
+  <rect class="label-bg" x="430" y="131" width="40" height="18" rx="4"/>
+  <text class="label" x="450" y="144" text-anchor="middle">Request</text>
+  <rect class="label-bg" x="673" y="131" width="34" height="18" rx="4"/>
+  <text class="label" x="690" y="144" text-anchor="middle">Issue</text>
+  <rect class="label-bg" x="912" y="131" width="46" height="18" rx="4"/>
+  <text class="label" x="935" y="144" text-anchor="middle">Deliver</text>
+
+  <!-- Local browser execution -->
+  <path d="M1055 196 V330" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrow-green)"/>
+  <path d="M960 373 H900" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrow-green)"/>
+  <rect class="label-bg" x="1070" y="251" width="54" height="18" rx="4"/>
+  <text class="label" x="1097" y="264" text-anchor="middle">Open tabs</text>
+  <rect class="label-bg" x="912" y="351" width="44" height="18" rx="4"/>
+  <text class="label" x="934" y="364" text-anchor="middle">Inject</text>
+
+  <!-- Status return flow -->
+  <path d="M720 373 H660" stroke="#9333ea" stroke-width="2" fill="none" marker-end="url(#arrow-purple)"/>
+  <path d="M480 373 H420" stroke="#9333ea" stroke-width="2" fill="none" marker-end="url(#arrow-purple)"/>
+  <path d="M250 373 H190" stroke="#9333ea" stroke-width="2" fill="none" marker-end="url(#arrow-purple)"/>
+  <path d="M335 330 V196" stroke="#9333ea" stroke-width="2" stroke-dasharray="7 5" fill="none" marker-end="url(#arrow-purple)"/>
+
+  <rect class="label-bg" x="675" y="351" width="38" height="18" rx="4"/>
+  <text class="label" x="694" y="364" text-anchor="middle">Report</text>
+  <rect class="label-bg" x="433" y="351" width="34" height="18" rx="4"/>
+  <text class="label" x="450" y="364" text-anchor="middle">Store</text>
+  <rect class="label-bg" x="203" y="351" width="34" height="18" rx="4"/>
+  <text class="label" x="220" y="364" text-anchor="middle">Show</text>
+  <rect class="label-bg" x="352" y="260" width="58" height="18" rx="4"/>
+  <text class="label" x="381" y="273" text-anchor="middle">Poll status</text>
+
+  <!-- Legend -->
+  <g transform="translate(40,535)">
+    <rect x="0" y="0" width="470" height="48" rx="8" ry="8" fill="#ffffff" stroke="#e5e7eb"/>
+    <path d="M18 16 H54" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+    <text class="legend" x="66" y="20">Handoff flow</text>
+    <path d="M174 16 H210" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+    <text class="legend" x="222" y="20">Local browser execution</text>
+    <path d="M18 34 H54" stroke="#9333ea" stroke-width="2" marker-end="url(#arrow-purple)"/>
+    <text class="legend" x="66" y="38">Status return and polling</text>
+  </g>
+</svg>
