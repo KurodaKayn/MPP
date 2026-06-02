@@ -8,7 +8,11 @@
 # 进入 docker 目录
 cd docker
 
-# 按网关/部署模式创建环境变量文件。已有 .env 时不会覆盖。
+# 按网关/部署模式创建环境变量文件。已有 dev .env 时会中止，避免误用开发配置。
+if [ -f .env ] && grep -q '^APP_ENV=development$' .env; then
+  echo "docker/.env 当前是 dev 模式；请先备份或删除它，再复制 .env.deploy.example。" >&2
+  exit 1
+fi
 cp -n .env.deploy.example .env
 
 # 启动所有服务
@@ -37,6 +41,10 @@ X_OAUTH2_REDIRECT_URL=https://your-domain.example/api/user/dashboard/settings/x/
 如果你希望一键拉起开发模式容器，并让代码修改自动生效，在项目根目录执行：
 
 ```bash
+if [ -f docker/.env ] && grep -q '^APP_ENV=production$' docker/.env; then
+  echo "docker/.env 当前是 deploy 模式；请先备份或删除它，再复制 docker/.env.dev.example。" >&2
+  exit 1
+fi
 cp -n docker/.env.dev.example docker/.env
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml watch
 ```
@@ -53,6 +61,10 @@ Dev 模式的 Compose project name 为 `mpp-dev`。
 如果只想后台启动 dev 容器（源码热重载仍会生效，但依赖文件变化不会自动触发 Compose rebuild），可以执行：
 
 ```bash
+if [ -f docker/.env ] && grep -q '^APP_ENV=production$' docker/.env; then
+  echo "docker/.env 当前是 deploy 模式；请先备份或删除它，再复制 docker/.env.dev.example。" >&2
+  exit 1
+fi
 cp -n docker/.env.dev.example docker/.env
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d
 ```
