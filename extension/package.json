@@ -1,8 +1,8 @@
 {
-  "name": "wxt-react-starter",
-  "description": "manifest.json description",
-  "private": true,
+  "name": "mpp-extension-publisher",
   "version": "0.0.0",
+  "private": true,
+  "description": "Local browser extension publisher for Multi-platform Poster drafts.",
   "type": "module",
   "scripts": {
     "dev": "wxt",
