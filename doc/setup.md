@@ -66,13 +66,26 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up 
 - **PostgreSQL**: `localhost:5432`
 - **Redis**: `localhost:6379`
 
-如果希望在 dev overlay 中同时试用 Traefik，可以显式启用 `gateway` profile：
+如果希望在保持上述 dev 直连体验的同时测试 Traefik，可以单独启动 dev 网关探针：
 
 ```bash
-COMPOSE_PROFILES=gateway docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d
+script/docker/dev-traefik.sh up
 ```
 
-这不会移除上面的直连端口；如果需要避开宿主机 `80` 或 `443` 端口，同样可以设置 `TRAEFIK_HTTP_PORT` 或 `TRAEFIK_HTTPS_PORT`。使用 `docker/.env.dev.example` 时，Traefik dev 端口默认是 `8088/8443`。
+这只会启动 `traefik` 服务，不会启动或重建 frontend/backend/AI/DB/Redis，也不会移除上面的直连端口。Traefik dev 入口默认是：
+
+- **HTTP 网关**: [http://localhost:8088](http://localhost:8088)
+- **HTTPS 网关**: [https://localhost:8443](https://localhost:8443)
+
+常用命令：
+
+```bash
+script/docker/dev-traefik.sh logs
+script/docker/dev-traefik.sh restart
+script/docker/dev-traefik.sh stop
+```
+
+如果需要换端口，可以在命令前设置 `TRAEFIK_HTTP_PORT` 或 `TRAEFIK_HTTPS_PORT`。
 
 ---
 
