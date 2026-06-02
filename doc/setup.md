@@ -60,6 +60,14 @@ Dev 模式的 Compose project name 为 `mpp-dev`。
 - AI 服务使用 `uvicorn --reload`，Python 源码变化会自动重载。
 - 依赖文件变化会触发对应服务重新构建，包括 `package.json`、`pnpm-lock.yaml`、`go.mod`、`go.sum`、`pyproject.toml`、`uv.lock`。
 
+浏览器扩展 dev 服务是可选 profile，不会随默认 dev 模式启动。需要调试 extension 时执行：
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml --profile extension up extension-dev
+```
+
+该服务运行 `extension` 目录下的 WXT dev server，默认端口为 `3010`，可通过 `docker/.env` 中的 `EXTENSION_DEV_PORT` 调整。浏览器仍需在宿主机加载 `extension/.output/chrome-mv3` 作为 unpacked extension。
+
 如果只想后台启动 dev 容器（源码热重载仍会生效，但依赖文件变化不会自动触发 Compose rebuild），可以执行：
 
 ```bash
@@ -77,6 +85,7 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up 
 - **后端 API**: [http://localhost:8080/ping](http://localhost:8080/ping)
 - **AI 服务**: [http://localhost:8000](http://localhost:8000)
 - **browser-worker**: [http://localhost:8081](http://localhost:8081)
+- **Extension WXT dev**: [http://localhost:3010](http://localhost:3010)（仅 `extension` profile）
 - **PostgreSQL**: `localhost:5432`
 - **Redis**: `localhost:6379`
 

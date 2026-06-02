@@ -49,3 +49,17 @@ ai-service/*.egg-info
 ai-service/.venv/
 ai-service/tests/__pycache__/
 *.exe
+
+# Extension (WXT)
+extension/node_modules
+extension/.output
+extension/stats.html
+extension/stats-*.json
+extension/.wxt
+extension/web-ext.config.ts
+extension/*.log
+extension/npm-debug.log*
+extension/yarn-debug.log*
+extension/yarn-error.log*
+extension/pnpm-debug.log*
+extension/lerna-debug.log*

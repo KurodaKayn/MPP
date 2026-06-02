@@ -26,3 +26,9 @@ pre-commit:
       glob: "*.py"
       run: uv run ruff format {staged_files}
       stage_fixed: true
+
+    extension-format:
+      root: "extension/"
+      glob: "*.{js,jsx,ts,tsx}"
+      run: pnpm format {staged_files}
+      stage_fixed: true
