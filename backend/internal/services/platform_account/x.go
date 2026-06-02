@@ -1,4 +1,4 @@
-package services
+package platformaccount
 
 import (
 	"context"
@@ -53,7 +53,7 @@ func (XAPITester) Test(ctx context.Context, credentials pkgx.Credentials) dto.XC
 	return buildXConnectionResult(user, err)
 }
 
-func (s *DashboardService) GetXAccount(userID uuid.UUID) (*dto.XAccountResponse, error) {
+func (s *Service) GetXAccount(userID uuid.UUID) (*dto.XAccountResponse, error) {
 	var account models.PlatformAccount
 	err := s.db.Where("user_id = ? AND platform = ?", userID, xPlatform).First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -71,7 +71,7 @@ func (s *DashboardService) GetXAccount(userID uuid.UUID) (*dto.XAccountResponse,
 	return &resp, nil
 }
 
-func (s *DashboardService) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccountRequest) (*dto.XAccountResponse, error) {
+func (s *Service) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccountRequest) (*dto.XAccountResponse, error) {
 	incoming := xCredentials{
 		AuthType:          xAuthTypeOAuth1,
 		APIKey:            strings.TrimSpace(req.APIKey),
@@ -136,7 +136,7 @@ func (s *DashboardService) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccou
 	return &resp, nil
 }
 
-func (s *DashboardService) TestXAccount(userID uuid.UUID, req dto.TestXAccountRequest) (*dto.XConnectionTestResponse, error) {
+func (s *Service) TestXAccount(userID uuid.UUID, req dto.TestXAccountRequest) (*dto.XConnectionTestResponse, error) {
 	incoming := xCredentials{
 		APIKey:            strings.TrimSpace(req.APIKey),
 		APISecret:         strings.TrimSpace(req.APISecret),
@@ -203,7 +203,7 @@ func (s *DashboardService) TestXAccount(userID uuid.UUID, req dto.TestXAccountRe
 	return &result, nil
 }
 
-func (s *DashboardService) applySavedXCredentialsToPublication(userID uuid.UUID, pub *models.ProjectPlatformPublication) error {
+func (s *Service) applySavedXCredentialsToPublication(userID uuid.UUID, pub *models.ProjectPlatformPublication) error {
 	if pub.Platform != xPlatform {
 		return nil
 	}

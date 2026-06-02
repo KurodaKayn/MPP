@@ -1,263 +1,29 @@
-package services
+package dashboard
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
-	"regexp"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
+	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
+	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
-func (s *DashboardService) BatchPublishProject(projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID) (map[string]map[string]interface{}, error) {
-	results := make(map[string]map[string]interface{})
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	for _, platform := range platforms {
-		wg.Add(1)
-		go func(p string) {
-			defer wg.Done()
-			resp, err := s.PublishProject(projectID, p, scopeUserID, uuid.Nil)
-			mu.Lock()
-			if err != nil {
-				results[p] = map[string]interface{}{"status": "error", "message": err.Error()}
-			} else {
-				results[p] = resp
-			}
-			mu.Unlock()
-		}(platform)
-	}
-
-	wg.Wait()
-	return results, nil
-}
-
-func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, browserSessionID uuid.UUID) (map[string]interface{}, error) {
-	// Remote browser sessions are only for account connection and cookie capture.
-	// Publish jobs must be durable across Redis workers, so they load saved credentials instead.
-	browserSessionID = uuid.Nil
-
-	// 1. Check ownership
-	var proj models.Project
-	if err := s.db.Where("id = ? AND user_id = ?", projectID, *scopeUserID).First(&proj).Error; err != nil {
-		return nil, ErrForbidden
-	}
-
-	// 2. Get publication record
-	var pub models.ProjectPlatformPublication
-	if err := s.db.Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
-		return nil, fmt.Errorf("publication record not found for platform: %s", platform)
-	}
-	if !pub.Enabled || pub.Status == models.PublicationStatusDisabled {
-		return nil, ErrPublicationDisabled
-	}
-
-	// 3. Get Publisher from factory
-	p, err := publisher.Factory.GetPublisher(platform)
-	if err != nil {
-		return nil, err
-	}
-	if pub.Status != models.PublicationStatusAdapted && pub.Status != models.PublicationStatusPublishing {
-		if err := s.adaptPublicationForPublish(&proj, &pub, p); err != nil {
-			return nil, err
-		}
-	}
-
-	if err := s.applySavedWechatCredentialsToPublication(proj.UserID, &pub); err != nil {
-		return nil, err
-	}
-	if err := s.applySavedXCredentialsToPublication(proj.UserID, &pub); err != nil {
-		return nil, err
-	}
-
-	// 4. Get Platform Account (for Cookies/Session)
-	var account models.PlatformAccount
-	accountErr := s.db.Where("user_id = ? AND platform = ?", *scopeUserID, platform).First(&account).Error
-	if accountErr != nil && !errors.Is(accountErr, gorm.ErrRecordNotFound) {
-		return nil, accountErr
-	}
-	if usesStoredBrowserCookies(platform) {
-		if errors.Is(accountErr, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("%w: %s account is not connected", ErrInvalidPlatformAccount, platform)
-		}
-		if err := s.applySavedBrowserCookies(context.Background(), proj.UserID, platform, &account); err != nil {
-			return nil, err
-		}
-	}
-
-	startedAt := time.Now().UTC()
-	if err := s.db.Model(&pub).Updates(map[string]interface{}{
-		"status":          models.PublicationStatusPublishing,
-		"error_message":   "",
-		"last_attempt_at": &startedAt,
-	}).Error; err != nil {
-		return nil, err
-	}
-
-	ctx := context.Background()
-
-	// 6. Execute Publish
-	remoteID, publishURL, err := p.Publish(ctx, &pub, &account)
-
-	// 8. Update DB
-	status := models.PublicationStatusPublished
-	errMsg := ""
-	if err != nil {
-		status = models.PublicationStatusFailed
-		errMsg = sanitizeUserFacingErrorMessage(err.Error())
-	}
-
-	response := map[string]interface{}{
-		"status":             status,
-		"remote_id":          remoteID,
-		"publish_url":        publishURL,
-		"error_message":      errMsg,
-		"browser_session_id": browserSessionID,
-	}
-	updates := map[string]interface{}{
-		"status":        status,
-		"remote_id":     remoteID,
-		"publish_url":   publishURL,
-		"error_message": errMsg,
-	}
-	if status == models.PublicationStatusPublished {
-		publishedAt := time.Now().UTC()
-		updates["published_at"] = &publishedAt
-	} else {
-		updates["retry_count"] = gorm.Expr("retry_count + ?", 1)
-	}
-	if err := s.db.Model(&pub).Updates(updates).Error; err != nil {
-		return nil, err
-	}
-
-	return response, nil
-}
-
-func (s *DashboardService) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
-	var proj models.Project
-	if err := s.db.Where("id = ? AND user_id = ?", projectID, *scopeUserID).First(&proj).Error; err != nil {
-		return nil, ErrForbidden
-	}
-
-	var pub models.ProjectPlatformPublication
-	if err := s.db.Where("project_id = ? AND platform = ?", projectID, "x").First(&pub).Error; err != nil {
-		return nil, fmt.Errorf("publication record not found for platform: x")
-	}
-	if !pub.Enabled || pub.Status == models.PublicationStatusDisabled {
-		return nil, ErrPublicationDisabled
-	}
-	p, err := publisher.Factory.GetPublisher("x")
-	if err != nil {
-		return nil, err
-	}
-	if pub.Status != models.PublicationStatusAdapted {
-		if err := s.adaptPublicationForPublish(&proj, &pub, p); err != nil {
-			return nil, err
-		}
-	}
-
-	publishURL, err := publisher.BuildXPostIntentURL(pub.AdaptedContent)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := s.db.Model(&pub).Updates(map[string]interface{}{
-		"publish_url":   publishURL,
-		"error_message": "",
-	}).Error; err != nil {
-		return nil, err
-	}
-
-	return map[string]interface{}{
-		"status":      "manual_required",
-		"platform":    "x",
-		"publish_url": publishURL,
-	}, nil
-}
-
-func (s *DashboardService) adaptPublicationForPublish(project *models.Project, pub *models.ProjectPlatformPublication, p publisher.PlatformPublisher) error {
-	adaptedContent, err := p.AdaptContent(project)
-	if err != nil {
-		return err
-	}
-
-	content := pub.AdaptedContent
-	if len(adaptedContent) > 0 {
-		content = datatypes.JSON(adaptedContent)
-	}
-
-	updates := map[string]interface{}{
-		"adapted_content": content,
-		"error_message":   "",
-		"last_attempt_at": nil,
-		"published_at":    nil,
-		"publish_url":     "",
-		"remote_id":       "",
-		"retry_count":     0,
-		"status":          models.PublicationStatusAdapted,
-	}
-	if err := s.db.Model(pub).Updates(updates).Error; err != nil {
-		return err
-	}
-
-	pub.AdaptedContent = content
-	pub.ErrorMessage = ""
-	pub.LastAttemptAt = nil
-	pub.PublishedAt = nil
-	pub.PublishURL = ""
-	pub.RemoteID = ""
-	pub.RetryCount = 0
-	pub.Status = models.PublicationStatusAdapted
-	return nil
-}
-
-func (s *DashboardService) applySavedBrowserCookies(ctx context.Context, userID uuid.UUID, platform string, account *models.PlatformAccount) error {
-	if account == nil || !usesStoredBrowserCookies(platform) || account.UserID == uuid.Nil {
-		return nil
-	}
-
-	cookies, err := publisher.NewCookieStore(s.db).Load(ctx, userID, platform)
-	if err != nil {
-		return fmt.Errorf("%w: %s cookies are unavailable: %v", ErrInvalidPlatformAccount, platform, err)
-	}
-
-	cookiesJSON, err := json.Marshal(cookies)
-	if err != nil {
-		return fmt.Errorf("failed to prepare %s cookies: %w", platform, err)
-	}
-	account.Cookies = datatypes.JSON(cookiesJSON)
-	return nil
-}
-
-func usesStoredBrowserCookies(platform string) bool {
-	switch platform {
-	case "douyin", "zhihu":
-		return true
-	default:
-		return false
-	}
-}
-
-var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
+var ErrForbidden = publishsvc.ErrForbidden
 var ErrInvalidProject = errors.New("invalid project")
-var ErrPublicationDisabled = errors.New("publication is disabled")
-var ErrPublicationRequiresSync = errors.New("publication requires prepublish sync")
-var ErrManualPublishUnsupported = errors.New("manual publish is only supported for x")
+var ErrPublicationDisabled = publishsvc.ErrPublicationDisabled
+var ErrPublicationRequiresSync = publishsvc.ErrPublicationRequiresSync
+var ErrManualPublishUnsupported = publishsvc.ErrManualPublishUnsupported
 
-var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
 var allowedProjectPlatforms = map[string]struct{}{
 	"douyin": {},
 	"wechat": {},
@@ -265,23 +31,16 @@ var allowedProjectPlatforms = map[string]struct{}{
 	"zhihu":  {},
 }
 
-func sanitizeUserFacingErrorMessage(message string) string {
-	return sensitiveErrorQueryParamPattern.ReplaceAllString(message, "$1=<redacted>")
-}
-
 type DashboardService struct {
 	db                    *gorm.DB
-	wechatTester          WechatConnectionTester
-	xTester               XConnectionTester
-	xOAuth2Provider       XOAuth2Provider
-	xOAuth2States         XOAuth2StateStore
-	publishQueue          PublishQueue
+	accounts              *platformaccount.Service
+	publisher             *publishsvc.Service
 	browserWorkerClient   publisher.BrowserWorkerClient
 	browserSessionService *browsersession.BrowserSessionService
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
-	return NewDashboardServiceWithPlatformTesters(db, WechatAPITester{}, XAPITester{})
+	return NewDashboardServiceWithPlatformTesters(db, platformaccount.WechatAPITester{}, platformaccount.XAPITester{})
 }
 
 func (s *DashboardService) SetBrowserWorkerClient(client publisher.BrowserWorkerClient) {
@@ -292,44 +51,38 @@ func (s *DashboardService) SetBrowserSessionService(svc *browsersession.BrowserS
 	s.browserSessionService = svc
 }
 
-func NewDashboardServiceWithWechatTester(db *gorm.DB, tester WechatConnectionTester) *DashboardService {
-	return NewDashboardServiceWithPlatformTesters(db, tester, XAPITester{})
+func NewDashboardServiceWithWechatTester(db *gorm.DB, tester platformaccount.WechatConnectionTester) *DashboardService {
+	return NewDashboardServiceWithPlatformTesters(db, tester, platformaccount.XAPITester{})
 }
 
-func NewDashboardServiceWithPlatformTesters(db *gorm.DB, tester WechatConnectionTester, xTester XConnectionTester) *DashboardService {
-	if tester == nil {
-		tester = WechatAPITester{}
-	}
-	if xTester == nil {
-		xTester = XAPITester{}
-	}
+func NewDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.WechatConnectionTester, xTester platformaccount.XConnectionTester) *DashboardService {
+	accounts := platformaccount.NewServiceWithPlatformTesters(db, tester, xTester)
 	return &DashboardService{
-		db:              db,
-		wechatTester:    tester,
-		xTester:         xTester,
-		xOAuth2Provider: XOAuth2API{},
-		xOAuth2States:   NewMemoryXOAuth2StateStore(),
+		db:        db,
+		accounts:  accounts,
+		publisher: publishsvc.NewService(db, accounts),
 	}
 }
 
-func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider XOAuth2Provider) *DashboardService {
-	service := NewDashboardService(db)
-	if provider != nil {
-		service.xOAuth2Provider = provider
+func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider platformaccount.XOAuth2Provider) *DashboardService {
+	accounts := platformaccount.NewServiceWithXOAuth2Provider(db, provider)
+	return &DashboardService{
+		db:        db,
+		accounts:  accounts,
+		publisher: publishsvc.NewService(db, accounts),
 	}
-	return service
 }
 
-func (s *DashboardService) SetPublishQueue(queue PublishQueue) {
-	s.publishQueue = queue
+func (s *DashboardService) SetPublishQueue(queue publishsvc.PublishQueue) {
+	s.publisher.SetQueue(queue)
 }
 
 func (s *DashboardService) UseRedis(client *redis.Client) {
 	if client == nil {
 		return
 	}
-	s.xOAuth2States = NewRedisXOAuth2StateStore(client)
-	s.publishQueue = NewRedisPublishQueue(client)
+	s.accounts.UseRedis(client)
+	s.publisher.UseRedis(client)
 	if s.browserSessionService != nil {
 		s.browserSessionService.UseRedis(client)
 	}
@@ -894,7 +647,7 @@ func (s *DashboardService) SyncProjectPrepublish(projectID uuid.UUID, userID uui
 			p, err := publisher.Factory.GetPublisher(platform)
 			if err != nil {
 				if err := tx.Model(&publication).Updates(map[string]interface{}{
-					"error_message": sanitizeUserFacingErrorMessage(err.Error()),
+					"error_message": publishsvc.SanitizeUserFacingErrorMessage(err.Error()),
 					"status":        models.PublicationStatusPending,
 				}).Error; err != nil {
 					return err
@@ -905,7 +658,7 @@ func (s *DashboardService) SyncProjectPrepublish(projectID uuid.UUID, userID uui
 			adaptedContent, err := p.AdaptContent(&project)
 			if err != nil {
 				if err := tx.Model(&publication).Updates(map[string]interface{}{
-					"error_message": sanitizeUserFacingErrorMessage(err.Error()),
+					"error_message": publishsvc.SanitizeUserFacingErrorMessage(err.Error()),
 					"status":        models.PublicationStatusFailed,
 				}).Error; err != nil {
 					return err

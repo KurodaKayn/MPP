@@ -1,4 +1,4 @@
-package services
+package publish
 
 import (
 	"context"
@@ -124,8 +124,8 @@ return 0
 	return q.client.Eval(ctx, releaseLockScript, []string{key}, value).Err()
 }
 
-func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
-	if s.publishQueue == nil {
+func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
+	if s.queue == nil {
 		return s.PublishProject(projectID, platform, scopeUserID, uuid.Nil)
 	}
 	if scopeUserID == nil {
@@ -145,7 +145,7 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 		EnqueuedAt: time.Now().UTC(),
 	}
 	lockKey := publishLockKey(project.ID, platform)
-	acquired, err := s.publishQueue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
+	acquired, err := s.queue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
 	if err != nil {
 		return nil, err
 	}
@@ -154,11 +154,11 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 	}
 
 	if err := s.markPublicationQueued(&pub, job.EnqueuedAt); err != nil {
-		_ = s.publishQueue.ReleaseLock(ctx, lockKey, job.JobID.String())
+		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
 		return nil, err
 	}
-	if err := s.publishQueue.Enqueue(ctx, job); err != nil {
-		_ = s.publishQueue.ReleaseLock(ctx, lockKey, job.JobID.String())
+	if err := s.queue.Enqueue(ctx, job); err != nil {
+		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
 		_ = s.markPublicationFailed(project.ID, platform, "failed to enqueue publish job: "+err.Error())
 		return nil, err
 	}
@@ -172,7 +172,7 @@ func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID 
 	}, nil
 }
 
-func (s *DashboardService) BatchEnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID) (map[string]map[string]interface{}, error) {
+func (s *Service) BatchEnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID) (map[string]map[string]interface{}, error) {
 	results := make(map[string]map[string]interface{})
 	for _, platform := range platforms {
 		resp, err := s.EnqueuePublishProject(ctx, projectID, platform, scopeUserID)
@@ -185,17 +185,17 @@ func (s *DashboardService) BatchEnqueuePublishProject(ctx context.Context, proje
 	return results, nil
 }
 
-func (s *DashboardService) StartPublishWorker(ctx context.Context) {
-	if s.publishQueue == nil {
+func (s *Service) StartPublishWorker(ctx context.Context) {
+	if s.queue == nil {
 		return
 	}
 
 	go s.runPublishWorker(ctx)
 }
 
-func (s *DashboardService) runPublishWorker(ctx context.Context) {
+func (s *Service) runPublishWorker(ctx context.Context) {
 	for {
-		job, err := s.publishQueue.Dequeue(ctx)
+		job, err := s.queue.Dequeue(ctx)
 		if errors.Is(err, ErrPublishQueueEmpty) {
 			continue
 		}
@@ -212,7 +212,7 @@ func (s *DashboardService) runPublishWorker(ctx context.Context) {
 	}
 }
 
-func (s *DashboardService) processPublishJob(ctx context.Context, job PublishJob) {
+func (s *Service) processPublishJob(ctx context.Context, job PublishJob) {
 	if job.JobID == uuid.Nil || job.ProjectID == uuid.Nil || job.UserID == uuid.Nil || strings.TrimSpace(job.Platform) == "" {
 		log.Printf("discarding invalid publish job: %+v", job)
 		return
@@ -239,13 +239,13 @@ func (s *DashboardService) processPublishJob(ctx context.Context, job PublishJob
 		}
 	}
 
-	if err := s.publishQueue.ReleaseLock(ctx, lockKey, job.JobID.String()); err != nil {
+	if err := s.queue.ReleaseLock(ctx, lockKey, job.JobID.String()); err != nil {
 		log.Printf("publish lock release failed for job %s: %v", job.JobID, err)
 	}
 }
 
-func (s *DashboardService) ensurePublishJobLock(ctx context.Context, job PublishJob, lockKey string) (bool, error) {
-	lockValue, err := s.publishQueue.LockValue(ctx, lockKey)
+func (s *Service) ensurePublishJobLock(ctx context.Context, job PublishJob, lockKey string) (bool, error) {
+	lockValue, err := s.queue.LockValue(ctx, lockKey)
 	if err != nil {
 		return false, err
 	}
@@ -264,10 +264,10 @@ func (s *DashboardService) ensurePublishJobLock(ctx context.Context, job Publish
 		return false, nil
 	}
 
-	return s.publishQueue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
+	return s.queue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
 }
 
-func (s *DashboardService) startPublishLockRefresh(ctx context.Context, lockKey, lockValue string) func() {
+func (s *Service) startPublishLockRefresh(ctx context.Context, lockKey, lockValue string) func() {
 	done := make(chan struct{})
 	go func() {
 		ticker := time.NewTicker(publishLockRefreshEvery)
@@ -280,7 +280,7 @@ func (s *DashboardService) startPublishLockRefresh(ctx context.Context, lockKey,
 			case <-done:
 				return
 			case <-ticker.C:
-				refreshed, err := s.publishQueue.RefreshLock(ctx, lockKey, lockValue, publishLockTTL)
+				refreshed, err := s.queue.RefreshLock(ctx, lockKey, lockValue, publishLockTTL)
 				if err != nil {
 					log.Printf("publish lock refresh failed for %s: %v", lockKey, err)
 					continue
@@ -298,7 +298,7 @@ func (s *DashboardService) startPublishLockRefresh(ctx context.Context, lockKey,
 	}
 }
 
-func (s *DashboardService) preparePublishJob(projectID uuid.UUID, platform string, userID uuid.UUID) (models.Project, models.ProjectPlatformPublication, error) {
+func (s *Service) preparePublishJob(projectID uuid.UUID, platform string, userID uuid.UUID) (models.Project, models.ProjectPlatformPublication, error) {
 	var project models.Project
 	if err := s.db.Where("id = ? AND user_id = ?", projectID, userID).First(&project).Error; err != nil {
 		return models.Project{}, models.ProjectPlatformPublication{}, ErrForbidden
@@ -330,7 +330,7 @@ func (s *DashboardService) preparePublishJob(projectID uuid.UUID, platform strin
 	return project, pub, nil
 }
 
-func (s *DashboardService) publicationStillPublishing(projectID uuid.UUID, platform string) (bool, error) {
+func (s *Service) publicationStillPublishing(projectID uuid.UUID, platform string) (bool, error) {
 	var pub models.ProjectPlatformPublication
 	if err := s.db.Select("status").Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
 		return false, err
@@ -345,7 +345,7 @@ func publicationPublishingStale(pub models.ProjectPlatformPublication) bool {
 	return time.Since(*pub.LastAttemptAt) > publishStaleAfter
 }
 
-func (s *DashboardService) markPublicationQueued(pub *models.ProjectPlatformPublication, queuedAt time.Time) error {
+func (s *Service) markPublicationQueued(pub *models.ProjectPlatformPublication, queuedAt time.Time) error {
 	return s.db.Model(pub).Updates(map[string]interface{}{
 		"status":          models.PublicationStatusPublishing,
 		"error_message":   "",
@@ -353,12 +353,12 @@ func (s *DashboardService) markPublicationQueued(pub *models.ProjectPlatformPubl
 	}).Error
 }
 
-func (s *DashboardService) markPublicationFailed(projectID uuid.UUID, platform, message string) error {
+func (s *Service) markPublicationFailed(projectID uuid.UUID, platform, message string) error {
 	return s.db.Model(&models.ProjectPlatformPublication{}).
 		Where("project_id = ? AND platform = ?", projectID, platform).
 		Updates(map[string]interface{}{
 			"status":        models.PublicationStatusFailed,
-			"error_message": sanitizeUserFacingErrorMessage(message),
+			"error_message": SanitizeUserFacingErrorMessage(message),
 			"retry_count":   gorm.Expr("retry_count + ?", 1),
 		}).Error
 }

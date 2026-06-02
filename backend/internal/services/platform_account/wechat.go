@@ -1,4 +1,4 @@
-package services
+package platformaccount
 
 import (
 	"encoding/json"
@@ -35,7 +35,7 @@ func (WechatAPITester) Test(appID, appSecret string) dto.WechatConnectionTestRes
 	return buildWechatConnectionResult(err)
 }
 
-func (s *DashboardService) GetWechatAccount(userID uuid.UUID) (*dto.WechatAccountResponse, error) {
+func (s *Service) GetWechatAccount(userID uuid.UUID) (*dto.WechatAccountResponse, error) {
 	var account models.PlatformAccount
 	err := s.db.Where("user_id = ? AND platform = ?", userID, wechatPlatform).First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -53,7 +53,7 @@ func (s *DashboardService) GetWechatAccount(userID uuid.UUID) (*dto.WechatAccoun
 	return &resp, nil
 }
 
-func (s *DashboardService) UpsertWechatAccount(userID uuid.UUID, req dto.UpsertWechatAccountRequest) (*dto.WechatAccountResponse, error) {
+func (s *Service) UpsertWechatAccount(userID uuid.UUID, req dto.UpsertWechatAccountRequest) (*dto.WechatAccountResponse, error) {
 	appID := strings.TrimSpace(req.AppID)
 	appSecret := strings.TrimSpace(req.AppSecret)
 	if appID == "" {
@@ -120,7 +120,7 @@ func (s *DashboardService) UpsertWechatAccount(userID uuid.UUID, req dto.UpsertW
 	return &resp, nil
 }
 
-func (s *DashboardService) TestWechatAccount(userID uuid.UUID, req dto.TestWechatAccountRequest) (*dto.WechatConnectionTestResponse, error) {
+func (s *Service) TestWechatAccount(userID uuid.UUID, req dto.TestWechatAccountRequest) (*dto.WechatConnectionTestResponse, error) {
 	appID := strings.TrimSpace(req.AppID)
 	appSecret := strings.TrimSpace(req.AppSecret)
 
@@ -171,7 +171,7 @@ func (s *DashboardService) TestWechatAccount(userID uuid.UUID, req dto.TestWecha
 	return &result, nil
 }
 
-func (s *DashboardService) applySavedWechatCredentialsToPublication(userID uuid.UUID, pub *models.ProjectPlatformPublication) error {
+func (s *Service) applySavedWechatCredentialsToPublication(userID uuid.UUID, pub *models.ProjectPlatformPublication) error {
 	if pub.Platform != wechatPlatform {
 		return nil
 	}

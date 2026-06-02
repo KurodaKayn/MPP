@@ -1,4 +1,4 @@
-package services
+package platformaccount
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 
 const douyinPlatform = "douyin"
 
-func (s *DashboardService) GetDouyinAccount(userID uuid.UUID) (*dto.DouyinAccountResponse, error) {
+func (s *Service) GetDouyinAccount(userID uuid.UUID) (*dto.DouyinAccountResponse, error) {
 	var account models.PlatformAccount
 	err := s.db.Where("user_id = ? AND platform = ?", userID, douyinPlatform).First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
