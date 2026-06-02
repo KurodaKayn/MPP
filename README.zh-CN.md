@@ -19,7 +19,7 @@
   <img src="https://img.shields.io/badge/shadcn-4-000000?style=for-the-badge&logo=shadcnui&logoColor=white&labelColor=000000" alt="shadcn" />
   <img src="https://img.shields.io/badge/WXT-0.20.26-67D8EF?style=for-the-badge&logo=wxt&logoColor=66FF66" alt="WXT" />
   <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go&logoColor=00ADD8" alt="Go" />
-  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
+  <img src="doc/assets/badges/python.svg" alt="Python" />
   <br>
   <img src="https://img.shields.io/badge/FastAPI-0.136-05998B?style=for-the-badge&logo=fastapi&logoColor=05998B" alt="FastAPI" />
   <img src="https://img.shields.io/badge/LangChain-1.3-1C3C3C?style=for-the-badge&logo=langchaincorporate&logoColor=1C3C3C" alt="LangChain" />
@@ -28,7 +28,7 @@
   <br>
   <img src="doc/assets/badges/echo.svg" alt="Echo" />
   <img src="doc/assets/badges/gorm.svg" alt="GORM" />
-  <img src="https://img.shields.io/badge/Chromium-Remote_Browser-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chromium" />
+  <img src="doc/assets/badges/chromium.svg" alt="Chromium" />
   <br>
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=2496ED" alt="Docker" />
   <img src="https://img.shields.io/badge/Traefik-3.7-24A1C1?style=for-the-badge&logo=traefikproxy&logoColor=24A1C1" alt="Traefik" />
