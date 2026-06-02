@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
+      extension: ${{ steps.filter.outputs.extension }}
       backend: ${{ steps.filter.outputs.backend }}
       browser_worker: ${{ steps.filter.outputs.browser_worker }}
       ai_service: ${{ steps.filter.outputs.ai_service }}
@@ -35,6 +36,7 @@ jobs:
           mark_all() {
             {
               echo "frontend=true"
+              echo "extension=true"
               echo "backend=true"
               echo "browser_worker=true"
               echo "ai_service=true"
@@ -69,6 +71,7 @@ jobs:
 
           shared_pattern='^\.github/'
           mark frontend "^(frontend/|${shared_pattern#^})"
+          mark extension "^(extension/|${shared_pattern#^})"
           mark backend "^(backend/|${shared_pattern#^})"
           mark browser_worker "^(browser-worker/|${shared_pattern#^})"
           mark ai_service "^(ai-service/|${shared_pattern#^})"
@@ -109,6 +112,46 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  extension:
+    name: Extension
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.extension == 'true'
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: extension/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Format check
+        run: pnpm run format:check
+
+      - name: Type check
+        run: pnpm run compile
+
+      - name: Build
+        run: pnpm run build
 
   backend:
     name: Backend
@@ -193,6 +236,7 @@ jobs:
     needs:
       - changes
       - frontend
+      - extension
       - backend
       - browser_worker
       - ai_service
@@ -206,6 +250,7 @@ jobs:
           results=(
             "${{ needs.changes.result }}"
             "${{ needs.frontend.result }}"
+            "${{ needs.extension.result }}"
             "${{ needs.backend.result }}"
             "${{ needs.browser_worker.result }}"
             "${{ needs.ai_service.result }}"
