@@ -2,6 +2,7 @@
 
 import { createTwoFilesPatch } from "diff";
 import { useMemo } from "react";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import {
   Diff,
   Hunk,
@@ -19,6 +20,8 @@ export function AIDiffPreview({
   nextValue,
   previousValue,
 }: AIDiffPreviewProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
   const file = useMemo(
     () => buildDiffFile(previousValue, nextValue),
     [nextValue, previousValue],
@@ -27,7 +30,7 @@ export function AIDiffPreview({
   if (!file || file.hunks.length === 0) {
     return (
       <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-        暂无差异
+        {t("ai.noDiff")}
       </div>
     );
   }

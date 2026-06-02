@@ -27,7 +27,7 @@ export function normalizeStoredHtml(html: string) {
       nextImage.setAttribute("src", image.getAttribute("src") ?? "");
       nextImage.setAttribute(
         "alt",
-        image.getAttribute("alt") ?? caption ?? "插入图片",
+        image.getAttribute("alt") ?? caption ?? "Image",
       );
       fragment.append(nextImage);
     }

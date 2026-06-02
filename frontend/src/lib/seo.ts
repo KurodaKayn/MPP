@@ -17,18 +17,15 @@ export const siteConfig = {
   url: normalizeSiteUrl(
     process.env.FRONTEND_BASE_URL ?? process.env.NEXT_PUBLIC_SITE_URL,
   ),
-  title: "multi-platform poster | 多平台内容发布工作台",
+  title: "multi-platform poster | Content Publishing Workbench",
   description:
-    "multi-platform poster 是面向创作者和运营团队的多平台内容发布工作台，支持内容项目管理、平台草稿适配、发布状态追踪和 AI 辅助编辑。",
+    "multi-platform poster is a workbench for creators and content teams, supporting project management, draft adaptation, status tracking, and AI-assisted editing.",
   keywords: [
-    "多平台发布",
-    "内容发布工具",
-    "自媒体运营",
-    "社交媒体发布",
-    "AI 内容编辑",
-    "公众号发布",
-    "知乎发布",
-    "抖音发布",
+    "multi-platform publishing",
+    "content tools",
+    "social media management",
+    "AI editing",
+    "Douyin publishing",
   ],
   indexableRoutes: [
     {

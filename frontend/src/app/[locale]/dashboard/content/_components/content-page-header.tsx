@@ -1,5 +1,8 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, Send } from "lucide-react";
+import { useTranslation, useAppLocale } from "@/lib/i18n/client";
 
 type ContentPageHeaderProps = {
   canSave?: boolean;
@@ -17,17 +20,21 @@ export function ContentPageHeader({
   onSave,
 }: ContentPageHeaderProps) {
   const isEditing = mode === "edit";
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "dashboard");
 
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">
-          {isEditing ? "编辑内容" : "内容创作"}
+          {isEditing
+            ? t("content.header.titleEdit")
+            : t("content.header.titleCreate")}
         </h2>
         <p className="text-muted-foreground">
           {isEditing
-            ? "修改当前项目内容，并重新选择需要同步的平台。"
-            : "在此编写您的内容，我们将为您自动适配各平台格式。"}
+            ? t("content.header.descEdit")
+            : t("content.header.descCreate")}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -43,11 +50,12 @@ export function ContentPageHeader({
             ) : (
               <Save className="mr-2 h-4 w-4" />
             )}
-            保存修改
+            {t("content.header.saveChanges")}
           </Button>
         ) : null}
         <Button onClick={onOpenPublishPanel}>
-          <Send className="mr-2 h-4 w-4" /> 发布设置
+          <Send className="mr-2 h-4 w-4" />{" "}
+          {t("content.header.publishSettings")}
         </Button>
       </div>
     </div>

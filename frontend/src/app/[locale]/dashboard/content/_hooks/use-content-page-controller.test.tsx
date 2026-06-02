@@ -27,6 +27,21 @@ const mocks = vi.hoisted(() => ({
   waitForProjectPublications: vi.fn(),
 }));
 
+vi.mock("@/lib/i18n/client", () => ({
+  useAppLocale: () => "en",
+  useTranslation: () => ({
+    t: (key: string, options?: any) => {
+      if (key === "publish.publishedTo") {
+        return `Published to ${options.platforms}.`;
+      }
+      if (key === "platforms.zhihu") {
+        return "Zhihu";
+      }
+      return key;
+    },
+  }),
+}));
+
 vi.mock("@/lib/dashboard/api", () => ({
   createDashboardProject: mocks.createDashboardProject,
   getDashboardProject: mocks.getDashboardProject,
@@ -221,8 +236,8 @@ describe("useContentPageController", () => {
     expect(mocks.syncProjectPrepublish).toHaveBeenCalledWith("project-1", {
       platforms: ["wechat", "zhihu", "x", "douyin"],
     });
-    expect(mocks.toastSuccess).toHaveBeenCalledWith("已同步到预发布", {
-      description: "平台草稿已由后端适配并保存。",
+    expect(mocks.toastSuccess).toHaveBeenCalledWith("project.syncSuccess", {
+      description: "project.syncDesc",
     });
     expect(mocks.replace).toHaveBeenCalledWith("/dashboard/content/project-1");
 
@@ -249,9 +264,12 @@ describe("useContentPageController", () => {
     });
 
     expect(useContentPageStore.getState().prepublishDrafts).toEqual({});
-    expect(mocks.toastError).toHaveBeenCalledWith("请选择发布平台", {
-      description: "在底部发布渠道中勾选至少一个平台。",
-    });
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      "project.selectPlatformTitle",
+      {
+        description: "project.selectPlatformDesc",
+      },
+    );
     expect(mocks.toastSuccess).not.toHaveBeenCalled();
 
     view.unmount();
@@ -379,9 +397,12 @@ describe("useContentPageController", () => {
     expect(mocks.waitForProjectPublications).toHaveBeenCalledWith("project-1", [
       "zhihu",
     ]);
-    expect(mocks.toastSuccess).toHaveBeenCalledWith("修改并发布完成", {
-      description: "已发布到 Zhihu。",
-    });
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "publish.editAndPublishSuccess",
+      {
+        description: "Published to Zhihu.",
+      },
+    );
 
     view.unmount();
   });

@@ -54,7 +54,7 @@ export async function publishContentToPlatforms(
     input.platforms.map(async (platform) => {
       const result = await dependencies.publishProject(project.id, platform);
       if (result.status === "failed" || result.status === "error") {
-        throw new Error(result.error_message || `${platform} 发布失败`);
+        throw new Error(result.error_message || `${platform} publish failed`);
       }
       return {
         platform,
@@ -80,7 +80,9 @@ export async function publishContentToPlatforms(
 
     failed.push({
       message:
-        result.reason instanceof Error ? result.reason.message : "请稍后重试。",
+        result.reason instanceof Error
+          ? result.reason.message
+          : "Please try again later.",
       platform,
     });
   });
@@ -101,7 +103,7 @@ export async function publishContentToPlatforms(
       const publication = finalPublicationMap.get(platform);
       if (!publication) {
         failed.push({
-          message: `${platform} 发布状态未返回`,
+          message: `${platform} publication status not returned`,
           platform,
         });
         return;
@@ -113,7 +115,7 @@ export async function publishContentToPlatforms(
       }
 
       failed.push({
-        message: publication.error_message || `${platform} 发布失败`,
+        message: publication.error_message || `${platform} publish failed`,
         platform,
       });
     });

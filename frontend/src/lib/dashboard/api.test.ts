@@ -263,7 +263,7 @@ describe("dashboard api client", () => {
         message: "write a hello world example",
         title: "Draft",
       }),
-    ).rejects.toThrow("AI 没有返回内容");
+    ).rejects.toThrow("AI returned no content");
   });
 
   it("streams AI prepublish edit chunks", async () => {
@@ -642,16 +642,16 @@ describe("dashboard api client", () => {
   it("fetches and updates the WeChat account settings", async () => {
     const account = {
       account_auth: {
-        message: "需要确认公众号认证",
+        message: "WeChat account verification needs manual confirmation",
         status: "unknown",
-        title: "无法自动确认",
+        title: "Automatic confirmation unavailable",
       },
       app_id: "wx-app",
       has_app_secret: true,
       ip_whitelist: {
-        message: "等待测试",
+        message: "Waiting for verification",
         status: "unknown",
-        title: "等待测试",
+        title: "Waiting for verification",
       },
       platform: "wechat",
       status: "untested",
@@ -690,17 +690,17 @@ describe("dashboard api client", () => {
   it("posts WeChat connection test credentials", async () => {
     const result = {
       account_auth: {
-        message: "连接成功不等于具备发布权限",
+        message: "Connection success does not guarantee publish permission",
         status: "warning",
-        title: "需确认认证与发布权限",
+        title: "Verify auth and publish permissions",
       },
       connected: true,
       ip_whitelist: {
-        message: "微信接口已接受当前服务器请求",
+        message: "The WeChat API accepted the current server request",
         status: "passed",
-        title: "IP 白名单已通过",
+        title: "IP allowlist verified",
       },
-      message: "连接成功",
+      message: "Connected",
       status: "connected",
       tested_at: "2026-05-29T12:00:00Z",
     };
@@ -728,9 +728,9 @@ describe("dashboard api client", () => {
   it("fetches and updates the X account settings", async () => {
     const account = {
       account_auth: {
-        message: "账号凭证已通过",
+        message: "Account credentials verified",
         status: "passed",
-        title: "账号凭证已通过",
+        title: "Account credentials verified",
       },
       api_key: "x-api-key",
       has_access_token: true,
@@ -738,9 +738,10 @@ describe("dashboard api client", () => {
       has_api_secret: true,
       platform: "x",
       publish_access: {
-        message: "发布前请确认 X App 开启 Read and write 用户权限。",
+        message:
+          "Before publishing, confirm the X App has Read and write user permission.",
         status: "unknown",
-        title: "等待测试",
+        title: "Waiting for verification",
       },
       status: "untested",
       username: "creator",
@@ -788,18 +789,18 @@ describe("dashboard api client", () => {
   it("posts X connection test credentials", async () => {
     const result = {
       account_auth: {
-        message: "已连接 @creator。",
+        message: "Connected as @creator.",
         status: "passed",
-        title: "账号凭证已通过",
+        title: "Account credentials verified",
       },
       connected: true,
-      message: "连接成功",
+      message: "Connected",
       name: "Creator",
       publish_access: {
         message:
-          "测试会校验账号身份；实际发布还要求 X App 具备 Read and write 权限。",
+          "The test verifies account identity; actual publishing also requires X App Read and write permission.",
         status: "warning",
-        title: "需确认写入权限",
+        title: "Confirm write permission",
       },
       status: "connected",
       tested_at: "2026-05-29T12:00:00Z",
@@ -922,6 +923,6 @@ describe("dashboard api client", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getDashboardStats()).rejects.toThrow("请求失败 (503)");
+    await expect(getDashboardStats()).rejects.toThrow("Request failed (503)");
   });
 });

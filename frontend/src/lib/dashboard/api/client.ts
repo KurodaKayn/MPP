@@ -10,7 +10,7 @@ type ApiErrorResponse = {
 };
 
 async function getDashboardErrorMessage(response: Response) {
-  const fallback = `请求失败 (${response.status})`;
+  const fallback = `Request failed (${response.status})`;
 
   try {
     const body = (await response.json()) as ApiErrorResponse;
@@ -96,7 +96,9 @@ export async function streamDashboardText(
         options.onChunk?.(trailing, accumulated);
       }
       if (!accumulated.trim()) {
-        throw new Error("AI 没有返回内容，请换个说法再试。");
+        throw new Error(
+          "AI returned no content. Please try a different prompt.",
+        );
       }
       return accumulated;
     }

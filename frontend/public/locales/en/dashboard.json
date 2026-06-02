@@ -83,5 +83,207 @@
       "logoutButton": "Sign Out",
       "logoutSuccess": "Signed out successfully"
     }
+  },
+  "auth": {
+    "header": {
+      "description": "Manage platform interface credentials and publishing prerequisites.",
+      "connectedSuffix": "Connected"
+    },
+    "actions": {
+      "save": "Save Configuration",
+      "test": "Test Connection",
+      "cancel": "Cancel",
+      "close": "Close"
+    },
+    "status": {
+      "notAuthorized": "Not Authorized",
+      "unknown": "Unknown",
+      "notConnected": "Not Connected",
+      "connected": "Connected",
+      "failed": "Connection Failed",
+      "untested": "Untested",
+      "unconnected": "Not Connected"
+    },
+    "douyin": {
+      "title": "Douyin Creator Center",
+      "description": "Scan QR code or log in within the isolated browser. MPP only saves the cookies required for publishing.",
+      "unconnected": "Not Connected",
+      "notConnectedUsername": "No Douyin account connected",
+      "lastUpdated": "Last Updated",
+      "reconnect": "Reconnect",
+      "connect": "Connect Douyin"
+    },
+    "wechat": {
+      "title": "WeChat Official Account",
+      "description": "Connect via official interfaces using Official Platform developer credentials.",
+      "saved": "Saved, leave blank to keep existing",
+      "placeholder": "Please enter AppSecret",
+      "secretHint": "AppSecret will not be displayed; re-enter when modifying again after saving.",
+      "saveConfig": "Save Configuration",
+      "testConnection": "Test Connection",
+      "check": {
+        "title": "Connection Check",
+        "lastTested": "Last Tested: {{date}}",
+        "notTested": "Not Tested",
+        "errCode": "WeChat Error Code: {{code}}"
+      },
+      "guide": {
+        "trigger": "Get Credentials",
+        "title": "How to obtain AppID and AppSecret",
+        "description": "Obtain credentials from WeChat Official Platform development settings and configure IP whitelist according to test error prompts.",
+        "step1": "1. Open Development Settings",
+        "link": "WeChat Official Platform Development Settings",
+        "step2": "2. Click Official Account",
+        "step2Desc": "If you don't have an official account yet, complete registration following the WeChat Official Platform process.",
+        "step2Alt": "Click Official Account entry in WeChat Official Platform console",
+        "step3": "3. Get Secret and set IP Whitelist",
+        "step3Desc": "You can save the secret first, click test connection, and then use the IP in the error message to set the whitelist.",
+        "step3Alt": "Get secret and configure IP whitelist in WeChat Official Platform development settings"
+      }
+    },
+    "x": {
+      "title": "X",
+      "authorize": "Authorize X",
+      "expiresAt": "Expires at: ",
+      "savedHint": "Saved, leave blank to keep"
+    },
+    "zhihu": {
+      "title": "Zhihu Creator Center",
+      "description": "Scan QR code or log in within the isolated browser. MPP only saves the cookies required for publishing.",
+      "notConnectedUsername": "No Zhihu account connected",
+      "lastUpdated": "Last Updated: {{date}}",
+      "reconnect": "Reconnect",
+      "connect": "Connect Zhihu"
+    },
+    "remoteBrowser": {
+      "status": {
+        "capturing": "Verifying Login",
+        "connected": "Connected",
+        "expired": "Expired",
+        "failed": "Connection Failed",
+        "login_detected": "Login Detected",
+        "pending": "Starting",
+        "ready": "Waiting for Login"
+      },
+      "countdown": {
+        "default": "Complete within 15 minutes",
+        "expiring": "Expiring soon",
+        "remaining": "Remaining {{time}}"
+      },
+      "description": "Complete official login in the remote browser, then click \"I have logged in\".",
+      "starting": "Starting remote browser",
+      "success": "Cookie saved, account ready for publishing.",
+      "privacyHint": "Original VNC/CDP address will not be displayed or returned.",
+      "complete": "I have logged in"
+    },
+    "toast": {
+      "loadFailed": "Failed to load platform accounts",
+      "loadFailedDesc": "Please refresh the page later.",
+      "sessionExpired": "Remote browser session expired, please reconnect.",
+      "sessionStartFailed": "Failed to start remote browser.",
+      "sessionRefreshFailed": "Unable to refresh session status.",
+      "xSuccess": "X Authorization Successful",
+      "xSuccessDesc": "Account connected, updating settings.",
+      "xFailed": "X Authorization Failed",
+      "xFailedDesc": "Please click the authorize button again.",
+      "saveSuccess": "Account saved",
+      "saveFailed": "Save failed",
+      "saveFailedDesc": "Please check your input.",
+      "connectSuccess": "Connection successful",
+      "wechatConnectSuccessDesc": "WeChat interface has accepted the current AppID/AppSecret.",
+      "connectFailed": "Connection failed",
+      "testFailed": "Test failed",
+      "xConnectSuccess": "X Connection successful",
+      "xConnectSuccessDesc": "X API has accepted the current credentials.",
+      "xConnectedAt": "Connected @{{username}}",
+      "browserStarted": "Remote browser started",
+      "browserStartedDesc": "Please complete {{platform}} login in the popup.",
+      "browserStartFailed": "Unable to start {{platform}} connection",
+      "browserStartFailedDesc": "Please try again later.",
+      "browserConnected": "{{platform}} account connected",
+      "browserConnectedDesc": "Cookie saved securely.",
+      "browserLoginNotDetected": "Login status not detected yet.",
+      "browserCancelFailed": "Failed to cancel remote session",
+      "browserCancelFailedDesc": "The browser session may have already ended."
+    },
+    "hints": {
+      "cookieAuth": "Cookie Publishing Credentials",
+      "cookieConnected": "Encrypted Cookie saved; will be decrypted at the service boundary and passed to the publisher.",
+      "cookieNotConnected": "Click connect and complete scan or login on the official page.",
+      "remoteBrowser": "Remote Browser Connection",
+      "remoteBrowserDesc": "{{platform}} uses isolated Chromium for login, no need to manually copy cookies or enter passwords into MPP forms."
+    }
+  },
+  "content": {
+    "header": {
+      "titleCreate": "Content Creation",
+      "titleEdit": "Edit Content",
+      "descCreate": "Write your content here, and we will automatically adapt it for each platform.",
+      "descEdit": "Modify current project content and reselect platforms for synchronization.",
+      "saveChanges": "Save Changes",
+      "publishSettings": "Publishing Settings"
+    },
+    "prepublish": {
+      "title": "Pre-publish",
+      "description": "Click on a platform to enter its exclusive pre-publish block. View original format on the left and preview on the right.",
+      "syncToPlatform": "Sync to Platform",
+      "syncAll": "Sync to All Platforms",
+      "statusSynced": "Synced",
+      "statusNotSynced": "Not Synced",
+      "pleaseFillContent": "Please fill in content before syncing platform drafts.",
+      "targetFormat": "{{format}} · Synced {{date}}",
+      "notSyncedTarget": "Not yet synced. Target format: {{format}}.",
+      "aiEditTitle": "AI Edit Pre-publish",
+      "errorSyncFirst": "Please sync the platform draft first",
+      "aiSaveSuccess": "AI modifications saved to pre-publish",
+      "originalFormat": "Original Format",
+      "originalDesc": "Current platform target format: {{format}}.\nAfter clicking sync above, the original format content actually saved to the database will be displayed here.",
+      "preview": "Preview",
+      "previewPlaceholder": "Platform draft hasn't been synced yet; preview will appear after sync."
+    },
+    "publish": {
+      "bar": {
+        "oneClickPublish": "One-click Publish",
+        "saveAndPublish": "Save and Publish",
+        "autoPublish": "Auto Publish",
+        "autoPublishDesc": "Check the platforms that need to enter the automatic publishing process here.",
+        "manualPublish": "Manual Publish",
+        "fillContentFirst": "Please fill in the title and body content before selecting auto-publish platforms."
+      }
+    },
+    "editor": {
+      "tabEditor": "Edit",
+      "tabPreview": "Preview",
+      "title": "Title",
+      "titlePlaceholder": "Enter article title...",
+      "contentPlaceholder": "Start creating here...",
+      "wordCount": "{{count}} words",
+      "imageCount": "{{count}} images",
+      "desc": "Write body text like a document, switch to preview to see results before publishing"
+    },
+    "toast": {
+      "loadFailed": "Unable to load project content",
+      "loadFailedDesc": "Please try again later.",
+      "incomplete": "Incomplete content",
+      "incompleteDesc": "Please fill in title and body before publishing.",
+      "selectPlatform": "Please select publishing platforms",
+      "selectPlatformDesc": "Check at least one platform in the publishing channels at the bottom.",
+      "saveSuccess": "Changes saved",
+      "saveFailed": "Save failed",
+      "syncSuccess": "Synced to pre-publish",
+      "syncSuccessDesc": "Platform draft adapted and saved by backend.",
+      "syncFailed": "Failed to sync to pre-publish",
+      "xWindowBlocked": "Browser blocked a new window",
+      "xWindowBlockedDesc": "X post link copied, please paste into browser to open.",
+      "xWindowOpened": "X post window opened",
+      "xWindowOpenedDesc": "Click Post on X page after confirming content.",
+      "xWindowFailed": "Unable to open X post window",
+      "publishPartiallyFailed": "Publish failed for some platforms",
+      "publishFailed": "Publish failed",
+      "publishSuccess": "Publish completed",
+      "publishEditSuccess": "Modified and published successfully",
+      "publishedTo": "Published to {{platforms}}.",
+      "publishRequestFailed": "Publish request failed"
+    }
   }
 }

@@ -26,6 +26,7 @@ import {
   type XConnectionTestResult,
   type ZhihuAccount,
 } from "@/lib/dashboard/api";
+import { useTranslation, useAppLocale } from "@/lib/i18n/client";
 
 type AccountStatus = "unconfigured" | "untested" | "connected" | "failed";
 type BrowserAccountPlatform = "douyin" | "zhihu";
@@ -37,11 +38,6 @@ type ConnectionCheck = {
   ipHint?: RequirementStatus;
   lastTestedAt?: string;
   testError?: string;
-};
-
-const browserPlatformLabels: Record<BrowserAccountPlatform, string> = {
-  douyin: "抖音",
-  zhihu: "知乎",
 };
 
 const finalBrowserSessionStatuses = new Set<BrowserSession["status"]>([
@@ -76,33 +72,18 @@ function getBrowserAccountPlatform(
   return session.platform === "zhihu" ? "zhihu" : "douyin";
 }
 
-function buildBrowserConnectionCheck(
-  account: DouyinAccount | ZhihuAccount | null,
-  platformLabel: string,
-): ConnectionCheck {
-  const connected = account?.status === "connected";
-
-  return {
-    authHint: {
-      message: connected
-        ? "已保存加密 Cookie，发布时会在服务边界解密后交给发布器。"
-        : "点击连接后在官方页面完成扫码或登录。",
-      status: connected ? "passed" : "unknown",
-      title: "Cookie 发布凭据",
-    },
-    ipHint: {
-      message: `${platformLabel}使用隔离 Chromium 登录，不需要手工复制 Cookie 或输入密码到 MPP 表单。`,
-      status: connected ? "passed" : "unknown",
-      title: "远程浏览器连接",
-    },
-    lastTestedAt: account?.updated_at,
-    testError: account?.last_test_error,
-  };
-}
-
 export function useAuthPageController() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "dashboard");
+  const { t: tCommon } = useTranslation(locale, "common");
+
+  const browserPlatformLabels: Record<BrowserAccountPlatform, string> = {
+    douyin: tCommon("platforms.douyin"),
+    zhihu: tCommon("platforms.zhihu"),
+  };
+
   const [account, setAccount] = useState<WechatAccount | null>(null);
   const [testResult, setTestResult] =
     useState<WechatConnectionTestResult | null>(null);
@@ -137,6 +118,31 @@ export function useAuthPageController() {
   const [zhihuCompleting, setZhihuCompleting] = useState(false);
   const xOAuthStatus = searchParams.get("x_oauth");
 
+  function buildBrowserConnectionCheck(
+    account: DouyinAccount | ZhihuAccount | null,
+    platform: BrowserAccountPlatform,
+  ): ConnectionCheck {
+    const connected = account?.status === "connected";
+    const platformLabel = browserPlatformLabels[platform];
+
+    return {
+      authHint: {
+        message: connected
+          ? t("auth.hints.cookieConnected")
+          : t("auth.hints.cookieNotConnected"),
+        status: connected ? "passed" : "unknown",
+        title: t("auth.hints.cookieAuth"),
+      },
+      ipHint: {
+        message: t("auth.hints.remoteBrowserDesc", { platform: platformLabel }),
+        status: connected ? "passed" : "unknown",
+        title: t("auth.hints.remoteBrowser"),
+      },
+      lastTestedAt: account?.updated_at,
+      testError: account?.last_test_error,
+    };
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -160,8 +166,11 @@ export function useAuthPageController() {
         setXAPIKey(xResponse.api_key ?? "");
         setXUsername(xResponse.username ?? "");
       } catch (error) {
-        toast.error("无法加载平台账号", {
-          description: getErrorDescription(error, "请稍后刷新页面。"),
+        toast.error(t("auth.toast.loadFailed"), {
+          description: getErrorDescription(
+            error,
+            t("auth.toast.loadFailedDesc"),
+          ),
         });
       } finally {
         if (!cancelled) {
@@ -175,7 +184,7 @@ export function useAuthPageController() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!browserSession) {
@@ -200,15 +209,19 @@ export function useAuthPageController() {
             );
           }
           if (nextSession.status === "expired") {
-            setBrowserError("远程浏览器会话已过期，请重新连接。");
+            setBrowserError(t("auth.toast.sessionExpired"));
           }
           if (nextSession.status === "failed") {
-            setBrowserError(nextSession.message || "远程浏览器启动失败。");
+            setBrowserError(
+              nextSession.message || t("auth.toast.sessionStartFailed"),
+            );
           }
         })
         .catch((error) => {
           if (!cancelled) {
-            setBrowserError(getErrorDescription(error, "无法刷新会话状态。"));
+            setBrowserError(
+              getErrorDescription(error, t("auth.toast.sessionRefreshFailed")),
+            );
           }
         });
     }, 2500);
@@ -217,24 +230,24 @@ export function useAuthPageController() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [browserSession]);
+  }, [browserSession, t]);
 
   useEffect(() => {
     if (xOAuthStatus === "connected") {
-      toast.success("X 授权成功", {
-        description: "账号已连接，正在更新设置。",
+      toast.success(t("auth.toast.xSuccess"), {
+        description: t("auth.toast.xSuccessDesc"),
       });
       router.replace("/dashboard/settings");
       return;
     }
 
     if (xOAuthStatus === "failed") {
-      toast.error("X 授权失败", {
-        description: "请重新点击授权按钮。",
+      toast.error(t("auth.toast.xFailed"), {
+        description: t("auth.toast.xFailedDesc"),
       });
       router.replace("/dashboard/settings");
     }
-  }, [router, xOAuthStatus]);
+  }, [router, xOAuthStatus, t]);
 
   const canSubmit = useMemo(() => {
     return Boolean(
@@ -340,10 +353,10 @@ export function useAuthPageController() {
       setAccount(response);
       setTestResult(null);
       setAppSecret("");
-      toast.success("公众号账号已保存");
+      toast.success(t("auth.toast.saveSuccess"));
     } catch (error) {
-      toast.error("保存失败", {
-        description: getErrorDescription(error, "请检查输入。"),
+      toast.error(t("auth.toast.saveFailed"), {
+        description: getErrorDescription(error, t("auth.toast.saveFailedDesc")),
       });
     } finally {
       setSaving(false);
@@ -360,17 +373,17 @@ export function useAuthPageController() {
       setTestResult(result);
 
       if (result.connected) {
-        toast.success("连接成功", {
-          description: "微信接口已接受当前 AppID/AppSecret。",
+        toast.success(t("auth.toast.connectSuccess"), {
+          description: t("auth.toast.wechatConnectSuccessDesc"),
         });
       } else {
-        toast.error("连接失败", {
+        toast.error(t("auth.toast.connectFailed"), {
           description: result.message,
         });
       }
     } catch (error) {
-      toast.error("测试失败", {
-        description: getErrorDescription(error, "请检查输入。"),
+      toast.error(t("auth.toast.testFailed"), {
+        description: getErrorDescription(error, t("auth.toast.saveFailedDesc")),
       });
     } finally {
       setTesting(false);
@@ -394,10 +407,10 @@ export function useAuthPageController() {
       setXAPISecret("");
       setXAccessToken("");
       setXAccessTokenSecret("");
-      toast.success("X 账号已保存");
+      toast.success(t("auth.toast.saveSuccess"));
     } catch (error) {
-      toast.error("保存失败", {
-        description: getErrorDescription(error, "请检查输入。"),
+      toast.error(t("auth.toast.saveFailed"), {
+        description: getErrorDescription(error, t("auth.toast.saveFailedDesc")),
       });
     } finally {
       setXSaving(false);
@@ -419,19 +432,19 @@ export function useAuthPageController() {
       }
 
       if (result.connected) {
-        toast.success("X 连接成功", {
+        toast.success(t("auth.toast.xConnectSuccess"), {
           description: result.username
-            ? `已连接 @${result.username}`
-            : "X API 已接受当前凭证。",
+            ? t("auth.toast.xConnectedAt", { username: result.username })
+            : t("auth.toast.xConnectSuccessDesc"),
         });
       } else {
-        toast.error("X 连接失败", {
+        toast.error(t("auth.toast.connectFailed"), {
           description: result.message,
         });
       }
     } catch (error) {
-      toast.error("测试失败", {
-        description: getErrorDescription(error, "请检查输入。"),
+      toast.error(t("auth.toast.testFailed"), {
+        description: getErrorDescription(error, t("auth.toast.saveFailedDesc")),
       });
     } finally {
       setXTesting(false);
@@ -458,13 +471,21 @@ export function useAuthPageController() {
         stream_url: session.stream_url,
       });
       setBrowserStreamURL(session.stream_url);
-      toast.success("远程浏览器已启动", {
-        description: `请在弹窗中完成${platformLabel}登录。`,
+      toast.success(t("auth.toast.browserStarted"), {
+        description: t("auth.toast.browserStartedDesc", {
+          platform: platformLabel,
+        }),
       });
     } catch (error) {
-      toast.error(`无法启动${platformLabel}连接`, {
-        description: getErrorDescription(error, "请稍后再试。"),
-      });
+      toast.error(
+        t("auth.toast.browserStartFailed", { platform: platformLabel }),
+        {
+          description: getErrorDescription(
+            error,
+            t("auth.toast.browserStartFailedDesc"),
+          ),
+        },
+      );
     } finally {
       setConnecting(false);
     }
@@ -494,11 +515,17 @@ export function useAuthPageController() {
       }
       setBrowserSession(null);
       setBrowserStreamURL(undefined);
-      toast.success(`${platformLabel}账号已连接`, {
-        description: result.account.username || "Cookie 已安全保存。",
-      });
+      toast.success(
+        t("auth.toast.browserConnected", { platform: platformLabel }),
+        {
+          description:
+            result.account.username || t("auth.toast.browserConnectedDesc"),
+        },
+      );
     } catch (error) {
-      setBrowserError(getErrorDescription(error, "还没有检测到登录状态。"));
+      setBrowserError(
+        getErrorDescription(error, t("auth.toast.browserLoginNotDetected")),
+      );
     } finally {
       setCompleting(false);
     }
@@ -517,8 +544,11 @@ export function useAuthPageController() {
     try {
       await cancelBrowserSession(sessionID);
     } catch (error) {
-      toast.error("取消远程会话失败", {
-        description: getErrorDescription(error, "浏览器会话可能已经结束。"),
+      toast.error(t("auth.toast.browserCancelFailed"), {
+        description: getErrorDescription(
+          error,
+          t("auth.toast.browserCancelFailedDesc"),
+        ),
       });
     }
   };
@@ -548,7 +578,7 @@ export function useAuthPageController() {
         : null,
     douyin: {
       account: douyinAccount,
-      connectionCheck: buildBrowserConnectionCheck(douyinAccount, "抖音"),
+      connectionCheck: buildBrowserConnectionCheck(douyinAccount, "douyin"),
       connecting: douyinConnecting,
       loading,
       onConnect: () => {
@@ -616,7 +646,7 @@ export function useAuthPageController() {
     },
     zhihu: {
       account: zhihuAccount,
-      connectionCheck: buildBrowserConnectionCheck(zhihuAccount, "知乎"),
+      connectionCheck: buildBrowserConnectionCheck(zhihuAccount, "zhihu"),
       connecting: zhihuConnecting,
       loading,
       onConnect: () => {

@@ -87,7 +87,7 @@ function LoginContent() {
                     className="h-10 border-[#cfc8ba] bg-white/70"
                     value={username}
                     onChange={(event) => setUsername(event.target.value)}
-                    placeholder="例如: test_user"
+                    placeholder={t("login.usernamePlaceholder")}
                   />
                 </div>
 

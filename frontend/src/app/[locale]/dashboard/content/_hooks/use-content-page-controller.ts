@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import {
   getPlatformDefaultLabel,
   PLATFORM_TABS,
@@ -107,6 +108,8 @@ export function useContentPageController(projectId?: string) {
     setTitle,
     title,
   } = useContentPageStore();
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
   const publishBarRef = useRef<HTMLDivElement>(null);
   const isRouteContentLoaded = projectId
     ? loadedProjectId === projectId
@@ -176,11 +179,11 @@ export function useContentPageController(projectId?: string) {
         setSelectedPlatforms([]);
         setPrepublishDrafts({});
         setLoadedProjectId(targetProjectId);
-        toast.error("无法加载项目内容", {
+        toast.error(t("project.loadFailed"), {
           description:
             requestError instanceof Error
               ? requestError.message
-              : "请稍后重试。",
+              : t("common.retryLater"),
         });
       } finally {
         if (!cancelled) {
@@ -197,7 +200,12 @@ export function useContentPageController(projectId?: string) {
   }, [projectId]);
 
   const getSelectedPlatformLabels = (platforms: PublishPlatform[]) =>
-    platforms.map((platform) => getPlatformDefaultLabel(platform));
+    platforms.map((platform) => {
+      const item = PLATFORM_TABS.find((i) => i.value === platform);
+      return item
+        ? t(item.label, { defaultValue: item.defaultLabel })
+        : platform;
+    });
 
   const openPublishPanel = () => {
     publishBarRef.current?.scrollIntoView({
@@ -208,8 +216,8 @@ export function useContentPageController(projectId?: string) {
 
   const validateContentFields = () => {
     if (!title.trim() || !hasBodyContent) {
-      toast.error("内容不完整", {
-        description: "请填写标题和正文后再发布。",
+      toast.error(t("project.incompleteTitle"), {
+        description: t("project.incompleteDesc"),
       });
       return false;
     }
@@ -219,8 +227,8 @@ export function useContentPageController(projectId?: string) {
 
   const validatePlatforms = (platforms: PublishPlatform[]) => {
     if (platforms.length === 0) {
-      toast.error("请选择发布平台", {
-        description: "在底部发布渠道中勾选至少一个平台。",
+      toast.error(t("project.selectPlatformTitle"), {
+        description: t("project.selectPlatformDesc"),
       });
       return false;
     }
@@ -282,11 +290,13 @@ export function useContentPageController(projectId?: string) {
     try {
       await updateDashboardProject(projectId, buildProjectInput());
       setPrepublishDrafts({});
-      toast.success("修改已保存");
+      toast.success(t("project.saveSuccess"));
     } catch (requestError) {
-      toast.error("保存失败", {
+      toast.error(t("project.saveFailed"), {
         description:
-          requestError instanceof Error ? requestError.message : "请稍后重试。",
+          requestError instanceof Error
+            ? requestError.message
+            : t("common.retryLater"),
       });
     } finally {
       setIsSaving(false);
@@ -311,16 +321,18 @@ export function useContentPageController(projectId?: string) {
 
       setSelectedPlatforms(platforms);
       setPrepublishDrafts(draftsFromPublications(publications));
-      toast.success("已同步到预发布", {
-        description: "平台草稿已由后端适配并保存。",
+      toast.success(t("project.syncSuccess"), {
+        description: t("project.syncDesc"),
       });
       if (!projectId) {
         router.replace(`/dashboard/content/${targetProject.id}`);
       }
     } catch (requestError) {
-      toast.error("同步到预发布失败", {
+      toast.error(t("project.syncFailed"), {
         description:
-          requestError instanceof Error ? requestError.message : "请稍后重试。",
+          requestError instanceof Error
+            ? requestError.message
+            : t("common.retryLater"),
       });
     } finally {
       setIsSyncingPrepublish(false);
@@ -344,93 +356,90 @@ export function useContentPageController(projectId?: string) {
       return;
     }
 
-    setIsPublishing(true);
-    try {
-      await saveDashboardProjectContent(projectId, buildProjectContentInput());
-      await saveDashboardProjectPlatforms(projectId, {
-        platforms: selectedPlatforms,
-      });
+    await saveDashboardProjectContent(projectId, buildProjectContentInput());
+    await saveDashboardProjectPlatforms(projectId, {
+      platforms: selectedPlatforms,
+    });
 
-      const results = await Promise.allSettled(
-        selectedPlatforms.map(async (platform) => {
-          const result = await publishProject(projectId, platform);
-          if (result.status === "failed" || result.status === "error") {
-            throw new Error(result.error_message || `${platform} 发布失败`);
-          }
-          return {
-            platform,
-            status: result.status,
-          };
-        }),
+    const results = await Promise.allSettled(
+      selectedPlatforms.map(async (platform) => {
+        const result = await publishProject(projectId, platform);
+        if (result.status === "failed" || result.status === "error") {
+          throw new Error(
+            result.error_message ||
+              `${getPlatformDefaultLabel(platform)} ${t("publish.failed")}`,
+          );
+        }
+        return {
+          platform,
+          status: result.status,
+        };
+      }),
+    );
+
+    const succeeded: PublishPlatform[] = [];
+    const failed: { message: string; platform: PublishPlatform }[] = [];
+    const pendingPlatforms: PublishPlatform[] = [];
+
+    results.forEach((result, index) => {
+      const platform = selectedPlatforms[index];
+      if (result.status === "fulfilled") {
+        if (result.value.status === "publishing") {
+          pendingPlatforms.push(platform);
+          return;
+        }
+        succeeded.push(result.value.platform);
+        return;
+      }
+
+      failed.push({
+        message:
+          result.reason instanceof Error
+            ? result.reason.message
+            : t("common.retryLater"),
+        platform,
+      });
+    });
+
+    if (pendingPlatforms.length > 0) {
+      const finalPublications = await waitForProjectPublications(
+        projectId,
+        selectedPlatforms,
+      );
+      const finalPublicationMap = new Map(
+        finalPublications.items.map((publication) => [
+          publication.platform,
+          publication,
+        ]),
       );
 
-      const succeeded: PublishPlatform[] = [];
-      const failed: { message: string; platform: PublishPlatform }[] = [];
-      const pendingPlatforms: PublishPlatform[] = [];
+      pendingPlatforms.forEach((platform) => {
+        const publication = finalPublicationMap.get(platform);
+        if (!publication) {
+          failed.push({
+            message: t("publish.statusMissing", {
+              platform: getPlatformDefaultLabel(platform),
+            }),
+            platform,
+          });
+          return;
+        }
 
-      results.forEach((result, index) => {
-        const platform = selectedPlatforms[index];
-        if (result.status === "fulfilled") {
-          if (result.value.status === "publishing") {
-            pendingPlatforms.push(platform);
-            return;
-          }
-          succeeded.push(result.value.platform as PublishPlatform);
+        if (publication.status === "published") {
+          succeeded.push(platform);
           return;
         }
 
         failed.push({
           message:
-            result.reason instanceof Error
-              ? result.reason.message
-              : "请稍后重试。",
+            publication.error_message ||
+            `${getPlatformDefaultLabel(platform)} ${t("publish.failed")}`,
           platform,
         });
       });
-
-      if (pendingPlatforms.length > 0) {
-        const finalPublications = await waitForProjectPublications(
-          projectId,
-          selectedPlatforms,
-        );
-        const finalPublicationMap = new Map(
-          finalPublications.items.map((publication) => [
-            publication.platform,
-            publication,
-          ]),
-        );
-
-        pendingPlatforms.forEach((platform) => {
-          const publication = finalPublicationMap.get(platform);
-          if (!publication) {
-            failed.push({
-              message: `${platform} 发布状态未返回`,
-              platform,
-            });
-            return;
-          }
-
-          if (publication.status === "published") {
-            succeeded.push(platform);
-            return;
-          }
-
-          failed.push({
-            message: publication.error_message || `${platform} 发布失败`,
-            platform,
-          });
-        });
-      }
-
-      return { failed, succeeded };
-    } catch (error) {
-      toast.error("发布失败", {
-        description: error instanceof Error ? error.message : "请稍后重试。",
-      });
-      return { failed: [], succeeded: [] };
-    } finally {
-      setIsPublishing(false);
     }
+
+    return { failed, succeeded };
   };
 
   const openXPostIntent = async () => {
@@ -451,7 +460,7 @@ export function useContentPageController(projectId?: string) {
         mode: "manual",
       });
       if (!result.publish_url) {
-        throw new Error("后端没有返回 X 发帖链接");
+        throw new Error(t("publish.xLinkMissing"));
       }
 
       if (popup) {
@@ -464,24 +473,26 @@ export function useContentPageController(projectId?: string) {
         );
         if (!opened) {
           await navigator.clipboard?.writeText(result.publish_url);
-          toast.error("浏览器拦截了新窗口", {
-            description: "X 发帖链接已复制，请粘贴到浏览器打开。",
+          toast.error(t("publish.popupBlocked"), {
+            description: t("publish.xLinkCopied"),
           });
           return;
         }
       }
 
-      toast.success("X 发帖窗口已打开", {
-        description: "确认内容后在 X 页面点击 Post。",
+      toast.success(t("publish.xOpened"), {
+        description: t("publish.xConfirmHint"),
       });
       if (targetProject.isNew) {
         router.replace(`/dashboard/content/${targetProject.id}`);
       }
     } catch (requestError) {
       popup?.close();
-      toast.error("无法打开 X 发帖窗口", {
+      toast.error(t("publish.xOpenFailed"), {
         description:
-          requestError instanceof Error ? requestError.message : "请稍后重试。",
+          requestError instanceof Error
+            ? requestError.message
+            : t("common.retryLater"),
       });
     } finally {
       setIsOpeningXPostIntent(false);
@@ -493,8 +504,8 @@ export function useContentPageController(projectId?: string) {
       return;
     }
     if (!canPublish) {
-      toast.error("请先同步到预发布", {
-        description: "发布前需要为所有选中平台生成平台草稿。",
+      toast.error(t("publish.syncRequiredTitle"), {
+        description: t("publish.syncRequiredDesc"),
       });
       return;
     }
@@ -509,7 +520,9 @@ export function useContentPageController(projectId?: string) {
 
       if (result.failed.length > 0) {
         toast.error(
-          result.succeeded.length > 0 ? "部分平台发布失败" : "发布失败",
+          result.succeeded.length > 0
+            ? t("publish.partialFailed")
+            : t("publish.failed"),
           {
             description: result.failed[0].message,
           },
@@ -517,15 +530,24 @@ export function useContentPageController(projectId?: string) {
         return;
       }
 
-      toast.success(projectId ? "修改并发布完成" : "发布完成", {
-        description: `已发布到 ${getSelectedPlatformLabels(
-          result.succeeded,
-        ).join("、")}。`,
-      });
+      toast.success(
+        projectId
+          ? t("publish.editAndPublishSuccess")
+          : t("publish.publishSuccess"),
+        {
+          description: t("publish.publishedTo", {
+            platforms: getSelectedPlatformLabels(result.succeeded).join(
+              t("common.separator", { defaultValue: ", " }),
+            ),
+          }),
+        },
+      );
     } catch (requestError) {
-      toast.error("发布请求失败", {
+      toast.error(t("publish.requestFailed"), {
         description:
-          requestError instanceof Error ? requestError.message : "请稍后重试。",
+          requestError instanceof Error
+            ? requestError.message
+            : t("common.retryLater"),
       });
     } finally {
       setIsPublishing(false);

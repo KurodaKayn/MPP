@@ -27,11 +27,15 @@ type ContentEditorToolbarProps = {
   onSetLink: () => void;
 };
 
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 export function ContentEditorToolbar({
   editor,
   onInsertImage,
   onSetLink,
 }: ContentEditorToolbarProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
+
   return (
     <div className="flex flex-wrap items-center gap-1 rounded-t-[calc(0.75rem-1px)] border-b bg-muted/30 px-3 py-2">
       <HistoryControls editor={editor} />
@@ -46,7 +50,7 @@ export function ContentEditorToolbar({
       <AlignmentControls editor={editor} />
       <ToolbarSeparator />
 
-      <ToolbarButton label="插入图片" onClick={onInsertImage}>
+      <ToolbarButton label={t("toolbar.insertImage")} onClick={onInsertImage}>
         <ImagePlus className="size-4" />
       </ToolbarButton>
     </div>
@@ -54,17 +58,20 @@ export function ContentEditorToolbar({
 }
 
 function HistoryControls({ editor }: { editor: Editor | null }) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
+
   return (
     <>
       <ToolbarButton
-        label="撤销"
+        label={t("toolbar.undo")}
         disabled={!editor?.can().undo()}
         onClick={() => editor?.chain().focus().undo().run()}
       >
         <Undo2 className="size-4" />
       </ToolbarButton>
       <ToolbarButton
-        label="重做"
+        label={t("toolbar.redo")}
         disabled={!editor?.can().redo()}
         onClick={() => editor?.chain().focus().redo().run()}
       >
@@ -81,45 +88,52 @@ function InlineFormatControls({
   editor: Editor | null;
   onSetLink: () => void;
 }) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
+
   return (
     <>
       <ToolbarButton
-        label="加粗"
+        label={t("toolbar.bold")}
         active={editor?.isActive("bold")}
         onClick={() => editor?.chain().focus().toggleBold().run()}
       >
         <Bold className="size-4" />
       </ToolbarButton>
       <ToolbarButton
-        label="斜体"
+        label={t("toolbar.italic")}
         active={editor?.isActive("italic")}
         onClick={() => editor?.chain().focus().toggleItalic().run()}
       >
         <Italic className="size-4" />
       </ToolbarButton>
       <ToolbarButton
-        label="下划线"
+        label={t("toolbar.underline")}
         active={editor?.isActive("underline")}
         onClick={() => editor?.chain().focus().toggleUnderline().run()}
       >
         <Underline className="size-4" />
       </ToolbarButton>
       <ToolbarButton
-        label="删除线"
+        label={t("toolbar.strike")}
         active={editor?.isActive("strike")}
         onClick={() => editor?.chain().focus().toggleStrike().run()}
       >
         <Strikethrough className="size-4" />
       </ToolbarButton>
       <ToolbarButton
-        label={editor?.isActive("link") ? "编辑链接" : "插入链接"}
+        label={
+          editor?.isActive("link")
+            ? t("toolbar.editLink")
+            : t("toolbar.insertLink")
+        }
         active={editor?.isActive("link")}
         onClick={onSetLink}
       >
         <Link2 className="size-4" />
       </ToolbarButton>
       <ToolbarButton
-        label="移除链接"
+        label={t("toolbar.removeLink")}
         disabled={!editor?.isActive("link")}
         onClick={() =>
           editor?.chain().focus().extendMarkRange("link").unsetLink().run()
@@ -128,7 +142,7 @@ function InlineFormatControls({
         <Link2Off className="size-4" />
       </ToolbarButton>
       <ToolbarButton
-        label="清除格式"
+        label={t("toolbar.clearFormat")}
         onClick={() =>
           editor?.chain().focus().unsetAllMarks().clearNodes().run()
         }
@@ -140,24 +154,27 @@ function InlineFormatControls({
 }
 
 function AlignmentControls({ editor }: { editor: Editor | null }) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
+
   return (
     <>
       <ToolbarButton
-        label="左对齐"
+        label={t("toolbar.alignLeft")}
         active={editor?.isActive({ textAlign: "left" })}
         onClick={() => editor?.chain().focus().setTextAlign("left").run()}
       >
         <AlignLeft className="size-4" />
       </ToolbarButton>
       <ToolbarButton
-        label="居中"
+        label={t("toolbar.alignCenter")}
         active={editor?.isActive({ textAlign: "center" })}
         onClick={() => editor?.chain().focus().setTextAlign("center").run()}
       >
         <AlignCenter className="size-4" />
       </ToolbarButton>
       <ToolbarButton
-        label="右对齐"
+        label={t("toolbar.alignRight")}
         active={editor?.isActive({ textAlign: "right" })}
         onClick={() => editor?.chain().focus().setTextAlign("right").run()}
       >

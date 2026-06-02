@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Card,
   CardContent,
@@ -11,6 +13,7 @@ import { Eye } from "lucide-react";
 import Image from "next/image";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import type { ContentValue } from "@/lib/content/types";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 type PlatformPreviewProps = {
   title: string;
@@ -39,6 +42,8 @@ export function PlatformPreview({
   content,
   viewSwitcher,
 }: PlatformPreviewProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
   const hasBodyContent = Boolean(content.text.trim() || content.firstImageSrc);
   const previewContent = (
     <div
@@ -52,8 +57,8 @@ export function PlatformPreview({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>预览</CardTitle>
-            <CardDescription>预览在不同平台的适配效果</CardDescription>
+            <CardTitle>{t("common.preview")}</CardTitle>
+            <CardDescription>{t("preview.desc")}</CardDescription>
           </div>
           <div className="flex items-center gap-3">
             {viewSwitcher}
@@ -71,14 +76,19 @@ export function PlatformPreview({
           >
             {PLATFORM_TABS.map((platform) => (
               <TabsTrigger key={platform.value} value={platform.value}>
-                <PlatformTabLabel icon={platform.icon} label={platform.label} />
+                <PlatformTabLabel
+                  icon={platform.icon}
+                  label={t(platform.label, {
+                    defaultValue: platform.defaultLabel,
+                  })}
+                />
               </TabsTrigger>
             ))}
           </TabsList>
           <ScrollArea className="h-[500px] w-full rounded-md border p-4 mt-4">
             {!title && !hasBodyContent ? (
               <div className="h-full flex items-center justify-center text-muted-foreground italic min-h-[400px]">
-                输入内容以预览效果
+                {t("preview.emptyHint")}
               </div>
             ) : (
               <>
@@ -129,12 +139,12 @@ export function PlatformPreview({
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={content.firstImageSrc}
-                          alt="首图预览"
+                          alt={t("preview.coverAlt")}
                           className="h-full w-full object-contain"
                         />
                       ) : (
                         <span className="text-muted-foreground">
-                          图文/视频封面预览
+                          {t("preview.coverPlaceholder")}
                         </span>
                       )}
                     </div>

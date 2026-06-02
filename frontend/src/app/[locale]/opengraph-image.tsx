@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { siteConfig } from "@/lib/seo";
+import { useTranslation } from "@/lib/i18n";
 
 export const alt = "multi-platform poster product preview";
 export const size = {
@@ -8,7 +9,22 @@ export const size = {
 };
 export const contentType = "image/png";
 
-export default function Image() {
+export default async function Image({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  const { t } = await useTranslation(locale, "home");
+  const { t: tCommon } = await useTranslation(locale, "common");
+
+  const platforms = [
+    tCommon("platforms.wechat"),
+    tCommon("platforms.zhihu"),
+    tCommon("platforms.x"),
+    tCommon("platforms.douyin"),
+  ];
+
   return new ImageResponse(
     <div
       style={{
@@ -74,7 +90,7 @@ export default function Image() {
               fontWeight: 700,
             }}
           >
-            多平台内容发布工作台
+            {t("title")}
           </div>
           <div
             style={{
@@ -88,7 +104,7 @@ export default function Image() {
         </div>
 
         <div style={{ display: "flex", gap: 14 }}>
-          {["公众号", "知乎", "X", "抖音"].map((platform) => (
+          {platforms.map((platform) => (
             <div
               key={platform}
               style={{

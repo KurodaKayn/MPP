@@ -3,6 +3,7 @@ import { EditorContent, type Editor } from "@tiptap/react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import styles from "./content-editor.module.css";
 
 type ContentEditorDocumentProps = {
@@ -19,17 +20,20 @@ export function ContentEditorTitle({
   title,
   onTitleChange,
 }: ContentEditorTitleProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "common");
+
   return (
     <div className="flex items-baseline gap-2">
       <Label
         htmlFor="title"
         className="shrink-0 text-2xl font-semibold tracking-normal sm:text-3xl"
       >
-        标题：
+        {t("editor.titleLabel")}
       </Label>
       <Input
         id="title"
-        placeholder="输入文章标题..."
+        placeholder={t("editor.titlePlaceholder")}
         value={title}
         className="h-auto border-0 px-0 py-0 text-2xl font-semibold shadow-none focus-visible:ring-0 sm:text-3xl"
         onChange={(event) => onTitleChange(event.target.value)}

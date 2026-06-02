@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { type ZhihuAccount } from "@/lib/dashboard/api";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 type ZhihuAccountCardProps = {
   account: ZhihuAccount | null;
@@ -21,49 +22,51 @@ type ZhihuAccountCardProps = {
   onConnect: () => void;
 };
 
-function formatUpdatedAt(value?: string) {
-  if (!value) {
-    return "尚未连接";
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function statusLabel(status?: ZhihuAccount["status"]) {
-  switch (status) {
-    case "connected":
-      return "已连接";
-    case "failed":
-      return "连接失效";
-    case "untested":
-      return "待验证";
-    default:
-      return "未连接";
-  }
-}
-
 export function ZhihuAccountCard({
   account,
   connecting,
   loading,
   onConnect,
 }: ZhihuAccountCardProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "dashboard");
   const connected = account?.status === "connected";
   const disabled = loading || connecting;
+
+  const formatUpdatedAt = (value?: string) => {
+    if (!value) {
+      return t("auth.status.notConnected");
+    }
+
+    const date = new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+
+    return t("auth.zhihu.lastUpdated", { date });
+  };
+
+  const statusLabel = (status?: ZhihuAccount["status"]) => {
+    switch (status) {
+      case "connected":
+        return t("auth.status.connected");
+      case "failed":
+        return t("auth.status.failed");
+      case "untested":
+        return t("auth.status.untested");
+      default:
+        return t("auth.status.unconnected");
+    }
+  };
 
   return (
     <Card className="overflow-hidden border-blue-200/70 bg-gradient-to-br from-blue-50 via-background to-background">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <BookOpen className="size-4 text-blue-600" />
-          知乎创作者中心
+          {t("auth.zhihu.title")}
         </CardTitle>
-        <CardDescription>
-          在隔离浏览器中扫码或登录，MPP 只保存发布所需 Cookie。
-        </CardDescription>
+        <CardDescription>{t("auth.zhihu.description")}</CardDescription>
         <CardAction>
           <Badge variant={connected ? "default" : "outline"}>
             {statusLabel(account?.status)}
@@ -81,10 +84,10 @@ export function ZhihuAccountCard({
                 <p className="font-medium">
                   {connected
                     ? account?.username || "Connected Zhihu account"
-                    : "尚未连接知乎账号"}
+                    : t("auth.zhihu.notConnectedUsername")}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  最近更新：{formatUpdatedAt(account?.updated_at)}
+                  {formatUpdatedAt(account?.updated_at)}
                 </p>
                 {account?.last_test_error ? (
                   <p className="mt-2 text-sm text-destructive">
@@ -104,7 +107,7 @@ export function ZhihuAccountCard({
               ) : (
                 <RotateCw className="size-4" />
               )}
-              {connected ? "重新连接" : "连接知乎"}
+              {connected ? t("auth.zhihu.reconnect") : t("auth.zhihu.connect")}
             </Button>
           </div>
         </div>

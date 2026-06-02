@@ -13,6 +13,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { type DouyinAccount } from "@/lib/dashboard/api";
+import { useTranslation, useAppLocale } from "@/lib/i18n/client";
+import { getIntlLocale } from "@/lib/i18n/settings";
 
 type DouyinAccountCardProps = {
   account: DouyinAccount | null;
@@ -21,49 +23,50 @@ type DouyinAccountCardProps = {
   onConnect: () => void;
 };
 
-function formatUpdatedAt(value?: string) {
-  if (!value) {
-    return "尚未连接";
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function statusLabel(status?: DouyinAccount["status"]) {
-  switch (status) {
-    case "connected":
-      return "已连接";
-    case "failed":
-      return "连接失效";
-    case "untested":
-      return "待验证";
-    default:
-      return "未连接";
-  }
-}
-
 export function DouyinAccountCard({
   account,
   connecting,
   loading,
   onConnect,
 }: DouyinAccountCardProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "dashboard");
+
   const connected = account?.status === "connected";
   const disabled = loading || connecting;
+
+  function formatUpdatedAt(value?: string) {
+    if (!value) {
+      return t("auth.douyin.unconnected");
+    }
+
+    return new Intl.DateTimeFormat(getIntlLocale(locale), {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  }
+
+  function statusLabel(status?: DouyinAccount["status"]) {
+    switch (status) {
+      case "connected":
+        return t("auth.status.connected");
+      case "failed":
+        return t("auth.status.failed");
+      case "untested":
+        return t("auth.status.untested");
+      default:
+        return t("auth.status.unconnected");
+    }
+  }
 
   return (
     <Card className="overflow-hidden border-orange-200/70 bg-gradient-to-br from-orange-50 via-background to-background">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <RadioTower className="size-4 text-orange-600" />
-          抖音创作者中心
+          {t("auth.douyin.title")}
         </CardTitle>
-        <CardDescription>
-          在隔离浏览器中扫码或登录，MPP 只保存发布所需 Cookie。
-        </CardDescription>
+        <CardDescription>{t("auth.douyin.description")}</CardDescription>
         <CardAction>
           <Badge variant={connected ? "default" : "outline"}>
             {statusLabel(account?.status)}
@@ -81,10 +84,11 @@ export function DouyinAccountCard({
                 <p className="font-medium">
                   {connected
                     ? account?.username || "Connected Douyin account"
-                    : "尚未连接抖音账号"}
+                    : t("auth.douyin.notConnectedUsername")}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  最近更新：{formatUpdatedAt(account?.updated_at)}
+                  {t("auth.douyin.lastUpdated")}:{" "}
+                  {formatUpdatedAt(account?.updated_at)}
                 </p>
                 {account?.last_test_error ? (
                   <p className="mt-2 text-sm text-destructive">
@@ -104,7 +108,9 @@ export function DouyinAccountCard({
               ) : (
                 <RotateCw className="size-4" />
               )}
-              {connected ? "重新连接" : "连接抖音"}
+              {connected
+                ? t("auth.douyin.reconnect")
+                : t("auth.douyin.connect")}
             </Button>
           </div>
         </div>
