@@ -1,6 +1,32 @@
-import { defineConfig } from 'wxt';
+import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from "wxt";
 
-// See https://wxt.dev/api/config.html
 export default defineConfig({
-  modules: ['@wxt-dev/module-react'],
+  modules: ["@wxt-dev/module-react"],
+  manifest: {
+    name: "MPP Extension Publisher",
+    description:
+      "Local browser publishing bridge for Multi-platform Poster drafts.",
+    permissions: ["activeTab", "tabs", "scripting", "storage", "sidePanel"],
+    host_permissions: [
+      "https://mpp.example.com/*",
+      "http://localhost/*",
+      "http://127.0.0.1/*",
+      "https://zhuanlan.zhihu.com/*",
+      "https://www.zhihu.com/*",
+      "https://creator.xiaohongshu.com/*",
+      "https://creator.douyin.com/*",
+      "https://t.bilibili.com/*",
+      "https://member.bilibili.com/*",
+    ],
+    action: {
+      default_title: "MPP Extension Publisher",
+    },
+    side_panel: {
+      default_path: "publish.html",
+    },
+  },
+  vite: () => ({
+    plugins: [tailwindcss()],
+  }),
 });
