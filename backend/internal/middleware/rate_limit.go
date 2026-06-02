@@ -21,6 +21,7 @@ const (
 	rateLimitPrefixEnv  = "APP_RATE_LIMIT_KEY_PREFIX"
 
 	defaultRateLimitKeyPrefix = "mpp:ratelimit"
+	defaultRateLimitTenantID  = "default"
 )
 
 //go:embed rate_limits.yml
@@ -245,7 +246,7 @@ func rateLimitBucketsFor(c echo.Context, config RateLimitConfig) ([]rateLimitBuc
 	userID := claims.UserID.String()
 	tenantID := strings.TrimSpace(claims.TenantID)
 	if tenantID == "" {
-		tenantID = "user:" + userID
+		tenantID = defaultRateLimitTenantID
 	}
 
 	method := strings.ToUpper(c.Request().Method)
