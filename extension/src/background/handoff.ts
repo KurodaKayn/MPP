@@ -16,6 +16,7 @@ import {
 } from "../types/handoff";
 import {
   getCapabilityByAdapterKey,
+  isCapabilityInjectUrl,
   isSupportedAdapterKey,
 } from "../platforms/capabilities";
 import type { HandoffRejectedResponse } from "../types/messages";
@@ -226,11 +227,12 @@ function validatePlatformHandoff(
   if (
     platform !== capability.platform ||
     !injectUrl ||
-    !validateUrl(injectUrl) ||
+    !isCapabilityInjectUrl(adapterKey, injectUrl) ||
     !contentKind ||
     !capability.content_kinds.includes(contentKind as never) ||
     autoPublish === null ||
     requiresReview === null ||
+    requiresReview !== capability.requires_review ||
     !adaptedContent ||
     !assets ||
     callback === null
