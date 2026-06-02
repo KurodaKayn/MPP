@@ -28,6 +28,7 @@ type StartWorkerSessionRequest struct {
 	LoginURL        string              `json:"login_url"`
 	AllowedDomains  []DomainRule        `json:"allowed_domains"`
 	RequiredCookies []CookieRequirement `json:"required_cookies"`
+	InitialCookies  []Cookie            `json:"initial_cookies,omitempty"`
 	TTLSeconds      int                 `json:"ttl_seconds"`
 	Viewport        struct {
 		Width  int `json:"width"`
@@ -61,9 +62,17 @@ type CaptureWorkerSessionResponse struct {
 	Account        RemoteAccountProfile `json:"account"`
 }
 
+type StartDouyinPublishRequest struct {
+	Title            string `json:"title"`
+	Content          string `json:"content"`
+	CoverImageBase64 string `json:"cover_image_base64"`
+	CoverImageName   string `json:"cover_image_name"`
+}
+
 type BrowserWorkerClient interface {
 	CreateSession(ctx context.Context, req StartWorkerSessionRequest) (*StartWorkerSessionResponse, error)
 	GetSession(ctx context.Context, ref string) (*GetWorkerSessionResponse, error)
 	CaptureSession(ctx context.Context, ref string) (*CaptureWorkerSessionResponse, error)
+	StartDouyinPublish(ctx context.Context, ref string, req StartDouyinPublishRequest) error
 	StopSession(ctx context.Context, ref string) error
 }

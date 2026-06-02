@@ -118,6 +118,7 @@ func main() {
 	userGroup.POST("/projects/:id/prepublish/sync", userDashboardHandler.SyncProjectPrepublish)
 	userGroup.PUT("/projects/:id/prepublish/:platform", userDashboardHandler.UpdateProjectPrepublishDraft)
 	userGroup.POST("/projects/:id/publish", userDashboardHandler.PublishProject)
+	userGroup.POST("/projects/:id/publish-sessions/douyin", userDashboardHandler.StartDouyinPublishSession)
 	userGroup.POST("/ai/content/edit", userDashboardHandler.EditContentWithAI)
 	userGroup.POST("/ai/content/edit/stream", userDashboardHandler.StreamEditContentWithAI)
 	userGroup.POST("/ai/prepublish/edit", userDashboardHandler.EditPrepublishWithAI)

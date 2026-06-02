@@ -57,7 +57,7 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	browserCtx, cancel := browser.SetupBrowser(ctx, "", account.Cookies)
 	defer cancel()
 
-	publishCtx, cancelPublish := context.WithTimeout(browserCtx, 180*time.Second)
+	publishCtx, cancelPublish := context.WithTimeout(browserCtx, 300*time.Second)
 	defer cancelPublish()
 
 	var publishURL string
@@ -65,33 +65,45 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	err = chromedp.Run(publishCtx,
 		// 1. 进入核心上传页
 		chromedp.Navigate("https://creator.douyin.com/creator-micro/content/upload?default-tab=3"),
-		chromedp.Sleep(5*time.Second),
 
-		// 2. 根据用户提供的 HTML 源码，精准点击“上传图文”按钮
+		// 2. 等待用户完成可能出现的扫码登录，然后点击“上传图文”按钮
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			fmt.Println("Douyin: Attempting to click upload button...")
-			script := `
-				(function() {
-					const btn = document.querySelector('.container-drag-btn-k6XmB4') || 
-					            document.querySelector('button.semi-button-primary');
-					if (btn) {
-						btn.click();
-						return "Target 'Upload Image Post' button clicked via class";
-					}
-					const container = document.querySelector('.container-drag-VAfIfu');
-					if (container) {
-						container.click();
-						return "Drag container clicked as fallback";
-					}
-					return "Upload button NOT found";
-				})()
-			`
-			var res string
-			if err := chromedp.Evaluate(script, &res).Do(ctx); err != nil {
-				return err
+			waitCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+			defer cancel()
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for {
+				script := `
+					(function() {
+						const btn = document.querySelector('.container-drag-btn-k6XmB4') || 
+									document.querySelector('button.semi-button-primary');
+						if (btn) {
+							btn.click();
+							return "clicked";
+						}
+						const container = document.querySelector('.container-drag-VAfIfu');
+						if (container) {
+							container.click();
+							return "clicked";
+						}
+						return "waiting";
+					})()
+				`
+				var res string
+				if err := chromedp.Evaluate(script, &res).Do(waitCtx); err != nil {
+					return err
+				}
+				fmt.Printf("Douyin Action: %s\n", res)
+				if res == "clicked" {
+					return nil
+				}
+				select {
+				case <-waitCtx.Done():
+					return fmt.Errorf("timed out waiting for douyin upload button")
+				case <-ticker.C:
+				}
 			}
-			fmt.Printf("Douyin Action: %s\n", res)
-			return nil
 		}),
 		chromedp.Sleep(2*time.Second),
 
@@ -131,28 +143,35 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 			return chromedp.Evaluate(script, nil).Do(ctx)
 		}),
 		browser.PasteContent(`div[contenteditable="true"]`, content, false),
-		chromedp.Sleep(3*time.Second),
+		chromedp.Sleep(10*time.Second),
 
-		// 6. 暂存离开
+		// 6. 点击底部发布按钮
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			script := `
 				(function() {
+					window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" });
 					const buttons = Array.from(document.querySelectorAll('button'));
-					const draftBtn = buttons.find(b => b.textContent.includes('暂存离开'));
-					if (draftBtn) {
-						draftBtn.click();
-						return "Draft button clicked";
+					const publishBtn = buttons.reverse().find((button) => {
+						const text = (button.textContent || "").trim();
+						return text === "发布";
+					});
+					if (publishBtn) {
+						publishBtn.click();
+						return "Publish button clicked";
 					}
-					return "Draft button NOT found";
+					return "Publish button NOT found";
 				})()
 			`
 			var res string
 			err := chromedp.Evaluate(script, &res).Do(ctx)
 			fmt.Printf("Douyin Action: %s\n", res)
+			if err == nil && res != "Publish button clicked" {
+				return fmt.Errorf("douyin %s", res)
+			}
 			return err
 		}),
 
-		chromedp.Sleep(10*time.Second),
+		chromedp.Sleep(45*time.Second),
 		chromedp.Location(&publishURL),
 	)
 
