@@ -6,6 +6,7 @@ import {
   getCurrentAuthState,
   loginWithAccessToken,
   loginWithUsername,
+  registerWithCredentials,
 } from "./client";
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
@@ -59,7 +60,9 @@ describe("auth client", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(loginWithUsername("test_user")).rejects.toThrow(
+    await expect(
+      loginWithUsername("test_user", "Password1234"),
+    ).rejects.toThrow(
       "Dev account login is only available in local development",
     );
 
@@ -95,5 +98,66 @@ describe("auth client", () => {
     const headers = init?.headers as Headers;
     expect(headers.get("Authorization")).toBe("Bearer raw-token");
     expect(window.localStorage.getItem(primaryAuthTokenName)).toBe("raw-token");
+  });
+
+  it("logs in with username and password and stores the returned token", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (input === "/api/auth/session") {
+        return jsonResponse({
+          authenticated: false,
+          loginMethods: { mock: true, token: true },
+        });
+      }
+
+      return jsonResponse({ token: "jwt-token" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      loginWithUsername("test_user", "Password1234"),
+    ).resolves.toEqual({
+      token: "jwt-token",
+      username: "test_user",
+    });
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/auth/login",
+      expect.objectContaining({
+        body: JSON.stringify({
+          username: "test_user",
+          password: "Password1234",
+        }),
+        method: "POST",
+      }),
+    );
+    expect(window.localStorage.getItem(primaryAuthTokenName)).toBe("jwt-token");
+  });
+
+  it("registers with credentials and stores the returned token", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ token: "new-jwt-token" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      registerWithCredentials("new_user", "Password1234"),
+    ).resolves.toEqual({
+      token: "new-jwt-token",
+      username: "new_user",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/register",
+      expect.objectContaining({
+        body: JSON.stringify({
+          username: "new_user",
+          password: "Password1234",
+        }),
+        method: "POST",
+      }),
+    );
+    expect(window.localStorage.getItem(primaryAuthTokenName)).toBe(
+      "new-jwt-token",
+    );
   });
 });

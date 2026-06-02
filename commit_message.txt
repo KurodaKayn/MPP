@@ -1,0 +1,7 @@
+feat(auth): add registration form and password validation
+
+Current frontend login interface lacks a registration option and password input, making the recently added backend registration endpoint inaccessible.
+
+Update the login page to include a registration tab with password confirmation, enforce client-side password complexity rules, and integrate with the new registration API endpoint.
+
+This provides users with a complete registration flow, improves user experience with immediate form validation, and fully enables the new secure authentication system.
