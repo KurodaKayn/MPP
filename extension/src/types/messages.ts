@@ -8,11 +8,20 @@ import type { AdapterKey } from "./platform";
 export const PAGE_BRIDGE_REQUEST_CHANNEL = "mpp.extension.bridge.request";
 export const PAGE_BRIDGE_RESPONSE_CHANNEL = "mpp.extension.bridge.response";
 
-export type PageBridgeRequestType =
-  | "detect"
-  | "request_trust"
-  | "publish_handoff"
-  | "get_status";
+export const PAGE_BRIDGE_REQUEST_TYPES = [
+  "detect",
+  "request_trust",
+  "publish_handoff",
+  "get_status",
+] as const;
+
+export type PageBridgeRequestType = (typeof PAGE_BRIDGE_REQUEST_TYPES)[number];
+
+export function isPageBridgeRequestType(
+  value: string,
+): value is PageBridgeRequestType {
+  return PAGE_BRIDGE_REQUEST_TYPES.includes(value as PageBridgeRequestType);
+}
 
 export interface PageBridgeRequest {
   channel: typeof PAGE_BRIDGE_REQUEST_CHANNEL;
