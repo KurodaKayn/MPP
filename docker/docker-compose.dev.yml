@@ -45,6 +45,25 @@ services:
         - action: rebuild
           path: ../backend/go.sum
 
+  publish-worker:
+    build:
+      target: dev
+    environment:
+      APP_ENV: development
+      BACKEND_PROCESS_ROLE: worker
+      BACKEND_REQUIRE_REDIS: "true"
+      ENABLE_DEV_SEED: "false"
+    volumes:
+      - ../backend:/app
+      - backend_go_cache:/go/pkg/mod
+      - backend_go_build_cache:/root/.cache/go-build
+    develop:
+      watch:
+        - action: rebuild
+          path: ../backend/go.mod
+        - action: rebuild
+          path: ../backend/go.sum
+
   browser-worker:
     build:
       target: dev
