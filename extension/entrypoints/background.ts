@@ -10,6 +10,7 @@ import {
   isTrustedOrigin,
   isTrustableOrigin,
   listTrustedOrigins,
+  removeTrustedOrigin,
   trustOrigin,
 } from "../src/background/origins";
 import {
@@ -174,6 +175,12 @@ async function handleBackgroundMessage(message: unknown): Promise<unknown> {
 
   if (message.type === "origin.list") {
     return { trusted_origins: await listTrustedOrigins() };
+  }
+
+  if (message.type === "origin.remove") {
+    return {
+      trusted_origins: await removeTrustedOrigin(message.origin),
+    };
   }
 
   if (message.type === "adapter.event") {

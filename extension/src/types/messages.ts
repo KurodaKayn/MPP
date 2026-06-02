@@ -71,6 +71,10 @@ export type BackgroundMessage =
       type: "origin.list";
     }
   | {
+      type: "origin.remove";
+      origin: string;
+    }
+  | {
       type: "adapter.event";
       execution_id: string;
       event: ExtensionExecutionEventInput;
