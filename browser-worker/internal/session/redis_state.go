@@ -94,6 +94,13 @@ func (s *RedisStateStore) Close() error {
 	return s.client.Close()
 }
 
+func (s *RedisStateStore) Ping(ctx context.Context) error {
+	if s == nil || s.client == nil {
+		return nil
+	}
+	return s.client.Ping(ctx).Err()
+}
+
 func (s *RedisStateStore) SaveLiveSession(ctx context.Context, session *WorkerSession, state WorkerSessionState) error {
 	if s == nil || s.client == nil {
 		return nil

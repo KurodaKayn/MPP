@@ -46,6 +46,14 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 	e.DELETE("/internal/browser-sessions/:ref", s.deleteSession)
 }
 
+func (s *Server) ShutdownSessions(ctx context.Context) {
+	for _, workerSession := range s.sessions.List() {
+		if removedSession, ok := s.sessions.Remove(workerSession.ID); ok {
+			cleanupSession(ctx, s.containers, removedSession)
+		}
+	}
+}
+
 func (s *Server) createSession(c echo.Context) error {
 	var req session.StartWorkerSessionRequest
 	if err := c.Bind(&req); err != nil {

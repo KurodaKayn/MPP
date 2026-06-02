@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
@@ -5,7 +7,16 @@ from routes import router
 
 load_dotenv()
 
-app = FastAPI(title="Multi-Platform Poster AI Service")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.ready = True
+    yield
+    app.state.ready = False
+
+
+app = FastAPI(title="Multi-Platform Poster AI Service", lifespan=lifespan)
+app.state.ready = False
 app.include_router(router)
 
 

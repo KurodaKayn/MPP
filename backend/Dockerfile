@@ -35,4 +35,5 @@ RUN apk add --no-cache \
 WORKDIR /root/
 COPY --from=builder /app/main .
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD wget -qO- http://127.0.0.1:8080/ready >/dev/null || exit 1
 CMD ["./main"]

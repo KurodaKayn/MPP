@@ -6,7 +6,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"sync/atomic"
+	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/kurodakayn/mpp-backend/internal/db"
@@ -19,6 +23,7 @@ import (
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -26,9 +31,13 @@ const (
 	appEnvEnv          = "APP_ENV"
 	mockLoginFlagEnv   = "ENABLE_MOCK_LOGIN"
 	nodeEnvFallbackEnv = "NODE_ENV"
+	shutdownTimeout    = 15 * time.Second
 )
 
 func main() {
+	rootCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+
 	// Load .env file if it exists
 	_ = godotenv.Load()
 
@@ -61,9 +70,8 @@ func main() {
 	dashboardService.SetBrowserSessionService(browserSessionService)
 
 	if redisClient != nil {
-		defer redisClient.Close()
 		dashboardService.UseRedis(redisClient)
-		dashboardService.StartPublishWorker(context.Background())
+		dashboardService.StartPublishWorker(rootCtx)
 	}
 
 	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
@@ -75,17 +83,20 @@ func main() {
 
 	if redisClient != nil {
 		browserSessionService.UseRedis(redisClient)
-		browserSessionService.StartCleanupWorker(context.Background())
+		browserSessionService.StartCleanupWorker(rootCtx)
 	}
 	browserSessionHandler := handlers.NewBrowserSessionHandler(browserSessionService)
 
 	e := echo.New()
+	ready := atomic.Bool{}
+	ready.Store(true)
 
 	// Middleware
 	e.Use(echoMiddleware.Logger())
 	e.Use(echoMiddleware.Recover())
 
 	// Public Routes
+	registerHealthRoutes(e, &ready, redisClient)
 	e.GET("/ping", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
 			"message": "pong",
@@ -153,8 +164,56 @@ func main() {
 		port = "8080"
 	}
 
-	// Start server
-	e.Logger.Fatal(e.Start(":" + port))
+	serverErrors := make(chan error, 1)
+	go func() {
+		serverErrors <- e.Start(":" + port)
+	}()
+
+	select {
+	case err := <-serverErrors:
+		if err != nil && err != http.ErrServerClosed {
+			e.Logger.Fatal(err)
+		}
+	case <-rootCtx.Done():
+		ready.Store(false)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := e.Shutdown(shutdownCtx); err != nil {
+			e.Logger.Fatal(err)
+		}
+		if redisClient != nil {
+			_ = redisClient.Close()
+		}
+	}
+}
+
+func registerHealthRoutes(e *echo.Echo, ready *atomic.Bool, redisClient *redis.Client) {
+	e.GET("/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
+	})
+	e.GET("/ready", func(c echo.Context) error {
+		if !ready.Load() {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
+		defer cancel()
+
+		sqlDB, err := db.DB.DB()
+		if err != nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "database"})
+		}
+		if err := sqlDB.PingContext(ctx); err != nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "database"})
+		}
+		if redisClient != nil {
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "redis"})
+			}
+		}
+
+		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
+	})
 }
 
 func requiredEnv(name string) (string, error) {

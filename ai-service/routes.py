@@ -1,6 +1,6 @@
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
@@ -65,6 +65,13 @@ async def stream_markdown_response(
 @router.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@router.get("/ready")
+async def ready(request: Request):
+    if not getattr(request.app.state, "ready", False):
+        raise HTTPException(status_code=503, detail="not_ready")
+    return {"status": "ready"}
 
 
 @router.post("/content/edit", response_model=EditContentResponse)
