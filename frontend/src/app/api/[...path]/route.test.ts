@@ -101,11 +101,16 @@ describe("api proxy route", () => {
     expect(forwardedHeaders.get("x-client")).toBe("web");
     expect(forwardedHeaders.get("x-forwarded-host")).toBe("frontend.local");
     expect(forwardedHeaders.get("x-forwarded-proto")).toBe("http");
+    const traceId = forwardedHeaders.get("x-request-id");
+    expect(traceId).toBeTruthy();
+    expect(forwardedHeaders.get("x-trace-id")).toBe(traceId);
     expect(forwardedHeaders.has("connection")).toBe(false);
     expect(forwardedHeaders.has("host")).toBe(false);
 
     expect(response.status).toBe(201);
     expect(response.headers.get("x-backend")).toBe("ok");
+    expect(response.headers.get("x-request-id")).toBe(traceId);
+    expect(response.headers.get("x-trace-id")).toBe(traceId);
     expect(response.headers.has("connection")).toBe(false);
     expect(response.headers.has("transfer-encoding")).toBe(false);
   });
@@ -119,7 +124,10 @@ describe("api proxy route", () => {
     const request = createRequest({
       body,
       cookies: { access_token: "cookie-token" },
-      headers: { authorization: "Bearer header-token" },
+      headers: {
+        authorization: "Bearer header-token",
+        "x-request-id": "trace-from-client",
+      },
       method: "POST",
       url: "http://localhost/api/dashboard/projects",
     });
@@ -138,5 +146,7 @@ describe("api proxy route", () => {
     expect(init?.body).toBe(body);
     const forwardedHeaders = init!.headers as Headers;
     expect(forwardedHeaders.get("authorization")).toBe("Bearer header-token");
+    expect(forwardedHeaders.get("x-request-id")).toBe("trace-from-client");
+    expect(forwardedHeaders.get("x-trace-id")).toBe("trace-from-client");
   });
 });
