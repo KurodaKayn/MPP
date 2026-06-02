@@ -1,7 +1,10 @@
+import { randomUUID } from "crypto";
 import type { NextRequest } from "next/server";
 import { authTokenNames, formatBearerToken } from "../../../lib/auth/tokens";
 
 const defaultBackendApiBaseUrl = "http://localhost:8080";
+const requestIdHeader = "x-request-id";
+const traceIdHeader = "x-trace-id";
 const hopByHopHeaders = [
   "connection",
   "content-length",
@@ -51,6 +54,16 @@ function applyAuthorizationFromCookie(request: NextRequest, headers: Headers) {
   }
 }
 
+function ensureTraceHeaders(headers: Headers) {
+  const traceId =
+    headers.get(requestIdHeader)?.trim() ||
+    headers.get(traceIdHeader)?.trim() ||
+    randomUUID();
+  headers.set(requestIdHeader, traceId);
+  headers.set(traceIdHeader, traceId);
+  return traceId;
+}
+
 function createForwardedHeaders(request: NextRequest) {
   const headers = new Headers(request.headers);
   const forwardedHost =
@@ -64,6 +77,7 @@ function createForwardedHeaders(request: NextRequest) {
   headers.set("x-forwarded-host", forwardedHost);
   headers.set("x-forwarded-proto", forwardedProto || "http");
   applyAuthorizationFromCookie(request, headers);
+  ensureTraceHeaders(headers);
 
   return headers;
 }
@@ -72,10 +86,12 @@ async function proxyRequest(request: NextRequest, { params }: ApiRouteContext) {
   const { path } = await params;
   const method = request.method.toUpperCase();
   const canHaveBody = method !== "GET" && method !== "HEAD";
+  const forwardedHeaders = createForwardedHeaders(request);
+  const traceId = forwardedHeaders.get(requestIdHeader) ?? randomUUID();
   const response = await fetch(buildTargetUrl(request, path), {
     body: canHaveBody ? await request.arrayBuffer() : undefined,
     cache: "no-store",
-    headers: createForwardedHeaders(request),
+    headers: forwardedHeaders,
     method,
     redirect: "manual",
   });
@@ -83,6 +99,12 @@ async function proxyRequest(request: NextRequest, { params }: ApiRouteContext) {
 
   for (const header of hopByHopHeaders) {
     responseHeaders.delete(header);
+  }
+  if (!responseHeaders.has(requestIdHeader)) {
+    responseHeaders.set(requestIdHeader, traceId);
+  }
+  if (!responseHeaders.has(traceIdHeader)) {
+    responseHeaders.set(traceIdHeader, traceId);
   }
 
   return new Response(response.body, {
