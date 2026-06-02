@@ -8,6 +8,9 @@
 # 进入 docker 目录
 cd docker
 
+# 按网关/部署模式创建环境变量文件。已有 .env 时不会覆盖。
+cp -n .env.deploy.example .env
+
 # 启动所有服务
 docker compose up -d
 
@@ -34,6 +37,7 @@ X_OAUTH2_REDIRECT_URL=https://your-domain.example/api/user/dashboard/settings/x/
 如果你希望一键拉起开发模式容器，并让代码修改自动生效，在项目根目录执行：
 
 ```bash
+cp -n docker/.env.dev.example docker/.env
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml watch
 ```
 
@@ -49,6 +53,7 @@ Dev 模式的 Compose project name 为 `mpp-dev`。
 如果只想后台启动 dev 容器（源码热重载仍会生效，但依赖文件变化不会自动触发 Compose rebuild），可以执行：
 
 ```bash
+cp -n docker/.env.dev.example docker/.env
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d
 ```
 
@@ -67,7 +72,7 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up 
 COMPOSE_PROFILES=gateway docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d
 ```
 
-这不会移除上面的直连端口；如果需要避开宿主机 `80` 或 `443` 端口，同样可以设置 `TRAEFIK_HTTP_PORT` 或 `TRAEFIK_HTTPS_PORT`。
+这不会移除上面的直连端口；如果需要避开宿主机 `80` 或 `443` 端口，同样可以设置 `TRAEFIK_HTTP_PORT` 或 `TRAEFIK_HTTPS_PORT`。使用 `docker/.env.dev.example` 时，Traefik dev 端口默认是 `8088/8443`。
 
 ---
 
@@ -107,5 +112,7 @@ uv run uvicorn main:app --reload
 ## 4. 环境变量配置
 
 - **统一管理**: 所有的环境变量现在都在 `docker/.env` 中进行统一管理。
-- **AI 服务**: 在 `docker/.env` 中设置 `OPENAI_API_KEY`。
+- **Dev 模板**: 使用 `docker/.env.dev.example`，默认公开地址是 `http://127.0.0.1:3000`，适合 Docker dev 直连端口。
+- **Deploy 模板**: 使用 `docker/.env.deploy.example`，默认公开地址是 `https://your-domain.example`，适合 Traefik 网关部署。
+- **AI 服务**: 在 `docker/.env` 中设置 `LLM_PROVIDER_KEY`。
 - **后端**: 数据库连接配置 `docker/.env`。
