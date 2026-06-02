@@ -4,7 +4,7 @@ This document expands the high-level architecture with module-level design notes
 
 ## 1. Overall Architecture
 
-![MPP Overall Architecture](./assets/project-overall-architecture.svg)
+![MPP Overall Architecture](./assets/module-architecture/project-overall-architecture.svg)
 
 MPP is a multi-platform publishing workspace. Its core job is to turn one source project into platform-ready drafts, execute publishing work, track status, connect platform accounts, and support AI-assisted editing from one dashboard.
 
