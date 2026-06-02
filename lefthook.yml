@@ -15,6 +15,12 @@ pre-commit:
       run: gofmt -w {staged_files}
       stage_fixed: true
 
+    browser-worker-format:
+      root: "browser-worker/"
+      glob: "*.go"
+      run: gofmt -w {staged_files}
+      stage_fixed: true
+
     ai-service-format:
       root: "ai-service/"
       glob: "*.py"
