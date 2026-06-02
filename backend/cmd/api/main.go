@@ -2,46 +2,17 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"net/http"
 	"os"
-	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
-	"github.com/kurodakayn/mpp-backend/internal/middleware"
-	"github.com/kurodakayn/mpp-backend/internal/observability"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/redisclient"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
-	echojwt "github.com/labstack/echo-jwt/v4"
-	"github.com/labstack/echo/v4"
-	echoMiddleware "github.com/labstack/echo/v4/middleware"
 )
-
-const (
-	jwtSecretEnv               = "JWT_SECRET"
-	appEnvEnv                  = "APP_ENV"
-	mockLoginFlagEnv           = "ENABLE_MOCK_LOGIN"
-	nodeEnvFallbackEnv         = "NODE_ENV"
-	backendProcessRoleEnv      = "BACKEND_PROCESS_ROLE"
-	backendRequireRedisEnv     = "BACKEND_REQUIRE_REDIS"
-	backendProcessRoleAll      = "all"
-	backendProcessRoleAPI      = "api"
-	backendProcessRoleWorker   = "worker"
-	backendServiceName         = "backend"
-	backendWorkerServiceName   = "publish-worker"
-	backendDefaultProcessRole  = backendProcessRoleAll
-	backendDefaultRequireRedis = false
-)
-
-type backendRuntimeConfig struct {
-	processRole  string
-	requireRedis bool
-}
 
 func main() {
 	// Load .env file if it exists
@@ -106,80 +77,19 @@ func main() {
 	}
 	browserSessionHandler := handlers.NewBrowserSessionHandler(browserSessionService)
 
-	e := echo.New()
-	observabilitySuite := observability.New(runtimeConfig.serviceName())
-	observabilitySuite.RegisterRoutes(e)
-
-	// Middleware
-	e.Use(observabilitySuite.Middleware())
-	e.Use(echoMiddleware.Recover())
-
-	// Public Routes
-	e.GET("/ping", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{
-			"message": "pong",
-		})
+	server, err := newServer(serverConfig{
+		runtimeConfig: runtimeConfig,
+		jwtSigningKey: jwtSigningKey,
+		redisClient:   redisClient,
+		mockLogin:     mockLogin,
+	}, serverHandlers{
+		adminDashboard: adminDashboardHandler,
+		userDashboard:  userDashboardHandler,
+		auth:           authHandler,
+		browserSession: browserSessionHandler,
 	})
-
-	if runtimeConfig.servesAPI() {
-		// Auth routes
-		if mockLogin {
-			e.POST("/api/auth/mock-login", authHandler.MockLogin)
-		}
-		e.POST("/api/auth/login", authHandler.Login)
-		e.POST("/api/auth/register", authHandler.Register)
-		e.GET("/api/user/dashboard/settings/x/oauth2/callback", userDashboardHandler.CompleteXOAuth2)
-
-		// Admin APIs (In a real app, protect this with an Admin Auth middleware)
-		adminGroup := e.Group("/api/admin/dashboard")
-		adminGroup.GET("/stats", adminDashboardHandler.GetStats)
-		adminGroup.GET("/projects", adminDashboardHandler.ListProjects)
-		adminGroup.GET("/projects/:id/publications", adminDashboardHandler.GetProjectPublications)
-
-		// User / Personal Center APIs (Protected by JWT)
-		userGroup := e.Group("/api/user/dashboard")
-		userGroup.Use(echojwt.WithConfig(middleware.GetJWTConfig(jwtSigningKey)))
-		rateLimitConfig, err := middleware.RateLimitConfigFromEnv(redisClient)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if rateLimitConfig.Enabled {
-			userGroup.Use(middleware.ApplicationRateLimiter(rateLimitConfig))
-		}
-
-		userGroup.GET("/stats", userDashboardHandler.GetMyStats)
-		userGroup.GET("/projects", userDashboardHandler.ListMyProjects)
-		userGroup.POST("/projects", userDashboardHandler.CreateProject)
-		userGroup.GET("/projects/:id", userDashboardHandler.GetMyProject)
-		userGroup.PUT("/projects/:id", userDashboardHandler.UpdateProject)
-		userGroup.PATCH("/projects/:id/content", userDashboardHandler.SaveProjectContent)
-		userGroup.PATCH("/projects/:id/platforms", userDashboardHandler.SaveProjectPlatforms)
-		userGroup.GET("/projects/:id/publications", userDashboardHandler.GetMyProjectPublications)
-		userGroup.POST("/projects/:id/prepublish/sync", userDashboardHandler.SyncProjectPrepublish)
-		userGroup.PUT("/projects/:id/prepublish/:platform", userDashboardHandler.UpdateProjectPrepublishDraft)
-		userGroup.POST("/projects/:id/publish", userDashboardHandler.PublishProject)
-		userGroup.POST("/projects/:id/publish-sessions/douyin", userDashboardHandler.StartDouyinPublishSession)
-		userGroup.POST("/ai/content/edit", userDashboardHandler.EditContentWithAI)
-		userGroup.POST("/ai/content/edit/stream", userDashboardHandler.StreamEditContentWithAI)
-		userGroup.POST("/ai/prepublish/edit", userDashboardHandler.EditPrepublishWithAI)
-		userGroup.POST("/ai/prepublish/edit/stream", userDashboardHandler.StreamEditPrepublishWithAI)
-		userGroup.GET("/settings/wechat/account", userDashboardHandler.GetWechatAccount)
-		userGroup.PUT("/settings/wechat/account", userDashboardHandler.SaveWechatAccount)
-		userGroup.POST("/settings/wechat/test", userDashboardHandler.TestWechatAccount)
-		userGroup.GET("/settings/douyin/account", userDashboardHandler.GetDouyinAccount)
-		userGroup.GET("/settings/zhihu/account", userDashboardHandler.GetZhihuAccount)
-		userGroup.GET("/settings/x/account", userDashboardHandler.GetXAccount)
-		userGroup.PUT("/settings/x/account", userDashboardHandler.SaveXAccount)
-		userGroup.POST("/settings/x/test", userDashboardHandler.TestXAccount)
-		userGroup.GET("/settings/x/oauth2/start", userDashboardHandler.StartXOAuth2)
-
-		// Remote Browser Session Routes
-		userGroup.POST("/settings/platforms/:platform/browser-session", browserSessionHandler.StartSession)
-		userGroup.GET("/browser-sessions/:id", browserSessionHandler.GetSession)
-		userGroup.GET("/browser-sessions/:id/stream", browserSessionHandler.StreamSession)
-		userGroup.GET("/browser-sessions/:id/stream/*", browserSessionHandler.StreamSession)
-		userGroup.POST("/browser-sessions/:id/complete", browserSessionHandler.CompleteSession)
-		userGroup.DELETE("/browser-sessions/:id", browserSessionHandler.CancelSession)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	port := os.Getenv("PORT")
@@ -188,81 +98,5 @@ func main() {
 	}
 
 	// Start server
-	e.Logger.Fatal(e.Start(":" + port))
-}
-
-func backendRuntimeConfigFromEnv() (backendRuntimeConfig, error) {
-	processRole, err := backendProcessRoleFromEnv()
-	if err != nil {
-		return backendRuntimeConfig{}, err
-	}
-	return backendRuntimeConfig{
-		processRole:  processRole,
-		requireRedis: envFlagWithDefault(backendRequireRedisEnv, backendDefaultRequireRedis),
-	}, nil
-}
-
-func backendProcessRoleFromEnv() (string, error) {
-	processRole := strings.ToLower(strings.TrimSpace(os.Getenv(backendProcessRoleEnv)))
-	if processRole == "" {
-		processRole = backendDefaultProcessRole
-	}
-	switch processRole {
-	case backendProcessRoleAll, backendProcessRoleAPI, backendProcessRoleWorker:
-		return processRole, nil
-	default:
-		return "", fmt.Errorf("%s must be one of: %s, %s, %s", backendProcessRoleEnv, backendProcessRoleAll, backendProcessRoleAPI, backendProcessRoleWorker)
-	}
-}
-
-func (c backendRuntimeConfig) servesAPI() bool {
-	return c.processRole == backendProcessRoleAll || c.processRole == backendProcessRoleAPI
-}
-
-func (c backendRuntimeConfig) runsWorkers() bool {
-	return c.processRole == backendProcessRoleAll || c.processRole == backendProcessRoleWorker
-}
-
-func (c backendRuntimeConfig) serviceName() string {
-	if c.processRole == backendProcessRoleWorker {
-		return backendWorkerServiceName
-	}
-	return backendServiceName
-}
-
-func requiredEnv(name string) (string, error) {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return "", fmt.Errorf("%s must be set", name)
-	}
-	return value, nil
-}
-
-func mockLoginEnabled() bool {
-	localEnv := isLocalEnvironment(os.Getenv(appEnvEnv)) || isLocalEnvironment(os.Getenv(nodeEnvFallbackEnv))
-	return envFlagEnabled(mockLoginFlagEnv) && localEnv
-}
-
-func envFlagEnabled(name string) bool {
-	return envFlagWithDefault(name, false)
-}
-
-func envFlagWithDefault(name string, defaultValue bool) bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
-	case "1", "true", "yes", "y", "on":
-		return true
-	case "0", "false", "no", "n", "off":
-		return false
-	default:
-		return defaultValue
-	}
-}
-
-func isLocalEnvironment(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "local", "dev", "development":
-		return true
-	default:
-		return false
-	}
+	server.Logger.Fatal(server.Start(":" + port))
 }
