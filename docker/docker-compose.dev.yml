@@ -80,6 +80,29 @@ services:
         - action: rebuild
           path: ../ai-service/uv.lock
 
+  extension-dev:
+    image: node:20-alpine
+    profiles:
+      - extension
+    working_dir: /app
+    command:
+      - /bin/sh
+      - -c
+      - |
+        corepack enable
+        pnpm install --frozen-lockfile --config.confirmModulesPurge=false --store-dir /pnpm/store
+        pnpm dev --host 0.0.0.0 --port ${EXTENSION_DEV_PORT:-3010}
+    ports:
+      - "${EXTENSION_DEV_PORT:-3010}:${EXTENSION_DEV_PORT:-3010}"
+    environment:
+      NODE_ENV: development
+      CI: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ../extension:/app
+      - extension_node_modules:/app/node_modules
+      - extension_pnpm_store:/pnpm/store
+
   db:
     ports:
       - "127.0.0.1:5432:5432"
@@ -97,3 +120,5 @@ volumes:
   browser_worker_go_build_cache:
   ai_service_venv:
   ai_service_uv_cache:
+  extension_node_modules:
+  extension_pnpm_store:
