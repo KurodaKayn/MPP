@@ -65,7 +65,7 @@ case "$ACTION" in
     compose logs -f traefik
     ;;
   ps|status)
-    compose ps traefik
+    compose ps traefik || true
     ;;
   *)
     printf 'Usage: %s [up|restart|stop|rm|logs|ps]\n' "$0" >&2
