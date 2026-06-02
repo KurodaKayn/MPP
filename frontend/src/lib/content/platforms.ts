@@ -18,16 +18,10 @@ export const PLATFORM_TABS = [
     icon: "/icons/platforms/x.svg",
   },
   {
-    value: "bilibili",
-    label: "platforms.bilibili",
-    defaultLabel: "Bilibili",
-    icon: "/icons/platforms/bilibili.svg",
-  },
-  {
-    value: "xiaohongshu",
-    label: "platforms.xiaohongshu",
-    defaultLabel: "Rednote",
-    icon: "/icons/platforms/xiaohongshu.svg",
+    value: "douyin",
+    label: "platforms.douyin",
+    defaultLabel: "Douyin",
+    icon: "/icons/platforms/douyin.svg",
   },
 ] as const;
 

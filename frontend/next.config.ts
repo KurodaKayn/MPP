@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
     return {
       beforeFiles: [
         {
+          destination: `${backendApiBaseUrl}/api/browser-stream/:path*`,
+          source: "/api/browser-stream/:path*",
+        },
+        {
           destination: `${backendApiBaseUrl}/api/user/dashboard/browser-sessions/:path*`,
           source: "/api/user/dashboard/browser-sessions/:path*",
         },

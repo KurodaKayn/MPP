@@ -25,6 +25,7 @@ export const siteConfig = {
     "content tools",
     "social media management",
     "AI editing",
+    "Douyin publishing",
   ],
   indexableRoutes: [
     {

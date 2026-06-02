@@ -26,7 +26,7 @@ type browserStreamTokenMeta struct {
 }
 
 func (s *BrowserSessionService) rotateRedisStreamToken(ctx context.Context, sessionID uuid.UUID, userID uuid.UUID, platform string, tokenHash string, sessionExpiresAt time.Time) (time.Time, error) {
-	expiresAt := streamTokenExpiresAt(sessionExpiresAt)
+	expiresAt := StreamTokenExpiresAt(sessionExpiresAt)
 	ttl := time.Until(expiresAt)
 	if ttl <= 0 {
 		return time.Time{}, ErrInvalidStreamToken
@@ -140,7 +140,7 @@ func (s *BrowserSessionService) deleteRedisStreamToken(ctx context.Context, sess
 
 func (s *BrowserSessionService) hasCurrentStreamToken(ctx context.Context, session models.RemoteBrowserSession) (bool, error) {
 	if s.redisClient == nil {
-		return session.ConnectTokenHash != "" && streamTokenValidUntil(session).After(time.Now()), nil
+		return session.ConnectTokenHash != "" && StreamTokenValidUntil(session).After(time.Now()), nil
 	}
 	currentHash, err := s.redisClient.Get(ctx, browserSessionStreamCurrentKey(session.ID)).Result()
 	if errors.Is(err, redis.Nil) {
@@ -160,22 +160,23 @@ func (s *BrowserSessionService) hasCurrentStreamToken(ctx context.Context, sessi
 	return true, nil
 }
 
-func browserSessionStreamURL(sessionID uuid.UUID, token string) string {
-	escapedToken := url.PathEscape(token)
+func BrowserSessionStreamURL(sessionID uuid.UUID, token string) string {
+	// Base64 RawURLEncoding is already URL-safe.
+	// Escaping it again can lead to decoding issues in some proxy layers.
 	streamBasePath := fmt.Sprintf(
 		"api/user/dashboard/browser-sessions/%s/stream/%s",
 		sessionID,
-		escapedToken,
+		token,
 	)
 	query := url.Values{
 		"autoconnect": {"true"},
-		"path":        {streamBasePath + "/websockify"},
+		"path":        {"/" + streamBasePath + "/websockify"},
 		"resize":      {"scale"},
 	}
 	return fmt.Sprintf("/%s/vnc.html?%s", streamBasePath, query.Encode())
 }
 
-func streamTokenExpiresAt(sessionExpiresAt time.Time, issuedAt ...time.Time) time.Time {
+func StreamTokenExpiresAt(sessionExpiresAt time.Time, issuedAt ...time.Time) time.Time {
 	now := time.Now()
 	if len(issuedAt) > 0 && !issuedAt[0].IsZero() {
 		now = issuedAt[0]
@@ -190,23 +191,23 @@ func streamTokenExpiresAt(sessionExpiresAt time.Time, issuedAt ...time.Time) tim
 	return now.Add(ttl)
 }
 
-func streamTokenValidUntil(session models.RemoteBrowserSession) time.Time {
+func StreamTokenValidUntil(session models.RemoteBrowserSession) time.Time {
 	if !session.ConnectTokenExpiresAt.IsZero() {
 		return session.ConnectTokenExpiresAt
 	}
-	return streamTokenExpiresAt(session.ExpiresAt, session.CreatedAt)
+	return StreamTokenExpiresAt(session.ExpiresAt, session.CreatedAt)
 }
 
-func generateStreamToken() (string, string, error) {
+func GenerateStreamToken() (string, string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", "", err
 	}
 	token := base64.RawURLEncoding.EncodeToString(b)
-	return token, hashStreamToken(token), nil
+	return token, HashStreamToken(token), nil
 }
 
-func hashStreamToken(token string) string {
+func HashStreamToken(token string) string {
 	hash := sha256.Sum256([]byte(token))
 	return fmt.Sprintf("%x", hash)
 }

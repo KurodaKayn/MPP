@@ -284,13 +284,18 @@ export async function loginWithAccessToken(token: string) {
 }
 
 export async function loginWithUsername(username: string) {
+  const normalizedUsername = username.trim();
+  if (!normalizedUsername) {
+    throw new Error("Please enter username");
+  }
+
   const status = await getAuthStatus();
   if (!status.loginMethods.mock) {
     throw new Error("Dev account login is only available in local development");
   }
 
-  const response = await fetch("/api/auth/mock-login", {
-    body: JSON.stringify({ username }),
+  const response = await fetch("/api/auth/login", {
+    body: JSON.stringify({ username: normalizedUsername }),
     cache: "no-store",
     credentials: "same-origin",
     headers: {
@@ -306,7 +311,7 @@ export async function loginWithUsername(username: string) {
     );
   }
 
-  const session = { token: body.token, username };
+  const session = { token: body.token, username: normalizedUsername };
   setAuthSession(session);
   return session;
 }

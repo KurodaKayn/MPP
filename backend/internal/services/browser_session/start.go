@@ -59,7 +59,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	}
 
 	// 2. Generate stream token
-	token, tokenHash, err := generateStreamToken()
+	token, tokenHash, err := GenerateStreamToken()
 	if err != nil {
 		_ = s.releaseRedisActiveSession(ctx, userID, platform, sessionID)
 		return nil, err
@@ -72,7 +72,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 		Platform:              platform,
 		Status:                models.BrowserSessionStatusPending,
 		ConnectTokenHash:      tokenHash,
-		ConnectTokenExpiresAt: streamTokenExpiresAt(expiresAt, now),
+		ConnectTokenExpiresAt: StreamTokenExpiresAt(expiresAt, now),
 		CreatedAt:             now,
 		ExpiresAt:             expiresAt,
 	}
@@ -173,7 +173,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	return &dto.StartBrowserSessionResponse{
 		SessionID:            sessionID,
 		Status:               models.BrowserSessionStatusReady,
-		StreamURL:            browserSessionStreamURL(sessionID, token),
+		StreamURL:            BrowserSessionStreamURL(sessionID, token),
 		StreamTokenExpiresAt: tokenExpiresAt,
 		ExpiresAt:            expiresAt,
 	}, nil

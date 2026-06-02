@@ -43,7 +43,8 @@ func (z *ZhihuPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfor
 		return "", "", fmt.Errorf("zhihu markdown content is empty")
 	}
 
-	browserCtx, cancel := SetupBrowser(ctx, account.Cookies)
+	// Setup browser with account cookies
+	browserCtx, cancel := SetupBrowser(ctx, "", account.Cookies)
 	defer cancel()
 
 	publishCtx, cancelPublish := context.WithTimeout(browserCtx, 150*time.Second)

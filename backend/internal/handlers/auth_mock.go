@@ -12,12 +12,17 @@ import (
 )
 
 type AuthHandler struct {
-	db            *gorm.DB
-	jwtSigningKey []byte
+	db                   *gorm.DB
+	jwtSigningKey        []byte
+	usernameLoginEnabled bool
 }
 
 func NewAuthHandler(db *gorm.DB, jwtSigningKey []byte) *AuthHandler {
 	return &AuthHandler{db: db, jwtSigningKey: jwtSigningKey}
+}
+
+func (h *AuthHandler) SetUsernameLoginEnabled(enabled bool) {
+	h.usernameLoginEnabled = enabled
 }
 
 // MockLogin creates a token for a given username. This is for local development only.

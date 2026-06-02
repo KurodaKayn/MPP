@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import {
@@ -91,7 +91,6 @@ export function useContentPageController(projectId?: string) {
     content,
     isLoading,
     isOpeningXPostIntent,
-    isPublishing,
     isSaving,
     isSyncingPrepublish,
     loadedProjectId,
@@ -101,7 +100,6 @@ export function useContentPageController(projectId?: string) {
     setContent,
     setIsLoading,
     setIsOpeningXPostIntent,
-    setIsPublishing,
     setIsSaving,
     setIsSyncingPrepublish,
     setLoadedProjectId,
@@ -350,6 +348,8 @@ export function useContentPageController(projectId?: string) {
       [platform]: draft,
     });
   };
+
+  const [isPublishing, setIsPublishing] = useState(false);
 
   const publishExistingProject = async () => {
     if (!projectId) {

@@ -15,7 +15,7 @@ function LoginContent() {
   const { t: tHome } = useTranslation(locale, "home");
   const {
     accessToken,
-    handleMockLoginSubmit,
+    handleLoginSubmit,
     handleTokenLoginSubmit,
     initialized,
     loginMethods,
@@ -78,7 +78,7 @@ function LoginContent() {
             </div>
 
             {loginMethods.mock ? (
-              <form className="space-y-5" onSubmit={handleMockLoginSubmit}>
+              <form className="space-y-5" onSubmit={handleLoginSubmit}>
                 <div className="space-y-2">
                   <Label htmlFor="username">{t("login.username")}</Label>
                   <Input
@@ -87,6 +87,7 @@ function LoginContent() {
                     className="h-10 border-[#cfc8ba] bg-white/70"
                     value={username}
                     onChange={(event) => setUsername(event.target.value)}
+                    placeholder={t("login.usernamePlaceholder")}
                   />
                 </div>
 

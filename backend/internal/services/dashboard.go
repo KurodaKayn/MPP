@@ -15,6 +15,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -29,7 +30,7 @@ func (s *DashboardService) BatchPublishProject(projectID uuid.UUID, platforms []
 		wg.Add(1)
 		go func(p string) {
 			defer wg.Done()
-			resp, err := s.PublishProject(projectID, p, scopeUserID)
+			resp, err := s.PublishProject(projectID, p, scopeUserID, uuid.Nil)
 			mu.Lock()
 			if err != nil {
 				results[p] = map[string]interface{}{"status": "error", "message": err.Error()}
@@ -44,7 +45,11 @@ func (s *DashboardService) BatchPublishProject(projectID uuid.UUID, platforms []
 	return results, nil
 }
 
-func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
+func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, browserSessionID uuid.UUID) (map[string]interface{}, error) {
+	// Remote browser sessions are only for account connection and cookie capture.
+	// Publish jobs must be durable across Redis workers, so they load saved credentials instead.
+	browserSessionID = uuid.Nil
+
 	// 1. Check ownership
 	var proj models.Project
 	if err := s.db.Where("id = ? AND user_id = ?", projectID, *scopeUserID).First(&proj).Error; err != nil {
@@ -80,12 +85,17 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 
 	// 4. Get Platform Account (for Cookies/Session)
 	var account models.PlatformAccount
-	if err := s.db.Where("user_id = ? AND platform = ?", *scopeUserID, platform).First(&account).Error; err != nil {
-		// Non-blocking: some publishers might not need a pre-stored account (using config instead)
-		// but headless ones usually do.
+	accountErr := s.db.Where("user_id = ? AND platform = ?", *scopeUserID, platform).First(&account).Error
+	if accountErr != nil && !errors.Is(accountErr, gorm.ErrRecordNotFound) {
+		return nil, accountErr
 	}
-	if err := s.applySavedBrowserCookies(context.Background(), proj.UserID, platform, &account); err != nil {
-		return nil, err
+	if usesStoredBrowserCookies(platform) {
+		if errors.Is(accountErr, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("%w: %s account is not connected", ErrInvalidPlatformAccount, platform)
+		}
+		if err := s.applySavedBrowserCookies(context.Background(), proj.UserID, platform, &account); err != nil {
+			return nil, err
+		}
 	}
 
 	startedAt := time.Now().UTC()
@@ -97,10 +107,12 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 		return nil, err
 	}
 
-	// 5. Execute Publish
-	remoteID, publishURL, err := p.Publish(context.Background(), &pub, &account)
+	ctx := context.Background()
 
-	// 6. Update DB
+	// 6. Execute Publish
+	remoteID, publishURL, err := p.Publish(ctx, &pub, &account)
+
+	// 8. Update DB
 	status := models.PublicationStatusPublished
 	errMsg := ""
 	if err != nil {
@@ -109,10 +121,11 @@ func (s *DashboardService) PublishProject(projectID uuid.UUID, platform string, 
 	}
 
 	response := map[string]interface{}{
-		"status":        status,
-		"remote_id":     remoteID,
-		"publish_url":   publishURL,
-		"error_message": errMsg,
+		"status":             status,
+		"remote_id":          remoteID,
+		"publish_url":        publishURL,
+		"error_message":      errMsg,
+		"browser_session_id": browserSessionID,
 	}
 	updates := map[string]interface{}{
 		"status":        status,
@@ -246,11 +259,10 @@ var ErrManualPublishUnsupported = errors.New("manual publish is only supported f
 
 var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
 var allowedProjectPlatforms = map[string]struct{}{
-	"bilibili":    {},
-	"wechat":      {},
-	"x":           {},
-	"xiaohongshu": {},
-	"zhihu":       {},
+	"douyin": {},
+	"wechat": {},
+	"x":      {},
+	"zhihu":  {},
 }
 
 func sanitizeUserFacingErrorMessage(message string) string {
@@ -258,16 +270,26 @@ func sanitizeUserFacingErrorMessage(message string) string {
 }
 
 type DashboardService struct {
-	db              *gorm.DB
-	wechatTester    WechatConnectionTester
-	xTester         XConnectionTester
-	xOAuth2Provider XOAuth2Provider
-	xOAuth2States   XOAuth2StateStore
-	publishQueue    PublishQueue
+	db                    *gorm.DB
+	wechatTester          WechatConnectionTester
+	xTester               XConnectionTester
+	xOAuth2Provider       XOAuth2Provider
+	xOAuth2States         XOAuth2StateStore
+	publishQueue          PublishQueue
+	browserWorkerClient   publisher.BrowserWorkerClient
+	browserSessionService *browsersession.BrowserSessionService
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
 	return NewDashboardServiceWithPlatformTesters(db, WechatAPITester{}, XAPITester{})
+}
+
+func (s *DashboardService) SetBrowserWorkerClient(client publisher.BrowserWorkerClient) {
+	s.browserWorkerClient = client
+}
+
+func (s *DashboardService) SetBrowserSessionService(svc *browsersession.BrowserSessionService) {
+	s.browserSessionService = svc
 }
 
 func NewDashboardServiceWithWechatTester(db *gorm.DB, tester WechatConnectionTester) *DashboardService {
@@ -298,12 +320,19 @@ func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider XOAuth2Provide
 	return service
 }
 
+func (s *DashboardService) SetPublishQueue(queue PublishQueue) {
+	s.publishQueue = queue
+}
+
 func (s *DashboardService) UseRedis(client *redis.Client) {
 	if client == nil {
 		return
 	}
 	s.xOAuth2States = NewRedisXOAuth2StateStore(client)
 	s.publishQueue = NewRedisPublishQueue(client)
+	if s.browserSessionService != nil {
+		s.browserSessionService.UseRedis(client)
+	}
 }
 
 func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {

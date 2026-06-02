@@ -37,10 +37,9 @@ type ContentPrepublishPanelProps = {
 };
 
 const platformFormats: Record<PublishPlatform, PrepublishFormat> = {
-  bilibili: "text",
+  douyin: "text",
   wechat: "html",
   x: "text",
-  xiaohongshu: "text",
   zhihu: "markdown",
 };
 
@@ -217,6 +216,7 @@ export function ContentPrepublishPanel({
         <div className="flex flex-wrap gap-2 pt-2">
           {PLATFORM_TABS.map((platform) => (
             <button
+              type="button"
               key={platform.value}
               onClick={() => activatePlatform(platform.value)}
               className={cn(

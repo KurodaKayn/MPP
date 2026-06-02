@@ -96,7 +96,7 @@ export function ContentPublishBar({
           </div>
 
           <TooltipProvider>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               {PLATFORM_TABS.map((platform) => {
                 const checked = selectedSet.has(platform.value);
                 const card = (

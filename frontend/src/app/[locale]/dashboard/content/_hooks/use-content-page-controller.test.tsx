@@ -178,6 +178,16 @@ describe("useContentPageController", () => {
           platform: "x",
           updated_at: "2026-05-30T12:00:00.000Z",
         },
+        {
+          adapted_content: {
+            format: "text",
+            source_revision: "2026-05-30T12:00:00.000Z",
+            text: "Rendered body",
+          },
+          enabled: true,
+          platform: "douyin",
+          updated_at: "2026-05-30T12:00:00.000Z",
+        },
       ],
       project_id: "project-1",
     });
@@ -190,7 +200,7 @@ describe("useContentPageController", () => {
           html: "<p>Rendered body</p>",
           text: "Rendered body",
         },
-        selectedPlatforms: ["wechat", "zhihu", "x"],
+        selectedPlatforms: ["wechat", "zhihu", "x", "douyin"],
         title: "Post title",
       });
     });
@@ -212,15 +222,19 @@ describe("useContentPageController", () => {
       format: "text",
       raw: "Rendered body",
     });
+    expect(state.prepublishDrafts.douyin).toMatchObject({
+      format: "text",
+      raw: "Rendered body",
+    });
     expect(state.isSyncingPrepublish).toBe(false);
     expect(mocks.createDashboardProject).toHaveBeenCalledWith({
-      platforms: ["wechat", "zhihu", "x"],
+      platforms: ["wechat", "zhihu", "x", "douyin"],
       source_content: "<p>Rendered body</p>",
       summary: "Rendered body",
       title: "Post title",
     });
     expect(mocks.syncProjectPrepublish).toHaveBeenCalledWith("project-1", {
-      platforms: ["wechat", "zhihu", "x"],
+      platforms: ["wechat", "zhihu", "x", "douyin"],
     });
     expect(mocks.toastSuccess).toHaveBeenCalledWith("project.syncSuccess", {
       description: "project.syncDesc",

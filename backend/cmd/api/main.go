@@ -47,15 +47,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if redisClient != nil {
-		defer redisClient.Close()
-		dashboardService.UseRedis(redisClient)
-		dashboardService.StartPublishWorker(context.Background())
-	}
-	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
-	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
-	userDashboardHandler.UseAIContentEditor(services.NewAIServiceClientFromEnv())
-	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
 
 	// Remote Browser Session (New)
 	var workerClient publisher.BrowserWorkerClient
@@ -65,9 +56,23 @@ func main() {
 	} else {
 		workerClient = publisher.NewMockBrowserWorkerClient()
 	}
+	browserSessionService := browsersession.NewBrowserSessionService(db.DB, workerClient, publisher.NewCookieStore(db.DB))
+	dashboardService.SetBrowserWorkerClient(workerClient)
+	dashboardService.SetBrowserSessionService(browserSessionService)
 
-	cookieStore := publisher.NewCookieStore(db.DB)
-	browserSessionService := browsersession.NewBrowserSessionService(db.DB, workerClient, cookieStore)
+	if redisClient != nil {
+		defer redisClient.Close()
+		dashboardService.UseRedis(redisClient)
+		dashboardService.StartPublishWorker(context.Background())
+	}
+
+	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
+	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
+	userDashboardHandler.UseAIContentEditor(services.NewAIServiceClientFromEnv())
+	mockLogin := mockLoginEnabled()
+	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
+	authHandler.SetUsernameLoginEnabled(mockLogin)
+
 	if redisClient != nil {
 		browserSessionService.UseRedis(redisClient)
 		browserSessionService.StartCleanupWorker(context.Background())
@@ -86,9 +91,10 @@ func main() {
 			"message": "pong",
 		})
 	})
-	if mockLoginEnabled() {
+	if mockLogin {
 		e.POST("/api/auth/mock-login", authHandler.MockLogin)
 	}
+	e.POST("/api/auth/login", authHandler.Login)
 	e.GET("/api/user/dashboard/settings/x/oauth2/callback", userDashboardHandler.CompleteXOAuth2)
 
 	// Admin APIs (In a real app, protect this with an Admin Auth middleware)

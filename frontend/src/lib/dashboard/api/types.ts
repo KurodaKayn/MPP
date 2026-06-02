@@ -50,6 +50,8 @@ export type PublishResult = {
   remote_id?: string;
   publish_url?: string;
   error_message?: string;
+  browser_session_id?: string;
+  stream_url?: string;
 };
 
 export type PublishProjectOptions = {

@@ -22,8 +22,7 @@ export default async function Image({
     tCommon("platforms.wechat"),
     tCommon("platforms.zhihu"),
     tCommon("platforms.x"),
-    tCommon("platforms.bilibili"),
-    tCommon("platforms.xiaohongshu"),
+    tCommon("platforms.douyin"),
   ];
 
   return new ImageResponse(

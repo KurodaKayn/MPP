@@ -63,7 +63,13 @@ func (s *Server) createSession(c echo.Context) error {
 	log.Printf("Session %s: Connecting to CDP at %s", req.SessionID, wsURL)
 
 	allocCtx, allocCancel := chromedp.NewRemoteAllocator(context.Background(), wsURL)
-	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+	pageTargetID, err := cdp.PageTargetID(containerHost, cdpPort)
+	if err != nil {
+		allocCancel()
+		_ = s.containers.StopContainer(context.Background(), containerID)
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to find browser page target")
+	}
+	browserCtx, browserCancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(pageTargetID))
 	if err := isolation.SetupInterception(browserCtx, req.AllowedDomains); err != nil {
 		browserCancel()
 		allocCancel()

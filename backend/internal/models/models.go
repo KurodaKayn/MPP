@@ -46,12 +46,14 @@ const (
 )
 
 type User struct {
-	ID               uuid.UUID `gorm:"type:uuid;primaryKey"`
-	Username         string    `gorm:"not null"`
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	Projects         []Project         `gorm:"foreignKey:UserID"`
-	PlatformAccounts []PlatformAccount `gorm:"foreignKey:UserID"`
+	ID                    uuid.UUID `gorm:"type:uuid;primaryKey"`
+	Username              string    `gorm:"not null;uniqueIndex"`
+	Role                  string    `gorm:"not null;default:'user'"`
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	Projects              []Project              `gorm:"foreignKey:UserID"`
+	PlatformAccounts      []PlatformAccount      `gorm:"foreignKey:UserID"`
+	RemoteBrowserSessions []RemoteBrowserSession `gorm:"foreignKey:UserID"`
 }
 
 type Project struct {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/storage"
+	cdptarget "github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
@@ -46,7 +47,7 @@ func VersionWebSocketURL(cdpHost string, cdpPort int) (string, error) {
 	return "", fmt.Errorf("no browser version websocket target found on CDP endpoint %s", cdpAddr)
 }
 
-func browserWebSocketURL(cdpHost string, cdpPort int) (string, error) {
+func PageTargetID(cdpHost string, cdpPort int) (cdptarget.ID, error) {
 	cdpAddr := net.JoinHostPort(cdpHost, fmt.Sprintf("%d", cdpPort))
 	reqURL := fmt.Sprintf("http://%s/json", cdpAddr)
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -69,29 +70,37 @@ func browserWebSocketURL(cdpHost string, cdpPort int) (string, error) {
 			}
 
 			var targets []struct {
-				Type                 string `json:"type"`
-				WebSocketDebuggerUrl string `json:"webSocketDebuggerUrl"`
+				ID   string `json:"id"`
+				Type string `json:"type"`
+				URL  string `json:"url"`
 			}
 			if err := json.NewDecoder(resp.Body).Decode(&targets); err != nil {
 				return
 			}
 			for _, t := range targets {
-				if t.Type == "page" && t.WebSocketDebuggerUrl != "" {
-					u, _ := url.Parse(t.WebSocketDebuggerUrl)
-					u.Host = cdpAddr
-					reqURL = u.String()
+				if t.Type == "page" && t.ID != "" && t.URL == "about:blank" {
+					reqURL = "target:" + t.ID
+					break
+				}
+			}
+			if strings.HasPrefix(reqURL, "target:") {
+				return
+			}
+			for _, t := range targets {
+				if t.Type == "page" && t.ID != "" {
+					reqURL = "target:" + t.ID
 					break
 				}
 			}
 		}()
 
-		if strings.HasPrefix(reqURL, "ws://") {
-			return reqURL, nil
+		if strings.HasPrefix(reqURL, "target:") {
+			return cdptarget.ID(strings.TrimPrefix(reqURL, "target:")), nil
 		}
 		time.Sleep(1 * time.Second)
 	}
 
-	return "", fmt.Errorf("no page websocket target found on CDP endpoint %s", cdpAddr)
+	return "", fmt.Errorf("no page target found on CDP endpoint %s", cdpAddr)
 }
 
 func Snapshot(ctx context.Context, workerSession *session.WorkerSession, includeAccount bool) (string, []session.Cookie, string, error) {

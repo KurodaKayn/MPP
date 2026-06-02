@@ -35,7 +35,7 @@ export function useLoginController() {
     }
   }, [initialized, nextPath, router, session]);
 
-  const handleMockLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const normalizedUsername = username.trim();
 
@@ -47,6 +47,7 @@ export function useLoginController() {
     setSubmitting(true);
     try {
       await login(normalizedUsername);
+      toast.success(t("login.success", { defaultValue: "Login successful" }));
       router.replace(nextPath);
     } catch (error) {
       toast.error(t("login.failed"), {
@@ -83,7 +84,7 @@ export function useLoginController() {
 
   return {
     accessToken,
-    handleMockLoginSubmit,
+    handleLoginSubmit,
     handleTokenLoginSubmit,
     initialized,
     loginMethods,

@@ -31,11 +31,13 @@ var (
 )
 
 type PublishJob struct {
-	JobID      uuid.UUID `json:"job_id"`
-	ProjectID  uuid.UUID `json:"project_id"`
-	UserID     uuid.UUID `json:"user_id"`
-	Platform   string    `json:"platform"`
-	EnqueuedAt time.Time `json:"enqueued_at"`
+	JobID     uuid.UUID `json:"job_id"`
+	ProjectID uuid.UUID `json:"project_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Platform  string    `json:"platform"`
+	// Kept only so old Redis payloads still unmarshal; publishing never reuses live browser sessions.
+	BrowserSessionID uuid.UUID `json:"browser_session_id,omitempty"`
+	EnqueuedAt       time.Time `json:"enqueued_at"`
 }
 
 type PublishQueue interface {
@@ -124,7 +126,7 @@ return 0
 
 func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
 	if s.publishQueue == nil {
-		return s.PublishProject(projectID, platform, scopeUserID)
+		return s.PublishProject(projectID, platform, scopeUserID, uuid.Nil)
 	}
 	if scopeUserID == nil {
 		return nil, ErrForbidden
@@ -230,7 +232,7 @@ func (s *DashboardService) processPublishJob(ctx context.Context, job PublishJob
 	stopRefreshing := s.startPublishLockRefresh(ctx, lockKey, job.JobID.String())
 	defer stopRefreshing()
 
-	if _, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID); err != nil {
+	if _, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID, uuid.Nil); err != nil {
 		log.Printf("publish job %s failed: %v", job.JobID, err)
 		if markErr := s.markPublicationFailed(job.ProjectID, job.Platform, err.Error()); markErr != nil {
 			log.Printf("failed to mark publish job %s as failed: %v", job.JobID, markErr)

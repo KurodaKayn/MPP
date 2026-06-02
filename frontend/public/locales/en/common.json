@@ -6,9 +6,11 @@
     "mockDesc": "Use dev account to enter.",
     "tokenDesc": "Use access token to enter.",
     "username": "Username",
+    "usernamePlaceholder": "Example: test_user",
     "accessToken": "Access Token",
     "sideTitle": "Manage all channels from a single source.",
     "usernameRequired": "Please enter username",
+    "success": "Login successful",
     "failed": "Login failed",
     "mockDescError": "Please check if the dev account exists.",
     "tokenRequired": "Please enter access token",
@@ -130,8 +132,8 @@
     "wechat": "WeChat",
     "zhihu": "Zhihu",
     "x": "X",
+    "douyin": "Douyin",
     "bilibili": "Bilibili",
-    "xiaohongshu": "Rednote",
-    "douyin": "Douyin"
+    "xiaohongshu": "Rednote"
   }
 }

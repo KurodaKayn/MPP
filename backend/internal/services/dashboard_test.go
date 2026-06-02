@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
@@ -73,6 +74,7 @@ func setupTestDB() *gorm.DB {
 	db.Exec(`CREATE TABLE users (
 		id TEXT PRIMARY KEY,
 		username TEXT NOT NULL,
+		role TEXT NOT NULL DEFAULT 'user',
 		created_at DATETIME,
 		updated_at DATETIME
 	)`)
@@ -122,6 +124,24 @@ func setupTestDB() *gorm.DB {
 		updated_at DATETIME
 	)`)
 
+	db.Exec(`CREATE TABLE remote_browser_sessions (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		platform TEXT NOT NULL,
+		status TEXT NOT NULL,
+		worker_session_ref TEXT,
+		container_id TEXT,
+		cdp_endpoint_ref TEXT,
+		stream_endpoint_ref TEXT,
+		connect_token_hash TEXT,
+		connect_token_expires_at DATETIME,
+		error_message TEXT,
+		created_at DATETIME,
+		expires_at DATETIME,
+		completed_at DATETIME,
+		metadata TEXT NOT NULL DEFAULT '{}'
+	)`)
+
 	return db
 }
 
@@ -140,6 +160,7 @@ func (f *fakeWechatTester) Test(appID, appSecret string) dto.WechatConnectionTes
 type fakePlatformPublisher struct {
 	config         datatypes.JSON
 	accountCookies datatypes.JSON
+	remoteURL      string
 }
 
 func (f *fakePlatformPublisher) ValidateConfig(config []byte) error {
@@ -154,6 +175,9 @@ func (f *fakePlatformPublisher) Publish(ctx context.Context, pub *models.Project
 	f.config = append(datatypes.JSON(nil), pub.Config...)
 	if account != nil {
 		f.accountCookies = append(datatypes.JSON(nil), account.Cookies...)
+	}
+	if remoteURL, ok := ctx.Value(publisher.ContextKeyRemoteURL).(string); ok {
+		f.remoteURL = remoteURL
 	}
 	return "remote-id", "https://example.com/published", nil
 }
@@ -243,7 +267,7 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 		SourceContent: "<p>Hello WeChat</p>",
 		Summary:       "Hello WeChat",
 		CoverImageURL: "data:image/png;base64,aGVsbG8=",
-		Platforms:     []string{"wechat", "wechat", "bilibili"},
+		Platforms:     []string{"wechat", "wechat", "douyin"},
 	})
 
 	assert.NoError(t, err)
@@ -270,9 +294,9 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &adapted))
 	assert.Empty(t, adapted)
 
-	var bilibiliPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&bilibiliPub, "project_id = ? AND platform = ?", resp.ID, "bilibili").Error)
-	assert.Equal(t, models.PublicationStatusPending, bilibiliPub.Status)
+	var douyinPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", resp.ID, "douyin").Error)
+	assert.Equal(t, models.PublicationStatusPending, douyinPub.Status)
 }
 
 func TestCreateProjectRejectsInvalidInput(t *testing.T) {
@@ -368,7 +392,7 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 		Title:         "New title",
 		SourceContent: "<p>New body</p>",
 		Summary:       "New body",
-		Platforms:     []string{"zhihu", "bilibili"},
+		Platforms:     []string{"zhihu", "douyin"},
 	})
 
 	assert.NoError(t, err)
@@ -395,10 +419,10 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 	assert.Empty(t, zhihuPub.PublishURL)
 	assert.Nil(t, zhihuPub.PublishedAt)
 
-	var bilibiliPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&bilibiliPub, "project_id = ? AND platform = ?", project.ID, "bilibili").Error)
-	assert.True(t, bilibiliPub.Enabled)
-	assert.Equal(t, models.PublicationStatusPending, bilibiliPub.Status)
+	var douyinPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", project.ID, "douyin").Error)
+	assert.True(t, douyinPub.Enabled)
+	assert.Equal(t, models.PublicationStatusPending, douyinPub.Status)
 
 	_, err = s.UpdateProject(project.ID, stranger.ID, dto.UpdateProjectRequest{
 		Title:         "Not allowed",
@@ -443,15 +467,22 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 		Status:    models.PublicationStatusPending,
 		Config:    datatypes.JSON(`{"title":"Platform title"}`),
 	})
+	db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "douyin",
+		Enabled:   true,
+		Status:    models.PublicationStatusPending,
+		Config:    datatypes.JSON(`{"title":"Platform title"}`),
+	})
 
 	resp, err := s.SyncProjectPrepublish(project.ID, owner.ID, dto.SyncPrepublishRequest{
-		Platforms: []string{"wechat", "zhihu", "x"},
+		Platforms: []string{"wechat", "zhihu", "x", "douyin"},
 		Actor:     dto.SyncActor{Type: "system"},
 	})
 
 	assert.NoError(t, err)
 	assert.Equal(t, project.ID, resp.ProjectID)
-	assert.Len(t, resp.Items, 3)
+	assert.Len(t, resp.Items, 4)
 
 	var wechatPub models.ProjectPlatformPublication
 	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
@@ -481,6 +512,15 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 	assert.Equal(t, "text", xContent["format"])
 	assert.Contains(t, xContent["text"], "Platform title")
 	assert.Contains(t, xContent["text"], "Hello draft")
+
+	var douyinPub models.ProjectPlatformPublication
+	assert.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", project.ID, "douyin").Error)
+	assert.Equal(t, models.PublicationStatusAdapted, douyinPub.Status)
+
+	var douyinContent map[string]interface{}
+	assert.NoError(t, json.Unmarshal(douyinPub.AdaptedContent, &douyinContent))
+	assert.Equal(t, "text", douyinContent["format"])
+	assert.Contains(t, douyinContent["text"], "Hello draft")
 }
 
 func TestGetProjectPublications(t *testing.T) {
@@ -791,7 +831,7 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	result, err := s.PublishProject(project.ID, "wechat", &user.ID)
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	assert.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
 
@@ -838,7 +878,7 @@ func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
 		Username: "creator",
 	}))
 
-	result, err := s.PublishProject(project.ID, "douyin", &user.ID)
+	result, err := s.PublishProject(project.ID, "douyin", &user.ID, uuid.Nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
@@ -848,6 +888,81 @@ func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
 	var passedCookies []publisher.Cookie
 	require.NoError(t, json.Unmarshal(fakePublisher.accountCookies, &passedCookies))
 	assert.Equal(t, cookies, passedCookies)
+}
+
+func TestPublishProjectIgnoresBrowserSessionIDForAsyncPublishing(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &fakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+	sessionID := uuid.New()
+	require.NoError(t, db.Create(&models.RemoteBrowserSession{
+		ID:        sessionID,
+		UserID:    user.ID,
+		Platform:  "wechat",
+		Status:    models.BrowserSessionStatusReady,
+		CreatedAt: time.Now().UTC(),
+		ExpiresAt: time.Now().Add(15 * time.Minute).UTC(),
+	}).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, sessionID)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Empty(t, fakePublisher.remoteURL)
+}
+
+func TestPublishProjectRequiresSavedCookiesForBrowserCookiePlatforms(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &fakePlatformPublisher{}
+	publisher.Factory.Register("douyin", fakePublisher)
+	defer publisher.Factory.Register("douyin", &publisher.DouyinPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "douyin",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	_, err := s.PublishProject(project.ID, "douyin", &user.ID, uuid.Nil)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, services.ErrInvalidPlatformAccount)
+	assert.Empty(t, fakePublisher.accountCookies)
 }
 
 func TestGetDouyinAccount(t *testing.T) {
@@ -902,7 +1017,7 @@ func TestPublishProjectAdaptsPendingPublicationBeforePublishing(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&pub).Error)
 
-	result, err := s.PublishProject(project.ID, "wechat", &user.ID)
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
@@ -951,7 +1066,7 @@ func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
 		Metadata: datatypes.JSON(`{"username":"creator"}`),
 	}).Error)
 
-	result, err := s.PublishProject(project.ID, "x", &user.ID)
+	result, err := s.PublishProject(project.ID, "x", &user.ID, uuid.Nil)
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
 
@@ -1023,7 +1138,7 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 		Metadata:    datatypes.JSON(`{"username":"creator"}`),
 	}).Error)
 
-	result, err := s.PublishProject(project.ID, "x", &user.ID)
+	result, err := s.PublishProject(project.ID, "x", &user.ID, uuid.Nil)
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
 	assert.Equal(t, "oauth2-refresh", provider.refreshToken)
@@ -1154,6 +1269,6 @@ func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
 		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
 	})
 
-	_, err := s.PublishProject(project.ID, "wechat", &user.ID)
+	_, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	assert.ErrorIs(t, err, services.ErrPublicationDisabled)
 }

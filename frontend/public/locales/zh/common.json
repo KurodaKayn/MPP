@@ -6,9 +6,11 @@
     "mockDesc": "使用开发账号进入工作台。",
     "tokenDesc": "使用访问令牌进入工作台。",
     "username": "用户名",
+    "usernamePlaceholder": "例如：test_user",
     "accessToken": "访问令牌",
     "sideTitle": "从一篇内容开始，管理所有发布渠道。",
     "usernameRequired": "请输入用户名",
+    "success": "登录成功",
     "failed": "登录失败",
     "mockDescError": "请检查开发账号是否存在。",
     "tokenRequired": "请输入访问令牌",
@@ -130,8 +132,8 @@
     "wechat": "公众号",
     "zhihu": "知乎",
     "x": "X",
+    "douyin": "抖音",
     "bilibili": "B站",
-    "xiaohongshu": "小红书",
-    "douyin": "抖音"
+    "xiaohongshu": "小红书"
   }
 }

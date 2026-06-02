@@ -103,7 +103,7 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 		return nil, err
 	}
 	if isStreamableBrowserSessionStatus(session.Status) && session.StreamEndpointRef != "" && !hasCurrentToken {
-		token, tokenHash, err := generateStreamToken()
+		token, tokenHash, err := GenerateStreamToken()
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +121,7 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 			session.ConnectTokenHash = tokenHash
 			session.ConnectTokenExpiresAt = tokenExpiresAt
 		}
-		resp.StreamURL = browserSessionStreamURL(id, token)
+		resp.StreamURL = BrowserSessionStreamURL(id, token)
 		resp.StreamTokenExpiresAt = tokenExpiresAt
 	}
 
@@ -155,35 +155,37 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 		return "", ErrStreamTokenGone
 	}
 
-	tokenHash := hashStreamToken(token)
+	tokenHash := HashStreamToken(token)
 	if s.redisClient != nil {
 		meta, ok, err := s.readRedisStreamToken(ctx, id, tokenHash, consume)
 		if err != nil {
 			return "", err
 		}
-		if !ok {
-			return "", ErrStreamTokenGone
-		}
-		if meta.SessionID != id || meta.Platform != session.Platform || meta.Purpose != "stream" {
-			return "", ErrInvalidStreamToken
-		}
-		if meta.UserID != userID {
-			return "", ErrSessionForbidden
-		}
-		if time.Now().After(meta.ExpiresAt) {
-			return "", ErrStreamTokenGone
-		}
-	} else {
-		if !streamTokenValidUntil(session).After(now) {
-			return "", ErrStreamTokenGone
-		}
-		if subtle.ConstantTimeCompare([]byte(tokenHash), []byte(session.ConnectTokenHash)) != 1 {
-			return "", ErrStreamTokenGone
-		}
-		if consume {
-			if err := s.db.Model(&session).Update("connect_token_hash", "").Error; err != nil {
-				return "", err
+		if ok {
+			if meta.SessionID != id || meta.Platform != session.Platform || meta.Purpose != "stream" {
+				return "", ErrInvalidStreamToken
 			}
+			if userID != uuid.Nil && meta.UserID != userID {
+				return "", ErrSessionForbidden
+			}
+			if time.Now().After(meta.ExpiresAt) {
+				return "", ErrStreamTokenGone
+			}
+			return session.StreamEndpointRef, nil
+		}
+		return "", ErrStreamTokenGone
+	}
+
+	// Fallback to DB
+	if !StreamTokenValidUntil(session).After(now) {
+		return "", ErrStreamTokenGone
+	}
+	if subtle.ConstantTimeCompare([]byte(tokenHash), []byte(session.ConnectTokenHash)) != 1 {
+		return "", ErrInvalidStreamToken
+	}
+	if consume {
+		if err := s.db.Model(&session).Update("connect_token_hash", "").Error; err != nil {
+			return "", err
 		}
 	}
 
