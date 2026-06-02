@@ -23,6 +23,8 @@ const (
 	ContextKeyRemoteURL contextKey = "remote_browser_url"
 )
 
+const browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+
 // SetupBrowser initializes a chromedp context with optional cookies
 func SetupBrowser(ctx context.Context, remoteURL string, cookiesJSON []byte) (context.Context, context.CancelFunc) {
 	// 1. HIGH PRIORITY: Try global environment variable (e.g. host.docker.internal for local Chrome)
@@ -47,14 +49,7 @@ func SetupBrowser(ctx context.Context, remoteURL string, cookiesJSON []byte) (co
 		allocCtx, cancelAlloc = chromedp.NewRemoteAllocator(ctx, remoteURL)
 	} else {
 		// Fallback to local container browser (Headless)
-		opts := append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.NoFirstRun,
-			chromedp.NoDefaultBrowserCheck,
-			chromedp.UserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"),
-		)
-		if browserPath := os.Getenv("CHROME_BIN"); browserPath != "" {
-			opts = append(opts, chromedp.ExecPath(browserPath))
-		}
+		opts := localBrowserAllocatorOptions(os.Getenv("CHROME_BIN"), os.Getuid() == 0)
 		allocCtx, cancelAlloc = chromedp.NewExecAllocator(ctx, opts...)
 	}
 
@@ -79,6 +74,21 @@ func SetupBrowser(ctx context.Context, remoteURL string, cookiesJSON []byte) (co
 	}
 
 	return ctx, combinedCancel
+}
+
+func localBrowserAllocatorOptions(browserPath string, runningAsRoot bool) []chromedp.ExecAllocatorOption {
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.NoFirstRun,
+		chromedp.NoDefaultBrowserCheck,
+		chromedp.UserAgent(browserUserAgent),
+	)
+	if runningAsRoot {
+		opts = append(opts, chromedp.NoSandbox)
+	}
+	if browserPath != "" {
+		opts = append(opts, chromedp.ExecPath(browserPath))
+	}
+	return opts
 }
 
 type Cookie struct {
