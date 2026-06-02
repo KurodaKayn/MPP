@@ -18,10 +18,10 @@
   <br>
   <img src="https://img.shields.io/badge/shadcn-4-000000?style=for-the-badge&logo=shadcnui&logoColor=white&labelColor=000000" alt="shadcn" />
   <img src="https://img.shields.io/badge/WXT-0.20.26-67D8EF?style=for-the-badge&logo=wxt&logoColor=66FF66" alt="WXT" />
-  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go&logoColor=white&labelColor=00ADD8" alt="Go" />
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go&logoColor=00ADD8" alt="Go" />
   <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
   <br>
-  <img src="https://img.shields.io/badge/FastAPI-0.136-05998B?style=for-the-badge&logo=fastapi&logoColor=white&labelColor=05998B" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/FastAPI-0.136-05998B?style=for-the-badge&logo=fastapi&logoColor=05998B" alt="FastAPI" />
   <img src="https://img.shields.io/badge/LangChain-1.3-1C3C3C?style=for-the-badge&logo=langchaincorporate&logoColor=1C3C3C" alt="LangChain" />
   <img src="https://img.shields.io/badge/PostgreSQL-17-4169E1?style=for-the-badge&logo=postgresql&logoColor=4169E1" alt="PostgreSQL" />
   <img src="doc/assets/badges/redis.svg" alt="Redis" />
