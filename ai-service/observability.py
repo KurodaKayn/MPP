@@ -1,5 +1,4 @@
 import json
-import logging
 import time
 from uuid import uuid4
 
@@ -15,8 +14,6 @@ from prometheus_client import (
 REQUEST_ID_HEADER = "x-request-id"
 TRACE_ID_HEADER = "x-trace-id"
 SERVICE_NAME = "ai-service"
-
-logger = logging.getLogger("mpp.observability")
 
 REQUESTS = Counter(
     "mpp_http_requests_total",
@@ -122,7 +119,7 @@ def _log_request(
     }
     if error:
         event["error"] = error
-    logger.info(json.dumps(event, separators=(",", ":")))
+    print(json.dumps(event, separators=(",", ":")), flush=True)
 
 
 def _content_length(request: Request) -> int:
