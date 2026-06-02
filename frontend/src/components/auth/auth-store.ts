@@ -7,6 +7,7 @@ import {
   getCurrentAuthState,
   loginWithAccessToken,
   loginWithUsername,
+  registerWithCredentials,
   type AuthLoginMethods,
   type AuthSession,
 } from "@/lib/auth/client";
@@ -18,10 +19,11 @@ export type AuthStoreState = {
 };
 
 type AuthStoreActions = {
-  login: (username: string) => Promise<AuthSession>;
+  login: (username: string, password: string) => Promise<AuthSession>;
   loginWithToken: (token: string) => Promise<AuthSession>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  register: (username: string, password: string) => Promise<AuthSession>;
   reset: () => void;
 };
 
@@ -38,8 +40,8 @@ const initialState: AuthStoreState = {
 
 export const useAuthStore = create<AuthStore>((set) => ({
   ...initialState,
-  login: async (username) => {
-    const nextSession = await loginWithUsername(username);
+  login: async (username, password) => {
+    const nextSession = await loginWithUsername(username, password);
     set({ initialized: true, session: nextSession });
     return nextSession;
   },
@@ -60,6 +62,11 @@ export const useAuthStore = create<AuthStore>((set) => ({
       loginMethods: authState.loginMethods,
       session: authState.session,
     });
+  },
+  register: async (username, password) => {
+    const nextSession = await registerWithCredentials(username, password);
+    set({ initialized: true, session: nextSession });
+    return nextSession;
   },
   reset: () => set(initialState),
 }));

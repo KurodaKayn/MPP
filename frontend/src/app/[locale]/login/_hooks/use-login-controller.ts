@@ -15,8 +15,14 @@ export function resolveNextPath(value: string | null) {
 }
 
 export function useLoginController() {
-  const { initialized, login, loginMethods, loginWithToken, session } =
-    useAuth();
+  const {
+    initialized,
+    login,
+    loginMethods,
+    loginWithToken,
+    register,
+    session,
+  } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const locale = useAppLocale();
@@ -26,6 +32,10 @@ export function useLoginController() {
     [searchParams],
   );
   const [username, setUsername] = useState("kuroda_kayn");
+  const [password, setPassword] = useState("");
+  const [registerUsername, setRegisterUsername] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerPasswordConfirm, setRegisterPasswordConfirm] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -44,9 +54,14 @@ export function useLoginController() {
       return;
     }
 
+    if (!password) {
+      toast.error(t("login.passwordRequired"));
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await login(normalizedUsername);
+      await login(normalizedUsername, password);
       toast.success(t("login.success", { defaultValue: "Login successful" }));
       router.replace(nextPath);
     } catch (error) {
@@ -82,13 +97,56 @@ export function useLoginController() {
     }
   };
 
+  const handleRegisterSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedUsername = registerUsername.trim();
+
+    if (!normalizedUsername) {
+      toast.error(t("login.usernameRequired"));
+      return;
+    }
+
+    if (!registerPassword) {
+      toast.error(t("login.passwordRequired"));
+      return;
+    }
+
+    if (registerPassword !== registerPasswordConfirm) {
+      toast.error(t("login.passwordMismatch"));
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await register(normalizedUsername, registerPassword);
+      toast.success(t("login.registerSuccess"));
+      router.replace(nextPath);
+    } catch (error) {
+      toast.error(t("login.registerFailed"), {
+        description:
+          error instanceof Error ? error.message : t("login.registerDescError"),
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return {
     accessToken,
     handleLoginSubmit,
+    handleRegisterSubmit,
     handleTokenLoginSubmit,
     initialized,
     loginMethods,
+    password,
+    registerPassword,
+    registerPasswordConfirm,
+    registerUsername,
     setAccessToken,
+    setPassword,
+    setRegisterPassword,
+    setRegisterPasswordConfirm,
+    setRegisterUsername,
     setUsername,
     submitting,
     username,

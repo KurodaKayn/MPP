@@ -1,12 +1,13 @@
 "use client";
 
 import { Suspense } from "react";
-import { ArrowRight, Loader2, LogIn } from "lucide-react";
+import { ArrowRight, KeyRound, Loader2, LogIn, UserPlus } from "lucide-react";
 import Image from "next/image";
 import { useTranslation, useAppLocale } from "@/lib/i18n/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLoginController } from "./_hooks/use-login-controller";
 
 function LoginContent() {
@@ -16,10 +17,19 @@ function LoginContent() {
   const {
     accessToken,
     handleLoginSubmit,
+    handleRegisterSubmit,
     handleTokenLoginSubmit,
     initialized,
     loginMethods,
+    password,
+    registerPassword,
+    registerPasswordConfirm,
+    registerUsername,
     setAccessToken,
+    setPassword,
+    setRegisterPassword,
+    setRegisterPasswordConfirm,
+    setRegisterUsername,
     setUsername,
     submitting,
     username,
@@ -78,33 +88,134 @@ function LoginContent() {
             </div>
 
             {loginMethods.mock ? (
-              <form className="space-y-5" onSubmit={handleLoginSubmit}>
-                <div className="space-y-2">
-                  <Label htmlFor="username">{t("login.username")}</Label>
-                  <Input
-                    id="username"
-                    autoComplete="username"
-                    className="h-10 border-[#cfc8ba] bg-white/70"
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
-                    placeholder={t("login.usernamePlaceholder")}
-                  />
-                </div>
-
-                <Button
-                  type="submit"
-                  className="h-10 w-full bg-[#1f2520] text-[#f6f4ee] hover:bg-[#303830]"
-                  disabled={submitting || !initialized}
-                >
-                  {submitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
+              <Tabs defaultValue="login" className="gap-6">
+                <TabsList className="grid h-10 w-full grid-cols-2 rounded-md border border-[#d9d4c8] bg-white/60 p-1">
+                  <TabsTrigger value="login" className="rounded-[4px]">
                     <LogIn className="h-4 w-4" />
-                  )}
-                  {t("login.submit")}
-                  <ArrowRight className="ml-auto h-4 w-4" />
-                </Button>
-              </form>
+                    {t("login.signInTab")}
+                  </TabsTrigger>
+                  <TabsTrigger value="register" className="rounded-[4px]">
+                    <UserPlus className="h-4 w-4" />
+                    {t("login.registerTab")}
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="login">
+                  <form className="space-y-5" onSubmit={handleLoginSubmit}>
+                    <div className="space-y-2">
+                      <Label htmlFor="username">{t("login.username")}</Label>
+                      <Input
+                        id="username"
+                        autoComplete="username"
+                        className="h-10 border-[#cfc8ba] bg-white/70"
+                        value={username}
+                        onChange={(event) => setUsername(event.target.value)}
+                        placeholder={t("login.usernamePlaceholder")}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="password">{t("login.password")}</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        autoComplete="current-password"
+                        className="h-10 border-[#cfc8ba] bg-white/70"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder={t("login.passwordPlaceholder")}
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="h-10 w-full bg-[#1f2520] text-[#f6f4ee] hover:bg-[#303830]"
+                      disabled={submitting || !initialized}
+                    >
+                      {submitting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <LogIn className="h-4 w-4" />
+                      )}
+                      {t("login.submit")}
+                      <ArrowRight className="ml-auto h-4 w-4" />
+                    </Button>
+                  </form>
+                </TabsContent>
+
+                <TabsContent value="register">
+                  <form className="space-y-5" onSubmit={handleRegisterSubmit}>
+                    <div className="space-y-2">
+                      <Label htmlFor="register-username">
+                        {t("login.username")}
+                      </Label>
+                      <Input
+                        id="register-username"
+                        autoComplete="username"
+                        className="h-10 border-[#cfc8ba] bg-white/70"
+                        value={registerUsername}
+                        onChange={(event) =>
+                          setRegisterUsername(event.target.value)
+                        }
+                        placeholder={t("login.usernamePlaceholder")}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="register-password">
+                        {t("login.password")}
+                      </Label>
+                      <Input
+                        id="register-password"
+                        type="password"
+                        autoComplete="new-password"
+                        className="h-10 border-[#cfc8ba] bg-white/70"
+                        value={registerPassword}
+                        onChange={(event) =>
+                          setRegisterPassword(event.target.value)
+                        }
+                        placeholder={t("login.registerPasswordPlaceholder")}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="register-password-confirm">
+                        {t("login.confirmPassword")}
+                      </Label>
+                      <Input
+                        id="register-password-confirm"
+                        type="password"
+                        autoComplete="new-password"
+                        className="h-10 border-[#cfc8ba] bg-white/70"
+                        value={registerPasswordConfirm}
+                        onChange={(event) =>
+                          setRegisterPasswordConfirm(event.target.value)
+                        }
+                        placeholder={t("login.confirmPasswordPlaceholder")}
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="h-10 w-full bg-[#1f2520] text-[#f6f4ee] hover:bg-[#303830]"
+                      disabled={submitting || !initialized}
+                    >
+                      {submitting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <UserPlus className="h-4 w-4" />
+                      )}
+                      {t("login.registerSubmit")}
+                      <ArrowRight className="ml-auto h-4 w-4" />
+                    </Button>
+
+                    <p className="text-xs leading-5 text-[#667064]">
+                      <KeyRound className="mr-1 inline h-3.5 w-3.5" />
+                      {t("login.passwordHint")}
+                    </p>
+                  </form>
+                </TabsContent>
+              </Tabs>
             ) : (
               <form className="space-y-5" onSubmit={handleTokenLoginSubmit}>
                 <div className="space-y-2">
