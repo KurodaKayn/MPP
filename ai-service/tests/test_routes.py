@@ -32,6 +32,14 @@ def test_health_returns_status():
     assert response.json() == {"status": "healthy"}
 
 
+def test_ready_returns_status_during_lifespan():
+    with TestClient(app) as lifespan_client:
+        response = lifespan_client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready"}
+
+
 def test_edit_content_returns_llm_content(monkeypatch):
     fake_llm = FakeLLM(invoke_content="  edited copy  ")
     monkeypatch.setattr(routes, "build_llm", lambda: fake_llm)
