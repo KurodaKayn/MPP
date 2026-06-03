@@ -10,15 +10,11 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
+	"github.com/kurodakayn/mpp-browser-worker/internal/contracts"
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
 
-type DouyinDraftRequest struct {
-	Title            string `json:"title"`
-	Content          string `json:"content"`
-	CoverImageBase64 string `json:"cover_image_base64"`
-	CoverImageName   string `json:"cover_image_name"`
-}
+type DouyinDraftRequest = contracts.BrowserWorkerStartDouyinPublishRequest
 
 func RunDouyinDraft(ctx context.Context, workerSession *session.WorkerSession, req DouyinDraftRequest) error {
 	title := strings.TrimSpace(req.Title)
