@@ -72,3 +72,23 @@ export function getCapabilityByAdapterKey(
 
   return capability;
 }
+
+export function isCapabilityInjectUrl(
+  adapterKey: AdapterKey,
+  value: string,
+): boolean {
+  const capability = getCapabilityByAdapterKey(adapterKey);
+
+  try {
+    const actual = new URL(value);
+    const expected = new URL(capability.inject_url);
+
+    return (
+      actual.origin === expected.origin &&
+      actual.pathname.replace(/\/$/, "") ===
+        expected.pathname.replace(/\/$/, "")
+    );
+  } catch {
+    return false;
+  }
+}

@@ -4,6 +4,7 @@ import {
   type BackgroundMessage,
   type PageBridgeRequest,
   type PageBridgeResponse,
+  isPageBridgeRequestType,
 } from "../src/types/messages";
 
 const DASHBOARD_MATCHES = [
@@ -21,7 +22,9 @@ function isBridgeRequest(value: unknown): value is PageBridgeRequest {
     "type" in value &&
     value.channel === PAGE_BRIDGE_REQUEST_CHANNEL &&
     typeof value.request_id === "string" &&
-    typeof value.type === "string"
+    value.request_id.length > 0 &&
+    typeof value.type === "string" &&
+    isPageBridgeRequestType(value.type)
   );
 }
 
@@ -52,8 +55,11 @@ function toBackgroundMessage(
   return null;
 }
 
-function postBridgeResponse(response: PageBridgeResponse): void {
-  window.postMessage(response, window.location.origin);
+function postBridgeResponse(
+  response: PageBridgeResponse,
+  targetOrigin: string,
+): void {
+  window.postMessage(response, targetOrigin);
 }
 
 export default defineContentScript({
@@ -61,45 +67,55 @@ export default defineContentScript({
   runAt: "document_start",
   main() {
     window.addEventListener("message", (event) => {
-      if (event.source !== window || !isBridgeRequest(event.data)) {
+      if (
+        event.source !== window ||
+        event.origin !== window.location.origin ||
+        !isBridgeRequest(event.data)
+      ) {
         return;
       }
 
-      const backgroundMessage = toBackgroundMessage(
-        event.data,
-        window.location.origin,
-      );
+      const backgroundMessage = toBackgroundMessage(event.data, event.origin);
 
       if (!backgroundMessage) {
-        postBridgeResponse({
-          channel: PAGE_BRIDGE_RESPONSE_CHANNEL,
-          request_id: event.data.request_id,
-          type: event.data.type,
-          ok: false,
-          error: "Unsupported extension bridge request.",
-        });
+        postBridgeResponse(
+          {
+            channel: PAGE_BRIDGE_RESPONSE_CHANNEL,
+            request_id: event.data.request_id,
+            type: event.data.type,
+            ok: false,
+            error: "Unsupported extension bridge request.",
+          },
+          event.origin,
+        );
         return;
       }
 
       browser.runtime
         .sendMessage(backgroundMessage)
         .then((data) => {
-          postBridgeResponse({
-            channel: PAGE_BRIDGE_RESPONSE_CHANNEL,
-            request_id: event.data.request_id,
-            type: event.data.type,
-            ok: true,
-            data,
-          });
+          postBridgeResponse(
+            {
+              channel: PAGE_BRIDGE_RESPONSE_CHANNEL,
+              request_id: event.data.request_id,
+              type: event.data.type,
+              ok: true,
+              data,
+            },
+            event.origin,
+          );
         })
         .catch((error) => {
-          postBridgeResponse({
-            channel: PAGE_BRIDGE_RESPONSE_CHANNEL,
-            request_id: event.data.request_id,
-            type: event.data.type,
-            ok: false,
-            error: error instanceof Error ? error.message : String(error),
-          });
+          postBridgeResponse(
+            {
+              channel: PAGE_BRIDGE_RESPONSE_CHANNEL,
+              request_id: event.data.request_id,
+              type: event.data.type,
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            event.origin,
+          );
         });
     });
   },
