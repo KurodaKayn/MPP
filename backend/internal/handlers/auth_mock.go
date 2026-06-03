@@ -8,22 +8,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/labstack/echo/v4"
-	"gorm.io/gorm"
 )
-
-type AuthHandler struct {
-	db                   *gorm.DB
-	jwtSigningKey        []byte
-	usernameLoginEnabled bool
-}
-
-func NewAuthHandler(db *gorm.DB, jwtSigningKey []byte) *AuthHandler {
-	return &AuthHandler{db: db, jwtSigningKey: jwtSigningKey}
-}
-
-func (h *AuthHandler) SetUsernameLoginEnabled(enabled bool) {
-	h.usernameLoginEnabled = enabled
-}
 
 // MockLogin creates a token for a given username. This is for local development only.
 func (h *AuthHandler) MockLogin(c echo.Context) error {
