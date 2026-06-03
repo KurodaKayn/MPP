@@ -139,6 +139,7 @@ services:
       BROWSER_RUNTIME_NETWORK: ${BROWSER_RUNTIME_NETWORK:-mpp-browser-runtime}
       BROWSER_RUNTIME_BIND_IP: 0.0.0.0
       BROWSER_RUNTIME_HOST: ${BROWSER_RUNTIME_HOST:-host.docker.internal}
+      BROWSER_WORKER_POOL_SIZE: ${BROWSER_WORKER_POOL_SIZE:-4}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:

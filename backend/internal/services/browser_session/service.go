@@ -3,6 +3,9 @@ package browsersession
 import (
 	"context"
 	"errors"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -21,6 +24,9 @@ var (
 	ErrStreamTokenGone      = errors.New("stream token has expired or already been consumed")
 	ErrSessionNotReady      = errors.New("session is not ready for capture")
 	ErrLoginNotDetected     = errors.New("login not detected")
+	ErrUserQuotaExceeded    = errors.New("browser session user concurrency quota exceeded")
+	ErrTenantQuotaExceeded  = errors.New("browser session tenant concurrency quota exceeded")
+	ErrWorkerPoolExhausted  = errors.New("browser worker session pool exhausted")
 )
 
 const (
@@ -34,8 +40,23 @@ const (
 	browserSessionStreamTokenPrefix     = "mpp:browser:stream-token:"
 	browserSessionStreamCurrentPrefix   = "mpp:browser:stream-current:"
 	browserSessionWorkerHeartbeatPrefix = "mpp:browser:worker-heartbeat:"
+	browserSessionQuotaUserPrefix       = "mpp:browser:quota:user:"
+	browserSessionQuotaTenantPrefix     = "mpp:browser:quota:tenant:"
 	browserSessionCleanupKey            = "mpp:browser:cleanup"
+
+	browserSessionDefaultTenantID = "default"
+
+	browserSessionUserConcurrencyLimitEnv   = "BROWSER_SESSION_USER_CONCURRENCY_LIMIT"
+	browserSessionTenantConcurrencyLimitEnv = "BROWSER_SESSION_TENANT_CONCURRENCY_LIMIT"
+
+	defaultBrowserSessionUserConcurrencyLimit   int64 = 2
+	defaultBrowserSessionTenantConcurrencyLimit int64 = 10
 )
+
+type BrowserSessionQuotaConfig struct {
+	UserConcurrencyLimit   int64
+	TenantConcurrencyLimit int64
+}
 
 type BrowserSessionService struct {
 	db           *gorm.DB
@@ -43,6 +64,7 @@ type BrowserSessionService struct {
 	cookieStore  *publisher.CookieStore
 	adapters     map[string]publisher.RemoteBrowserPlatformAdapter
 	redisClient  *redis.Client
+	quotaConfig  BrowserSessionQuotaConfig
 }
 
 func NewBrowserSessionService(db *gorm.DB, worker publisher.BrowserWorkerClient, store *publisher.CookieStore) *BrowserSessionService {
@@ -51,6 +73,7 @@ func NewBrowserSessionService(db *gorm.DB, worker publisher.BrowserWorkerClient,
 		workerClient: worker,
 		cookieStore:  store,
 		adapters:     make(map[string]publisher.RemoteBrowserPlatformAdapter),
+		quotaConfig:  BrowserSessionQuotaConfigFromEnv(),
 	}
 	// Register adapters
 	s.RegisterAdapter(&publisher.DouyinAdapter{})
@@ -97,4 +120,53 @@ func (s *BrowserSessionService) UseRedis(client *redis.Client) {
 		return
 	}
 	s.redisClient = client
+}
+
+func (s *BrowserSessionService) UseQuotaConfig(config BrowserSessionQuotaConfig) {
+	s.quotaConfig = normalizeBrowserSessionQuotaConfig(config)
+}
+
+func DefaultBrowserSessionQuotaConfig() BrowserSessionQuotaConfig {
+	return BrowserSessionQuotaConfig{
+		UserConcurrencyLimit:   defaultBrowserSessionUserConcurrencyLimit,
+		TenantConcurrencyLimit: defaultBrowserSessionTenantConcurrencyLimit,
+	}
+}
+
+func BrowserSessionQuotaConfigFromEnv() BrowserSessionQuotaConfig {
+	defaults := DefaultBrowserSessionQuotaConfig()
+	return BrowserSessionQuotaConfig{
+		UserConcurrencyLimit:   int64FromEnv(browserSessionUserConcurrencyLimitEnv, defaults.UserConcurrencyLimit),
+		TenantConcurrencyLimit: int64FromEnv(browserSessionTenantConcurrencyLimitEnv, defaults.TenantConcurrencyLimit),
+	}
+}
+
+func normalizeBrowserSessionQuotaConfig(config BrowserSessionQuotaConfig) BrowserSessionQuotaConfig {
+	if config.UserConcurrencyLimit < 0 {
+		config.UserConcurrencyLimit = 0
+	}
+	if config.TenantConcurrencyLimit < 0 {
+		config.TenantConcurrencyLimit = 0
+	}
+	return config
+}
+
+func normalizeBrowserSessionTenantID(tenantID string) string {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return browserSessionDefaultTenantID
+	}
+	return tenantID
+}
+
+func int64FromEnv(name string, fallback int64) int64 {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < 0 {
+		return fallback
+	}
+	return value
 }

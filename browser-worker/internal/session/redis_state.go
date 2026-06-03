@@ -43,6 +43,7 @@ type WorkerSessionState struct {
 type redisLiveSession struct {
 	SessionID         string    `json:"session_id"`
 	UserID            string    `json:"user_id"`
+	TenantID          string    `json:"tenant_id"`
 	Platform          string    `json:"platform"`
 	Status            string    `json:"status"`
 	WorkerSessionRef  string    `json:"worker_session_ref"`
@@ -105,9 +106,14 @@ func (s *RedisStateStore) SaveLiveSession(ctx context.Context, session *WorkerSe
 	if s == nil || s.client == nil {
 		return nil
 	}
+	tenantID, err := s.liveSessionTenantID(ctx, session.SessionID.String())
+	if err != nil {
+		return err
+	}
 	payload, err := json.Marshal(redisLiveSession{
 		SessionID:         session.SessionID.String(),
 		UserID:            session.UserID.String(),
+		TenantID:          tenantID,
 		Platform:          session.Platform,
 		Status:            state.Status,
 		WorkerSessionRef:  session.ID,
@@ -126,6 +132,21 @@ func (s *RedisStateStore) SaveLiveSession(ctx context.Context, session *WorkerSe
 		return err
 	}
 	return s.client.Set(ctx, browserSessionRedisKey(session.SessionID.String()), payload, browserSessionLiveTTL(session.ExpiresAt)).Err()
+}
+
+func (s *RedisStateStore) liveSessionTenantID(ctx context.Context, sessionID string) (string, error) {
+	raw, err := s.client.Get(ctx, browserSessionRedisKey(sessionID)).Bytes()
+	if err == redis.Nil {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var existing redisLiveSession
+	if err := json.Unmarshal(raw, &existing); err != nil {
+		return "", err
+	}
+	return existing.TenantID, nil
 }
 
 func (s *RedisStateStore) RefreshHeartbeat(ctx context.Context, session *WorkerSession) error {
