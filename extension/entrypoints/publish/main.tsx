@@ -53,6 +53,23 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function getCallbackFailureMessage(
+  event: ExtensionExecutionEvent,
+): string | null {
+  if (!event.metadata.callback_failed) {
+    return null;
+  }
+
+  const callbackError =
+    typeof event.metadata.callback_error === "string"
+      ? event.metadata.callback_error
+      : "";
+
+  return callbackError
+    ? `Callback failed: ${callbackError}`
+    : "Callback failed.";
+}
+
 function useMonitorState() {
   const [state, setState] = React.useState<MonitorState | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -90,6 +107,11 @@ function PublishMonitor() {
 
   const clear = async () => {
     await sendBackgroundMessage({ type: "monitor.clear" });
+    await load();
+  };
+
+  const removeOrigin = async (origin: string) => {
+    await sendBackgroundMessage({ type: "origin.remove", origin });
     await load();
   };
 
@@ -164,10 +186,17 @@ function PublishMonitor() {
                   className="flex items-center justify-between gap-3 rounded-md bg-zinc-50 px-3 py-2 text-sm"
                 >
                   <span className="truncate">{origin.origin}</span>
-                  <CheckCircle2
-                    className="shrink-0 text-emerald-600"
-                    size={16}
-                  />
+                  <div className="flex shrink-0 items-center gap-2">
+                    <CheckCircle2 className="text-emerald-600" size={16} />
+                    <Button
+                      variant="outline"
+                      className="h-8 w-8 px-0 text-zinc-500 hover:text-red-700"
+                      onClick={() => removeOrigin(origin.origin)}
+                      aria-label={`Remove trusted origin ${origin.origin}`}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </div>
                 </div>
               ))
             ) : (
@@ -228,6 +257,11 @@ function PublishMonitor() {
                     key={event.event_id}
                     className="rounded-md bg-zinc-50 p-3"
                   >
+                    {getCallbackFailureMessage(event) ? (
+                      <p className="mb-2 text-xs text-amber-700">
+                        {getCallbackFailureMessage(event)}
+                      </p>
+                    ) : null}
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-zinc-950">

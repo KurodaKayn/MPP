@@ -16,6 +16,7 @@ import {
 } from "../types/handoff";
 import {
   getCapabilityByAdapterKey,
+  isCapabilityInjectUrl,
   isSupportedAdapterKey,
 } from "../platforms/capabilities";
 import type { HandoffRejectedResponse } from "../types/messages";
@@ -84,6 +85,16 @@ function validateUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isExpiredTimestamp(value: string): boolean {
+  const expiresAtTime = Date.parse(value);
+
+  return Number.isFinite(expiresAtTime) && expiresAtTime <= Date.now();
+}
+
+export function isHandoffExpired(handoff: ExtensionPublishHandoff): boolean {
+  return isExpiredTimestamp(handoff.expires_at);
 }
 
 function validateAdaptedContent(
@@ -226,11 +237,12 @@ function validatePlatformHandoff(
   if (
     platform !== capability.platform ||
     !injectUrl ||
-    !validateUrl(injectUrl) ||
+    !isCapabilityInjectUrl(adapterKey, injectUrl) ||
     !contentKind ||
     !capability.content_kinds.includes(contentKind as never) ||
     autoPublish === null ||
     requiresReview === null ||
+    requiresReview !== capability.requires_review ||
     !adaptedContent ||
     !assets ||
     callback === null
@@ -281,7 +293,7 @@ export function validateHandoff(input: unknown): HandoffValidationResult {
     return reject("invalid_handoff", "Handoff expiration is invalid.");
   }
 
-  if (expiresAtTime <= Date.now()) {
+  if (isExpiredTimestamp(expiresAt)) {
     return reject("expired", "Handoff has expired.");
   }
 
@@ -348,6 +360,13 @@ export async function appendExecutionEvent(
   input: ExtensionExecutionEventInput,
 ): Promise<ExtensionExecutionEvent> {
   const event = createExecutionEvent(input);
+
+  return appendStoredExecutionEvent(event);
+}
+
+export async function appendStoredExecutionEvent(
+  event: ExtensionExecutionEvent,
+): Promise<ExtensionExecutionEvent> {
   const events = await executionEventsItem.getValue();
   await executionEventsItem.setValue([...events, event]);
   return event;

@@ -1,0 +1,227 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  HANDOFF_SCHEMA_VERSION,
+  HANDOFF_TYPE,
+  type ExtensionPublishPlatformHandoff,
+  type StoredHandoff,
+} from "../types/handoff";
+import type {
+  ExtensionExecutionEvent,
+  PublishExecutionStatus,
+} from "../types/events";
+import type { BackgroundMessage } from "../types/messages";
+
+const handoffMock = vi.hoisted(() => {
+  const state: {
+    currentHandoff: StoredHandoff | null;
+    events: ExtensionExecutionEvent[];
+    expired: boolean;
+  } = {
+    currentHandoff: null,
+    events: [],
+    expired: true,
+  };
+
+  return {
+    state,
+    clearExecutionState: vi.fn(),
+    getCurrentHandoff: vi.fn(() => Promise.resolve(state.currentHandoff)),
+    getExecutionEvents: vi.fn(() => Promise.resolve(state.events)),
+    isHandoffExpired: vi.fn(() => state.expired),
+    storeAcceptedHandoff: vi.fn(),
+    validateHandoff: vi.fn(),
+  };
+});
+
+const tabsMock = vi.hoisted(() => ({
+  recordAndCallbackEvent: vi.fn(),
+  startPublishingTabs: vi.fn(),
+}));
+
+vi.mock("./handoff", () => handoffMock);
+vi.mock("./tabs", () => tabsMock);
+vi.mock("./origins", () => ({
+  getTrustOriginPageUrl: vi.fn((origin: string) => `${origin}/trust`),
+  isTrustedOrigin: vi.fn(() => Promise.resolve(true)),
+  isTrustableOrigin: vi.fn(() => true),
+  listTrustedOrigins: vi.fn(() => Promise.resolve([])),
+  removeTrustedOrigin: vi.fn(() => Promise.resolve([])),
+  trustOrigin: vi.fn((origin: string) => Promise.resolve(origin)),
+}));
+
+vi.stubGlobal("defineBackground", (callback: () => void) => callback);
+
+const {
+  downloadHandoffAsset,
+  recordCurrentHandoffExpiration,
+  shouldRejectExpiredAdapterEvent,
+} = await import("../../entrypoints/background");
+
+function createDouyinPlatform(): ExtensionPublishPlatformHandoff {
+  return {
+    platform: "douyin",
+    adapter_key: "DYNAMIC_DOUYIN",
+    inject_url: "https://creator.douyin.com/creator-micro/content/upload",
+    content_kind: "image_video",
+    auto_publish: false,
+    requires_review: true,
+    adapted_content: {
+      schema_version: HANDOFF_SCHEMA_VERSION,
+      format: "text",
+      text: "draft body",
+    },
+    assets: [],
+  };
+}
+
+function createStoredHandoff(): StoredHandoff {
+  return {
+    handoff: {
+      schema_version: HANDOFF_SCHEMA_VERSION,
+      type: HANDOFF_TYPE,
+      execution_id: "execution-1",
+      expires_at: "2026-01-01T00:00:00.000Z",
+      project: {
+        id: "project-1",
+        title: "Project 1",
+      },
+      platforms: [createDouyinPlatform()],
+    },
+    accepted_at: "2025-12-31T23:00:00.000Z",
+    source_origin: "https://mpp.example.com",
+  };
+}
+
+function createEvent(status: PublishExecutionStatus): ExtensionExecutionEvent {
+  return {
+    event_id: `event-${status}`,
+    platform: "douyin",
+    status,
+    message: status,
+    remote_id: "",
+    publish_url: "",
+    error_message: "",
+    metadata: {},
+    created_at: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+function createAdapterEventMessage(): Extract<
+  BackgroundMessage,
+  { type: "adapter.event" }
+> {
+  return {
+    type: "adapter.event",
+    execution_id: "execution-1",
+    event: {
+      platform: "douyin",
+      status: "user_review",
+      message: "Prepared for review.",
+    },
+  };
+}
+
+describe("background expiration handling", () => {
+  beforeEach(() => {
+    handoffMock.state.currentHandoff = createStoredHandoff();
+    handoffMock.state.events = [];
+    handoffMock.state.expired = true;
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    "user_review",
+    "submitted",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "expired",
+  ] satisfies PublishExecutionStatus[])(
+    "does not emit expired events after %s",
+    async (status) => {
+      handoffMock.state.events = [createEvent(status)];
+
+      await expect(recordCurrentHandoffExpiration()).resolves.toBe(false);
+
+      expect(tabsMock.recordAndCallbackEvent).not.toHaveBeenCalled();
+    },
+  );
+
+  it("records expiration when the platform has not reached review or terminal state", async () => {
+    handoffMock.state.events = [createEvent("injecting")];
+
+    await expect(recordCurrentHandoffExpiration()).resolves.toBe(true);
+
+    expect(tabsMock.recordAndCallbackEvent).toHaveBeenCalledWith(
+      createDouyinPlatform(),
+      expect.objectContaining({
+        platform: "douyin",
+        status: "expired",
+        message: "Handoff expired before extension publishing completed.",
+      }),
+    );
+  });
+
+  it("allows adapter events after expiration when the latest platform event is review-ready", async () => {
+    handoffMock.state.events = [createEvent("user_review")];
+
+    await expect(
+      shouldRejectExpiredAdapterEvent(createAdapterEventMessage()),
+    ).resolves.toBe(false);
+  });
+
+  it("rejects adapter events after expiration when no review or terminal event exists", async () => {
+    handoffMock.state.events = [createEvent("injecting")];
+
+    await expect(
+      shouldRejectExpiredAdapterEvent(createAdapterEventMessage()),
+    ).resolves.toBe(true);
+  });
+});
+
+describe("downloadHandoffAsset", () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    vi.stubGlobal("defineBackground", (callback: () => void) => callback);
+  });
+
+  it("downloads assets from the background with credentials omitted", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response(new Uint8Array([104, 105]), {
+          status: 200,
+          headers: {
+            "Content-Type": "image/png",
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      downloadHandoffAsset({
+        type: "image",
+        source_url: "https://assets.example.com/image.png",
+        name: "image.png",
+        mime_type: "image/png",
+      }),
+    ).resolves.toEqual({
+      name: "image.png",
+      mime_type: "image/png",
+      data_base64: "aGk=",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://assets.example.com/image.png",
+      {
+        credentials: "omit",
+      },
+    );
+  });
+
+  it("rejects invalid asset download requests", async () => {
+    await expect(
+      downloadHandoffAsset({ source_url: "https://example.com" }),
+    ).rejects.toThrow("Invalid handoff asset download request.");
+  });
+});

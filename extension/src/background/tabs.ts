@@ -1,11 +1,15 @@
-import { ADAPTER_SCRIPT_FILES } from "../platforms/capabilities";
+import {
+  ADAPTER_SCRIPT_FILES,
+  isCapabilityInjectUrl,
+} from "../platforms/capabilities";
 import type { ExtensionExecutionEventInput } from "../types/events";
 import type {
   ExtensionPublishHandoff,
   ExtensionPublishPlatformHandoff,
 } from "../types/handoff";
 import type { AdapterRunMessage } from "../types/messages";
-import { appendExecutionEvent } from "./handoff";
+import { createExecutionEvent } from "../types/events";
+import { appendStoredExecutionEvent } from "./handoff";
 import { sanitizeError, sendEventCallback } from "./callback";
 
 const TAB_LOAD_TIMEOUT_MS = 45_000;
@@ -44,12 +48,36 @@ export async function recordAndCallbackEvent(
   platform: ExtensionPublishPlatformHandoff,
   input: ExtensionExecutionEventInput,
 ): Promise<void> {
-  const event = await appendExecutionEvent(input);
+  const event = createExecutionEvent(input);
 
   try {
     await sendEventCallback(platform, event);
   } catch (error) {
-    console.warn("MPP extension callback failed.", sanitizeError(error));
+    const callbackError = sanitizeError(error);
+
+    console.warn("MPP extension callback failed.", callbackError);
+    await appendStoredExecutionEvent({
+      ...event,
+      metadata: {
+        ...event.metadata,
+        callback_failed: true,
+        callback_error: callbackError,
+      },
+    });
+    return;
+  }
+
+  await appendStoredExecutionEvent(event);
+}
+
+async function assertInjectableTabUrl(
+  tabId: number,
+  platform: ExtensionPublishPlatformHandoff,
+): Promise<void> {
+  const tab = await browser.tabs.get(tabId);
+
+  if (!tab.url || !isCapabilityInjectUrl(platform.adapter_key, tab.url)) {
+    throw new Error("Platform tab did not load the expected publishing page.");
   }
 }
 
@@ -100,6 +128,7 @@ async function openAndInjectPlatform(
   }
 
   await waitForTabComplete(tab.id);
+  await assertInjectableTabUrl(tab.id, platform);
 
   await recordAndCallbackEvent(platform, {
     platform: platform.platform,

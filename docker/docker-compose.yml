@@ -65,19 +65,27 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
+    scale: ${BACKEND_API_REPLICAS:-2}
     env_file: .env
     environment:
       BACKEND_PROCESS_ROLE: api
       BACKEND_REQUIRE_REDIS: ${BACKEND_REQUIRE_REDIS:-true}
       DB_HOST: ${DB_HOST:-db}
+      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-10}
+      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-5}
+      DB_CONN_MAX_LIFETIME: ${DB_CONN_MAX_LIFETIME:-30m}
+      DB_CONN_MAX_IDLE_TIME: ${DB_CONN_MAX_IDLE_TIME:-5m}
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
       BROWSER_WORKER_URL: ${BROWSER_WORKER_URL:-http://browser-worker:8081}
     depends_on:
-      - db
-      - redis
-      - browser-worker
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      browser-worker:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ready >/dev/null"]
       interval: 30s
@@ -97,6 +105,10 @@ services:
       BACKEND_PROCESS_ROLE: worker
       BACKEND_REQUIRE_REDIS: ${BACKEND_REQUIRE_REDIS:-true}
       DB_HOST: ${DB_HOST:-db}
+      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-10}
+      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-5}
+      DB_CONN_MAX_LIFETIME: ${DB_CONN_MAX_LIFETIME:-30m}
+      DB_CONN_MAX_IDLE_TIME: ${DB_CONN_MAX_IDLE_TIME:-5m}
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
