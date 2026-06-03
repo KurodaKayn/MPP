@@ -167,6 +167,38 @@ describe("runDouyinDynamicAdapter", () => {
     ).toBe("文章标题");
   });
 
+  it("waits for a delayed upload page article button before filling the editor", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "https://creator.douyin.com/creator-micro/content/upload?default-tab=5",
+    );
+    document.body.innerHTML = `<div class="semi-spin">Loading</div>`;
+    window.setTimeout(() => {
+      document.body.innerHTML = `<button type="button">我要发文</button>`;
+      document.querySelector("button")?.addEventListener("click", () => {
+        window.history.pushState(
+          {},
+          "",
+          "https://creator.douyin.com/creator-micro/content/post/article?default-tab=5&enter_from=publish_page&media_type=article&type=new",
+        );
+        renderDouyinArticleEditor();
+      });
+    }, 0);
+
+    const result = await runDouyinDynamicAdapter(
+      createDouyinPlatform("正文"),
+      "文章标题",
+    );
+
+    expect(result.status).toBe("user_review");
+    expect(
+      document.querySelector<HTMLInputElement>(
+        'input[placeholder*="请输入文章标题"]',
+      )?.value,
+    ).toBe("文章标题");
+  });
+
   it("waits until the article editor is open before attaching assets", async () => {
     window.history.replaceState(
       {},

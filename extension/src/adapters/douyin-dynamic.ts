@@ -96,6 +96,25 @@ function findButtonByText(text: string): HTMLButtonElement | null {
   );
 }
 
+async function waitForButtonByText(
+  text: string,
+  timeoutMs = ELEMENT_WAIT_TIMEOUT_MS,
+): Promise<HTMLButtonElement | null> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const button = findButtonByText(text);
+
+    if (button) {
+      return button;
+    }
+
+    await wait(ELEMENT_WAIT_INTERVAL_MS);
+  }
+
+  return findButtonByText(text);
+}
+
 function findElementByText<T extends HTMLElement>(
   selectors: string[],
   text: string,
@@ -119,7 +138,7 @@ async function enterArticleEditor(): Promise<boolean> {
     return true;
   }
 
-  const articleButton = findButtonByText(ARTICLE_BUTTON_TEXT);
+  const articleButton = await waitForButtonByText(ARTICLE_BUTTON_TEXT);
 
   if (!articleButton) {
     return false;
