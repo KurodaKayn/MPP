@@ -138,9 +138,11 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 
 	var remoteID string
 	var publishURL string
+	publishPolicy := resilience.DefaultOperationPolicy("publish-" + platform)
+	publishPolicy.MaxAttempts = 1
 	err = resilience.Run(
 		context.Background(),
-		resilience.DefaultOperationPolicy("publish-"+platform),
+		publishPolicy,
 		func(ctx context.Context) error {
 			var publishErr error
 			remoteID, publishURL, publishErr = p.Publish(ctx, &pub, &account)

@@ -34,13 +34,14 @@ type CircuitBreaker struct {
 }
 
 type HTTPPolicy struct {
-	Name             string
-	MaxAttempts      int
-	InitialBackoff   time.Duration
-	MaxBackoff       time.Duration
-	FailureThreshold int
-	OpenAfter        time.Duration
-	Sleep            func(context.Context, time.Duration) error
+	Name               string
+	MaxAttempts        int
+	InitialBackoff     time.Duration
+	MaxBackoff         time.Duration
+	FailureThreshold   int
+	OpenAfter          time.Duration
+	RetryUnsafeMethods bool
+	Sleep              func(context.Context, time.Duration) error
 }
 
 type OperationPolicy struct {
@@ -161,7 +162,7 @@ func (rt *ResilientRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 		}
 
 		resp, err := rt.base.RoundTrip(attemptReq)
-		retry := retryableHTTPFailure(resp, err)
+		retry := retryableHTTPFailure(attemptReq, resp, err, rt.policy)
 		if !retry {
 			rt.breaker.Record(err == nil)
 			return resp, err
@@ -374,7 +375,10 @@ func cloneRequestForAttempt(req *http.Request, attempt int) (*http.Request, erro
 	return clone, nil
 }
 
-func retryableHTTPFailure(resp *http.Response, err error) bool {
+func retryableHTTPFailure(req *http.Request, resp *http.Response, err error, policy HTTPPolicy) bool {
+	if !methodAllowsRetry(req.Method, policy) {
+		return false
+	}
 	if err != nil {
 		return true
 	}
@@ -382,6 +386,18 @@ func retryableHTTPFailure(resp *http.Response, err error) bool {
 		return true
 	}
 	return resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError
+}
+
+func methodAllowsRetry(method string, policy HTTPPolicy) bool {
+	if policy.RetryUnsafeMethods {
+		return true
+	}
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
+		return true
+	default:
+		return false
+	}
 }
 
 func RetryableError(err error) bool {
