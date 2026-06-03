@@ -65,6 +65,8 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
+      args:
+        GOPROXY: ${GOPROXY:-direct}
     scale: ${BACKEND_API_REPLICAS:-2}
     env_file: .env
     environment:
@@ -100,6 +102,8 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
+      args:
+        GOPROXY: ${GOPROXY:-direct}
     env_file: .env
     environment:
       BACKEND_PROCESS_ROLE: worker
@@ -129,6 +133,8 @@ services:
     build:
       context: ../browser-worker
       dockerfile: Dockerfile
+      args:
+        GOPROXY: ${GOPROXY:-direct}
     env_file: .env
     environment:
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}

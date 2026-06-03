@@ -1,14 +1,20 @@
 FROM golang:1.26-alpine AS builder
+ARG GOPROXY=direct
+ENV GOPROXY=${GOPROXY}
 WORKDIR /app
+RUN apk add --no-cache git
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api
 
 FROM golang:1.26-alpine AS dev
+ARG GOPROXY=direct
+ENV GOPROXY=${GOPROXY}
 WORKDIR /app
 # Install chromium and dependencies for headless publishing
 RUN apk add --no-cache \
+    git \
     chromium \
     nss \
     freetype \
