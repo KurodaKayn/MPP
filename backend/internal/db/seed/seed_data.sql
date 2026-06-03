@@ -1,15 +1,15 @@
 -- Dev-only seed data. This file is executed after GORM AutoMigrate.
 -- Keep inserts idempotent so restarting the dev backend does not duplicate rows.
 
-WITH seed_users(id, username, password_hash, created_at, updated_at) AS (
+WITH seed_users(id, username, email, is_email_verified, password_hash, created_at, updated_at) AS (
     VALUES
-        ('00000000-0000-4000-8000-000000000001'::uuid, 'test_user', '$2a$10$JuGX0AMl3DS3eGm/yRvY2OZLm4QuTuoIgRT4ucmVs/BCwoPYARN4C', now() - interval '1 day', now()),
-        ('00000000-0000-4000-8000-000000000002'::uuid, 'kuroda_kayn', '$2a$10$JuGX0AMl3DS3eGm/yRvY2OZLm4QuTuoIgRT4ucmVs/BCwoPYARN4C', now() - interval '30 days', now()),
-        ('00000000-0000-4000-8000-000000000003'::uuid, 'tech_weekly', '$2a$10$JuGX0AMl3DS3eGm/yRvY2OZLm4QuTuoIgRT4ucmVs/BCwoPYARN4C', now() - interval '15 days', now())
+        ('00000000-0000-4000-8000-000000000001'::uuid, 'test_user', 'test@example.com', true, '$2a$10$JuGX0AMl3DS3eGm/yRvY2OZLm4QuTuoIgRT4ucmVs/BCwoPYARN4C', now() - interval '1 day', now()),
+        ('00000000-0000-4000-8000-000000000002'::uuid, 'kuroda_kayn', 'kuroda@example.com', true, '$2a$10$JuGX0AMl3DS3eGm/yRvY2OZLm4QuTuoIgRT4ucmVs/BCwoPYARN4C', now() - interval '30 days', now()),
+        ('00000000-0000-4000-8000-000000000003'::uuid, 'tech_weekly', 'tech@example.com', true, '$2a$10$JuGX0AMl3DS3eGm/yRvY2OZLm4QuTuoIgRT4ucmVs/BCwoPYARN4C', now() - interval '15 days', now())
 ),
 inserted_users AS (
-    INSERT INTO users (id, username, password_hash, created_at, updated_at)
-    SELECT su.id, su.username, su.password_hash, su.created_at, su.updated_at
+    INSERT INTO users (id, username, email, is_email_verified, password_hash, created_at, updated_at)
+    SELECT su.id, su.username, su.email, su.is_email_verified, su.password_hash, su.created_at, su.updated_at
     FROM seed_users su
     WHERE NOT EXISTS (
         SELECT 1
