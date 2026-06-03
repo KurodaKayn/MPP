@@ -23,7 +23,18 @@ type AuthStoreActions = {
   loginWithToken: (token: string) => Promise<AuthSession>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
-  register: (username: string, password: string) => Promise<AuthSession>;
+  register: (
+    username: string,
+    email: string,
+    code: string,
+    password: string,
+  ) => Promise<AuthSession>;
+  sendCode: (email: string, scene: string) => Promise<void>;
+  resetPassword: (
+    email: string,
+    code: string,
+    password: string,
+  ) => Promise<void>;
   reset: () => void;
 };
 
@@ -63,10 +74,23 @@ export const useAuthStore = create<AuthStore>((set) => ({
       session: authState.session,
     });
   },
-  register: async (username, password) => {
-    const nextSession = await registerWithCredentials(username, password);
+  register: async (username, email, code, password) => {
+    const nextSession = await registerWithCredentials(
+      username,
+      email,
+      code,
+      password,
+    );
     set({ initialized: true, session: nextSession });
     return nextSession;
+  },
+  sendCode: async (email, scene) => {
+    const { sendAuthCode } = await import("@/lib/auth/client");
+    await sendAuthCode(email, scene);
+  },
+  resetPassword: async (email, code, password) => {
+    const { resetPassword } = await import("@/lib/auth/client");
+    await resetPassword(email, code, password);
   },
   reset: () => set(initialState),
 }));

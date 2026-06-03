@@ -21,6 +21,8 @@ export function useLoginController() {
     loginMethods,
     loginWithToken,
     register,
+    resetPassword,
+    sendCode,
     session,
   } = useAuth();
   const router = useRouter();
@@ -33,11 +35,20 @@ export function useLoginController() {
   );
   const [username, setUsername] = useState("kuroda_kayn");
   const [password, setPassword] = useState("");
+
   const [registerUsername, setRegisterUsername] = useState("");
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerCode, setRegisterCode] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerPasswordConfirm, setRegisterPasswordConfirm] = useState("");
+
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
+  const [forgotPasswordCode, setForgotPasswordCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+
   const [accessToken, setAccessToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
 
   useEffect(() => {
     if (initialized && session) {
@@ -97,12 +108,42 @@ export function useLoginController() {
     }
   };
 
+  const handleSendCode = async (email: string, scene: string) => {
+    if (!email.trim()) {
+      toast.error(t("login.emailRequired"));
+      return;
+    }
+
+    setSendingCode(true);
+    try {
+      await sendCode(email, scene);
+      toast.success(t("login.codeSent"));
+    } catch (error) {
+      toast.error(t("login.codeSendFailed"), {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
   const handleRegisterSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const normalizedUsername = registerUsername.trim();
+    const normalizedEmail = registerEmail.trim();
 
     if (!normalizedUsername) {
       toast.error(t("login.usernameRequired"));
+      return;
+    }
+
+    if (!normalizedEmail) {
+      toast.error(t("login.emailRequired"));
+      return;
+    }
+
+    if (!registerCode) {
+      toast.error(t("login.codeRequired"));
       return;
     }
 
@@ -118,7 +159,12 @@ export function useLoginController() {
 
     setSubmitting(true);
     try {
-      await register(normalizedUsername, registerPassword);
+      await register(
+        normalizedUsername,
+        normalizedEmail,
+        registerCode,
+        registerPassword,
+      );
       toast.success(t("login.registerSuccess"));
       router.replace(nextPath);
     } catch (error) {
@@ -131,19 +177,67 @@ export function useLoginController() {
     }
   };
 
+  const handleResetPasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedEmail = forgotPasswordEmail.trim();
+
+    if (!normalizedEmail) {
+      toast.error(t("login.emailRequired"));
+      return;
+    }
+
+    if (!forgotPasswordCode) {
+      toast.error(t("login.codeRequired"));
+      return;
+    }
+
+    if (!newPassword) {
+      toast.error(t("login.passwordRequired"));
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await resetPassword(normalizedEmail, forgotPasswordCode, newPassword);
+      toast.success(t("login.resetSuccess"));
+      // Reset flow or redirect to login tab
+      setForgotPasswordCode("");
+      setNewPassword("");
+    } catch (error) {
+      toast.error(t("login.resetFailed"), {
+        description: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return {
     accessToken,
+    forgotPasswordCode,
+    forgotPasswordEmail,
     handleLoginSubmit,
     handleRegisterSubmit,
+    handleResetPasswordSubmit,
+    handleSendCode,
     handleTokenLoginSubmit,
     initialized,
     loginMethods,
+    newPassword,
     password,
+    registerCode,
+    registerEmail,
     registerPassword,
     registerPasswordConfirm,
     registerUsername,
+    sendingCode,
     setAccessToken,
+    setForgotPasswordCode,
+    setForgotPasswordEmail,
+    setNewPassword,
     setPassword,
+    setRegisterCode,
+    setRegisterEmail,
     setRegisterPassword,
     setRegisterPasswordConfirm,
     setRegisterUsername,
