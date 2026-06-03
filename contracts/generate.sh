@@ -12,4 +12,5 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
   --output-model-type pydantic_v2.BaseModel \
   --target-python-version 3.12 \
   --use-standard-collections \
-  --use-union-operator)
+  --use-union-operator \
+  --disable-timestamp)
