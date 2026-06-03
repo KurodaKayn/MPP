@@ -47,7 +47,7 @@ MPP 当前已经具备多服务雏形：
 | 3 | 可观测性基线 | 出问题能定位，能展示系统真实运行状态 | Prometheus 指标、Grafana 面板、Loki 日志、Trace ID | 5 | 3 | P0 | 完成 | backend、publish-worker、ai-service、browser-worker 已有 HTTP 指标和结构化请求日志；这是基线，不是完整分布式 tracing |
 | 4 | 健康检查与优雅关闭 | 支持滚动重启，避免请求中断 | frontend/backend/ai/browser-worker 增加 health/readiness | 5 | 2 | P0 | 完成 | 成本低，生产必备 |
 | 5 | API 服务无状态化与横向扩容 | 支撑更多并发请求 | backend 不保存本地会话，扩多副本，共享 Redis/Postgres | 5 | 2 | P1 | 完成 | API 基本无状态并支持 `api/worker/all` 角色，生产 Compose 默认多 backend 副本，PostgreSQL 连接池已有 env 约束 |
-| 6 | Redis 队列升级为可靠任务模型 | 发布任务异步化、可重试、可恢复 | 用 Redis Streams 或 Asynq 管理 publish jobs | 5 | 3 | P1 | 进行中 | 已有 Redis List + `publish-worker`，尚缺 ack、恢复和可靠重投递语义 |
+| 6 | Redis 队列升级为可靠任务模型 | 发布任务异步化、可重试、可恢复 | 用 Redis Streams 或 Asynq 管理 publish jobs | 5 | 3 | P1 | 完成 | 已用 Asynq 替换 Redis List；publish job 具备 ack/retry/worker crash recovery/archive 语义，任务 payload 只保存 durable IDs，不携带 browser session 地址或 token |
 | 7 | 幂等键与发布状态机 | 防止重复点击、重复消费、重复发布 | publish 请求带 idempotency key，publication 状态机严格流转 | 5 | 3 | P1 | 进行中 | 已有发布锁和基础状态字段，尚缺 idempotency key 和目标状态机 |
 | 8 | Outbox Pattern | 数据库更新与事件投递一致性 | publication 状态更新后写 outbox，由 worker 投递任务 | 4 | 4 | P1 | 未开始 | 适合发布流水线，但实现要谨慎 |
 | 9 | 分布式锁强化 | 避免同一 publication 被并发发布 | Redis lock 加 owner、TTL、续约、释放校验 | 5 | 2 | P1 | 完成 | 项目已经有 Redis，成本可控 |
@@ -88,7 +88,7 @@ MPP 当前已经具备多服务雏形：
 
 交付项：
 
-- [ ] 将发布任务模型升级为可靠队列，优先考虑 Redis Streams 或 Asynq。（进行中：已有 Redis List + `publish-worker` 异步队列，尚缺消费确认、恢复和可靠重投递语义。）
+- [x] 将发布任务模型升级为可靠队列，优先考虑 Redis Streams 或 Asynq。（已完成：使用 Asynq + Redis 管理 publish jobs，支持 ack、失败 retry、worker crash recovery 和 archive；业务幂等键与完整状态机仍按后续条目推进。）
 - [ ] 发布请求引入 idempotency key。
 - [ ] publication 状态机明确化：`draft`、`syncing`、`queued`、`publishing`、`succeeded`、`failed`、`cancelled`。（进行中：已有 `pending`、`adapted`、`publishing`、`published`、`failed`、`disabled`，但与目标状态机尚未对齐。）
 - [x] 分布式锁增加 owner、TTL、续约和释放校验。
@@ -132,7 +132,7 @@ MPP 当前已经具备多服务雏形：
 | [x] | P0 | 可观测性基线 | 出问题能定位，支撑稳定迭代 |
 | [x] | P0 | health/readiness | 支持生产重启、监控和负载均衡；当前已补齐 frontend/backend/ai-service/browser-worker 的基础 health/readiness |
 | [ ] | P1 | 发布幂等 | 防止重复发布和并发写冲突；当前已有发布锁，仍缺 idempotency key |
-| [ ] | P1 | 可靠队列 | 异步发布、失败重试、削峰填谷；当前已有 Redis List 队列，仍缺可靠消费模型 |
+| [x] | P1 | 可靠队列 | 已用 Asynq + Redis 替代 Redis List，提供 ack、retry、worker crash recovery 和 archive；发布幂等键仍单独推进 |
 | [x] | P1 | 分布式锁强化 | 保证同一 publication 不被多 worker 并发处理 |
 | [ ] | P1 | 外部调用熔断与重试 | 保护系统不被第三方平台拖垮；当前已有 timeout，仍缺 retry/backoff/circuit breaker |
 | [ ] | P1 | browser-worker 资源池 | 控制 Chromium 容器成本和风险；当前已有 session 级限制，仍缺全局资源池 |
