@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -12,16 +13,22 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/proxy"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/labstack/echo/v4"
 )
 
 type BrowserSessionHandler struct {
-	service *browsersession.BrowserSessionService
+	service       *browsersession.BrowserSessionService
+	streamLimiter *streamgate.Limiter
 }
 
 func NewBrowserSessionHandler(service *browsersession.BrowserSessionService) *BrowserSessionHandler {
 	return &BrowserSessionHandler{service: service}
+}
+
+func (h *BrowserSessionHandler) UseStreamLimiter(limiter *streamgate.Limiter) {
+	h.streamLimiter = limiter
 }
 
 func (h *BrowserSessionHandler) StartSession(c echo.Context) error {
@@ -100,6 +107,22 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	log.Printf("StreamSession: id=%s, path=%s", id, proxyPath)
 
 	isWebSocket := strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket"
+	tenantID, err := middleware.GetTenantIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	var lease *streamgate.Lease
+	if isWebSocket {
+		lease, err = h.acquireBrowserStreamLease(c, userID, tenantID, id)
+		if err != nil {
+			if handled := streamgate.SendLimitError(c, err); handled != nil {
+				return handled
+			}
+			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+		}
+		defer lease.Release(context.Background())
+	}
+
 	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken, isWebSocket)
 	if err != nil {
 		if err == browsersession.ErrSessionNotFound {
@@ -145,6 +168,19 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	}
 	reverseProxy.ServeHTTP(c.Response(), c.Request())
 	return nil
+}
+
+func (h *BrowserSessionHandler) acquireBrowserStreamLease(c echo.Context, userID uuid.UUID, tenantID string, sessionID uuid.UUID) (*streamgate.Lease, error) {
+	if h.streamLimiter == nil {
+		return &streamgate.Lease{}, nil
+	}
+	return h.streamLimiter.Acquire(c.Request().Context(), streamgate.AcquireRequest{
+		Kind:     streamgate.KindBrowser,
+		UserID:   userID,
+		TenantID: tenantID,
+		IP:       streamgate.ClientIP(c),
+		Resource: sessionID.String(),
+	})
 }
 
 func (h *BrowserSessionHandler) CompleteSession(c echo.Context) error {

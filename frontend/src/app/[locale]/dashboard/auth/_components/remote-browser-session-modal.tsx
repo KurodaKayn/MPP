@@ -17,6 +17,7 @@ type RemoteBrowserSessionModalProps = {
   streamURL?: string;
   onCancel: () => void;
   onComplete: () => void;
+  onStreamError?: () => void;
 };
 
 export function RemoteBrowserSessionModal({
@@ -29,6 +30,7 @@ export function RemoteBrowserSessionModal({
   streamURL,
   onCancel,
   onComplete,
+  onStreamError,
 }: RemoteBrowserSessionModalProps) {
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "dashboard");
@@ -86,6 +88,7 @@ export function RemoteBrowserSessionModal({
               src={streamURL}
               className="h-full w-full rounded-xl border border-white/10 bg-white"
               allow="clipboard-write"
+              onError={onStreamError}
             />
           ) : (
             <div className="flex h-full items-center justify-center rounded-xl border border-white/10 text-white">

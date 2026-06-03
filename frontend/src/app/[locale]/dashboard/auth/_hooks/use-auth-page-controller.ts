@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
@@ -221,6 +221,34 @@ export function useAuthPageController() {
     };
   }, [t]);
 
+  const refreshBrowserSession = useCallback(
+    async (
+      sessionID: string,
+      options: { replaceStreamURL?: boolean } = {},
+    ) => {
+      const nextSession = await getBrowserSession(sessionID);
+      setBrowserSession(nextSession);
+      if (nextSession.stream_url) {
+        const nextStreamURL = resolveBrowserStreamURL(nextSession.stream_url);
+        setBrowserStreamURL((currentStreamURL) => {
+          if (!currentStreamURL || options.replaceStreamURL) {
+            return nextStreamURL;
+          }
+          return currentStreamURL;
+        });
+      }
+      if (nextSession.status === "expired") {
+        setBrowserError(t("auth.toast.sessionExpired"));
+      }
+      if (nextSession.status === "failed") {
+        setBrowserError(
+          nextSession.message || t("auth.toast.sessionStartFailed"),
+        );
+      }
+    },
+    [t],
+  );
+
   useEffect(() => {
     if (!browserSession) {
       return;
@@ -232,27 +260,7 @@ export function useAuthPageController() {
 
     let cancelled = false;
     const interval = window.setInterval(() => {
-      void getBrowserSession(browserSession.session_id)
-        .then((nextSession) => {
-          if (cancelled) {
-            return;
-          }
-          setBrowserSession(nextSession);
-          if (nextSession.stream_url) {
-            setBrowserStreamURL(
-              (currentStreamURL) =>
-                currentStreamURL ?? resolveBrowserStreamURL(nextSession.stream_url),
-            );
-          }
-          if (nextSession.status === "expired") {
-            setBrowserError(t("auth.toast.sessionExpired"));
-          }
-          if (nextSession.status === "failed") {
-            setBrowserError(
-              nextSession.message || t("auth.toast.sessionStartFailed"),
-            );
-          }
-        })
+      void refreshBrowserSession(browserSession.session_id)
         .catch((error) => {
           if (!cancelled) {
             setBrowserError(
@@ -266,7 +274,7 @@ export function useAuthPageController() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [browserSession, t]);
+  }, [browserSession, refreshBrowserSession, t]);
 
   useEffect(() => {
     if (xOAuthStatus === "connected") {
@@ -607,6 +615,18 @@ export function useAuthPageController() {
             platformLabel: browserPlatformLabels[activeBrowserAccountPlatform],
             status: browserSession.status,
             streamURL: browserStreamURL,
+            onStreamError: () => {
+              void refreshBrowserSession(browserSession.session_id, {
+                replaceStreamURL: true,
+              }).catch((error) => {
+                setBrowserError(
+                  getErrorDescription(
+                    error,
+                    t("auth.toast.sessionRefreshFailed"),
+                  ),
+                );
+              });
+            },
             onCancel: handleCancelBrowserSession,
             onComplete: () => {
               void handleCompleteBrowserAccount(activeBrowserAccountPlatform);
