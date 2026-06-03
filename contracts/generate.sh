@@ -5,6 +5,7 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
 (cd "$ROOT/frontend" && pnpm generate:contracts)
 (cd "$ROOT/backend" && go generate ./internal/contracts)
+(cd "$ROOT/browser-worker" && go generate ./internal/contracts)
 (cd "$ROOT/ai-service" && uv run datamodel-codegen \
   --input ../contracts/openapi.yaml \
   --input-file-type openapi \
