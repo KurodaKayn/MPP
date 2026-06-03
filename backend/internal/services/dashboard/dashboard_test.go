@@ -223,6 +223,29 @@ func TestGetStats(t *testing.T) {
 	assert.Equal(t, int64(0), statsScoped.TotalFailedPublications)
 }
 
+func TestGetExtensionSessionReturnsCurrentUser(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	user := models.User{Username: "creator", Email: "creator@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+
+	resp, err := s.GetExtensionSession(user.ID)
+
+	require.NoError(t, err)
+	assert.True(t, resp.Authenticated)
+	assert.Equal(t, user.ID, resp.User.ID)
+	assert.Equal(t, "creator", resp.User.Username)
+}
+
+func TestGetExtensionSessionReturnsNotFoundForMissingUser(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	_, err := s.GetExtensionSession(uuid.New())
+
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
 func TestListProjects(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
@@ -1275,4 +1298,3 @@ func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
 	_, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	assert.ErrorIs(t, err, services.ErrPublicationDisabled)
 }
-

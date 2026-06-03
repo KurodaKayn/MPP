@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+
+	"github.com/kurodakayn/mpp-backend/internal/handlers"
 )
 
 func TestServerAllowsConfiguredExtensionOriginWithCredentials(t *testing.T) {
@@ -59,4 +61,27 @@ func TestServerRejectsUnconfiguredExtensionOrigin(t *testing.T) {
 	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
 		t.Fatalf("expected unconfigured origin to be rejected, got %q", got)
 	}
+}
+
+func TestUserDashboardRoutesIncludeExtensionSession(t *testing.T) {
+	server, err := newServer(serverConfig{
+		runtimeConfig: backendRuntimeConfig{
+			processRole: backendProcessRoleAPI,
+		},
+		jwtSigningKey: []byte("test-secret"),
+		ready:         &atomic.Bool{},
+	}, serverHandlers{
+		userDashboard: &handlers.UserDashboardHandler{},
+	})
+	if err != nil {
+		t.Fatalf("expected server: %v", err)
+	}
+
+	for _, route := range server.Routes() {
+		if route.Method == http.MethodGet && route.Path == "/api/user/dashboard/extension/session" {
+			return
+		}
+	}
+
+	t.Fatal("expected extension session route to be registered")
 }

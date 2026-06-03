@@ -205,6 +205,40 @@ func TestUserDashboardHandlerRequiresUserContext(t *testing.T) {
 	require.Equal(t, "unauthorized", resp.Error.Code)
 }
 
+func TestUserDashboardHandlerGetExtensionSessionReturnsCurrentUser(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	user := models.User{Username: "creator", Email: "creator@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+
+	c, rec := newHandlerTestContext(e, http.MethodGet, "/api/user/dashboard/extension/session")
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.GetExtensionSession(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp dto.ExtensionSessionResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.True(t, resp.Authenticated)
+	require.Equal(t, user.ID, resp.User.ID)
+	require.Equal(t, "creator", resp.User.Username)
+}
+
+func TestUserDashboardHandlerGetExtensionSessionRequiresUserContext(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	c, rec := newHandlerTestContext(e, http.MethodGet, "/api/user/dashboard/extension/session")
+
+	require.NoError(t, handler.GetExtensionSession(c))
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+
+	var resp dto.ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "unauthorized", resp.Error.Code)
+}
+
 func TestUserDashboardHandlerListProjectsUsesJWTUserScope(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)
@@ -828,4 +862,3 @@ func TestUserDashboardHandlerSavesWechatAccount(t *testing.T) {
 	require.True(t, resp.HasAppSecret)
 	require.Equal(t, models.PlatformAccountStatusUntested, resp.Status)
 }
-
