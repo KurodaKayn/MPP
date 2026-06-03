@@ -60,6 +60,49 @@ type ExtensionPrepublishResponse struct {
 	Items []ExtensionPrepublishItem `json:"items"`
 }
 
+type CreateExtensionHandoffRequest struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	Platforms []string  `json:"platforms"`
+}
+
+type ExtensionHandoffProject struct {
+	ID    uuid.UUID `json:"id"`
+	Title string    `json:"title"`
+}
+
+type ExtensionHandoffCallback struct {
+	URL   string `json:"url"`
+	Token string `json:"token"`
+}
+
+type ExtensionHandoffAsset struct {
+	Type      string `json:"type"`
+	SourceURL string `json:"source_url"`
+	Name      string `json:"name"`
+	MimeType  string `json:"mime_type"`
+}
+
+type ExtensionHandoffPlatform struct {
+	Platform       string                   `json:"platform"`
+	AdapterKey     string                   `json:"adapter_key"`
+	InjectURL      string                   `json:"inject_url"`
+	ContentKind    string                   `json:"content_kind"`
+	AutoPublish    bool                     `json:"auto_publish"`
+	RequiresReview bool                     `json:"requires_review"`
+	AdaptedContent map[string]interface{}   `json:"adapted_content"`
+	Assets         []ExtensionHandoffAsset  `json:"assets"`
+	Callback       ExtensionHandoffCallback `json:"callback"`
+}
+
+type ExtensionPublishHandoff struct {
+	SchemaVersion int                        `json:"schema_version"`
+	Type          string                     `json:"type"`
+	ExecutionID   string                     `json:"execution_id"`
+	ExpiresAt     time.Time                  `json:"expires_at"`
+	Project       ExtensionHandoffProject    `json:"project"`
+	Platforms     []ExtensionHandoffPlatform `json:"platforms"`
+}
+
 type CreateProjectRequest struct {
 	Title         string   `json:"title"`
 	SourceContent string   `json:"source_content"`

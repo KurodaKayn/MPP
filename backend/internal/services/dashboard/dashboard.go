@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
@@ -32,9 +33,13 @@ var allowedProjectPlatforms = map[string]struct{}{
 }
 
 const (
-	extensionDouyinAdapterKey   = "DYNAMIC_DOUYIN"
-	extensionArticleContentKind = "article"
-	extensionPreviewLimit       = 80
+	extensionDouyinAdapterKey     = "DYNAMIC_DOUYIN"
+	extensionArticleContentKind   = "article"
+	extensionPreviewLimit         = 80
+	extensionHandoffSchemaVersion = 1
+	extensionHandoffType          = "mpp.extension_publish_handoff"
+	extensionDouyinInjectURL      = "https://creator.douyin.com/creator-micro/content/upload?default-tab=5"
+	extensionHandoffTTL           = 10 * time.Minute
 )
 
 type DashboardService struct {
@@ -215,6 +220,108 @@ func extensionPrepublishPreview(raw datatypes.JSON) string {
 	}
 
 	return ""
+}
+
+func (s *DashboardService) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensionHandoffRequest, callbackURL string) (*dto.ExtensionPublishHandoff, error) {
+	if req.ProjectID == uuid.Nil || len(req.Platforms) == 0 {
+		return nil, ErrInvalidProject
+	}
+	platforms, err := normalizeExtensionHandoffPlatforms(req.Platforms)
+	if err != nil {
+		return nil, err
+	}
+
+	var project models.Project
+	if err := s.db.Select("id", "user_id", "title").First(&project, "id = ?", req.ProjectID).Error; err != nil {
+		return nil, err
+	}
+	if project.UserID != userID {
+		return nil, ErrForbidden
+	}
+
+	handoffPlatforms := make([]dto.ExtensionHandoffPlatform, 0, len(platforms))
+	for _, platform := range platforms {
+		var publication models.ProjectPlatformPublication
+		if err := s.db.Where("project_id = ? AND platform = ?", project.ID, platform).First(&publication).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, ErrPublicationRequiresSync
+			}
+			return nil, err
+		}
+		if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
+			return nil, ErrPublicationDisabled
+		}
+		adaptedContent, err := extensionHandoffAdaptedContent(publication.AdaptedContent)
+		if err != nil {
+			return nil, err
+		}
+		handoffPlatforms = append(handoffPlatforms, dto.ExtensionHandoffPlatform{
+			Platform:       platform,
+			AdapterKey:     extensionDouyinAdapterKey,
+			InjectURL:      extensionDouyinInjectURL,
+			ContentKind:    extensionArticleContentKind,
+			AutoPublish:    false,
+			RequiresReview: true,
+			AdaptedContent: adaptedContent,
+			Assets:         []dto.ExtensionHandoffAsset{},
+			Callback: dto.ExtensionHandoffCallback{
+				URL:   callbackURL,
+				Token: uuid.NewString(),
+			},
+		})
+	}
+
+	return &dto.ExtensionPublishHandoff{
+		SchemaVersion: extensionHandoffSchemaVersion,
+		Type:          extensionHandoffType,
+		ExecutionID:   uuid.NewString(),
+		ExpiresAt:     time.Now().UTC().Add(extensionHandoffTTL),
+		Project: dto.ExtensionHandoffProject{
+			ID:    project.ID,
+			Title: project.Title,
+		},
+		Platforms: handoffPlatforms,
+	}, nil
+}
+
+func normalizeExtensionHandoffPlatforms(input []string) ([]string, error) {
+	seen := map[string]struct{}{}
+	platforms := make([]string, 0, len(input))
+	for _, raw := range input {
+		platform := strings.TrimSpace(raw)
+		if platform == "" {
+			continue
+		}
+		if platform != "douyin" {
+			return nil, ErrInvalidProject
+		}
+		if _, ok := seen[platform]; ok {
+			continue
+		}
+		seen[platform] = struct{}{}
+		platforms = append(platforms, platform)
+	}
+	if len(platforms) == 0 {
+		return nil, ErrInvalidProject
+	}
+	return platforms, nil
+}
+
+func extensionHandoffAdaptedContent(raw datatypes.JSON) (map[string]interface{}, error) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, ErrPublicationRequiresSync
+	}
+	text, ok := payload["text"].(string)
+	text = strings.TrimSpace(text)
+	if !ok || text == "" {
+		return nil, ErrPublicationRequiresSync
+	}
+	return map[string]interface{}{
+		"schema_version": extensionHandoffSchemaVersion,
+		"format":         "text",
+		"text":           text,
+	}, nil
 }
 
 func (s *DashboardService) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {

@@ -143,6 +143,7 @@ func registerUserDashboardRoutes(e *echo.Echo, config serverConfig, h serverHand
 	userGroup.GET("/stats", h.userDashboard.GetMyStats)
 	userGroup.GET("/extension/session", h.userDashboard.GetExtensionSession)
 	userGroup.GET("/extension/prepublish", h.userDashboard.ListExtensionPrepublish)
+	userGroup.POST("/extension/handoffs", h.userDashboard.CreateExtensionHandoff)
 	userGroup.GET("/projects", h.userDashboard.ListMyProjects)
 	userGroup.POST("/projects", h.userDashboard.CreateProject)
 	userGroup.GET("/projects/:id", h.userDashboard.GetMyProject)
