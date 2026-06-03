@@ -54,7 +54,7 @@ MPP 当前已经具备多服务雏形：
 | 10 | 外部调用熔断、重试、退避 | 防止第三方平台或 LLM 故障拖垮系统 | AI、微信、知乎、X、抖音调用统一 retry/backoff/circuit breaker | 5 | 3 | P1 | 完成 | backend 已新增统一 resilience 层，HTTP retry 默认仅覆盖安全方法，非幂等 POST 只做 timeout/circuit breaker；发布操作层按平台维度熔断但不重试完整发布；ai-service LLM 客户端已配置 timeout、max retries 和 stream chunk timeout |
 | 11 | Browser Worker 资源池与配额 | 控制 Chromium 容器数量，避免宿主机爆掉 | 每用户/租户限制并发 browser session，全局 worker pool | 5 | 3 | P1 | 完成 | 已有用户+平台活跃 session 锁、用户/租户并发配额、全局 worker pool 和容器 CPU/内存限制 |
 | 12 | WebSocket/SSE 长连接治理 | 处理 AI stream 和远程浏览器 stream | 网关 timeout、连接数限制、stream token、断线恢复 | 4 | 3 | P1 | 进行中 | 已有 AI stream 和 browser stream token，尚缺网关 timeout、连接数限制和断线恢复 |
-| 13 | 数据库索引、分页与慢查询治理 | 避免列表和 dashboard 查询拖垮数据库 | projects、publications、sessions、accounts 建组合索引 | 5 | 2 | P1 | 进行中 | 已有组合索引和列表分页，尚缺慢查询观测、查询计划审计和持续治理流程 |
+| 13 | 数据库索引、分页与慢查询治理 | 避免列表和 dashboard 查询拖垮数据库 | projects、publications、sessions、accounts 建组合索引 | 5 | 2 | P1 | 完成 | 已有组合索引和列表分页；backend 已接入 GORM 查询指标、结构化慢查询日志、Grafana DB 面板、dashboard 查询计划审计脚本和持续治理文档 |
 | 14 | PostgreSQL 连接池 | 多副本后避免 DB 连接耗尽 | 引入 PgBouncer 或应用层连接池约束 | 4 | 3 | P2 | 完成 | 已接入应用层连接池约束；PgBouncer 可在更大副本规模后再评估 |
 | 15 | 对象存储与签名 URL | 图片和媒体不压在应用容器与数据库上 | S3/R2/OSS 存储媒体，backend 生成 signed URL | 5 | 3 | P2 | 未开始 | 平台媒体上传增长后很重要 |
 | 16 | CDN 与静态资源缓存 | 降低前端资源和图片访问压力 | Next 静态资源、媒体文件走 CDN | 4 | 2 | P2 | 未开始 | SaaS 上线后逐步做 |
@@ -136,7 +136,7 @@ MPP 当前已经具备多服务雏形：
 | [x] | P1 | 分布式锁强化 | 保证同一 publication 不被多 worker 并发处理 |
 | [x] | P1 | 外部调用熔断与重试 | 统一 resilience 层已覆盖 AI service、微信、X、browser-worker、媒体下载 HTTP 调用；HTTP retry 默认仅用于安全方法，发布完整操作不重试；ai-service LLM 客户端已配置 timeout/max retries/stream chunk timeout |
 | [x] | P1 | browser-worker 资源池 | 已有用户/租户并发配额、同一用户/平台活跃 session 锁和全局 worker pool，控制 Chromium 容器成本和风险 |
-| [ ] | P1 | 慢查询与索引治理 | 已有组合索引和分页，尚缺慢查询观测、查询计划审计和持续治理流程 |
+| [x] | P1 | 慢查询与索引治理 | 已有组合索引和分页；已补齐 `mpp_db_*` 查询指标、结构化慢查询日志、Grafana DB 面板、dashboard 查询计划审计脚本和持续治理流程 |
 
 ## 8. 暂不建议优先引入的技术
 

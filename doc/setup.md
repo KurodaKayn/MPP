@@ -154,3 +154,4 @@ uv run uvicorn main:app --reload
 - **后端**: 数据库连接配置 `docker/.env`。
 - **后端横向扩容**: deploy 模板默认 `BACKEND_API_REPLICAS=2`，生产 Compose 会启动多个 `backend` API 副本；dev 模板固定为 1，避免本地 `8080` 端口冲突。
 - **数据库连接数治理**: 使用 `DB_MAX_OPEN_CONNS`、`DB_MAX_IDLE_CONNS`、`DB_CONN_MAX_LIFETIME` 和 `DB_CONN_MAX_IDLE_TIME` 控制每个 backend/publish-worker 进程的 PostgreSQL 连接池。
+- **慢查询治理**: 使用 `DB_SLOW_QUERY_THRESHOLD` 控制 backend 结构化慢查询日志和 `mpp_db_slow_queries_total` 指标阈值。查询计划审计流程见 [database-query-governance.md](database-query-governance.md)。
