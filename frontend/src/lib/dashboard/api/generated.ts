@@ -3,7 +3,74 @@
  * Do not make direct changes to the file.
  */
 
-export type paths = Record<string, never>;
+export interface paths {
+  "/internal/browser-sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["createBrowserWorkerSession"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/internal/browser-sessions/{ref}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        ref: string;
+      };
+      cookie?: never;
+    };
+    get: operations["getBrowserWorkerSession"];
+    put?: never;
+    post?: never;
+    delete: operations["deleteBrowserWorkerSession"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/internal/browser-sessions/{ref}/capture": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["captureBrowserWorkerSession"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/internal/browser-sessions/{ref}/publish/douyin": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["startBrowserWorkerDouyinPublish"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+}
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
@@ -49,6 +116,85 @@ export interface components {
       | "connected"
       | "expired"
       | "failed";
+    /** @enum {string} */
+    BrowserWorkerSessionStatus: "ready" | "login_detected";
+    BrowserWorkerCookie: {
+      name: string;
+      value: string;
+      domain: string;
+      path: string;
+      /** Format: double */
+      expires: number;
+      secure: boolean;
+      httpOnly: boolean;
+      sameSite: string;
+    };
+    BrowserWorkerDomainRule: {
+      host: string;
+      /** @enum {string} */
+      match: "exact" | "suffix";
+      schemes: string[];
+      purpose: string;
+    };
+    BrowserWorkerCookieRequirement: {
+      name: string;
+      domain_suffixes: string[];
+      required: boolean;
+      preserve: boolean;
+    };
+    BrowserWorkerViewport: {
+      width: number;
+      height: number;
+    };
+    BrowserWorkerRemoteAccountProfile: {
+      platform_user_id: string;
+      username: string;
+      avatar_url: string;
+    };
+    BrowserWorkerStartSessionRequest: {
+      /** Format: uuid */
+      session_id: string;
+      /** Format: uuid */
+      user_id: string;
+      platform: string;
+      login_url: string;
+      allowed_domains: components["schemas"]["BrowserWorkerDomainRule"][];
+      required_cookies: components["schemas"]["BrowserWorkerCookieRequirement"][];
+      initial_cookies: components["schemas"]["BrowserWorkerCookie"][];
+      ttl_seconds: number;
+      viewport: components["schemas"]["BrowserWorkerViewport"];
+    };
+    BrowserWorkerStartSessionResponse: {
+      worker_session_ref: string;
+      status: components["schemas"]["BrowserWorkerSessionStatus"];
+      container_id: string;
+      cdp_endpoint_ref: string;
+      stream_endpoint_ref: string;
+      /** Format: date-time */
+      started_at: string;
+      /** Format: date-time */
+      expires_at: string;
+    };
+    BrowserWorkerGetSessionResponse: {
+      worker_session_ref: string;
+      status: components["schemas"]["BrowserWorkerSessionStatus"];
+      current_url: string;
+      login_detected: boolean;
+      missing_cookies: string[];
+      message: string;
+    };
+    BrowserWorkerCaptureSessionResponse: {
+      status: components["schemas"]["BrowserWorkerSessionStatus"];
+      cookies: components["schemas"]["BrowserWorkerCookie"][];
+      missing_cookies: string[];
+      account: components["schemas"]["BrowserWorkerRemoteAccountProfile"];
+    };
+    BrowserWorkerStartDouyinPublishRequest: {
+      title: string;
+      content: string;
+      cover_image_base64: string;
+      cover_image_name: string;
+    };
     GeneratedBy: {
       type: components["schemas"]["GeneratedByType"];
       id: string;
@@ -326,4 +472,117 @@ export interface components {
   pathItems: never;
 }
 export type $defs = Record<string, never>;
-export type operations = Record<string, never>;
+export interface operations {
+  createBrowserWorkerSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BrowserWorkerStartSessionRequest"];
+      };
+    };
+    responses: {
+      /** @description Browser worker session created. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BrowserWorkerStartSessionResponse"];
+        };
+      };
+    };
+  };
+  getBrowserWorkerSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        ref: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Browser worker session state. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BrowserWorkerGetSessionResponse"];
+        };
+      };
+    };
+  };
+  deleteBrowserWorkerSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        ref: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Browser worker session deleted. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  captureBrowserWorkerSession: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        ref: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Browser worker session captured. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BrowserWorkerCaptureSessionResponse"];
+        };
+      };
+    };
+  };
+  startBrowserWorkerDouyinPublish: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        ref: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BrowserWorkerStartDouyinPublishRequest"];
+      };
+    };
+    responses: {
+      /** @description Douyin publish script started. */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+}
