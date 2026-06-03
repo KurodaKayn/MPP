@@ -146,6 +146,35 @@ func setupTestDB() *gorm.DB {
 		metadata TEXT NOT NULL DEFAULT '{}'
 	)`)
 
+	db.Exec(`CREATE TABLE extension_callback_tokens (
+		id TEXT PRIMARY KEY,
+		execution_id TEXT NOT NULL,
+		project_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		platform TEXT NOT NULL,
+		token TEXT NOT NULL UNIQUE,
+		expires_at DATETIME NOT NULL,
+		created_at DATETIME,
+		updated_at DATETIME
+	)`)
+
+	db.Exec(`CREATE TABLE extension_execution_events (
+		id TEXT PRIMARY KEY,
+		callback_token_id TEXT NOT NULL,
+		execution_id TEXT NOT NULL,
+		project_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		event_id TEXT NOT NULL UNIQUE,
+		platform TEXT NOT NULL,
+		status TEXT NOT NULL,
+		message TEXT,
+		remote_id TEXT,
+		publish_url TEXT,
+		error_message TEXT,
+		metadata TEXT NOT NULL DEFAULT '{}',
+		created_at DATETIME
+	)`)
+
 	return db
 }
 
@@ -388,6 +417,124 @@ func TestCreateExtensionHandoffReturnsDouyinArticleHandoff(t *testing.T) {
 	assert.Equal(t, 1, platform.AdaptedContent["schema_version"])
 	assert.Equal(t, "text", platform.AdaptedContent["format"])
 	assert.Equal(t, "ready text", platform.AdaptedContent["text"])
+
+	var token models.ExtensionCallbackToken
+	require.NoError(t, db.First(&token, "token = ?", platform.Callback.Token).Error)
+	assert.Equal(t, handoff.ExecutionID, token.ExecutionID)
+	assert.Equal(t, project.ID, token.ProjectID)
+	assert.Equal(t, user.ID, token.UserID)
+	assert.Equal(t, "douyin", token.Platform)
+	assert.WithinDuration(t, handoff.ExpiresAt, token.ExpiresAt, time.Second)
+}
+
+func TestRecordExtensionEventAcceptsKnownTokenAndDeduplicatesEventID(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Douyin article",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "douyin",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: datatypes.JSON(`{"format":"text","text":"ready text"}`),
+	}).Error)
+
+	handoff, err := s.CreateExtensionHandoff(user.ID, dto.CreateExtensionHandoffRequest{
+		ProjectID: project.ID,
+		Platforms: []string{"douyin"},
+	}, "https://mpp.example.com/api/user/dashboard/extension/events")
+	require.NoError(t, err)
+
+	req := dto.ExtensionEventCallbackRequest{
+		Token:        handoff.Platforms[0].Callback.Token,
+		EventID:      "event-1",
+		Platform:     "douyin",
+		Status:       "user_review",
+		Message:      "Draft prepared",
+		RemoteID:     "remote-1",
+		PublishURL:   "https://creator.douyin.com/item/1",
+		ErrorMessage: "",
+		Metadata: map[string]interface{}{
+			"adapter": "DYNAMIC_DOUYIN",
+		},
+	}
+	first, err := s.RecordExtensionEvent(req)
+	require.NoError(t, err)
+	assert.False(t, first.Duplicate)
+
+	second, err := s.RecordExtensionEvent(req)
+	require.NoError(t, err)
+	assert.True(t, second.Duplicate)
+
+	var events []models.ExtensionExecutionEvent
+	require.NoError(t, db.Find(&events).Error)
+	require.Len(t, events, 1)
+	assert.Equal(t, handoff.ExecutionID, events[0].ExecutionID)
+	assert.Equal(t, project.ID, events[0].ProjectID)
+	assert.Equal(t, user.ID, events[0].UserID)
+	assert.Equal(t, "event-1", events[0].EventID)
+	assert.Equal(t, "user_review", events[0].Status)
+	assert.Contains(t, string(events[0].Metadata), "DYNAMIC_DOUYIN")
+}
+
+func TestRecordExtensionEventRejectsUnknownToken(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	_, err := s.RecordExtensionEvent(dto.ExtensionEventCallbackRequest{
+		Token:    "missing-token",
+		EventID:  "event-1",
+		Platform: "douyin",
+		Status:   "failed",
+	})
+
+	assert.ErrorIs(t, err, services.ErrExtensionCallbackTokenInvalid)
+}
+
+func TestRecordExtensionEventRejectsExpiredToken(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Douyin article",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "douyin",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: datatypes.JSON(`{"format":"text","text":"ready text"}`),
+	}).Error)
+	handoff, err := s.CreateExtensionHandoff(user.ID, dto.CreateExtensionHandoffRequest{
+		ProjectID: project.ID,
+		Platforms: []string{"douyin"},
+	}, "https://mpp.example.com/api/user/dashboard/extension/events")
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&models.ExtensionCallbackToken{}).
+		Where("token = ?", handoff.Platforms[0].Callback.Token).
+		Update("expires_at", time.Now().Add(-time.Minute).UTC()).Error)
+
+	_, err = s.RecordExtensionEvent(dto.ExtensionEventCallbackRequest{
+		Token:    handoff.Platforms[0].Callback.Token,
+		EventID:  "event-1",
+		Platform: "douyin",
+		Status:   "failed",
+	})
+
+	assert.ErrorIs(t, err, services.ErrExtensionCallbackTokenExpired)
 }
 
 func TestCreateExtensionHandoffRejectsForeignProject(t *testing.T) {

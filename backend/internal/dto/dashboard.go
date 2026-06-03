@@ -103,6 +103,23 @@ type ExtensionPublishHandoff struct {
 	Platforms     []ExtensionHandoffPlatform `json:"platforms"`
 }
 
+type ExtensionEventCallbackRequest struct {
+	Token        string                 `json:"token"`
+	EventID      string                 `json:"event_id"`
+	Platform     string                 `json:"platform"`
+	Status       string                 `json:"status"`
+	Message      string                 `json:"message"`
+	RemoteID     string                 `json:"remote_id"`
+	PublishURL   string                 `json:"publish_url"`
+	ErrorMessage string                 `json:"error_message"`
+	Metadata     map[string]interface{} `json:"metadata"`
+}
+
+type ExtensionEventCallbackResponse struct {
+	Accepted  bool `json:"accepted"`
+	Duplicate bool `json:"duplicate"`
+}
+
 type CreateProjectRequest struct {
 	Title         string   `json:"title"`
 	SourceContent string   `json:"source_content"`

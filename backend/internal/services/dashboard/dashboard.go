@@ -24,6 +24,8 @@ var ErrInvalidProject = errors.New("invalid project")
 var ErrPublicationDisabled = publishsvc.ErrPublicationDisabled
 var ErrPublicationRequiresSync = publishsvc.ErrPublicationRequiresSync
 var ErrManualPublishUnsupported = publishsvc.ErrManualPublishUnsupported
+var ErrExtensionCallbackTokenInvalid = errors.New("invalid extension callback token")
+var ErrExtensionCallbackTokenExpired = errors.New("expired extension callback token")
 
 var allowedProjectPlatforms = map[string]struct{}{
 	"douyin": {},
@@ -239,49 +241,126 @@ func (s *DashboardService) CreateExtensionHandoff(userID uuid.UUID, req dto.Crea
 		return nil, ErrForbidden
 	}
 
+	executionID := uuid.NewString()
+	expiresAt := time.Now().UTC().Add(extensionHandoffTTL)
 	handoffPlatforms := make([]dto.ExtensionHandoffPlatform, 0, len(platforms))
-	for _, platform := range platforms {
-		var publication models.ProjectPlatformPublication
-		if err := s.db.Where("project_id = ? AND platform = ?", project.ID, platform).First(&publication).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, ErrPublicationRequiresSync
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		for _, platform := range platforms {
+			var publication models.ProjectPlatformPublication
+			if err := tx.Where("project_id = ? AND platform = ?", project.ID, platform).First(&publication).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrPublicationRequiresSync
+				}
+				return err
 			}
-			return nil, err
+			if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
+				return ErrPublicationDisabled
+			}
+			adaptedContent, err := extensionHandoffAdaptedContent(publication.AdaptedContent)
+			if err != nil {
+				return err
+			}
+			callbackToken := uuid.NewString()
+			if err := tx.Create(&models.ExtensionCallbackToken{
+				ExecutionID: executionID,
+				ProjectID:   project.ID,
+				UserID:      userID,
+				Platform:    platform,
+				Token:       callbackToken,
+				ExpiresAt:   expiresAt,
+			}).Error; err != nil {
+				return err
+			}
+			handoffPlatforms = append(handoffPlatforms, dto.ExtensionHandoffPlatform{
+				Platform:       platform,
+				AdapterKey:     extensionDouyinAdapterKey,
+				InjectURL:      extensionDouyinInjectURL,
+				ContentKind:    extensionArticleContentKind,
+				AutoPublish:    false,
+				RequiresReview: true,
+				AdaptedContent: adaptedContent,
+				Assets:         []dto.ExtensionHandoffAsset{},
+				Callback: dto.ExtensionHandoffCallback{
+					URL:   callbackURL,
+					Token: callbackToken,
+				},
+			})
 		}
-		if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
-			return nil, ErrPublicationDisabled
-		}
-		adaptedContent, err := extensionHandoffAdaptedContent(publication.AdaptedContent)
-		if err != nil {
-			return nil, err
-		}
-		handoffPlatforms = append(handoffPlatforms, dto.ExtensionHandoffPlatform{
-			Platform:       platform,
-			AdapterKey:     extensionDouyinAdapterKey,
-			InjectURL:      extensionDouyinInjectURL,
-			ContentKind:    extensionArticleContentKind,
-			AutoPublish:    false,
-			RequiresReview: true,
-			AdaptedContent: adaptedContent,
-			Assets:         []dto.ExtensionHandoffAsset{},
-			Callback: dto.ExtensionHandoffCallback{
-				URL:   callbackURL,
-				Token: uuid.NewString(),
-			},
-		})
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 
 	return &dto.ExtensionPublishHandoff{
 		SchemaVersion: extensionHandoffSchemaVersion,
 		Type:          extensionHandoffType,
-		ExecutionID:   uuid.NewString(),
-		ExpiresAt:     time.Now().UTC().Add(extensionHandoffTTL),
+		ExecutionID:   executionID,
+		ExpiresAt:     expiresAt,
 		Project: dto.ExtensionHandoffProject{
 			ID:    project.ID,
 			Title: project.Title,
 		},
 		Platforms: handoffPlatforms,
 	}, nil
+}
+
+func (s *DashboardService) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*dto.ExtensionEventCallbackResponse, error) {
+	tokenValue := strings.TrimSpace(req.Token)
+	eventID := strings.TrimSpace(req.EventID)
+	platform := strings.TrimSpace(req.Platform)
+	status := strings.TrimSpace(req.Status)
+	if tokenValue == "" || eventID == "" || platform == "" || status == "" {
+		return nil, ErrExtensionCallbackTokenInvalid
+	}
+
+	var token models.ExtensionCallbackToken
+	if err := s.db.First(&token, "token = ?", tokenValue).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrExtensionCallbackTokenInvalid
+		}
+		return nil, err
+	}
+	if time.Now().UTC().After(token.ExpiresAt) {
+		return nil, ErrExtensionCallbackTokenExpired
+	}
+	if token.Platform != platform {
+		return nil, ErrExtensionCallbackTokenInvalid
+	}
+
+	var existing models.ExtensionExecutionEvent
+	if err := s.db.First(&existing, "event_id = ?", eventID).Error; err == nil {
+		return &dto.ExtensionEventCallbackResponse{Accepted: true, Duplicate: true}, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	metadata := datatypes.JSON([]byte(`{}`))
+	if req.Metadata != nil {
+		payload, err := json.Marshal(req.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		metadata = datatypes.JSON(payload)
+	}
+
+	if err := s.db.Create(&models.ExtensionExecutionEvent{
+		CallbackTokenID: token.ID,
+		ExecutionID:     token.ExecutionID,
+		ProjectID:       token.ProjectID,
+		UserID:          token.UserID,
+		EventID:         eventID,
+		Platform:        platform,
+		Status:          status,
+		Message:         strings.TrimSpace(req.Message),
+		RemoteID:        strings.TrimSpace(req.RemoteID),
+		PublishURL:      strings.TrimSpace(req.PublishURL),
+		ErrorMessage:    strings.TrimSpace(req.ErrorMessage),
+		Metadata:        metadata,
+	}).Error; err != nil {
+		return nil, err
+	}
+
+	return &dto.ExtensionEventCallbackResponse{Accepted: true, Duplicate: false}, nil
 }
 
 func normalizeExtensionHandoffPlatforms(input []string) ([]string, error) {

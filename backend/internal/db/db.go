@@ -163,6 +163,8 @@ func migrate(database *gorm.DB) error {
 			&models.ProjectPlatformPublication{},
 			&models.PlatformAccount{},
 			&models.RemoteBrowserSession{},
+			&models.ExtensionCallbackToken{},
+			&models.ExtensionExecutionEvent{},
 		); err != nil {
 			return err
 		}
