@@ -4,12 +4,12 @@ import {
   HANDOFF_TYPE,
   type ExtensionPublishPlatformHandoff,
   type StoredHandoff,
-} from "../src/types/handoff";
+} from "../types/handoff";
 import type {
   ExtensionExecutionEvent,
   PublishExecutionStatus,
-} from "../src/types/events";
-import type { BackgroundMessage } from "../src/types/messages";
+} from "../types/events";
+import type { BackgroundMessage } from "../types/messages";
 
 const handoffMock = vi.hoisted(() => {
   const state: {
@@ -38,9 +38,9 @@ const tabsMock = vi.hoisted(() => ({
   startPublishingTabs: vi.fn(),
 }));
 
-vi.mock("../src/background/handoff", () => handoffMock);
-vi.mock("../src/background/tabs", () => tabsMock);
-vi.mock("../src/background/origins", () => ({
+vi.mock("./handoff", () => handoffMock);
+vi.mock("./tabs", () => tabsMock);
+vi.mock("./origins", () => ({
   getTrustOriginPageUrl: vi.fn((origin: string) => `${origin}/trust`),
   isTrustedOrigin: vi.fn(() => Promise.resolve(true)),
   isTrustableOrigin: vi.fn(() => true),
@@ -55,7 +55,7 @@ const {
   downloadHandoffAsset,
   recordCurrentHandoffExpiration,
   shouldRejectExpiredAdapterEvent,
-} = await import("./background");
+} = await import("../../entrypoints/background");
 
 function createDouyinPlatform(): ExtensionPublishPlatformHandoff {
   return {
