@@ -113,6 +113,24 @@ func (h *UserDashboardHandler) CreateExtensionHandoff(c echo.Context) error {
 	return c.JSON(http.StatusOK, handoff)
 }
 
+func (h *UserDashboardHandler) RecordExtensionEvent(c echo.Context) error {
+	req := new(dto.ExtensionEventCallbackRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.dashboardService.RecordExtensionEvent(*req)
+	if err != nil {
+		if errors.Is(err, services.ErrExtensionCallbackTokenInvalid) ||
+			errors.Is(err, services.ErrExtensionCallbackTokenExpired) {
+			return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
 func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {

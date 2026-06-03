@@ -108,6 +108,7 @@ func registerHealthRoutes(e *echo.Echo, ready *atomic.Bool, sqlDB *gorm.DB, redi
 func registerAPIRoutes(e *echo.Echo, config serverConfig, h serverHandlers) error {
 	registerAuthRoutes(e, config, h)
 	registerAdminDashboardRoutes(e, h)
+	e.POST("/api/user/dashboard/extension/events", h.userDashboard.RecordExtensionEvent)
 	return registerUserDashboardRoutes(e, config, h)
 }
 

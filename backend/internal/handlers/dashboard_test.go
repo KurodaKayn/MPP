@@ -85,6 +85,35 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		updated_at DATETIME
 	)`).Error)
 
+	require.NoError(t, db.Exec(`CREATE TABLE extension_callback_tokens (
+		id TEXT PRIMARY KEY,
+		execution_id TEXT NOT NULL,
+		project_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		platform TEXT NOT NULL,
+		token TEXT NOT NULL UNIQUE,
+		expires_at DATETIME NOT NULL,
+		created_at DATETIME,
+		updated_at DATETIME
+	)`).Error)
+
+	require.NoError(t, db.Exec(`CREATE TABLE extension_execution_events (
+		id TEXT PRIMARY KEY,
+		callback_token_id TEXT NOT NULL,
+		execution_id TEXT NOT NULL,
+		project_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		event_id TEXT NOT NULL UNIQUE,
+		platform TEXT NOT NULL,
+		status TEXT NOT NULL,
+		message TEXT,
+		remote_id TEXT,
+		publish_url TEXT,
+		error_message TEXT,
+		metadata TEXT NOT NULL DEFAULT '{}',
+		created_at DATETIME
+	)`).Error)
+
 	return db
 }
 
@@ -336,6 +365,67 @@ func TestUserDashboardHandlerCreateExtensionHandoffRequiresUserContext(t *testin
 	c := e.NewContext(req, rec)
 
 	require.NoError(t, handler.CreateExtensionHandoff(c))
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestUserDashboardHandlerRecordExtensionEventAcceptsCallbackTokenWithoutUserContext(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	service := services.NewDashboardService(db)
+	handler := NewUserDashboardHandler(service)
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Douyin draft",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "douyin",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: []byte(`{"format":"text","text":"douyin body"}`),
+	}).Error)
+	handoff, err := service.CreateExtensionHandoff(user.ID, dto.CreateExtensionHandoffRequest{
+		ProjectID: project.ID,
+		Platforms: []string{"douyin"},
+	}, "http://example.com/api/user/dashboard/extension/events")
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/extension/events",
+		strings.NewReader(`{"token":"`+handoff.Platforms[0].Callback.Token+`","event_id":"event-1","platform":"douyin","status":"user_review","message":"Draft prepared","metadata":{"source":"extension"}}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	require.NoError(t, handler.RecordExtensionEvent(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp dto.ExtensionEventCallbackResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.False(t, resp.Duplicate)
+}
+
+func TestUserDashboardHandlerRecordExtensionEventRejectsInvalidToken(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/extension/events",
+		strings.NewReader(`{"token":"missing-token","event_id":"event-1","platform":"douyin","status":"failed"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	require.NoError(t, handler.RecordExtensionEvent(c))
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
