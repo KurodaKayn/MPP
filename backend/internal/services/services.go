@@ -2,6 +2,7 @@ package services
 
 import (
 	"github.com/kurodakayn/mpp-backend/internal/services/ai"
+	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
 	dashboard "github.com/kurodakayn/mpp-backend/internal/services/dashboard"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
@@ -11,6 +12,7 @@ type AIContentEditor = ai.AIContentEditor
 type AIServiceClient = ai.AIServiceClient
 type AIServiceStream = ai.AIServiceStream
 
+type CollabDocumentService = collabdoc.Service
 type DashboardService = dashboard.DashboardService
 type MemoryXOAuth2StateStore = platformaccount.MemoryXOAuth2StateStore
 type PublishJob = publishsvc.PublishJob
@@ -27,6 +29,7 @@ type XOAuth2StateStore = platformaccount.XOAuth2StateStore
 
 var ErrAIServiceUnavailable = ai.ErrAIServiceUnavailable
 var ErrForbidden = dashboard.ErrForbidden
+var ErrInvalidCollabDocument = collabdoc.ErrInvalidDocument
 var ErrInvalidAIEditRequest = ai.ErrInvalidAIEditRequest
 var ErrInvalidPlatformAccount = platformaccount.ErrInvalidPlatformAccount
 var ErrInvalidProject = dashboard.ErrInvalidProject
@@ -40,6 +43,7 @@ var ErrXOAuth2NotConfigured = platformaccount.ErrXOAuth2NotConfigured
 
 var NewAIServiceClient = ai.NewAIServiceClient
 var NewAIServiceClientFromEnv = ai.NewAIServiceClientFromEnv
+var NewCollabDocumentService = collabdoc.NewService
 var NewDashboardService = dashboard.NewDashboardService
 var NewDashboardServiceWithPlatformTesters = dashboard.NewDashboardServiceWithPlatformTesters
 var NewDashboardServiceWithWechatTester = dashboard.NewDashboardServiceWithWechatTester
