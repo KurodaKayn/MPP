@@ -31,7 +31,7 @@ func (z *ZhihuPublisher) AdaptContent(project *models.Project) ([]byte, error) {
 		"zhihu-markdown-adapter",
 		content.HTMLToText(project.SourceContent),
 	)
-	adapted.Markdown = markdown
+	adapted.Markdown = core.String(markdown)
 	return json.Marshal(adapted)
 }
 

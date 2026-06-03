@@ -55,15 +55,6 @@ type XConfig struct {
 	OAuth2Scope        string     `json:"oauth2_scope"`
 }
 
-type xAdaptedContent struct {
-	SchemaVersion  int              `json:"schema_version"`
-	Format         string           `json:"format"`
-	Summary        string           `json:"summary"`
-	SourceRevision string           `json:"source_revision"`
-	GeneratedBy    core.GeneratedBy `json:"generated_by"`
-	Text           string           `json:"text"`
-}
-
 func (x *XPublisher) ValidateConfig(config []byte) error {
 	var cfg XConfig
 	if err := json.Unmarshal(config, &cfg); err != nil {
@@ -75,7 +66,7 @@ func (x *XPublisher) ValidateConfig(config []byte) error {
 func (x *XPublisher) AdaptContent(project *models.Project) ([]byte, error) {
 	text := buildXPostText(project.Title, content.HTMLToText(project.SourceContent), xCharacterLimit)
 	adapted := core.SystemAdaptedContent(project, "text", "x-text-adapter", text)
-	adapted.Text = text
+	adapted.Text = core.String(text)
 	return json.Marshal(adapted)
 }
 
@@ -213,13 +204,17 @@ func firstNonNilTime(values ...*time.Time) *time.Time {
 }
 
 func extractXText(raw []byte) string {
-	var structured xAdaptedContent
+	var structured core.AdaptedContent
 	if err := json.Unmarshal(raw, &structured); err == nil {
-		if text := strings.TrimSpace(structured.Text); text != "" {
-			return text
+		if structured.Text != nil {
+			if text := strings.TrimSpace(*structured.Text); text != "" {
+				return text
+			}
 		}
-		if summary := strings.TrimSpace(structured.Summary); summary != "" {
-			return summary
+		if structured.Summary != nil {
+			if summary := strings.TrimSpace(*structured.Summary); summary != "" {
+				return summary
+			}
 		}
 	}
 

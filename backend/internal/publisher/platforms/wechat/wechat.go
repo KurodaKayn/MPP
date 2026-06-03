@@ -42,7 +42,7 @@ func (w *WechatPublisher) AdaptContent(project *models.Project) ([]byte, error) 
 		"wechat-html-adapter",
 		content.HTMLToText(project.SourceContent),
 	)
-	adapted.HTML = project.SourceContent
+	adapted.Html = core.String(project.SourceContent)
 	return json.Marshal(adapted)
 }
 
