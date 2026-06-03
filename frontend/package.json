@@ -10,6 +10,7 @@
     "lint:fix": "oxlint --nextjs-plugin --fix",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
+    "generate:contracts": "openapi-typescript ../contracts/openapi.yaml -o src/lib/dashboard/api/generated.ts",
     "test": "vitest run",
     "type-check": "tsc --noEmit"
   },
@@ -53,6 +54,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "jsdom": "^29.1.1",
+    "openapi-typescript": "^7.13.0",
     "oxfmt": "^0.52.0",
     "oxlint": "^1.67.0",
     "tailwindcss": "^4",
