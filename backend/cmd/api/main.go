@@ -49,6 +49,7 @@ func main() {
 
 	// Initialize Services and Handlers
 	dashboardService := services.NewDashboardService(db.DB)
+	collabDocumentService := services.NewCollabDocumentService(db.DB)
 	redisClient, err := redisclient.NewFromEnv(context.Background())
 	if err != nil {
 		log.Fatal(err)
@@ -126,6 +127,7 @@ func main() {
 
 	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
 	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
+	collabDocumentHandler := handlers.NewCollabDocumentHandler(collabDocumentService)
 	userDashboardHandler.UseAIContentEditor(services.NewAIServiceClientFromEnv())
 	streamLimiter := streamgate.New(redisClient, streamgate.ConfigFromEnv())
 	userDashboardHandler.UseStreamLimiter(streamLimiter)
@@ -157,6 +159,7 @@ func main() {
 		userDashboard:  userDashboardHandler,
 		auth:           authHandler,
 		browserSession: browserSessionHandler,
+		collabDocument: collabDocumentHandler,
 	})
 	if err != nil {
 		log.Fatal(err)
