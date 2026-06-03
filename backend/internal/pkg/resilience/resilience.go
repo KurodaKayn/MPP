@@ -114,7 +114,12 @@ func Run(ctx context.Context, policy OperationPolicy, operation func(context.Con
 			return nil
 		}
 		lastErr = err
-		if attempt == policy.MaxAttempts || !RetryableError(err) {
+		retryable := RetryableError(err)
+		if !retryable {
+			breaker.Record(true)
+			return err
+		}
+		if attempt == policy.MaxAttempts {
 			breaker.Record(false)
 			return err
 		}
@@ -163,12 +168,13 @@ func (rt *ResilientRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 
 		resp, err := rt.base.RoundTrip(attemptReq)
 		retry := retryableHTTPFailure(attemptReq, resp, err, rt.policy)
+		failure := failedHTTPAttempt(resp, err)
 		if !retry {
-			rt.breaker.Record(err == nil)
+			rt.breaker.Record(!failure)
 			return resp, err
 		}
 
-		failed = true
+		failed = failed || failure
 		lastErr = err
 		lastResp = resp
 		if attempt == rt.policy.MaxAttempts {
@@ -379,6 +385,10 @@ func retryableHTTPFailure(req *http.Request, resp *http.Response, err error, pol
 	if !methodAllowsRetry(req.Method, policy) {
 		return false
 	}
+	return failedHTTPAttempt(resp, err)
+}
+
+func failedHTTPAttempt(resp *http.Response, err error) bool {
 	if err != nil {
 		return true
 	}
