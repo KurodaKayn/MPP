@@ -1,11 +1,14 @@
 package db
 
 import (
+	"database/sql"
 	_ "embed"
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/driver/postgres"
@@ -20,6 +23,24 @@ var seedDataSQL string
 // Stable app-specific key for the Postgres transaction advisory lock around migrations.
 const migrationAdvisoryLockKey = 776770001
 
+const (
+	dbMaxOpenConnsEnv    = "DB_MAX_OPEN_CONNS"
+	dbMaxIdleConnsEnv    = "DB_MAX_IDLE_CONNS"
+	dbConnMaxLifetimeEnv = "DB_CONN_MAX_LIFETIME"
+	dbConnMaxIdleTimeEnv = "DB_CONN_MAX_IDLE_TIME"
+	defaultMaxOpenConns  = 10
+	defaultMaxIdleConns  = 5
+	defaultConnMaxLife   = 30 * time.Minute
+	defaultConnMaxIdle   = 5 * time.Minute
+)
+
+type connectionPoolConfig struct {
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
+}
+
 func InitDB() {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Shanghai",
 		os.Getenv("DB_HOST"),
@@ -31,6 +52,9 @@ func InitDB() {
 	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
+	}
+	if err := configureConnectionPool(database); err != nil {
+		log.Fatal("Failed to configure database connection pool:", err)
 	}
 
 	DB = database
@@ -45,6 +69,87 @@ func InitDB() {
 			log.Fatal("Failed to seed database:", err)
 		}
 	}
+}
+
+func configureConnectionPool(database *gorm.DB) error {
+	sqlDB, err := database.DB()
+	if err != nil {
+		return err
+	}
+
+	config, err := connectionPoolConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	applyConnectionPool(sqlDB, config)
+	return nil
+}
+
+func connectionPoolConfigFromEnv() (connectionPoolConfig, error) {
+	maxOpenConns, err := nonNegativeIntFromEnv(dbMaxOpenConnsEnv, defaultMaxOpenConns)
+	if err != nil {
+		return connectionPoolConfig{}, err
+	}
+	maxIdleConns, err := nonNegativeIntFromEnv(dbMaxIdleConnsEnv, defaultMaxIdleConns)
+	if err != nil {
+		return connectionPoolConfig{}, err
+	}
+	if maxOpenConns > 0 && maxIdleConns > maxOpenConns {
+		return connectionPoolConfig{}, fmt.Errorf("%s must be less than or equal to %s", dbMaxIdleConnsEnv, dbMaxOpenConnsEnv)
+	}
+
+	connMaxLifetime, err := durationFromEnv(dbConnMaxLifetimeEnv, defaultConnMaxLife)
+	if err != nil {
+		return connectionPoolConfig{}, err
+	}
+	connMaxIdleTime, err := durationFromEnv(dbConnMaxIdleTimeEnv, defaultConnMaxIdle)
+	if err != nil {
+		return connectionPoolConfig{}, err
+	}
+
+	return connectionPoolConfig{
+		MaxOpenConns:    maxOpenConns,
+		MaxIdleConns:    maxIdleConns,
+		ConnMaxLifetime: connMaxLifetime,
+		ConnMaxIdleTime: connMaxIdleTime,
+	}, nil
+}
+
+func applyConnectionPool(database *sql.DB, config connectionPoolConfig) {
+	database.SetMaxOpenConns(config.MaxOpenConns)
+	database.SetMaxIdleConns(config.MaxIdleConns)
+	database.SetConnMaxLifetime(config.ConnMaxLifetime)
+	database.SetConnMaxIdleTime(config.ConnMaxIdleTime)
+}
+
+func nonNegativeIntFromEnv(name string, fallback int) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", name, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("invalid %s: must be non-negative", name)
+	}
+	return value, nil
+}
+
+func durationFromEnv(name string, fallback time.Duration) (time.Duration, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", name, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("invalid %s: must be non-negative", name)
+	}
+	return value, nil
 }
 
 func migrate(database *gorm.DB) error {
