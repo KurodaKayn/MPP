@@ -102,6 +102,36 @@ func TestResilientRoundTripperDoesNotRetryUnsafeMethodsByDefault(t *testing.T) {
 	require.Equal(t, 1, attempts)
 }
 
+func TestResilientRoundTripperCountsUnretriedServerErrorsAsFailures(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	client := &http.Client{
+		Transport: NewRoundTripper(server.Client().Transport, HTTPPolicy{
+			Name:             "test-post-breaker",
+			MaxAttempts:      2,
+			FailureThreshold: 2,
+			OpenAfter:        time.Minute,
+			Sleep:            func(ctx context.Context, delay time.Duration) error { return nil },
+		}),
+	}
+
+	for i := 0; i < 2; i++ {
+		resp, err := client.Post(server.URL, "text/plain", bytes.NewBufferString("payload"))
+		require.NoError(t, err)
+		require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	}
+
+	_, err := client.Post(server.URL, "text/plain", bytes.NewBufferString("payload"))
+	require.ErrorIs(t, err, ErrCircuitOpen)
+	require.Equal(t, 2, attempts)
+}
+
 func TestResilientRoundTripperRejectsUnreplayableRetryBodyWhenUnsafeOptedIn(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
@@ -162,4 +192,53 @@ func TestRunDoesNotRetryNonRetryableOperationError(t *testing.T) {
 
 	require.Error(t, err)
 	require.Equal(t, 1, attempts)
+}
+
+func TestRunDoesNotOpenCircuitForNonRetryableOperationErrors(t *testing.T) {
+	attempts := 0
+	policy := OperationPolicy{
+		Name:             "test-operation-user-error",
+		MaxAttempts:      2,
+		FailureThreshold: 2,
+		OpenAfter:        time.Minute,
+		Sleep:            func(ctx context.Context, delay time.Duration) error { return nil },
+	}
+
+	for i := 0; i < 3; i++ {
+		err := Run(t.Context(), policy, func(ctx context.Context) error {
+			attempts++
+			return errors.New("invalid credentials")
+		})
+		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrCircuitOpen)
+	}
+
+	require.Equal(t, 3, attempts)
+}
+
+func TestRunOpensCircuitForRetryableOperationErrors(t *testing.T) {
+	attempts := 0
+	policy := OperationPolicy{
+		Name:             "test-operation-breaker",
+		MaxAttempts:      1,
+		FailureThreshold: 2,
+		OpenAfter:        time.Minute,
+		Sleep:            func(ctx context.Context, delay time.Duration) error { return nil },
+	}
+
+	for i := 0; i < 2; i++ {
+		err := Run(t.Context(), policy, func(ctx context.Context) error {
+			attempts++
+			return errors.New("gateway timeout")
+		})
+		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrCircuitOpen)
+	}
+
+	err := Run(t.Context(), policy, func(ctx context.Context) error {
+		attempts++
+		return nil
+	})
+	require.ErrorIs(t, err, ErrCircuitOpen)
+	require.Equal(t, 2, attempts)
 }
