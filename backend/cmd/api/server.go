@@ -57,8 +57,10 @@ func registerExtensionCORS(e *echo.Echo, allowedOrigins []string) {
 	}
 
 	e.Use(echoMiddleware.CORSWithConfig(echoMiddleware.CORSConfig{
-		AllowOrigins:     allowedOrigins,
-		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowOrigins: allowedOrigins,
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		// Extension workbench requests authenticate with Authorization: Bearer <web JWT>.
+		// Existing SameSite=Lax web cookies are not the direct extension-origin auth path.
 		AllowHeaders:     []string{echo.HeaderAuthorization, echo.HeaderContentType},
 		AllowCredentials: true,
 	}))

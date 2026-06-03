@@ -24,6 +24,7 @@ func TestServerAllowsConfiguredExtensionOriginWithCredentials(t *testing.T) {
 	req := httptest.NewRequest(http.MethodOptions, "/api/user/dashboard/stats", nil)
 	req.Header.Set("Origin", "chrome-extension://abc")
 	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	req.Header.Set("Access-Control-Request-Headers", "Authorization, Content-Type")
 	rec := httptest.NewRecorder()
 
 	server.ServeHTTP(rec, req)
@@ -36,6 +37,9 @@ func TestServerAllowsConfiguredExtensionOriginWithCredentials(t *testing.T) {
 	}
 	if got := rec.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
 		t.Fatalf("expected credentialed extension requests to be allowed, got %q", got)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Headers"); got != "Authorization,Content-Type" {
+		t.Fatalf("expected extension bearer auth headers to be allowed, got %q", got)
 	}
 }
 
