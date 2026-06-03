@@ -2,7 +2,6 @@ package db
 
 import (
 	_ "embed"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -18,6 +17,7 @@ var DB *gorm.DB
 //go:embed seed/seed_data.sql
 var seedDataSQL string
 
+// Stable app-specific key for the Postgres transaction advisory lock around migrations.
 const migrationAdvisoryLockKey = 776770001
 
 func InitDB() {
@@ -48,8 +48,8 @@ func InitDB() {
 }
 
 func migrate(database *gorm.DB) error {
-	return withMigrationLock(database, func() error {
-		if err := database.AutoMigrate(
+	return withMigrationLock(database, func(migrationDB *gorm.DB) error {
+		if err := migrationDB.AutoMigrate(
 			&models.User{},
 			&models.PlatformAccount{},
 			&models.Project{},
@@ -61,7 +61,7 @@ func migrate(database *gorm.DB) error {
 		}
 
 		// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
-		return database.Exec(`
+		return migrationDB.Exec(`
 		CREATE UNIQUE INDEX IF NOT EXISTS ux_remote_browser_sessions_active_user_platform
 		ON remote_browser_sessions (user_id, platform)
 		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
@@ -69,17 +69,17 @@ func migrate(database *gorm.DB) error {
 	})
 }
 
-func withMigrationLock(database *gorm.DB, run func() error) error {
+func withMigrationLock(database *gorm.DB, run func(*gorm.DB) error) error {
 	if database.Dialector.Name() != "postgres" {
-		return run()
+		return run(database)
 	}
 
-	if err := database.Exec("SELECT pg_advisory_lock(?)", migrationAdvisoryLockKey).Error; err != nil {
-		return err
-	}
-	runErr := run()
-	unlockErr := database.Exec("SELECT pg_advisory_unlock(?)", migrationAdvisoryLockKey).Error
-	return errors.Join(runErr, unlockErr)
+	return database.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", migrationAdvisoryLockKey).Error; err != nil {
+			return err
+		}
+		return run(tx)
+	})
 }
 
 func seed(database *gorm.DB) error {
