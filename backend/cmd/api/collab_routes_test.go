@@ -8,7 +8,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
 )
 
-func TestCollabRoutesIncludeDocumentCreation(t *testing.T) {
+func TestCollabRoutesIncludeDocumentRoutes(t *testing.T) {
 	server, err := newServer(serverConfig{
 		runtimeConfig: backendRuntimeConfig{
 			processRole: backendProcessRoleAPI,
@@ -22,11 +22,20 @@ func TestCollabRoutesIncludeDocumentCreation(t *testing.T) {
 		t.Fatalf("expected server: %v", err)
 	}
 
+	expectedRoutes := map[string]bool{
+		http.MethodGet + " /api/collab/documents":  false,
+		http.MethodPost + " /api/collab/documents": false,
+	}
 	for _, route := range server.Routes() {
-		if route.Method == http.MethodPost && route.Path == "/api/collab/documents" {
-			return
+		key := route.Method + " " + route.Path
+		if _, ok := expectedRoutes[key]; ok {
+			expectedRoutes[key] = true
 		}
 	}
 
-	t.Fatal("expected collab document creation route to be registered")
+	for route, registered := range expectedRoutes {
+		if !registered {
+			t.Fatalf("expected collab route %s to be registered", route)
+		}
+	}
 }
