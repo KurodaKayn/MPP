@@ -136,7 +136,8 @@ async function getCurrentHandoffSnapshot(): Promise<CurrentHandoffSnapshot> {
 export async function recordCurrentHandoffExpiration(
   snapshot?: CurrentHandoffSnapshot,
 ): Promise<boolean> {
-  const { currentHandoff, events } = snapshot ?? (await getCurrentHandoffSnapshot());
+  const { currentHandoff, events } =
+    snapshot ?? (await getCurrentHandoffSnapshot());
 
   if (!currentHandoff || !isHandoffExpired(currentHandoff.handoff)) {
     return false;
@@ -185,7 +186,8 @@ export async function shouldRejectExpiredAdapterEvent(
   message: Extract<BackgroundMessage, { type: "adapter.event" }>,
   snapshot?: CurrentHandoffSnapshot,
 ): Promise<boolean> {
-  const { currentHandoff, events } = snapshot ?? (await getCurrentHandoffSnapshot());
+  const { currentHandoff, events } =
+    snapshot ?? (await getCurrentHandoffSnapshot());
 
   if (!currentHandoff || !isHandoffExpired(currentHandoff.handoff)) {
     return false;
