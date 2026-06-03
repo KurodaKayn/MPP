@@ -114,7 +114,7 @@ async function downloadAsset(
   throw new Error(`Failed to download ${asset.name}.`);
 }
 
-async function assetToFile(asset: HandoffAsset): Promise<File> {
+export async function assetToFile(asset: HandoffAsset): Promise<File> {
   const downloadedAsset = await downloadAsset(asset);
   const bytes = base64ToUint8Array(downloadedAsset.data_base64);
 

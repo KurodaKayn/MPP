@@ -84,7 +84,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-async function downloadHandoffAsset(
+export async function downloadHandoffAsset(
   asset: unknown,
 ): Promise<AssetDownloadResponse> {
   if (!isHandoffAsset(asset)) {
@@ -118,7 +118,7 @@ async function getMonitorState() {
   };
 }
 
-async function recordCurrentHandoffExpiration(): Promise<boolean> {
+export async function recordCurrentHandoffExpiration(): Promise<boolean> {
   const currentHandoff = await getCurrentHandoff();
 
   if (!currentHandoff || !isHandoffExpired(currentHandoff.handoff)) {
@@ -165,7 +165,7 @@ function getLatestPlatformEvent(
   );
 }
 
-async function shouldRejectExpiredAdapterEvent(
+export async function shouldRejectExpiredAdapterEvent(
   message: Extract<BackgroundMessage, { type: "adapter.event" }>,
 ): Promise<boolean> {
   const currentHandoff = await getCurrentHandoff();
