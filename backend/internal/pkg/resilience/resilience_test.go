@@ -1,10 +1,13 @@
 package resilience
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,8 +74,10 @@ func TestCircuitBreakerHalfOpenClosesOnSuccess(t *testing.T) {
 	require.Equal(t, CircuitClosed, breaker.State())
 }
 
-func TestResilientRoundTripperRejectsUnreplayableRetryBody(t *testing.T) {
+func TestResilientRoundTripperDoesNotRetryUnsafeMethodsByDefault(t *testing.T) {
+	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
 		w.WriteHeader(http.StatusBadGateway)
 	}))
 	defer server.Close()
@@ -87,7 +92,34 @@ func TestResilientRoundTripperRejectsUnreplayableRetryBody(t *testing.T) {
 		}),
 	}
 
-	req, err := http.NewRequest(http.MethodPost, server.URL, errReader{})
+	req, err := http.NewRequest(http.MethodPost, server.URL, bytes.NewBufferString("payload"))
+	require.NoError(t, err)
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	require.Equal(t, 1, attempts)
+}
+
+func TestResilientRoundTripperRejectsUnreplayableRetryBodyWhenUnsafeOptedIn(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	client := &http.Client{
+		Transport: NewRoundTripper(server.Client().Transport, HTTPPolicy{
+			Name:               "test-unreplayable",
+			MaxAttempts:        2,
+			FailureThreshold:   3,
+			OpenAfter:          time.Second,
+			RetryUnsafeMethods: true,
+			Sleep:              func(ctx context.Context, delay time.Duration) error { return nil },
+		}),
+	}
+
+	req, err := http.NewRequest(http.MethodPost, server.URL, io.NopCloser(strings.NewReader("payload")))
 	require.NoError(t, err)
 
 	_, err = client.Do(req)
@@ -130,10 +162,4 @@ func TestRunDoesNotRetryNonRetryableOperationError(t *testing.T) {
 
 	require.Error(t, err)
 	require.Equal(t, 1, attempts)
-}
-
-type errReader struct{}
-
-func (errReader) Read([]byte) (int, error) {
-	return 0, errors.New("read failed")
 }
