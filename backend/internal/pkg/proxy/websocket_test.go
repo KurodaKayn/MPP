@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"bytes"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -49,7 +51,7 @@ func TestProxyWebSocket(t *testing.T) {
 
 	// 3. Connect to the proxy server with a WebSocket client
 	proxyWSURL := strings.Replace(proxyServer.URL, "http", "ws", 1) + "/ws"
-	
+
 	dialer := websocket.DefaultDialer
 	conn, resp, err := dialer.Dial(proxyWSURL, nil)
 	require.NoError(t, err)
@@ -69,4 +71,50 @@ func TestProxyWebSocket(t *testing.T) {
 	conn.SetWriteDeadline(time.Now().Add(time.Second))
 	err = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	assert.NoError(t, err)
+}
+
+func TestWebSocketProxyConfigFromEnv(t *testing.T) {
+	t.Setenv(webSocketDialTimeoutEnv, "2s")
+	t.Setenv(webSocketIdleTimeoutEnv, "3")
+	t.Setenv(webSocketMaxConnectionTimeEnv, "bad")
+
+	config := webSocketProxyConfigFromEnv()
+
+	require.Equal(t, 2*time.Second, config.DialTimeout)
+	require.Equal(t, 3*time.Second, config.IdleTimeout)
+	require.Equal(t, defaultWebSocketMaxLifetime, config.MaxConnectionTime)
+}
+
+func TestDeadlineReaderAllowsNilConn(t *testing.T) {
+	reader := deadlineReader{
+		Reader:  bytes.NewBufferString("hello"),
+		Timeout: time.Millisecond,
+	}
+	buffer := make([]byte, 5)
+
+	n, err := reader.Read(buffer)
+
+	require.NoError(t, err)
+	require.Equal(t, 5, n)
+	require.Equal(t, "hello", string(buffer))
+}
+
+func TestDeadlineReaderSetsReadDeadline(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	reader := deadlineReader{
+		Reader:  client,
+		Conn:    client,
+		Timeout: 5 * time.Millisecond,
+	}
+	buffer := make([]byte, 1)
+
+	_, err := reader.Read(buffer)
+
+	require.Error(t, err)
+	netErr, ok := err.(net.Error)
+	require.True(t, ok)
+	require.True(t, netErr.Timeout())
 }

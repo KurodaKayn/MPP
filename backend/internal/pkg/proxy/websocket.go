@@ -6,11 +6,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/kurodakayn/mpp-backend/internal/pkg/envutil"
 	"github.com/labstack/echo/v4"
 )
 
@@ -114,9 +113,9 @@ type webSocketProxyConfig struct {
 
 func webSocketProxyConfigFromEnv() webSocketProxyConfig {
 	return webSocketProxyConfig{
-		DialTimeout:       durationFromEnv(webSocketDialTimeoutEnv, defaultWebSocketDialTimeout),
-		IdleTimeout:       durationFromEnv(webSocketIdleTimeoutEnv, defaultWebSocketIdleTimeout),
-		MaxConnectionTime: durationFromEnv(webSocketMaxConnectionTimeEnv, defaultWebSocketMaxLifetime),
+		DialTimeout:       envutil.Duration(webSocketDialTimeoutEnv, defaultWebSocketDialTimeout),
+		IdleTimeout:       envutil.Duration(webSocketIdleTimeoutEnv, defaultWebSocketIdleTimeout),
+		MaxConnectionTime: envutil.Duration(webSocketMaxConnectionTimeEnv, defaultWebSocketMaxLifetime),
 	}
 }
 
@@ -138,21 +137,6 @@ func deadlineConn(reader io.Reader) net.Conn {
 		return conn
 	}
 	return nil
-}
-
-func durationFromEnv(name string, fallback time.Duration) time.Duration {
-	raw := strings.TrimSpace(os.Getenv(name))
-	if raw == "" {
-		return fallback
-	}
-	if value, err := time.ParseDuration(raw); err == nil && value >= 0 {
-		return value
-	}
-	seconds, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || seconds < 0 {
-		return fallback
-	}
-	return time.Duration(seconds) * time.Second
 }
 
 // TransparentProxy wraps Echo's ReverseProxy but handles WebSockets
