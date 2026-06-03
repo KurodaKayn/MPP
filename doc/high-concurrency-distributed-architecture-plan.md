@@ -51,7 +51,7 @@ MPP 当前已经具备多服务雏形：
 | 7 | 幂等键与发布状态机 | 防止重复点击、重复消费、重复发布 | publish 请求带 idempotency key，publication 状态机严格流转 | 5 | 3 | P1 | 进行中 | 已有发布锁和基础状态字段，尚缺 idempotency key 和目标状态机 |
 | 8 | Outbox Pattern | 数据库更新与事件投递一致性 | publication 状态更新后写 outbox，由 worker 投递任务 | 4 | 4 | P1 | 未开始 | 适合发布流水线，但实现要谨慎 |
 | 9 | 分布式锁强化 | 避免同一 publication 被并发发布 | Redis lock 加 owner、TTL、续约、释放校验 | 5 | 2 | P1 | 完成 | 项目已经有 Redis，成本可控 |
-| 10 | 外部调用熔断、重试、退避 | 防止第三方平台或 LLM 故障拖垮系统 | AI、微信、知乎、X、抖音调用统一 retry/backoff/circuit breaker | 5 | 3 | P1 | 进行中 | 已有 HTTP timeout 和失败计数，尚缺统一 retry/backoff/circuit breaker |
+| 10 | 外部调用熔断、重试、退避 | 防止第三方平台或 LLM 故障拖垮系统 | AI、微信、知乎、X、抖音调用统一 retry/backoff/circuit breaker | 5 | 3 | P1 | 完成 | backend 已新增统一 resilience 层，HTTP retry 默认仅覆盖安全方法，非幂等 POST 只做 timeout/circuit breaker；发布操作层按平台维度熔断但不重试完整发布；ai-service LLM 客户端已配置 timeout、max retries 和 stream chunk timeout |
 | 11 | Browser Worker 资源池与配额 | 控制 Chromium 容器数量，避免宿主机爆掉 | 每用户/租户限制并发 browser session，全局 worker pool | 5 | 3 | P1 | 进行中 | 已有用户+平台活跃 session 锁和容器 CPU/内存限制，尚缺租户配额与全局 worker pool |
 | 12 | WebSocket/SSE 长连接治理 | 处理 AI stream 和远程浏览器 stream | 网关 timeout、连接数限制、stream token、断线恢复 | 4 | 3 | P1 | 进行中 | 已有 AI stream 和 browser stream token，尚缺网关 timeout、连接数限制和断线恢复 |
 | 13 | 数据库索引、分页与慢查询治理 | 避免列表和 dashboard 查询拖垮数据库 | projects、publications、sessions、accounts 建组合索引 | 5 | 2 | P1 | 进行中 | 已有组合索引和列表分页，尚缺慢查询观测、查询计划审计和持续治理流程 |
@@ -92,7 +92,7 @@ MPP 当前已经具备多服务雏形：
 - [ ] 发布请求引入 idempotency key。
 - [ ] publication 状态机明确化：`draft`、`syncing`、`queued`、`publishing`、`succeeded`、`failed`、`cancelled`。（进行中：已有 `pending`、`adapted`、`publishing`、`published`、`failed`、`disabled`，但与目标状态机尚未对齐。）
 - [x] 分布式锁增加 owner、TTL、续约和释放校验。
-- [ ] 外部平台调用增加 retry、backoff、timeout 和 circuit breaker。（进行中：已有 timeout，retry、backoff 和 circuit breaker 待补齐。）
+- [x] 外部平台调用增加 retry、backoff、timeout 和 circuit breaker。（已完成：backend 统一 resilience 层覆盖 AI service、微信、X、browser-worker、媒体下载 HTTP 调用；HTTP retry 默认仅用于安全方法，非幂等 POST 不自动重放；发布操作层按平台维度熔断但不重试完整发布；ai-service LLM 客户端支持 timeout、max retries 和 stream chunk timeout。）
 - [ ] 每次任务执行写入 publish event，方便审计和排查。
 
 ### 阶段三：资源隔离与横向扩容
@@ -134,7 +134,7 @@ MPP 当前已经具备多服务雏形：
 | [ ] | P1 | 发布幂等 | 防止重复发布和并发写冲突；当前已有发布锁，仍缺 idempotency key |
 | [x] | P1 | 可靠队列 | 已用 Asynq + Redis 替代 Redis List，提供 ack、retry、worker crash recovery 和 archive；发布幂等键仍单独推进 |
 | [x] | P1 | 分布式锁强化 | 保证同一 publication 不被多 worker 并发处理 |
-| [ ] | P1 | 外部调用熔断与重试 | 保护系统不被第三方平台拖垮；当前已有 timeout，仍缺 retry/backoff/circuit breaker |
+| [x] | P1 | 外部调用熔断与重试 | 统一 resilience 层已覆盖 AI service、微信、X、browser-worker、媒体下载 HTTP 调用；HTTP retry 默认仅用于安全方法，发布完整操作不重试；ai-service LLM 客户端已配置 timeout/max retries/stream chunk timeout |
 | [ ] | P1 | browser-worker 资源池 | 控制 Chromium 容器成本和风险；当前已有 session 级限制，仍缺全局资源池 |
 | [ ] | P1 | 慢查询与索引治理 | 已有组合索引和分页，尚缺慢查询观测、查询计划审计和持续治理流程 |
 

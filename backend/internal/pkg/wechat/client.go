@@ -7,6 +7,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"time"
+
+	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 )
 
 const BaseURL = "https://api.weixin.qq.com/cgi-bin"
@@ -59,7 +61,7 @@ func NewClient(appID, appSecret string) *Client {
 	return &Client{
 		AppID:      appID,
 		AppSecret:  appSecret,
-		HTTPClient: &http.Client{Timeout: 10 * time.Second},
+		HTTPClient: resilience.NewHTTPClient("wechat", 10*time.Second),
 	}
 }
 
