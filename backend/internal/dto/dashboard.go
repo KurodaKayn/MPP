@@ -38,6 +38,28 @@ type ExtensionSessionResponse struct {
 	User          ExtensionSessionUser `json:"user"`
 }
 
+type ExtensionPrepublishPlatform struct {
+	PublicationID uuid.UUID `json:"publication_id"`
+	Platform      string    `json:"platform"`
+	AdapterKey    string    `json:"adapter_key"`
+	ContentKind   string    `json:"content_kind"`
+	Status        string    `json:"status"`
+	Enabled       bool      `json:"enabled"`
+	Preview       string    `json:"preview"`
+}
+
+type ExtensionPrepublishItem struct {
+	ProjectID uuid.UUID                     `json:"project_id"`
+	Title     string                        `json:"title"`
+	Status    string                        `json:"status"`
+	UpdatedAt time.Time                     `json:"updated_at"`
+	Platforms []ExtensionPrepublishPlatform `json:"platforms"`
+}
+
+type ExtensionPrepublishResponse struct {
+	Items []ExtensionPrepublishItem `json:"items"`
+}
+
 type CreateProjectRequest struct {
 	Title         string   `json:"title"`
 	SourceContent string   `json:"source_content"`

@@ -31,6 +31,12 @@ var allowedProjectPlatforms = map[string]struct{}{
 	"zhihu":  {},
 }
 
+const (
+	extensionDouyinAdapterKey   = "DYNAMIC_DOUYIN"
+	extensionArticleContentKind = "article"
+	extensionPreviewLimit       = 80
+)
+
 type DashboardService struct {
 	db                    *gorm.DB
 	accounts              *platformaccount.Service
@@ -145,6 +151,70 @@ func (s *DashboardService) GetExtensionSession(userID uuid.UUID) (*dto.Extension
 			Username: user.Username,
 		},
 	}, nil
+}
+
+func (s *DashboardService) ListExtensionPrepublish(userID uuid.UUID) (*dto.ExtensionPrepublishResponse, error) {
+	var projects []models.Project
+	if err := s.db.
+		Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id AND ppp.platform = ?", "douyin").
+		Where("projects.user_id = ?", userID).
+		Preload("Publications", "platform = ?", "douyin").
+		Order("projects.updated_at desc").
+		Find(&projects).Error; err != nil {
+		return nil, err
+	}
+
+	items := make([]dto.ExtensionPrepublishItem, 0, len(projects))
+	for _, project := range projects {
+		platforms := make([]dto.ExtensionPrepublishPlatform, 0, len(project.Publications))
+		for _, publication := range project.Publications {
+			platforms = append(platforms, extensionPrepublishPlatformFromPublication(publication))
+		}
+		if len(platforms) == 0 {
+			continue
+		}
+		items = append(items, dto.ExtensionPrepublishItem{
+			ProjectID: project.ID,
+			Title:     project.Title,
+			Status:    project.Status,
+			UpdatedAt: project.UpdatedAt,
+			Platforms: platforms,
+		})
+	}
+
+	return &dto.ExtensionPrepublishResponse{Items: items}, nil
+}
+
+func extensionPrepublishPlatformFromPublication(publication models.ProjectPlatformPublication) dto.ExtensionPrepublishPlatform {
+	return dto.ExtensionPrepublishPlatform{
+		PublicationID: publication.ID,
+		Platform:      publication.Platform,
+		AdapterKey:    extensionDouyinAdapterKey,
+		ContentKind:   extensionArticleContentKind,
+		Status:        publication.Status,
+		Enabled:       publication.Enabled,
+		Preview:       extensionPrepublishPreview(publication.AdaptedContent),
+	}
+}
+
+func extensionPrepublishPreview(raw datatypes.JSON) string {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return ""
+	}
+
+	for _, key := range []string{"text", "markdown", "html", "summary"} {
+		value, ok := payload[key].(string)
+		if !ok {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return truncateRunes(value, extensionPreviewLimit)
+		}
+	}
+
+	return ""
 }
 
 func (s *DashboardService) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {

@@ -65,6 +65,20 @@ func (h *UserDashboardHandler) GetExtensionSession(c echo.Context) error {
 	return c.JSON(http.StatusOK, session)
 }
 
+func (h *UserDashboardHandler) ListExtensionPrepublish(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	resp, err := h.dashboardService.ListExtensionPrepublish(userID)
+	if err != nil {
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
 func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
