@@ -148,7 +148,7 @@ describe("useContentPageController", () => {
     const view = renderController("new-project");
 
     expect(view.getController().isLoading).toBe(true);
-    expect(view.getController().canPublish).toBe(false);
+    expect(view.getController().publishing.canPublish).toBe(false);
     expect(mocks.getDashboardProject).toHaveBeenCalledWith("new-project");
 
     view.unmount();
@@ -216,7 +216,7 @@ describe("useContentPageController", () => {
     });
 
     await act(async () => {
-      await view.getController().syncPrepublish();
+      await view.getController().prepublish.onSync();
     });
 
     const state = useContentPageStore.getState();
@@ -270,7 +270,7 @@ describe("useContentPageController", () => {
     });
 
     act(() => {
-      view.getController().syncPrepublish();
+      view.getController().prepublish.onSync();
     });
 
     expect(useContentPageStore.getState().prepublishDrafts).toEqual({});
@@ -383,7 +383,8 @@ describe("useContentPageController", () => {
     });
 
     await act(async () => {
-      await view.getController().publish();
+      view.getController().publishing.onPublish();
+      await flushPromises();
     });
 
     expect(mocks.saveDashboardProjectContent).toHaveBeenCalledWith(
@@ -468,7 +469,7 @@ describe("useContentPageController", () => {
     });
 
     await act(async () => {
-      view.getController().openDouyinPublishSession();
+      view.getController().publishing.onOpenDouyinPublishSession();
       await flushPromises();
     });
 
@@ -495,7 +496,7 @@ describe("useContentPageController", () => {
     expect(useContentPageStore.getState().selectedPlatforms).toEqual([
       "douyin",
     ]);
-    expect(view.getController().douyinBrowserSession).toMatchObject({
+    expect(view.getController().publishing.douyinBrowserSession).toMatchObject({
       sessionId: "session-1",
       status: "active",
       streamURL: "/browser/session-1",

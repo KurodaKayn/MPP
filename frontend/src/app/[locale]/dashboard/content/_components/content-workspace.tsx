@@ -22,6 +22,7 @@ type ContentWorkspaceProps = {
 
 export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
   const contentPage = useContentPageController(projectId);
+  const { editor, header, prepublish, publishing } = contentPage;
   const { contentView, setContentView } = useContentPageStore();
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
@@ -44,20 +45,20 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
   return (
     <div className="flex flex-col gap-6 pb-4">
       <ContentPageHeader
-        canSave={contentPage.canSave}
-        isSaving={contentPage.isSaving}
-        mode={contentPage.isEditing ? "edit" : "create"}
+        canSave={header.canSave}
+        isSaving={header.isSaving}
+        mode={header.mode}
         onOpenPublishPanel={contentPage.openPublishPanel}
-        onSave={contentPage.isEditing ? contentPage.save : undefined}
+        onSave={header.onSave}
       />
 
       {contentView === "editor" ? (
         <div>
           <ContentEditor
-            title={contentPage.title}
-            content={contentPage.content}
-            onTitleChange={contentPage.setTitle}
-            onContentChange={contentPage.setContent}
+            title={editor.title}
+            content={editor.content}
+            onTitleChange={editor.setTitle}
+            onContentChange={editor.setContent}
             viewSwitcher={
               <ContentViewSwitcher
                 value={contentView}
@@ -69,8 +70,8 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
       ) : (
         <div>
           <PlatformPreview
-            title={contentPage.title}
-            content={contentPage.content}
+            title={editor.title}
+            content={editor.content}
             viewSwitcher={
               <ContentViewSwitcher
                 value={contentView}
@@ -82,45 +83,45 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
       )}
 
       <ContentPrepublishPanel
-        title={contentPage.title}
-        content={contentPage.content}
-        drafts={contentPage.prepublishDrafts}
-        isSyncing={contentPage.isSyncingPrepublish}
-        onDraftChange={contentPage.updatePrepublishDraft}
-        onSync={contentPage.syncPrepublish}
-        projectId={projectId}
+        title={prepublish.title}
+        content={prepublish.content}
+        drafts={prepublish.drafts}
+        isSyncing={prepublish.isSyncing}
+        onDraftChange={prepublish.onDraftChange}
+        onSync={prepublish.onSync}
+        projectId={prepublish.projectId}
       />
 
       <div ref={contentPage.publishBarRef}>
         <ContentPublishBar
-          canOpenXPostIntent={contentPage.canOpenXPostIntent}
-          canPublish={contentPage.canPublish}
-          canSelectPlatforms={contentPage.canSelectPlatforms}
-          isOpeningXPostIntent={contentPage.isOpeningXPostIntent}
-          isPublishing={contentPage.isPublishing}
-          selectedPlatforms={contentPage.selectedPlatforms}
-          onOpenDouyinPublishSession={contentPage.openDouyinPublishSession}
-          onOpenXPostIntent={contentPage.openXPostIntent}
-          onPublish={contentPage.publish}
-          onSelectedPlatformsChange={contentPage.setSelectedPlatforms}
+          canOpenXPostIntent={publishing.canOpenXPostIntent}
+          canPublish={publishing.canPublish}
+          canSelectPlatforms={publishing.canSelectPlatforms}
+          isOpeningXPostIntent={publishing.isOpeningXPostIntent}
+          isPublishing={publishing.isPublishing}
+          selectedPlatforms={publishing.selectedPlatforms}
+          onOpenDouyinPublishSession={publishing.onOpenDouyinPublishSession}
+          onOpenXPostIntent={publishing.onOpenXPostIntent}
+          onPublish={publishing.onPublish}
+          onSelectedPlatformsChange={publishing.onSelectedPlatformsChange}
           publishLabel={
-            contentPage.isEditing
+            header.mode === "edit"
               ? t("publish.saveAndPublish")
               : t("publish.buttonLabel")
           }
         />
       </div>
-      {contentPage.douyinBrowserSession ? (
+      {publishing.douyinBrowserSession ? (
         <RemoteBrowserSessionModal
-          completing={contentPage.douyinBrowserSession.completing}
+          completing={publishing.douyinBrowserSession.completing}
           completeLabel={t("publish.douyinPublishedAction")}
-          error={contentPage.douyinBrowserSession.error}
-          expiresAt={contentPage.douyinBrowserSession.expiresAt}
+          error={publishing.douyinBrowserSession.error}
+          expiresAt={publishing.douyinBrowserSession.expiresAt}
           platformLabel={t("platforms.douyin", { defaultValue: "Douyin" })}
-          status={contentPage.douyinBrowserSession.status}
-          streamURL={contentPage.douyinBrowserSession.streamURL}
-          onCancel={contentPage.closeDouyinPublishSession}
-          onComplete={contentPage.completeDouyinPublishSession}
+          status={publishing.douyinBrowserSession.status}
+          streamURL={publishing.douyinBrowserSession.streamURL}
+          onCancel={publishing.closeDouyinPublishSession}
+          onComplete={publishing.completeDouyinPublishSession}
         />
       ) : null}
     </div>
