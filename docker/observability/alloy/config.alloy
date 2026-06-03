@@ -1,0 +1,83 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+discovery.docker "mpp" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "mpp_logs" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "mpp.*"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "compose_project"
+  }
+}
+
+loki.source.docker "mpp" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.mpp.targets
+  labels        = {"platform" = "docker", "stack" = "mpp"}
+  relabel_rules = discovery.relabel.mpp_logs.rules
+  forward_to    = [loki.process.mpp.receiver]
+}
+
+loki.process "mpp" {
+  forward_to = [loki.write.local.receiver]
+
+  stage.json {
+    expressions = {
+      service    = "service",
+      trace_id   = "trace_id",
+      request_id = "request_id",
+      method     = "method",
+      path       = "path",
+      route      = "route",
+      status     = "status",
+      latency_ms = "latency_ms",
+    }
+  }
+
+  stage.labels {
+    values = {
+      service = "",
+    }
+  }
+
+  stage.structured_metadata {
+    values = {
+      trace_id   = "",
+      request_id = "",
+      method     = "",
+      path       = "",
+      route      = "",
+      status     = "",
+      latency_ms = "",
+    }
+  }
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

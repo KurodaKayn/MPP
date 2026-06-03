@@ -283,10 +283,18 @@ export async function loginWithAccessToken(token: string) {
   return session;
 }
 
-export async function loginWithUsername(username: string) {
+export async function loginWithUsername(username: string, password: string) {
+  return loginWithCredentials(username, password);
+}
+
+export async function loginWithCredentials(username: string, password: string) {
   const normalizedUsername = username.trim();
   if (!normalizedUsername) {
     throw new Error("Please enter username");
+  }
+
+  if (!password) {
+    throw new Error("Please enter password");
   }
 
   const status = await getAuthStatus();
@@ -295,7 +303,7 @@ export async function loginWithUsername(username: string) {
   }
 
   const response = await fetch("/api/auth/login", {
-    body: JSON.stringify({ username: normalizedUsername }),
+    body: JSON.stringify({ username: normalizedUsername, password }),
     cache: "no-store",
     credentials: "same-origin",
     headers: {
@@ -308,6 +316,44 @@ export async function loginWithUsername(username: string) {
   if (!response.ok || !body.token) {
     throw new Error(
       body.error?.message || body.error?.code || body.message || "Login failed",
+    );
+  }
+
+  const session = { token: body.token, username: normalizedUsername };
+  setAuthSession(session);
+  return session;
+}
+
+export async function registerWithCredentials(
+  username: string,
+  password: string,
+) {
+  const normalizedUsername = username.trim();
+  if (!normalizedUsername) {
+    throw new Error("Please enter username");
+  }
+
+  if (!password) {
+    throw new Error("Please enter password");
+  }
+
+  const response = await fetch("/api/auth/register", {
+    body: JSON.stringify({ username: normalizedUsername, password }),
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+  const body = (await response.json().catch(() => ({}))) as LoginResponse;
+
+  if (!response.ok || !body.token) {
+    throw new Error(
+      body.error?.message ||
+        body.error?.code ||
+        body.message ||
+        "Registration failed",
     );
   }
 

@@ -1,11 +1,5 @@
-import { Suspense } from "react";
+import { AuthPage } from "./_components/auth-page";
 
-import { AuthPageContent } from "./_components/auth-page-content";
-
-export default function AuthPage() {
-  return (
-    <Suspense>
-      <AuthPageContent />
-    </Suspense>
-  );
+export default function Page() {
+  return <AuthPage />;
 }
