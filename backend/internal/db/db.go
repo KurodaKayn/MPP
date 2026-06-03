@@ -94,9 +94,6 @@ func connectionPoolConfigFromEnv() (connectionPoolConfig, error) {
 	if err != nil {
 		return connectionPoolConfig{}, err
 	}
-	if maxOpenConns > 0 && maxIdleConns > maxOpenConns {
-		return connectionPoolConfig{}, fmt.Errorf("%s must be less than or equal to %s", dbMaxIdleConnsEnv, dbMaxOpenConnsEnv)
-	}
 
 	connMaxLifetime, err := durationFromEnv(dbConnMaxLifetimeEnv, defaultConnMaxLife)
 	if err != nil {
