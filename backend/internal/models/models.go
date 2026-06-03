@@ -123,6 +123,35 @@ type RemoteBrowserSession struct {
 	CompletedAt           *time.Time
 }
 
+type ExtensionCallbackToken struct {
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey"`
+	ExecutionID string    `gorm:"not null;index"`
+	ProjectID   uuid.UUID `gorm:"type:uuid;not null;index"`
+	UserID      uuid.UUID `gorm:"type:uuid;not null;index"`
+	Platform    string    `gorm:"not null;index"`
+	Token       string    `gorm:"not null;uniqueIndex"`
+	ExpiresAt   time.Time `gorm:"not null;index"`
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type ExtensionExecutionEvent struct {
+	ID              uuid.UUID `gorm:"type:uuid;primaryKey"`
+	CallbackTokenID uuid.UUID `gorm:"type:uuid;not null;index"`
+	ExecutionID     string    `gorm:"not null;index"`
+	ProjectID       uuid.UUID `gorm:"type:uuid;not null;index"`
+	UserID          uuid.UUID `gorm:"type:uuid;not null;index"`
+	EventID         string    `gorm:"not null;uniqueIndex"`
+	Platform        string    `gorm:"not null;index"`
+	Status          string    `gorm:"not null;index"`
+	Message         string
+	RemoteID        string
+	PublishURL      string
+	ErrorMessage    string
+	Metadata        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	CreatedAt       time.Time
+}
+
 // BeforeCreate hook to generate UUID if not set
 func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
 	if u.ID == uuid.Nil {
@@ -155,6 +184,20 @@ func (pa *PlatformAccount) BeforeCreate(tx *gorm.DB) (err error) {
 func (s *RemoteBrowserSession) BeforeCreate(tx *gorm.DB) (err error) {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()
+	}
+	return
+}
+
+func (t *ExtensionCallbackToken) BeforeCreate(tx *gorm.DB) (err error) {
+	if t.ID == uuid.Nil {
+		t.ID = uuid.New()
+	}
+	return
+}
+
+func (e *ExtensionExecutionEvent) BeforeCreate(tx *gorm.DB) (err error) {
+	if e.ID == uuid.Nil {
+		e.ID = uuid.New()
 	}
 	return
 }

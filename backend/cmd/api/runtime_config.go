@@ -13,6 +13,7 @@ const (
 	nodeEnvFallbackEnv         = "NODE_ENV"
 	backendProcessRoleEnv      = "BACKEND_PROCESS_ROLE"
 	backendRequireRedisEnv     = "BACKEND_REQUIRE_REDIS"
+	extensionAllowedOriginsEnv = "EXTENSION_ALLOWED_ORIGINS"
 	backendProcessRoleAll      = "all"
 	backendProcessRoleAPI      = "api"
 	backendProcessRoleWorker   = "worker"
@@ -23,8 +24,9 @@ const (
 )
 
 type backendRuntimeConfig struct {
-	processRole  string
-	requireRedis bool
+	processRole             string
+	requireRedis            bool
+	extensionAllowedOrigins []string
 }
 
 func backendRuntimeConfigFromEnv() (backendRuntimeConfig, error) {
@@ -32,9 +34,14 @@ func backendRuntimeConfigFromEnv() (backendRuntimeConfig, error) {
 	if err != nil {
 		return backendRuntimeConfig{}, err
 	}
+	extensionAllowedOrigins, err := commaSeparatedEnv(extensionAllowedOriginsEnv)
+	if err != nil {
+		return backendRuntimeConfig{}, err
+	}
 	return backendRuntimeConfig{
-		processRole:  processRole,
-		requireRedis: envFlagWithDefault(backendRequireRedisEnv, backendDefaultRequireRedis),
+		processRole:             processRole,
+		requireRedis:            envFlagWithDefault(backendRequireRedisEnv, backendDefaultRequireRedis),
+		extensionAllowedOrigins: extensionAllowedOrigins,
 	}, nil
 }
 
@@ -72,6 +79,22 @@ func requiredEnv(name string) (string, error) {
 		return "", fmt.Errorf("%s must be set", name)
 	}
 	return value, nil
+}
+
+func commaSeparatedEnv(name string) ([]string, error) {
+	rawValues := strings.Split(os.Getenv(name), ",")
+	values := make([]string, 0, len(rawValues))
+	for _, rawValue := range rawValues {
+		value := strings.TrimSpace(rawValue)
+		if value == "" {
+			continue
+		}
+		if strings.Contains(value, "*") {
+			return nil, fmt.Errorf("%s must not contain wildcard origins when credentials are enabled", name)
+		}
+		values = append(values, value)
+	}
+	return values, nil
 }
 
 func mockLoginEnabled() bool {

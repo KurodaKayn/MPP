@@ -28,6 +28,8 @@ type XOAuth2Provider = platformaccount.XOAuth2Provider
 type XOAuth2StateStore = platformaccount.XOAuth2StateStore
 
 var ErrAIServiceUnavailable = ai.ErrAIServiceUnavailable
+var ErrExtensionCallbackTokenExpired = dashboard.ErrExtensionCallbackTokenExpired
+var ErrExtensionCallbackTokenInvalid = dashboard.ErrExtensionCallbackTokenInvalid
 var ErrForbidden = dashboard.ErrForbidden
 var ErrInvalidCollabDocument = collabdoc.ErrInvalidDocument
 var ErrInvalidAIEditRequest = ai.ErrInvalidAIEditRequest

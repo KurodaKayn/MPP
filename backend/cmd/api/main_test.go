@@ -72,6 +72,35 @@ func TestBackendRuntimeConfigReadsRequireRedisFlag(t *testing.T) {
 	}
 }
 
+func TestBackendRuntimeConfigReadsExtensionAllowedOrigins(t *testing.T) {
+	t.Setenv(backendProcessRoleEnv, backendProcessRoleAPI)
+	t.Setenv(extensionAllowedOriginsEnv, " chrome-extension://abc , http://localhost:3000 ,, ")
+
+	config, err := backendRuntimeConfigFromEnv()
+	if err != nil {
+		t.Fatalf("expected runtime config: %v", err)
+	}
+
+	expectedOrigins := []string{"chrome-extension://abc", "http://localhost:3000"}
+	if len(config.extensionAllowedOrigins) != len(expectedOrigins) {
+		t.Fatalf("expected %d extension origins, got %d", len(expectedOrigins), len(config.extensionAllowedOrigins))
+	}
+	for index, expected := range expectedOrigins {
+		if config.extensionAllowedOrigins[index] != expected {
+			t.Fatalf("expected extension origin %q at index %d, got %q", expected, index, config.extensionAllowedOrigins[index])
+		}
+	}
+}
+
+func TestBackendRuntimeConfigRejectsWildcardExtensionAllowedOrigin(t *testing.T) {
+	t.Setenv(backendProcessRoleEnv, backendProcessRoleAPI)
+	t.Setenv(extensionAllowedOriginsEnv, "chrome-extension://abc,*")
+
+	if _, err := backendRuntimeConfigFromEnv(); err == nil {
+		t.Fatal("expected wildcard extension origin to be rejected")
+	}
+}
+
 func TestRequiredEnvRejectsMissingAndBlankValues(t *testing.T) {
 	t.Setenv("TEST_REQUIRED_ENV", "")
 
