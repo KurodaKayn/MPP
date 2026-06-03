@@ -43,6 +43,7 @@ func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 
 	e.Use(observabilitySuite.Middleware())
 	e.Use(echoMiddleware.Recover())
+	registerExtensionCORS(e, config.runtimeConfig.extensionAllowedOrigins)
 	registerPublicRoutes(e, config)
 
 	if config.runtimeConfig.servesAPI() {
@@ -52,6 +53,21 @@ func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 	}
 
 	return e, nil
+}
+
+func registerExtensionCORS(e *echo.Echo, allowedOrigins []string) {
+	if len(allowedOrigins) == 0 {
+		return
+	}
+
+	e.Use(echoMiddleware.CORSWithConfig(echoMiddleware.CORSConfig{
+		AllowOrigins: allowedOrigins,
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		// Extension workbench requests authenticate with Authorization: Bearer <web JWT>.
+		// Existing SameSite=Lax web cookies are not the direct extension-origin auth path.
+		AllowHeaders:     []string{echo.HeaderAuthorization, echo.HeaderContentType},
+		AllowCredentials: true,
+	}))
 }
 
 func registerPublicRoutes(e *echo.Echo, config serverConfig) {
@@ -98,6 +114,7 @@ func registerHealthRoutes(e *echo.Echo, ready *atomic.Bool, sqlDB *gorm.DB, redi
 func registerAPIRoutes(e *echo.Echo, config serverConfig, h serverHandlers) error {
 	registerAuthRoutes(e, config, h)
 	registerAdminDashboardRoutes(e, h)
+	e.POST("/api/user/dashboard/extension/events", h.userDashboard.RecordExtensionEvent)
 	return registerUserDashboardRoutes(e, config, h)
 }
 
@@ -131,6 +148,9 @@ func registerUserDashboardRoutes(e *echo.Echo, config serverConfig, h serverHand
 	}
 
 	userGroup.GET("/stats", h.userDashboard.GetMyStats)
+	userGroup.GET("/extension/session", h.userDashboard.GetExtensionSession)
+	userGroup.GET("/extension/prepublish", h.userDashboard.ListExtensionPrepublish)
+	userGroup.POST("/extension/handoffs", h.userDashboard.CreateExtensionHandoff)
 	userGroup.GET("/projects", h.userDashboard.ListMyProjects)
 	userGroup.POST("/projects", h.userDashboard.CreateProject)
 	userGroup.GET("/projects/:id", h.userDashboard.GetMyProject)

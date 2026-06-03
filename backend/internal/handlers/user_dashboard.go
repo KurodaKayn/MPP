@@ -59,6 +59,89 @@ func (h *UserDashboardHandler) GetMyStats(c echo.Context) error {
 	return c.JSON(http.StatusOK, stats)
 }
 
+func (h *UserDashboardHandler) GetExtensionSession(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	session, err := h.dashboardService.GetExtensionSession(userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusUnauthorized, "unauthorized", "session user not found")
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, session)
+}
+
+func (h *UserDashboardHandler) ListExtensionPrepublish(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	resp, err := h.dashboardService.ListExtensionPrepublish(userID)
+	if err != nil {
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) CreateExtensionHandoff(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	req := new(dto.CreateExtensionHandoffRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	handoff, err := h.dashboardService.CreateExtensionHandoff(userID, *req, extensionEventsCallbackURL(c))
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "project_id and supported platforms are required")
+		}
+		if errors.Is(err, services.ErrPublicationDisabled) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
+		}
+		if errors.Is(err, services.ErrPublicationRequiresSync) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "sync prepublish draft before extension handoff")
+		}
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, handoff)
+}
+
+func (h *UserDashboardHandler) RecordExtensionEvent(c echo.Context) error {
+	req := new(dto.ExtensionEventCallbackRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.dashboardService.RecordExtensionEvent(*req)
+	if err != nil {
+		if errors.Is(err, services.ErrExtensionCallbackTokenInvalid) ||
+			errors.Is(err, services.ErrExtensionCallbackTokenExpired) {
+			return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
 func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
@@ -808,6 +891,23 @@ func xOAuth2RedirectURI(c echo.Context) string {
 		host = c.Request().Host
 	}
 	return proto + "://" + host + "/api/user/dashboard/settings/x/oauth2/callback"
+}
+
+func extensionEventsCallbackURL(c echo.Context) string {
+	proto := strings.TrimSpace(c.Request().Header.Get("X-Forwarded-Proto"))
+	if proto == "" {
+		if c.Request().TLS != nil {
+			proto = "https"
+		} else {
+			proto = "http"
+		}
+	}
+
+	host := strings.TrimSpace(c.Request().Header.Get("X-Forwarded-Host"))
+	if host == "" {
+		host = c.Request().Host
+	}
+	return proto + "://" + host + "/api/user/dashboard/extension/events"
 }
 
 func xOAuth2SettingsRedirectURL(status string) string {
