@@ -7,6 +7,8 @@ import {
   loginWithAccessToken,
   loginWithUsername,
   registerWithCredentials,
+  resetPassword,
+  sendAuthCode,
 } from "./client";
 
 function jsonResponse(body: unknown, init?: ResponseInit) {
@@ -140,7 +142,12 @@ describe("auth client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      registerWithCredentials("new_user", "Password1234"),
+      registerWithCredentials(
+        "new_user",
+        "new@example.com",
+        "123456",
+        "Password1234",
+      ),
     ).resolves.toEqual({
       token: "new-jwt-token",
       username: "new_user",
@@ -150,14 +157,57 @@ describe("auth client", () => {
       "/api/auth/register",
       expect.objectContaining({
         body: JSON.stringify({
-          username: "new_user",
+          code: "123456",
+          email: "new@example.com",
           password: "Password1234",
+          username: "new_user",
         }),
         method: "POST",
       }),
     );
     expect(window.localStorage.getItem(primaryAuthTokenName)).toBe(
       "new-jwt-token",
+    );
+  });
+
+  it("sends an auth verification code", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({}));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      sendAuthCode("new@example.com", "register"),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/send-code",
+      expect.objectContaining({
+        body: JSON.stringify({
+          email: "new@example.com",
+          scene: "register",
+        }),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("resets a password with an email verification code", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({}));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      resetPassword("user@example.com", "654321", "NewPassword1234"),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/reset-password",
+      expect.objectContaining({
+        body: JSON.stringify({
+          email: "user@example.com",
+          code: "654321",
+          password: "NewPassword1234",
+        }),
+        method: "POST",
+      }),
     );
   });
 });
