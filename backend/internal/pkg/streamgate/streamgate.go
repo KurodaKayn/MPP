@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/envutil"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 )
@@ -105,21 +107,21 @@ func New(redisClient *redis.Client, config Config) *Limiter {
 
 func ConfigFromEnv() Config {
 	return normalizeConfig(Config{
-		Enabled: envBool("STREAM_GATE_ENABLED", true),
+		Enabled: envutil.Bool("STREAM_GATE_ENABLED", true),
 		Prefix:  envString("STREAM_GATE_KEY_PREFIX", defaultPrefix),
 		AI: Limits{
 			User:   envInt64("AI_STREAM_USER_CONNECTION_LIMIT", 2),
 			Tenant: envInt64("AI_STREAM_TENANT_CONNECTION_LIMIT", 20),
 			IP:     envInt64("AI_STREAM_IP_CONNECTION_LIMIT", 10),
 			Global: envInt64("AI_STREAM_GLOBAL_CONNECTION_LIMIT", 200),
-			TTL:    envDuration("AI_STREAM_CONNECTION_TTL", 10*time.Minute),
+			TTL:    envutil.Duration("AI_STREAM_CONNECTION_TTL", 10*time.Minute),
 		},
 		Browser: Limits{
 			User:   envInt64("BROWSER_STREAM_USER_CONNECTION_LIMIT", 1),
 			Tenant: envInt64("BROWSER_STREAM_TENANT_CONNECTION_LIMIT", 10),
 			IP:     envInt64("BROWSER_STREAM_IP_CONNECTION_LIMIT", 3),
 			Global: envInt64("BROWSER_STREAM_GLOBAL_CONNECTION_LIMIT", 100),
-			TTL:    envDuration("BROWSER_STREAM_CONNECTION_TTL", 16*time.Minute),
+			TTL:    envutil.Duration("BROWSER_STREAM_CONNECTION_TTL", 16*time.Minute),
 		},
 	})
 }
@@ -138,13 +140,14 @@ func (l *Limiter) Acquire(ctx context.Context, req AcquireRequest) (*Lease, erro
 	}
 	now := time.Now().UTC()
 	expiresAt := now.Add(limits.TTL)
+	resource := normalizeResource(req.Resource)
 	payload, err := json.Marshal(map[string]string{
 		"conn_id":    connID,
 		"kind":       req.Kind,
 		"user_id":    req.UserID.String(),
 		"tenant_id":  req.TenantID,
 		"ip_hash":    hashIP(req.IP),
-		"resource":   req.Resource,
+		"resource":   resource,
 		"started_at": now.Format(time.RFC3339Nano),
 		"expires_at": expiresAt.Format(time.RFC3339Nano),
 	})
@@ -242,10 +245,12 @@ func (l *Limiter) acquireRedis(ctx context.Context, req AcquireRequest, limits L
 	}
 	values, ok := result.([]interface{})
 	if !ok || len(values) != 2 {
+		log.Printf("streamgate: unexpected redis acquire response: %#v", result)
 		return "", fmt.Errorf("%w: unexpected redis response", ErrUnavailable)
 	}
 	accepted, ok := redisInt64(values[0])
 	if !ok {
+		log.Printf("streamgate: unexpected redis acquire accepted flag: %#v", values[0])
 		return "", fmt.Errorf("%w: unexpected redis accepted flag", ErrUnavailable)
 	}
 	if accepted == 1 {
@@ -353,7 +358,11 @@ func keyPart(value string) string {
 			b.WriteByte('-')
 		}
 	}
-	return strings.Trim(b.String(), "-")
+	result := strings.Trim(b.String(), "-")
+	if result == "" {
+		return "unknown"
+	}
+	return result
 }
 
 func redisInt64(value interface{}) (int64, bool) {
@@ -389,34 +398,12 @@ func envInt64(name string, fallback int64) int64 {
 	return value
 }
 
-func envDuration(name string, fallback time.Duration) time.Duration {
-	raw := strings.TrimSpace(os.Getenv(name))
-	if raw == "" {
-		return fallback
+func normalizeResource(resource string) string {
+	resource = strings.TrimSpace(resource)
+	if resource == "" {
+		return "unknown"
 	}
-	if value, err := time.ParseDuration(raw); err == nil && value >= 0 {
-		return value
-	}
-	seconds, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || seconds < 0 {
-		return fallback
-	}
-	return time.Duration(seconds) * time.Second
-}
-
-func envBool(name string, fallback bool) bool {
-	raw := strings.ToLower(strings.TrimSpace(os.Getenv(name)))
-	if raw == "" {
-		return fallback
-	}
-	switch raw {
-	case "1", "true", "yes", "y", "on":
-		return true
-	case "0", "false", "no", "n", "off":
-		return false
-	default:
-		return fallback
-	}
+	return resource
 }
 
 type memoryStore struct {
@@ -426,6 +413,7 @@ type memoryStore struct {
 
 type memoryConn struct {
 	req       AcquireRequest
+	ipHash    string
 	expiresAt time.Time
 }
 
@@ -437,6 +425,7 @@ func (s *memoryStore) acquire(req AcquireRequest, limits Limits, connID string, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.prune(now)
+	reqIPHash := hashIP(req.IP)
 	counts := map[string]int64{}
 	for _, conn := range s.conns {
 		if conn.req.Kind != req.Kind {
@@ -449,7 +438,7 @@ func (s *memoryStore) acquire(req AcquireRequest, limits Limits, connID string, 
 		if conn.req.TenantID == req.TenantID {
 			counts["tenant"]++
 		}
-		if hashIP(conn.req.IP) == hashIP(req.IP) {
+		if conn.ipHash == reqIPHash {
 			counts["ip"]++
 		}
 	}
@@ -465,7 +454,7 @@ func (s *memoryStore) acquire(req AcquireRequest, limits Limits, connID string, 
 	if limits.Global > 0 && counts["global"] >= limits.Global {
 		return &LimitError{Scope: "global"}
 	}
-	s.conns[connID] = memoryConn{req: req, expiresAt: expiresAt}
+	s.conns[connID] = memoryConn{req: req, ipHash: reqIPHash, expiresAt: expiresAt}
 	return nil
 }
 

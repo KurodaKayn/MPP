@@ -73,3 +73,14 @@ func TestLimiterSeparatesStreamKinds(t *testing.T) {
 	require.NoError(t, err)
 	defer browserLease.Release(context.Background())
 }
+
+func TestKeyPartFallsBackWhenSanitizedValueIsEmpty(t *testing.T) {
+	require.Equal(t, "unknown", keyPart("@@@"))
+	require.Equal(t, "unknown", keyPart(" --- "))
+}
+
+func TestNormalizeResourceFallsBackWhenEmpty(t *testing.T) {
+	require.Equal(t, "unknown", normalizeResource(""))
+	require.Equal(t, "unknown", normalizeResource("   "))
+	require.Equal(t, "session-1", normalizeResource(" session-1 "))
+}
