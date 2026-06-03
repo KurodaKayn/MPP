@@ -68,6 +68,12 @@ type AuthResponse struct {
 	Username string `json:"username"`
 }
 
+const (
+	verificationCodeTTL     = 10 * time.Minute
+	verificationAttemptTTL  = 10 * time.Minute
+	verificationMaxAttempts = 5
+)
+
 func (h *AuthHandler) SendCode(c echo.Context) error {
 	req := new(SendCodeRequest)
 	if err := c.Bind(req); err != nil {
@@ -76,15 +82,6 @@ func (h *AuthHandler) SendCode(c echo.Context) error {
 
 	if req.Email == "" || req.Scene == "" {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "email and scene are required")
-	}
-
-	// Rate limit check: only allow sending code once every 60 seconds
-	lastSendKey := fmt.Sprintf("auth:last_send:%s:%s", req.Scene, req.Email)
-	if h.redis != nil {
-		exists, err := h.redis.Exists(c.Request().Context(), lastSendKey).Result()
-		if err == nil && exists > 0 {
-			return sendError(c, http.StatusTooManyRequests, "rate_limited", "please wait 60 seconds before requesting another code")
-		}
 	}
 
 	// Scene-specific checks
@@ -104,21 +101,37 @@ func (h *AuthHandler) SendCode(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid scene")
 	}
 
+	if h.redis == nil {
+		return sendError(c, http.StatusServiceUnavailable, "verification_unavailable", "verification code service unavailable")
+	}
+
+	// Rate limit check: only allow sending code once every 60 seconds
+	lastSendKey := fmt.Sprintf("auth:last_send:%s:%s", req.Scene, req.Email)
+	exists, err := h.redis.Exists(c.Request().Context(), lastSendKey).Result()
+	if err != nil {
+		return sendError(c, http.StatusServiceUnavailable, "verification_unavailable", "verification code service unavailable")
+	}
+	if exists > 0 {
+		return sendError(c, http.StatusTooManyRequests, "rate_limited", "please wait 60 seconds before requesting another code")
+	}
+
 	// Generate 6-digit code
-	code := h.generateRandomCode(6)
+	code, err := h.generateRandomCode(6)
+	if err != nil {
+		return sendError(c, http.StatusInternalServerError, "internal_error", "failed to generate verification code")
+	}
 
 	// Store code in Redis (valid for 10 minutes)
-	if h.redis != nil {
-		codeKey := fmt.Sprintf("auth:code:%s:%s", req.Scene, req.Email)
-		err := h.redis.Set(c.Request().Context(), codeKey, code, 10*time.Minute).Err()
-		if err != nil {
-			return sendError(c, http.StatusInternalServerError, "internal_error", "failed to store code")
-		}
-		// Set rate limit key
-		h.redis.Set(c.Request().Context(), lastSendKey, "1", 60*time.Second)
-	} else {
-		// If redis is nil (local dev without redis), we might want to log it or something
-		fmt.Printf("DEBUG: Verification code for %s (%s): %s\n", req.Email, req.Scene, code)
+	codeKey := verificationCodeKey(req.Scene, req.Email)
+	attemptKey := verificationAttemptKey(req.Scene, req.Email)
+	if err := h.redis.Set(c.Request().Context(), codeKey, code, verificationCodeTTL).Err(); err != nil {
+		return sendError(c, http.StatusInternalServerError, "internal_error", "failed to store code")
+	}
+	if err := h.redis.Del(c.Request().Context(), attemptKey).Err(); err != nil {
+		return sendError(c, http.StatusInternalServerError, "internal_error", "failed to reset verification attempts")
+	}
+	if err := h.redis.Set(c.Request().Context(), lastSendKey, "1", 60*time.Second).Err(); err != nil {
+		return sendError(c, http.StatusInternalServerError, "internal_error", "failed to store rate limit")
 	}
 
 	// Send email
@@ -151,15 +164,8 @@ func (h *AuthHandler) ResetPassword(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "password must be at least 8 characters")
 	}
 
-	// Verify code
-	if h.redis != nil {
-		codeKey := fmt.Sprintf("auth:code:forgot_password:%s", req.Email)
-		savedCode, err := h.redis.Get(c.Request().Context(), codeKey).Result()
-		if err != nil || savedCode != req.Code {
-			return sendError(c, http.StatusUnauthorized, "invalid_code", "invalid or expired verification code")
-		}
-		// Delete code after use
-		h.redis.Del(c.Request().Context(), codeKey)
+	if err := h.verifyCode(c, "forgot_password", req.Email, req.Code); err != nil {
+		return err
 	}
 
 	// Find user
@@ -183,14 +189,59 @@ func (h *AuthHandler) ResetPassword(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"message": "password reset successfully"})
 }
 
-func (h *AuthHandler) generateRandomCode(length int) string {
+func (h *AuthHandler) generateRandomCode(length int) (string, error) {
 	const charset = "0123456789"
 	b := make([]byte, length)
 	for i := range b {
-		idx, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return "", err
+		}
 		b[i] = charset[idx.Int64()]
 	}
-	return string(b)
+	return string(b), nil
+}
+
+func verificationCodeKey(scene, email string) string {
+	return fmt.Sprintf("auth:code:%s:%s", scene, email)
+}
+
+func verificationAttemptKey(scene, email string) string {
+	return fmt.Sprintf("auth:code_attempts:%s:%s", scene, email)
+}
+
+func (h *AuthHandler) verifyCode(c echo.Context, scene, email, code string) error {
+	if h.redis == nil {
+		return sendError(c, http.StatusServiceUnavailable, "verification_unavailable", "verification code service unavailable")
+	}
+
+	ctx := c.Request().Context()
+	codeKey := verificationCodeKey(scene, email)
+	attemptKey := verificationAttemptKey(scene, email)
+
+	savedCode, err := h.redis.Get(ctx, codeKey).Result()
+	if err != nil || savedCode != code {
+		attempts, incrErr := h.redis.Incr(ctx, attemptKey).Result()
+		if incrErr != nil {
+			return sendError(c, http.StatusServiceUnavailable, "verification_unavailable", "verification code service unavailable")
+		}
+		if attempts == 1 {
+			if expireErr := h.redis.Expire(ctx, attemptKey, verificationAttemptTTL).Err(); expireErr != nil {
+				return sendError(c, http.StatusServiceUnavailable, "verification_unavailable", "verification code service unavailable")
+			}
+		}
+		if attempts >= verificationMaxAttempts {
+			if delErr := h.redis.Del(ctx, codeKey, attemptKey).Err(); delErr != nil {
+				return sendError(c, http.StatusServiceUnavailable, "verification_unavailable", "verification code service unavailable")
+			}
+		}
+		return sendError(c, http.StatusUnauthorized, "invalid_code", "invalid or expired verification code")
+	}
+
+	if err := h.redis.Del(ctx, codeKey, attemptKey).Err(); err != nil {
+		return sendError(c, http.StatusServiceUnavailable, "verification_unavailable", "verification code service unavailable")
+	}
+	return nil
 }
 
 func (h *AuthHandler) Register(c echo.Context) error {
@@ -220,15 +271,8 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "password must contain at least one uppercase and one lowercase letter")
 	}
 
-	// Verify code
-	if h.redis != nil {
-		codeKey := fmt.Sprintf("auth:code:register:%s", req.Email)
-		savedCode, err := h.redis.Get(c.Request().Context(), codeKey).Result()
-		if err != nil || savedCode != req.Code {
-			return sendError(c, http.StatusUnauthorized, "invalid_code", "invalid or expired verification code")
-		}
-		// Delete code after use
-		h.redis.Del(c.Request().Context(), codeKey)
+	if err := h.verifyCode(c, "register", req.Email, req.Code); err != nil {
+		return err
 	}
 
 	// Check if username or email already exists

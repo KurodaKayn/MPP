@@ -42,6 +42,11 @@ func setupMiniRedis(t *testing.T) *redis.Client {
 	return redis.NewClient(&redis.Options{Addr: mr.Addr()})
 }
 
+func storeVerificationCode(t *testing.T, rdb *redis.Client, scene, email, code string) {
+	t.Helper()
+	require.NoError(t, rdb.Set(context.Background(), fmt.Sprintf("auth:code:%s:%s", scene, email), code, 0).Err())
+}
+
 func TestSendCode(t *testing.T) {
 	db := setupHandlerTestDB(t)
 	rdb := setupMiniRedis(t)
@@ -59,6 +64,29 @@ func TestSendCode(t *testing.T) {
 		assert.Equal(t, "new@example.com", mockEmail.LastTo)
 		assert.Equal(t, "Verification Code", mockEmail.LastSubject)
 		assert.Len(t, mockEmail.LastBody, 6)
+	})
+
+	t.Run("Register_RateLimited", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/send-code", strings.NewReader(`{"email":"limited@example.com", "scene":"register"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		require.NoError(t, handler.SendCode(e.NewContext(req, rec)))
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		req = httptest.NewRequest(http.MethodPost, "/api/auth/send-code", strings.NewReader(`{"email":"limited@example.com", "scene":"register"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec = httptest.NewRecorder()
+		require.NoError(t, handler.SendCode(e.NewContext(req, rec)))
+		assert.Equal(t, http.StatusTooManyRequests, rec.Code)
+	})
+
+	t.Run("RequiresRedis", func(t *testing.T) {
+		handlerWithoutRedis := NewAuthHandler(db, nil, mockEmail, []byte("test-secret"))
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/send-code", strings.NewReader(`{"email":"redis-required@example.com", "scene":"register"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		require.NoError(t, handlerWithoutRedis.SendCode(e.NewContext(req, rec)))
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	})
 
 	t.Run("Register_EmailExists", func(t *testing.T) {
@@ -98,7 +126,7 @@ func TestRegisterWithVerification(t *testing.T) {
 
 	email := "test@example.com"
 	code := "123456"
-	rdb.Set(context.Background(), fmt.Sprintf("auth:code:register:%s", email), code, 0)
+	storeVerificationCode(t, rdb, "register", email, code)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(`{"username":"testuser", "email":"test@example.com", "password":"Password1234", "code":"123456"}`))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -118,12 +146,12 @@ func TestResetPassword(t *testing.T) {
 	handler := NewAuthHandler(db, rdb, &email.MockEmailService{}, []byte("test-secret"))
 	e := echo.New()
 
-	email := "user@example.com"
-	createTestUser(t, db, "user", email, "OldPassword123")
-	
+	userEmail := "user@example.com"
+	createTestUser(t, db, "user", userEmail, "OldPassword123")
+
 	t.Run("Success", func(t *testing.T) {
 		code := "654321"
-		rdb.Set(context.Background(), fmt.Sprintf("auth:code:forgot_password:%s", email), code, 0)
+		storeVerificationCode(t, rdb, "forgot_password", userEmail, code)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/reset-password", strings.NewReader(`{"email":"user@example.com", "code":"654321", "password":"NewPassword1234"}`))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -134,7 +162,7 @@ func TestResetPassword(t *testing.T) {
 
 		// Verify password updated
 		var user models.User
-		require.NoError(t, db.First(&user, "email = ?", email).Error)
+		require.NoError(t, db.First(&user, "email = ?", userEmail).Error)
 		err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte("NewPassword1234"))
 		assert.NoError(t, err)
 	})
@@ -147,11 +175,46 @@ func TestResetPassword(t *testing.T) {
 		require.NoError(t, handler.ResetPassword(e.NewContext(req, rec)))
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
+
+	t.Run("InvalidCodeLockoutDeletesCode", func(t *testing.T) {
+		code := "111111"
+		storeVerificationCode(t, rdb, "forgot_password", userEmail, code)
+
+		for i := 0; i < 5; i++ {
+			req := httptest.NewRequest(http.MethodPost, "/api/auth/reset-password", strings.NewReader(`{"email":"user@example.com", "code":"000000", "password":"LockedPassword1234"}`))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+			require.NoError(t, handler.ResetPassword(e.NewContext(req, rec)))
+			assert.Equal(t, http.StatusUnauthorized, rec.Code)
+		}
+
+		exists, err := rdb.Exists(context.Background(), "auth:code:forgot_password:user@example.com").Result()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), exists)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/reset-password", strings.NewReader(`{"email":"user@example.com", "code":"111111", "password":"LockedPassword1234"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		require.NoError(t, handler.ResetPassword(e.NewContext(req, rec)))
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("RequiresRedis", func(t *testing.T) {
+		handlerWithoutRedis := NewAuthHandler(db, nil, &email.MockEmailService{}, []byte("test-secret"))
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/reset-password", strings.NewReader(`{"email":"user@example.com", "code":"123456", "password":"AnotherPassword1234"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+
+		require.NoError(t, handlerWithoutRedis.ResetPassword(e.NewContext(req, rec)))
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	})
 }
 
 func TestRegisterSuccess(t *testing.T) {
 	db := setupHandlerTestDB(t)
-	handler := NewAuthHandler(db, nil, &email.MockEmailService{}, []byte("test-secret"))
+	rdb := setupMiniRedis(t)
+	handler := NewAuthHandler(db, rdb, &email.MockEmailService{}, []byte("test-secret"))
+	storeVerificationCode(t, rdb, "register", "new@example.com", "123456")
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(`{"username":"newuser", "email":"new@example.com", "password":"Password1234", "code":"123456"}`))
@@ -175,7 +238,9 @@ func TestRegisterSuccess(t *testing.T) {
 func TestRegisterUsernameExists(t *testing.T) {
 	db := setupHandlerTestDB(t)
 	createTestUser(t, db, "existing", "existing@example.com", "Password1234")
-	handler := NewAuthHandler(db, nil, &email.MockEmailService{}, []byte("test-secret"))
+	rdb := setupMiniRedis(t)
+	handler := NewAuthHandler(db, rdb, &email.MockEmailService{}, []byte("test-secret"))
+	storeVerificationCode(t, rdb, "register", "new@example.com", "123456")
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(`{"username":"existing", "email":"new@example.com", "password":"Password1234", "code":"123456"}`))
@@ -184,6 +249,19 @@ func TestRegisterUsernameExists(t *testing.T) {
 
 	require.NoError(t, handler.Register(e.NewContext(req, rec)))
 	assert.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestRegisterRequiresRedis(t *testing.T) {
+	db := setupHandlerTestDB(t)
+	handler := NewAuthHandler(db, nil, &email.MockEmailService{}, []byte("test-secret"))
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(`{"username":"newuser", "email":"new@example.com", "password":"Password1234", "code":"123456"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	require.NoError(t, handler.Register(e.NewContext(req, rec)))
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
 }
 
 func TestRegisterWeakPassword(t *testing.T) {
