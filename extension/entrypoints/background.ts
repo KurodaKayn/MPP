@@ -18,8 +18,33 @@ import {
   recordAndCallbackEvent,
   startPublishingTabs,
 } from "../src/background/tabs";
-import { HANDOFF_SCHEMA_VERSION } from "../src/types/handoff";
-import type { BackgroundMessage, HandoffResponse } from "../src/types/messages";
+import {
+  HANDOFF_SCHEMA_VERSION,
+  type HandoffAsset,
+} from "../src/types/handoff";
+import type { ExtensionExecutionEvent } from "../src/types/events";
+import type {
+  AssetDownloadResponse,
+  BackgroundMessage,
+  HandoffResponse,
+} from "../src/types/messages";
+import type { PlatformKey } from "../src/types/platform";
+
+const EXPIRATION_SUPPRESSION_STATUSES = new Set([
+  "user_review",
+  "submitted",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "expired",
+]);
+const POST_EXPIRATION_EVENT_ALLOWED_STATUSES = new Set([
+  "user_review",
+  "submitted",
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
 
 function isBackgroundMessage(value: unknown): value is BackgroundMessage {
   return (
@@ -32,6 +57,53 @@ function isBackgroundMessage(value: unknown): value is BackgroundMessage {
 
 function getManifestVersion(): string {
   return browser.runtime.getManifest().version ?? "0.0.0";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isHandoffAsset(value: unknown): value is HandoffAsset {
+  return (
+    isRecord(value) &&
+    (value.type === "image" || value.type === "video") &&
+    typeof value.source_url === "string" &&
+    typeof value.name === "string" &&
+    typeof value.mime_type === "string"
+  );
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+
+  return btoa(binary);
+}
+
+async function downloadHandoffAsset(
+  asset: unknown,
+): Promise<AssetDownloadResponse> {
+  if (!isHandoffAsset(asset)) {
+    throw new Error("Invalid handoff asset download request.");
+  }
+
+  const response = await fetch(asset.source_url, {
+    credentials: "omit",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Asset download failed with HTTP ${response.status}.`);
+  }
+
+  return {
+    name: asset.name,
+    mime_type: asset.mime_type || response.headers.get("Content-Type") || "",
+    data_base64: arrayBufferToBase64(await response.arrayBuffer()),
+  };
 }
 
 async function getMonitorState() {
@@ -54,14 +126,15 @@ async function recordCurrentHandoffExpiration(): Promise<boolean> {
   }
 
   const events = await getExecutionEvents();
+  let recordedExpiration = false;
 
   for (const platform of currentHandoff.handoff.platforms) {
-    const alreadyExpired = events.some(
-      (event) =>
-        event.platform === platform.platform && event.status === "expired",
-    );
+    const latestEvent = getLatestPlatformEvent(events, platform.platform);
 
-    if (alreadyExpired) {
+    if (
+      latestEvent &&
+      EXPIRATION_SUPPRESSION_STATUSES.has(latestEvent.status)
+    ) {
       continue;
     }
 
@@ -74,9 +147,40 @@ async function recordCurrentHandoffExpiration(): Promise<boolean> {
         expires_at: currentHandoff.handoff.expires_at,
       },
     });
+    recordedExpiration = true;
   }
 
-  return true;
+  return recordedExpiration;
+}
+
+function getLatestPlatformEvent(
+  events: ExtensionExecutionEvent[],
+  platform: PlatformKey,
+): ExtensionExecutionEvent | null {
+  return (
+    events
+      .slice()
+      .reverse()
+      .find((event) => event.platform === platform) ?? null
+  );
+}
+
+async function shouldRejectExpiredAdapterEvent(
+  message: Extract<BackgroundMessage, { type: "adapter.event" }>,
+): Promise<boolean> {
+  const currentHandoff = await getCurrentHandoff();
+
+  if (!currentHandoff || !isHandoffExpired(currentHandoff.handoff)) {
+    return false;
+  }
+
+  const events = await getExecutionEvents();
+  const latestEvent = getLatestPlatformEvent(events, message.event.platform);
+
+  return (
+    !latestEvent ||
+    !POST_EXPIRATION_EVENT_ALLOWED_STATUSES.has(latestEvent.status)
+  );
 }
 
 async function acceptBridgeHandoff(
@@ -126,12 +230,15 @@ async function acceptBridgeHandoff(
 async function handleAdapterEvent(
   message: Extract<BackgroundMessage, { type: "adapter.event" }>,
 ) {
-  if (await recordCurrentHandoffExpiration()) {
+  if (await shouldRejectExpiredAdapterEvent(message)) {
+    await recordCurrentHandoffExpiration();
     return {
       ok: false,
       error: "Current handoff has expired.",
     };
   }
+
+  await recordCurrentHandoffExpiration();
 
   const currentHandoff = await getCurrentHandoff();
 
@@ -228,6 +335,10 @@ async function handleBackgroundMessage(message: unknown): Promise<unknown> {
 
   if (message.type === "adapter.event") {
     return handleAdapterEvent(message);
+  }
+
+  if (message.type === "asset.download") {
+    return downloadHandoffAsset(message.asset);
   }
 
   throw new Error("Unknown background message type.");

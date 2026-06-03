@@ -3,6 +3,10 @@ import type {
   ExtensionPublishPlatformHandoff,
   HandoffAsset,
 } from "../types/handoff";
+import type {
+  AssetDownloadResponse,
+  BackgroundMessage,
+} from "../types/messages";
 import type { AdapterResult } from "./shared";
 import {
   failed,
@@ -53,17 +57,70 @@ async function waitForFirstElement<T extends Element>(
   return findFirstElement<T>(selectors);
 }
 
-async function assetToFile(asset: HandoffAsset): Promise<File> {
-  const response = await fetch(asset.source_url);
+function isAssetDownloadResponse(
+  value: unknown,
+): value is AssetDownloadResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "name" in value &&
+    "mime_type" in value &&
+    "data_base64" in value &&
+    typeof value.name === "string" &&
+    typeof value.mime_type === "string" &&
+    typeof value.data_base64 === "string"
+  );
+}
 
-  if (!response.ok) {
-    throw new Error(`Failed to download ${asset.name}.`);
+function base64ToUint8Array(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
   }
 
-  const blob = await response.blob();
-  const type = asset.mime_type || blob.type;
+  return bytes;
+}
 
-  return new File([blob], asset.name, { type });
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
+async function downloadAsset(
+  asset: HandoffAsset,
+): Promise<AssetDownloadResponse> {
+  const message: BackgroundMessage = {
+    type: "asset.download",
+    asset,
+  };
+  const response = await browser.runtime.sendMessage(message);
+
+  if (isAssetDownloadResponse(response)) {
+    return response;
+  }
+
+  if (
+    typeof response === "object" &&
+    response !== null &&
+    "error" in response &&
+    typeof response.error === "string"
+  ) {
+    throw new Error(response.error);
+  }
+
+  throw new Error(`Failed to download ${asset.name}.`);
+}
+
+async function assetToFile(asset: HandoffAsset): Promise<File> {
+  const downloadedAsset = await downloadAsset(asset);
+  const bytes = base64ToUint8Array(downloadedAsset.data_base64);
+
+  return new File([toArrayBuffer(bytes)], downloadedAsset.name, {
+    type: downloadedAsset.mime_type,
+  });
 }
 
 async function buildAssetFileList(assets: HandoffAsset[]): Promise<FileList> {

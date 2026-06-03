@@ -2,6 +2,7 @@ import type { ExtensionExecutionEventInput } from "./events";
 import type {
   ExtensionPublishHandoff,
   ExtensionPublishPlatformHandoff,
+  HandoffAsset,
 } from "./handoff";
 import type { AdapterKey } from "./platform";
 
@@ -78,7 +79,17 @@ export type BackgroundMessage =
       type: "adapter.event";
       execution_id: string;
       event: ExtensionExecutionEventInput;
+    }
+  | {
+      type: "asset.download";
+      asset: HandoffAsset;
     };
+
+export interface AssetDownloadResponse {
+  name: string;
+  mime_type: string;
+  data_base64: string;
+}
 
 export interface AdapterRunMessage {
   type: "adapter.run";
