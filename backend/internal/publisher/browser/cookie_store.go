@@ -42,6 +42,13 @@ func NewCookieStore(db *gorm.DB) *CookieStore {
 	return &CookieStore{db: db}
 }
 
+func (s *CookieStore) WithContext(ctx context.Context) *CookieStore {
+	if ctx == nil {
+		return s
+	}
+	return &CookieStore{db: s.db.WithContext(ctx)}
+}
+
 func (s *CookieStore) Save(ctx context.Context, userID uuid.UUID, platform string, cookies []Cookie, profile RemoteAccountProfile) error {
 	key := os.Getenv("COOKIE_ENCRYPTION_KEY")
 	if key == "" {

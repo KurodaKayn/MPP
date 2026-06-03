@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"math"
@@ -41,6 +42,24 @@ type DashboardService struct {
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
 	return NewDashboardServiceWithPlatformTesters(db, platformaccount.WechatAPITester{}, platformaccount.XAPITester{})
+}
+
+func (s *DashboardService) WithContext(ctx context.Context) *DashboardService {
+	if ctx == nil {
+		return s
+	}
+	scoped := *s
+	scoped.db = s.db.WithContext(ctx)
+	if s.accounts != nil {
+		scoped.accounts = s.accounts.WithContext(ctx)
+	}
+	if s.publisher != nil {
+		scoped.publisher = s.publisher.WithContext(ctx)
+	}
+	if s.browserSessionService != nil {
+		scoped.browserSessionService = s.browserSessionService.WithContext(ctx)
+	}
+	return &scoped
 }
 
 func (s *DashboardService) SetBrowserWorkerClient(client publisher.BrowserWorkerClient) {

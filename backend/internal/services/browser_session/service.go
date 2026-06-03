@@ -81,6 +81,18 @@ func NewBrowserSessionService(db *gorm.DB, worker publisher.BrowserWorkerClient,
 	return s
 }
 
+func (s *BrowserSessionService) WithContext(ctx context.Context) *BrowserSessionService {
+	if ctx == nil {
+		return s
+	}
+	scoped := *s
+	scoped.db = s.db.WithContext(ctx)
+	if s.cookieStore != nil {
+		scoped.cookieStore = s.cookieStore.WithContext(ctx)
+	}
+	return &scoped
+}
+
 func (s *BrowserSessionService) RegisterAdapter(a publisher.RemoteBrowserPlatformAdapter) {
 	s.adapters[a.Platform()] = a
 }

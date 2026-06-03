@@ -20,6 +20,10 @@ func NewDashboardHandler(s *services.DashboardService) *DashboardHandler {
 	return &DashboardHandler{dashboardService: s}
 }
 
+func (h *DashboardHandler) serviceFor(c echo.Context) *services.DashboardService {
+	return h.dashboardService.WithContext(c.Request().Context())
+}
+
 func sendError(c echo.Context, code int, errCode, message string) error {
 	resp := dto.ErrorResponse{}
 	resp.Error.Code = errCode
@@ -29,7 +33,7 @@ func sendError(c echo.Context, code int, errCode, message string) error {
 
 func (h *DashboardHandler) GetStats(c echo.Context) error {
 	// Admin view: no scope
-	stats, err := h.dashboardService.GetStats(nil)
+	stats, err := h.serviceFor(c).GetStats(nil)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -55,7 +59,7 @@ func (h *DashboardHandler) ListProjects(c echo.Context) error {
 	platform := c.QueryParam("platform")
 
 	// Admin view: no scope, filterUserID allowed
-	resp, err := h.dashboardService.ListProjects(page, limit, status, userID, platform, nil)
+	resp, err := h.serviceFor(c).ListProjects(page, limit, status, userID, platform, nil)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -72,7 +76,7 @@ func (h *DashboardHandler) GetProjectPublications(c echo.Context) error {
 
 	// Admin view: no scope
 	includeContent := c.QueryParam("include_content") == "true"
-	resp, err := h.dashboardService.GetProjectPublications(projectID, nil, includeContent)
+	resp, err := h.serviceFor(c).GetProjectPublications(projectID, nil, includeContent)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")

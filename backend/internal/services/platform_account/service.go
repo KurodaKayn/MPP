@@ -1,6 +1,8 @@
 package platformaccount
 
 import (
+	"context"
+
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/redis/go-redis/v9"
@@ -45,6 +47,15 @@ func NewServiceWithXOAuth2Provider(db *gorm.DB, provider XOAuth2Provider) *Servi
 		service.xOAuth2Provider = provider
 	}
 	return service
+}
+
+func (s *Service) WithContext(ctx context.Context) *Service {
+	if ctx == nil {
+		return s
+	}
+	scoped := *s
+	scoped.db = s.db.WithContext(ctx)
+	return &scoped
 }
 
 func (s *Service) UseRedis(client *redis.Client) {
