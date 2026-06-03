@@ -200,6 +200,7 @@ func registerCollabRoutes(e *echo.Echo, config serverConfig, h serverHandlers) e
 		collabGroup.Use(middleware.ApplicationRateLimiter(rateLimitConfig))
 	}
 
+	collabGroup.GET("/documents", h.collabDocument.ListDocuments)
 	collabGroup.POST("/documents", h.collabDocument.CreateDocument)
 	return nil
 }

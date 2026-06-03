@@ -281,6 +281,13 @@ export interface components {
       /** Format: date-time */
       updated_at: string;
     };
+    PaginationCollabDocuments: {
+      items: components["schemas"]["CollabDocument"][];
+      page: number;
+      limit: number;
+      total: number;
+      total_pages: number;
+    };
     PublishResult: {
       status: components["schemas"]["PublishResultStatus"];
       /** Format: uuid */

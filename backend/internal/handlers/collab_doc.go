@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/kurodakayn/mpp-backend/internal/contracts"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
@@ -44,6 +45,47 @@ func (h *CollabDocumentHandler) CreateDocument(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, collabDocumentResponse(document))
+}
+
+func (h *CollabDocumentHandler) ListDocuments(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	result, err := h.serviceFor(c).ListDocuments(
+		c.Request().Context(),
+		userID,
+		intQueryParam(c, "page"),
+		intQueryParam(c, "limit"),
+	)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidCollabDocument) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "invalid user")
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, contracts.PaginationCollabDocuments{
+		Items:      collabDocumentResponses(result.Items),
+		Page:       result.Page,
+		Limit:      result.Limit,
+		Total:      int(result.Total),
+		TotalPages: result.TotalPages,
+	})
+}
+
+func intQueryParam(c echo.Context, name string) int {
+	value, _ := strconv.Atoi(c.QueryParam(name))
+	return value
+}
+
+func collabDocumentResponses(documents []models.CollabDocument) []contracts.CollabDocument {
+	items := make([]contracts.CollabDocument, 0, len(documents))
+	for i := range documents {
+		items = append(items, collabDocumentResponse(&documents[i]))
+	}
+	return items
 }
 
 func collabDocumentResponse(document *models.CollabDocument) contracts.CollabDocument {
