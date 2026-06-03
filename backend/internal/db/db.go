@@ -156,12 +156,14 @@ func migrate(database *gorm.DB) error {
 		if err := prepareUserEmailMigration(migrationDB); err != nil {
 			return err
 		}
+		if err := prepareUserPasswordHashMigration(migrationDB); err != nil {
+			return err
+		}
 		if err := migrationDB.AutoMigrate(
 			&models.User{},
 			&models.PlatformAccount{},
 			&models.Project{},
 			&models.ProjectPlatformPublication{},
-			&models.PlatformAccount{},
 			&models.RemoteBrowserSession{},
 		); err != nil {
 			return err
@@ -183,13 +185,13 @@ func prepareUserEmailMigration(database *gorm.DB) error {
 	if !database.Migrator().HasTable(&models.User{}) {
 		return nil
 	}
-	if database.Migrator().HasColumn(&models.User{}, "email") {
-		return prepareUserPasswordHashMigration(database)
+
+	if !database.Migrator().HasColumn(&models.User{}, "email") {
+		if err := database.Exec(`ALTER TABLE users ADD COLUMN email text`).Error; err != nil {
+			return err
+		}
 	}
 
-	if err := database.Exec(`ALTER TABLE users ADD COLUMN email text`).Error; err != nil {
-		return err
-	}
 	if err := database.Exec(`
 		UPDATE users
 		SET email = username || '-' || substring(id::text, 1, 8) || '@local.invalid'
@@ -200,15 +202,21 @@ func prepareUserEmailMigration(database *gorm.DB) error {
 	if err := database.Exec(`ALTER TABLE users ALTER COLUMN email SET NOT NULL`).Error; err != nil {
 		return err
 	}
-	if err := database.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email)`).Error; err != nil {
-		return err
-	}
-	return prepareUserPasswordHashMigration(database)
+	return database.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email)`).Error
 }
 
 func prepareUserPasswordHashMigration(database *gorm.DB) error {
-	if database.Migrator().HasColumn(&models.User{}, "password_hash") {
+	if database.Dialector.Name() != "postgres" {
 		return nil
+	}
+	if !database.Migrator().HasTable(&models.User{}) {
+		return nil
+	}
+
+	if !database.Migrator().HasColumn(&models.User{}, "password_hash") {
+		if err := database.Exec(`ALTER TABLE users ADD COLUMN password_hash text`).Error; err != nil {
+			return err
+		}
 	}
 
 	passwordHash := disabledPasswordHash
@@ -216,9 +224,6 @@ func prepareUserPasswordHashMigration(database *gorm.DB) error {
 		passwordHash = devFallbackPasswordHash
 	}
 
-	if err := database.Exec(`ALTER TABLE users ADD COLUMN password_hash text`).Error; err != nil {
-		return err
-	}
 	if err := database.Exec(`
 		UPDATE users
 		SET password_hash = ?
