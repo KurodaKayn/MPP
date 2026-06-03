@@ -3,6 +3,15 @@
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@": ["."],
+      "@/*": ["./*"],
+      "~": ["."],
+      "~/*": ["./*"],
+      "~~": ["."],
+      "~~/*": ["./*"]
+    },
     "types": ["vitest/globals", "@testing-library/jest-dom"]
   }
 }
