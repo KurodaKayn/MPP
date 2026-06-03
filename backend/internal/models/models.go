@@ -4,45 +4,46 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kurodakayn/mpp-backend/internal/contracts"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
 // Project Status Constants
 const (
-	ProjectStatusDraft      = "draft"
-	ProjectStatusReady      = "ready"
-	ProjectStatusPublishing = "publishing"
-	ProjectStatusPublished  = "published"
-	ProjectStatusFailed     = "failed"
+	ProjectStatusDraft      = string(contracts.ProjectStatusDraft)
+	ProjectStatusReady      = string(contracts.ProjectStatusReady)
+	ProjectStatusPublishing = string(contracts.ProjectStatusPublishing)
+	ProjectStatusPublished  = string(contracts.ProjectStatusPublished)
+	ProjectStatusFailed     = string(contracts.ProjectStatusFailed)
 )
 
 // Publication Status Constants
 const (
-	PublicationStatusPending    = "pending"
-	PublicationStatusAdapted    = "adapted"
-	PublicationStatusPublishing = "publishing"
-	PublicationStatusPublished  = "published"
-	PublicationStatusFailed     = "failed"
-	PublicationStatusDisabled   = "disabled"
+	PublicationStatusPending    = string(contracts.PublicationStatusPending)
+	PublicationStatusAdapted    = string(contracts.PublicationStatusAdapted)
+	PublicationStatusPublishing = string(contracts.PublicationStatusPublishing)
+	PublicationStatusPublished  = string(contracts.PublicationStatusPublished)
+	PublicationStatusFailed     = string(contracts.PublicationStatusFailed)
+	PublicationStatusDisabled   = string(contracts.PublicationStatusDisabled)
 )
 
 // Platform account status constants
 const (
-	PlatformAccountStatusUntested  = "untested"
-	PlatformAccountStatusConnected = "connected"
-	PlatformAccountStatusFailed    = "failed"
+	PlatformAccountStatusUntested  = string(contracts.PlatformAccountStatusUntested)
+	PlatformAccountStatusConnected = string(contracts.PlatformAccountStatusConnected)
+	PlatformAccountStatusFailed    = string(contracts.PlatformAccountStatusFailed)
 )
 
 // Remote Browser Session Status Constants
 const (
-	BrowserSessionStatusPending       = "pending"
-	BrowserSessionStatusReady         = "ready"
-	BrowserSessionStatusLoginDetected = "login_detected"
-	BrowserSessionStatusCapturing     = "capturing"
-	BrowserSessionStatusConnected     = "connected"
-	BrowserSessionStatusExpired       = "expired"
-	BrowserSessionStatusFailed        = "failed"
+	BrowserSessionStatusPending       = string(contracts.BrowserSessionStatusPending)
+	BrowserSessionStatusReady         = string(contracts.BrowserSessionStatusReady)
+	BrowserSessionStatusLoginDetected = string(contracts.BrowserSessionStatusLoginDetected)
+	BrowserSessionStatusCapturing     = string(contracts.BrowserSessionStatusCapturing)
+	BrowserSessionStatusConnected     = string(contracts.BrowserSessionStatusConnected)
+	BrowserSessionStatusExpired       = string(contracts.BrowserSessionStatusExpired)
+	BrowserSessionStatusFailed        = string(contracts.BrowserSessionStatusFailed)
 )
 
 type User struct {

@@ -17,7 +17,9 @@ const project: ProjectListItem = {
 describe("publishContentToPlatforms", () => {
   it("creates a project from editor content before publishing selected platforms", async () => {
     const createProject = vi.fn(async () => project);
-    const publishProject = vi.fn(async () => ({ status: "published" }));
+    const publishProject = vi.fn(async () => ({
+      status: "published" as const,
+    }));
 
     const result = await publishContentToPlatforms(
       {
@@ -55,9 +57,12 @@ describe("publishContentToPlatforms", () => {
     const publishProject = vi.fn(
       async (projectId: string, platform: string) => {
         if (platform === "wechat") {
-          return { status: "published" };
+          return { status: "published" as const };
         }
-        return { error_message: "no publisher registered", status: "failed" };
+        return {
+          error_message: "no publisher registered",
+          status: "failed" as const,
+        };
       },
     );
 
@@ -92,12 +97,12 @@ describe("publishContentToPlatforms", () => {
     const createProject = vi.fn(async () => project);
     const publishProject = vi.fn(async () => ({
       job_id: "job-1",
-      status: "publishing",
+      status: "publishing" as const,
     }));
     const publications = {
       items: [
         {
-          adapted_content: {},
+          adapted_content: { format: "html" },
           config: {},
           created_at: "2026-05-29T12:00:00Z",
           enabled: true,

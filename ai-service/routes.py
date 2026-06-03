@@ -6,6 +6,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 
 from llm_client import (
+    adapted_content_dict,
     build_llm,
     response_text,
     selected_adapted_text,
@@ -16,6 +17,7 @@ from prompts import (
     build_edit_prepublish_messages,
 )
 from schemas import (
+    AdaptedContent,
     CalibrateRequest,
     EditContentRequest,
     EditContentResponse,
@@ -124,7 +126,7 @@ async def edit_prepublish(request: EditPrepublishRequest):
         if not edited_text:
             raise HTTPException(status_code=502, detail="LLM returned empty content")
 
-        adapted_content = dict(request.adapted_content)
+        adapted_content = adapted_content_dict(request.adapted_content)
         adapted_content[content_key] = edited_text
         if content_key in {"html", "markdown", "text"}:
             adapted_content["format"] = content_key
@@ -132,7 +134,7 @@ async def edit_prepublish(request: EditPrepublishRequest):
         return EditPrepublishResponse(
             channel="prepublish",
             platform=request.platform,
-            adapted_content=adapted_content,
+            adapted_content=AdaptedContent.model_validate(adapted_content),
             content=edited_text,
         )
     except HTTPException:

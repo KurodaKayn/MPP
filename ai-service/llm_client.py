@@ -1,9 +1,11 @@
 import os
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import HTTPException
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel
 
 from schemas import ChatMessage
 
@@ -106,11 +108,22 @@ def response_text(content: Any, *, strip: bool = True) -> str:
     return finish(str(content))
 
 
-def selected_adapted_text(adapted_content: dict[str, Any]) -> tuple[str, str]:
-    requested_format = str(adapted_content.get("format") or "").strip().lower()
+def adapted_content_dict(
+    adapted_content: BaseModel | Mapping[str, Any],
+) -> dict[str, Any]:
+    if isinstance(adapted_content, BaseModel):
+        return adapted_content.model_dump(mode="json", exclude_none=True)
+    return dict(adapted_content)
+
+
+def selected_adapted_text(
+    adapted_content: BaseModel | Mapping[str, Any],
+) -> tuple[str, str]:
+    content = adapted_content_dict(adapted_content)
+    requested_format = str(content.get("format") or "").strip().lower()
     for key in [requested_format, "html", "markdown", "text", "summary"]:
         if key in {"html", "markdown", "text", "summary"}:
-            value = adapted_content.get(key)
+            value = content.get(key)
             if isinstance(value, str) and value.strip():
                 return key, value
     return requested_format or "text", ""

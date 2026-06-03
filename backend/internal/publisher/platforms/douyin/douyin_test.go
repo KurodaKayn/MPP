@@ -41,10 +41,13 @@ func TestDouyinPublisher_AdaptContent(t *testing.T) {
 	assert.NoError(t, err)
 	var adapted core.AdaptedContent
 	assert.NoError(t, json.Unmarshal(content, &adapted))
-	assert.Equal(t, 1, adapted.SchemaVersion)
-	assert.Equal(t, "text", adapted.Format)
-	assert.Equal(t, "douyin-text-adapter", adapted.GeneratedBy.ID)
-	assert.Equal(t, "抖音测试正文 #自动化发布", adapted.Text)
+	assert.NotNil(t, adapted.SchemaVersion)
+	assert.Equal(t, 1, *adapted.SchemaVersion)
+	assert.Equal(t, "text", string(adapted.Format))
+	assert.NotNil(t, adapted.GeneratedBy)
+	assert.Equal(t, "douyin-text-adapter", adapted.GeneratedBy.Id)
+	assert.NotNil(t, adapted.Text)
+	assert.Equal(t, "抖音测试正文 #自动化发布", *adapted.Text)
 }
 
 func TestExtractDouyinTextSupportsUnifiedSchema(t *testing.T) {

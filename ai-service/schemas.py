@@ -1,6 +1,8 @@
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from contract_schemas import AdaptedContent, PublishPlatform
 
 
 class ChatMessage(BaseModel):
@@ -21,20 +23,20 @@ class EditContentResponse(BaseModel):
 
 
 class EditPrepublishRequest(BaseModel):
-    adapted_content: dict[str, Any]
+    adapted_content: AdaptedContent
     message: str
-    platform: str
+    platform: PublishPlatform
     title: str = ""
     conversation: list[ChatMessage] = Field(default_factory=list)
 
 
 class EditPrepublishResponse(BaseModel):
     channel: str
-    platform: str
-    adapted_content: dict[str, Any]
+    platform: PublishPlatform
+    adapted_content: AdaptedContent
     content: str
 
 
 class CalibrateRequest(BaseModel):
     content: str
-    platform: str
+    platform: PublishPlatform

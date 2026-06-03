@@ -151,16 +151,17 @@ func buildDouyinWorkerDraft(project models.Project, pub models.ProjectPlatformPu
 }
 
 func extractDouyinWorkerText(raw []byte) string {
-	var structured struct {
-		Text    string `json:"text"`
-		Summary string `json:"summary"`
-	}
+	var structured publisher.AdaptedContent
 	if err := json.Unmarshal(raw, &structured); err == nil {
-		if text := strings.TrimSpace(structured.Text); text != "" {
-			return text
+		if structured.Text != nil {
+			if text := strings.TrimSpace(*structured.Text); text != "" {
+				return text
+			}
 		}
-		if summary := strings.TrimSpace(structured.Summary); summary != "" {
-			return summary
+		if structured.Summary != nil {
+			if summary := strings.TrimSpace(*structured.Summary); summary != "" {
+				return summary
+			}
 		}
 	}
 

@@ -30,7 +30,7 @@ func (d *DouyinPublisher) AdaptContent(project *models.Project) ([]byte, error) 
 		text = strings.TrimSpace(project.SourceContent)
 	}
 	adapted := core.SystemAdaptedContent(project, "text", "douyin-text-adapter", text)
-	adapted.Text = text
+	adapted.Text = core.String(text)
 	return json.Marshal(adapted)
 }
 
@@ -185,11 +185,15 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 func extractDouyinText(raw []byte) string {
 	var structured core.AdaptedContent
 	if err := json.Unmarshal(raw, &structured); err == nil {
-		if text := strings.TrimSpace(structured.Text); text != "" {
-			return text
+		if structured.Text != nil {
+			if text := strings.TrimSpace(*structured.Text); text != "" {
+				return text
+			}
 		}
-		if summary := strings.TrimSpace(structured.Summary); summary != "" {
-			return summary
+		if structured.Summary != nil {
+			if summary := strings.TrimSpace(*structured.Summary); summary != "" {
+				return summary
+			}
 		}
 	}
 

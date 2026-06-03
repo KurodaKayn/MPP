@@ -41,14 +41,17 @@ func TestZhihuPublisher_AdaptContent(t *testing.T) {
 	assert.NoError(t, err)
 	var adapted core.AdaptedContent
 	assert.NoError(t, json.Unmarshal(content, &adapted))
-	assert.Equal(t, 1, adapted.SchemaVersion)
-	assert.Equal(t, "markdown", adapted.Format)
-	assert.Equal(t, "zhihu-markdown-adapter", adapted.GeneratedBy.ID)
-	assert.Contains(t, adapted.Markdown, "## 小标题")
-	assert.Contains(t, adapted.Markdown, "**知乎测试**")
-	assert.Contains(t, adapted.Markdown, "> 引用")
-	assert.Contains(t, adapted.Markdown, "- 第一点")
-	assert.Contains(t, adapted.Markdown, "![配图](https://example.com/a.png)")
+	assert.NotNil(t, adapted.SchemaVersion)
+	assert.Equal(t, 1, *adapted.SchemaVersion)
+	assert.Equal(t, "markdown", string(adapted.Format))
+	assert.NotNil(t, adapted.GeneratedBy)
+	assert.Equal(t, "zhihu-markdown-adapter", adapted.GeneratedBy.Id)
+	assert.NotNil(t, adapted.Markdown)
+	assert.Contains(t, *adapted.Markdown, "## 小标题")
+	assert.Contains(t, *adapted.Markdown, "**知乎测试**")
+	assert.Contains(t, *adapted.Markdown, "> 引用")
+	assert.Contains(t, *adapted.Markdown, "- 第一点")
+	assert.Contains(t, *adapted.Markdown, "![配图](https://example.com/a.png)")
 }
 
 func TestZhihuPublisherAdaptContentPreservesPreformattedCode(t *testing.T) {
@@ -67,7 +70,8 @@ func TestZhihuPublisherAdaptContentPreservesPreformattedCode(t *testing.T) {
 	assert.NoError(t, err)
 	var adapted core.AdaptedContent
 	assert.NoError(t, json.Unmarshal(content, &adapted))
-	assert.Contains(t, adapted.Markdown, "```\nfor _, item := range items {\n\tif item.Enabled {\n\t\tfmt.Println(item.Platform)\n\t}\n}\n```")
+	assert.NotNil(t, adapted.Markdown)
+	assert.Contains(t, *adapted.Markdown, "```\nfor _, item := range items {\n\tif item.Enabled {\n\t\tfmt.Println(item.Platform)\n\t}\n}\n```")
 }
 
 // TestZhihuPublisher_Publish_AccountWithEmptyCookies 验证账号存在但 Cookie 为空时的初始校验
