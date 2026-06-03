@@ -41,6 +41,18 @@ const (
 	BrowserSessionStatusReady         BrowserSessionStatus = "ready"
 )
 
+// Defines values for BrowserWorkerDomainRuleMatch.
+const (
+	Exact  BrowserWorkerDomainRuleMatch = "exact"
+	Suffix BrowserWorkerDomainRuleMatch = "suffix"
+)
+
+// Defines values for BrowserWorkerSessionStatus.
+const (
+	BrowserWorkerSessionStatusLoginDetected BrowserWorkerSessionStatus = "login_detected"
+	BrowserWorkerSessionStatusReady         BrowserWorkerSessionStatus = "ready"
+)
+
 // Defines values for ConnectionTestStatus.
 const (
 	ConnectionTestStatusConnected ConnectionTestStatus = "connected"
@@ -114,10 +126,10 @@ const (
 
 // Defines values for RequirementStatusValue.
 const (
-	Failed  RequirementStatusValue = "failed"
-	Passed  RequirementStatusValue = "passed"
-	Unknown RequirementStatusValue = "unknown"
-	Warning RequirementStatusValue = "warning"
+	RequirementStatusValueFailed  RequirementStatusValue = "failed"
+	RequirementStatusValuePassed  RequirementStatusValue = "passed"
+	RequirementStatusValueUnknown RequirementStatusValue = "unknown"
+	RequirementStatusValueWarning RequirementStatusValue = "warning"
 )
 
 // Defines values for WechatAccountPlatform.
@@ -225,6 +237,103 @@ type BrowserSession struct {
 
 // BrowserSessionStatus defines model for BrowserSessionStatus.
 type BrowserSessionStatus string
+
+// BrowserWorkerCaptureSessionResponse defines model for BrowserWorkerCaptureSessionResponse.
+type BrowserWorkerCaptureSessionResponse struct {
+	Account        BrowserWorkerRemoteAccountProfile `json:"account"`
+	Cookies        []BrowserWorkerCookie             `json:"cookies"`
+	MissingCookies []string                          `json:"missing_cookies"`
+	Status         BrowserWorkerSessionStatus        `json:"status"`
+}
+
+// BrowserWorkerCookie defines model for BrowserWorkerCookie.
+type BrowserWorkerCookie struct {
+	Domain   string  `json:"domain"`
+	Expires  float64 `json:"expires"`
+	HttpOnly bool    `json:"httpOnly"`
+	Name     string  `json:"name"`
+	Path     string  `json:"path"`
+	SameSite string  `json:"sameSite"`
+	Secure   bool    `json:"secure"`
+	Value    string  `json:"value"`
+}
+
+// BrowserWorkerCookieRequirement defines model for BrowserWorkerCookieRequirement.
+type BrowserWorkerCookieRequirement struct {
+	DomainSuffixes []string `json:"domain_suffixes"`
+	Name           string   `json:"name"`
+	Preserve       bool     `json:"preserve"`
+	Required       bool     `json:"required"`
+}
+
+// BrowserWorkerDomainRule defines model for BrowserWorkerDomainRule.
+type BrowserWorkerDomainRule struct {
+	Host    string                       `json:"host"`
+	Match   BrowserWorkerDomainRuleMatch `json:"match"`
+	Purpose string                       `json:"purpose"`
+	Schemes []string                     `json:"schemes"`
+}
+
+// BrowserWorkerDomainRuleMatch defines model for BrowserWorkerDomainRule.Match.
+type BrowserWorkerDomainRuleMatch string
+
+// BrowserWorkerGetSessionResponse defines model for BrowserWorkerGetSessionResponse.
+type BrowserWorkerGetSessionResponse struct {
+	CurrentURL       string                     `json:"current_url"`
+	LoginDetected    bool                       `json:"login_detected"`
+	Message          string                     `json:"message"`
+	MissingCookies   []string                   `json:"missing_cookies"`
+	Status           BrowserWorkerSessionStatus `json:"status"`
+	WorkerSessionRef string                     `json:"worker_session_ref"`
+}
+
+// BrowserWorkerRemoteAccountProfile defines model for BrowserWorkerRemoteAccountProfile.
+type BrowserWorkerRemoteAccountProfile struct {
+	AvatarURL      string `json:"avatar_url"`
+	PlatformUserID string `json:"platform_user_id"`
+	Username       string `json:"username"`
+}
+
+// BrowserWorkerSessionStatus defines model for BrowserWorkerSessionStatus.
+type BrowserWorkerSessionStatus string
+
+// BrowserWorkerStartDouyinPublishRequest defines model for BrowserWorkerStartDouyinPublishRequest.
+type BrowserWorkerStartDouyinPublishRequest struct {
+	Content          string `json:"content"`
+	CoverImageBase64 string `json:"cover_image_base64"`
+	CoverImageName   string `json:"cover_image_name"`
+	Title            string `json:"title"`
+}
+
+// BrowserWorkerStartSessionRequest defines model for BrowserWorkerStartSessionRequest.
+type BrowserWorkerStartSessionRequest struct {
+	AllowedDomains  []BrowserWorkerDomainRule        `json:"allowed_domains"`
+	InitialCookies  []BrowserWorkerCookie            `json:"initial_cookies"`
+	LoginURL        string                           `json:"login_url"`
+	Platform        string                           `json:"platform"`
+	RequiredCookies []BrowserWorkerCookieRequirement `json:"required_cookies"`
+	SessionID       openapi_types.UUID               `json:"session_id"`
+	TTLSeconds      int                              `json:"ttl_seconds"`
+	UserID          openapi_types.UUID               `json:"user_id"`
+	Viewport        BrowserWorkerViewport            `json:"viewport"`
+}
+
+// BrowserWorkerStartSessionResponse defines model for BrowserWorkerStartSessionResponse.
+type BrowserWorkerStartSessionResponse struct {
+	CDPEndpointRef    string                     `json:"cdp_endpoint_ref"`
+	ContainerID       string                     `json:"container_id"`
+	ExpiresAt         time.Time                  `json:"expires_at"`
+	StartedAt         time.Time                  `json:"started_at"`
+	Status            BrowserWorkerSessionStatus `json:"status"`
+	StreamEndpointRef string                     `json:"stream_endpoint_ref"`
+	WorkerSessionRef  string                     `json:"worker_session_ref"`
+}
+
+// BrowserWorkerViewport defines model for BrowserWorkerViewport.
+type BrowserWorkerViewport struct {
+	Height int `json:"height"`
+	Width  int `json:"width"`
+}
 
 // CancelBrowserSessionResult defines model for CancelBrowserSessionResult.
 type CancelBrowserSessionResult struct {
@@ -501,3 +610,9 @@ type ZhihuAccount struct {
 
 // ZhihuAccountPlatform defines model for ZhihuAccount.Platform.
 type ZhihuAccountPlatform string
+
+// CreateBrowserWorkerSessionJSONRequestBody defines body for CreateBrowserWorkerSession for application/json ContentType.
+type CreateBrowserWorkerSessionJSONRequestBody = BrowserWorkerStartSessionRequest
+
+// StartBrowserWorkerDouyinPublishJSONRequestBody defines body for StartBrowserWorkerDouyinPublish for application/json ContentType.
+type StartBrowserWorkerDouyinPublishJSONRequestBody = BrowserWorkerStartDouyinPublishRequest

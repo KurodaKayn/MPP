@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-browser-worker/internal/cdp"
 	browsercontainer "github.com/kurodakayn/mpp-browser-worker/internal/container"
+	"github.com/kurodakayn/mpp-browser-worker/internal/contracts"
 	"github.com/kurodakayn/mpp-browser-worker/internal/cookies"
 	"github.com/kurodakayn/mpp-browser-worker/internal/isolation"
 	workerpublish "github.com/kurodakayn/mpp-browser-worker/internal/publish"
@@ -145,7 +146,7 @@ func (s *Server) createSession(c echo.Context) error {
 
 	return c.JSON(http.StatusCreated, session.StartWorkerSessionResponse{
 		WorkerSessionRef:  workerSession.ID,
-		Status:            workerSession.Status,
+		Status:            contracts.BrowserWorkerSessionStatus(workerSession.Status),
 		ContainerID:       workerSession.ContainerID,
 		CDPEndpointRef:    workerSession.CDPEndpointRef,
 		StreamEndpointRef: workerSession.StreamEndpointRef,
@@ -214,7 +215,7 @@ func (s *Server) captureSession(c echo.Context) error {
 	workerSession.Status = state.Status
 	_ = workerSession.StateStore.SaveLiveSession(c.Request().Context(), workerSession, state)
 	return c.JSON(http.StatusOK, session.CaptureWorkerSessionResponse{
-		Status:  state.Status,
+		Status:  contracts.BrowserWorkerSessionStatus(state.Status),
 		Cookies: preservedCookies,
 		Account: session.RemoteAccountProfile{
 			Username: username,

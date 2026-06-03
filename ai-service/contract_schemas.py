@@ -89,6 +89,127 @@ class BrowserSessionStatus(StrEnum):
     failed = "failed"
 
 
+class BrowserWorkerSessionStatus(StrEnum):
+    ready = "ready"
+    login_detected = "login_detected"
+
+
+class BrowserWorkerCookie(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    value: str
+    domain: str
+    path: str
+    expires: float
+    secure: bool
+    httpOnly: bool
+    sameSite: str
+
+
+class Match(StrEnum):
+    exact = "exact"
+    suffix = "suffix"
+
+
+class BrowserWorkerDomainRule(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    host: str
+    match: Match
+    schemes: list[str]
+    purpose: str
+
+
+class BrowserWorkerCookieRequirement(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: str
+    domain_suffixes: list[str]
+    required: bool
+    preserve: bool
+
+
+class BrowserWorkerViewport(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    width: int
+    height: int
+
+
+class BrowserWorkerRemoteAccountProfile(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    platform_user_id: str
+    username: str
+    avatar_url: str
+
+
+class BrowserWorkerStartSessionRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    session_id: UUID
+    user_id: UUID
+    platform: str
+    login_url: str
+    allowed_domains: list[BrowserWorkerDomainRule]
+    required_cookies: list[BrowserWorkerCookieRequirement]
+    initial_cookies: list[BrowserWorkerCookie]
+    ttl_seconds: int
+    viewport: BrowserWorkerViewport
+
+
+class BrowserWorkerStartSessionResponse(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    worker_session_ref: str
+    status: BrowserWorkerSessionStatus
+    container_id: str
+    cdp_endpoint_ref: str
+    stream_endpoint_ref: str
+    started_at: AwareDatetime
+    expires_at: AwareDatetime
+
+
+class BrowserWorkerGetSessionResponse(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    worker_session_ref: str
+    status: BrowserWorkerSessionStatus
+    current_url: str
+    login_detected: bool
+    missing_cookies: list[str]
+    message: str
+
+
+class BrowserWorkerCaptureSessionResponse(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    status: BrowserWorkerSessionStatus
+    cookies: list[BrowserWorkerCookie]
+    missing_cookies: list[str]
+    account: BrowserWorkerRemoteAccountProfile
+
+
+class BrowserWorkerStartDouyinPublishRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    title: str
+    content: str
+    cover_image_base64: str
+    cover_image_name: str
+
+
 class GeneratedBy(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
