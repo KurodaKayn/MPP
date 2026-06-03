@@ -1,7 +1,10 @@
 package email
 
 import (
+	"crypto/tls"
 	"fmt"
+	"io"
+	"net"
 	"net/smtp"
 )
 
@@ -40,9 +43,63 @@ func (s *SMTPEmailService) SendPasswordResetCode(to, code string) error {
 
 func (s *SMTPEmailService) send(to, subject, body string) error {
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s", s.From, to, subject, body)
-	auth := smtp.PlainAuth("", s.From, s.Password, s.Host)
 	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
-	return smtp.SendMail(addr, auth, s.From, []string{to}, []byte(msg))
+
+	var client *smtp.Client
+	var err error
+	if s.Port == 465 {
+		conn, dialErr := tls.Dial("tcp", addr, &tls.Config{ServerName: s.Host, MinVersion: tls.VersionTLS12})
+		if dialErr != nil {
+			return dialErr
+		}
+		client, err = smtp.NewClient(conn, s.Host)
+	} else {
+		conn, dialErr := net.Dial("tcp", addr)
+		if dialErr != nil {
+			return dialErr
+		}
+		client, err = smtp.NewClient(conn, s.Host)
+	}
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	if err := client.Hello("localhost"); err != nil {
+		return err
+	}
+	if s.Port != 465 {
+		if ok, _ := client.Extension("STARTTLS"); !ok {
+			return fmt.Errorf("smtp server does not support STARTTLS")
+		}
+		if err := client.StartTLS(&tls.Config{ServerName: s.Host, MinVersion: tls.VersionTLS12}); err != nil {
+			return err
+		}
+	}
+
+	if err := client.Auth(smtp.PlainAuth("", s.From, s.Password, s.Host)); err != nil {
+		return err
+	}
+	if err := client.Mail(s.From); err != nil {
+		return err
+	}
+	if err := client.Rcpt(to); err != nil {
+		return err
+	}
+
+	writer, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := io.WriteString(writer, msg); err != nil {
+		writer.Close()
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	return client.Quit()
 }
 
 type MockEmailService struct {
