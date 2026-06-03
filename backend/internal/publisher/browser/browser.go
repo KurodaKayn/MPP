@@ -91,17 +91,6 @@ func localBrowserAllocatorOptions(browserPath string, runningAsRoot bool) []chro
 	return opts
 }
 
-type Cookie struct {
-	Name     string  `json:"name"`
-	Value    string  `json:"value"`
-	Domain   string  `json:"domain"`
-	Path     string  `json:"path"`
-	Expires  float64 `json:"expires"`
-	Secure   bool    `json:"secure"`
-	HttpOnly bool    `json:"httpOnly"`
-	SameSite string  `json:"sameSite"`
-}
-
 func setCookiesAction(cookies []Cookie) chromedp.Action {
 	return chromedp.ActionFunc(func(ctx context.Context) error {
 		for _, c := range cookies {

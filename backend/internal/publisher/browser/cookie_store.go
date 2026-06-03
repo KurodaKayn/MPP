@@ -34,12 +34,6 @@ type EncryptedEnvelope struct {
 	Ciphertext []byte `json:"ciphertext"`
 }
 
-type RemoteAccountProfile struct {
-	PlatformUserID string `json:"platform_user_id"`
-	Username       string `json:"username"`
-	AvatarURL      string `json:"avatar_url"`
-}
-
 type CookieStore struct {
 	db *gorm.DB
 }
