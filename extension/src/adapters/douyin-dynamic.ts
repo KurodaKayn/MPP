@@ -18,17 +18,31 @@ import {
 } from "./shared";
 
 const TEXT_TARGET_SELECTORS = [
+  '.ProseMirror[contenteditable="true"]',
+  '[role="textbox"][contenteditable="true"]',
+  '[data-placeholder="请输入正文"]',
   '[contenteditable="true"]',
   'textarea[placeholder*="描述"]',
   'textarea[placeholder*="标题"]',
   'textarea[placeholder*="文案"]',
   "textarea",
 ];
+const ARTICLE_TITLE_SELECTORS = [
+  'input[placeholder*="请输入文章标题"]',
+  'input[placeholder*="文章标题"]',
+];
+const ARTICLE_SUMMARY_SELECTORS = [
+  'input[placeholder*="添加内容摘要"]',
+  'input[placeholder*="文章精彩部分"]',
+];
 const FILE_INPUT_SELECTORS = [
   'input[type="file"][accept*="video"]',
   'input[type="file"][accept*="image"]',
   'input[type="file"]',
 ];
+const ARTICLE_BUTTON_TEXT = "我要发文";
+const ARTICLE_IMAGE_UPLOAD_TEXT = "点击上传图片";
+const DOUYIN_ARTICLE_PATH = "/creator-micro/content/post/article";
 const ELEMENT_WAIT_TIMEOUT_MS = 10_000;
 const ELEMENT_WAIT_INTERVAL_MS = 250;
 
@@ -55,6 +69,65 @@ async function waitForFirstElement<T extends Element>(
   }
 
   return findFirstElement<T>(selectors);
+}
+
+async function waitForCondition(
+  condition: () => boolean,
+  timeoutMs = ELEMENT_WAIT_TIMEOUT_MS,
+): Promise<boolean> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (condition()) {
+      return true;
+    }
+
+    await wait(ELEMENT_WAIT_INTERVAL_MS);
+  }
+
+  return condition();
+}
+
+function findButtonByText(text: string): HTMLButtonElement | null {
+  const buttons = Array.from(document.querySelectorAll("button"));
+
+  return (
+    buttons.find((button) => button.textContent?.trim().includes(text)) ?? null
+  );
+}
+
+function findElementByText<T extends HTMLElement>(
+  selectors: string[],
+  text: string,
+): T | null {
+  const elements = selectors.flatMap((selector) =>
+    Array.from(document.querySelectorAll<T>(selector)),
+  );
+
+  return (
+    elements.find((element) => element.textContent?.trim().includes(text)) ??
+    null
+  );
+}
+
+function isOnDouyinArticlePage(): boolean {
+  return location.pathname.replace(/\/$/, "") === DOUYIN_ARTICLE_PATH;
+}
+
+async function enterArticleEditor(): Promise<boolean> {
+  if (isOnDouyinArticlePage()) {
+    return true;
+  }
+
+  const articleButton = findButtonByText(ARTICLE_BUTTON_TEXT);
+
+  if (!articleButton) {
+    return false;
+  }
+
+  articleButton.click();
+
+  return waitForCondition(isOnDouyinArticlePage);
 }
 
 function isAssetDownloadResponse(
@@ -156,9 +229,59 @@ async function uploadAssets(assets: HandoffAsset[]): Promise<number> {
   return assets.length;
 }
 
+async function uploadArticleAssets(assets: HandoffAsset[]): Promise<number> {
+  if (assets.length === 0) {
+    return 0;
+  }
+
+  if (!findFirstElement<HTMLInputElement>(FILE_INPUT_SELECTORS)) {
+    const uploadTrigger = findElementByText<HTMLElement>(
+      ["button", '[class*="mycard"]'],
+      ARTICLE_IMAGE_UPLOAD_TEXT,
+    );
+
+    uploadTrigger?.click();
+  }
+
+  return uploadAssets(assets);
+}
+
+function limitDouyinArticleText(value: string): string {
+  return value.trim().slice(0, 30);
+}
+
+function createArticleSummary(text: string): string {
+  return limitDouyinArticleText(text.replace(/\s+/g, " "));
+}
+
+async function fillDouyinArticleEditor(
+  platform: ExtensionPublishPlatformHandoff,
+  projectTitle: string,
+): Promise<void> {
+  const titleTarget = await waitForFirstElement<HTMLInputElement>(
+    ARTICLE_TITLE_SELECTORS,
+  );
+  const summaryTarget = await waitForFirstElement<HTMLInputElement>(
+    ARTICLE_SUMMARY_SELECTORS,
+  );
+  const bodyTarget = await waitForFirstElement<
+    HTMLElement | HTMLTextAreaElement
+  >(TEXT_TARGET_SELECTORS);
+
+  if (!titleTarget || !summaryTarget || !bodyTarget) {
+    throw new Error("Could not find the Douyin article editor.");
+  }
+
+  const draftText = getDraftText(platform);
+
+  fillTextTarget(titleTarget, limitDouyinArticleText(projectTitle));
+  fillTextTarget(summaryTarget, createArticleSummary(draftText));
+  fillTextTarget(bodyTarget, draftText);
+}
+
 export async function runDouyinDynamicAdapter(
   platform: ExtensionPublishPlatformHandoff,
-  _projectTitle: string,
+  projectTitle: string,
 ): Promise<AdapterResult> {
   if (!isOnExpectedHost(["creator.douyin.com"])) {
     return failed("Douyin adapter can only run on Douyin creator pages.");
@@ -171,6 +294,37 @@ export async function runDouyinDynamicAdapter(
       "Please sign in to Douyin before publishing.",
       account.reason,
     );
+  }
+
+  if (platform.content_kind === "article") {
+    const articleEditorReady = await enterArticleEditor();
+
+    if (!articleEditorReady) {
+      return failed("Could not open the Douyin article editor.");
+    }
+
+    try {
+      await fillDouyinArticleEditor(platform, projectTitle);
+    } catch (error) {
+      return failed("Could not find the Douyin editor.", error);
+    }
+
+    let uploadedAssets = 0;
+
+    try {
+      uploadedAssets = await uploadArticleAssets(platform.assets);
+    } catch (error) {
+      return failed("Could not attach Douyin media assets.", error);
+    }
+
+    return userReview("Article draft prepared. Review platform settings.", {
+      account_status: account.status,
+      assets: platform.assets.length,
+      assets_uploaded: uploadedAssets,
+      asset_types: [...new Set(platform.assets.map((asset) => asset.type))],
+      auto_publish: false,
+      content_kind: platform.content_kind,
+    });
   }
 
   let uploadedAssets = 0;
