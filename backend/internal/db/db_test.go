@@ -76,6 +76,17 @@ func TestConnectionPoolConfigFromEnvUsesOverrides(t *testing.T) {
 	require.Equal(t, 90*time.Second, config.ConnMaxIdleTime)
 }
 
+func TestConnectionPoolConfigFromEnvAllowsLowerMaxOpenWithoutIdleOverride(t *testing.T) {
+	clearConnectionPoolEnv(t)
+	t.Setenv(dbMaxOpenConnsEnv, "2")
+
+	config, err := connectionPoolConfigFromEnv()
+
+	require.NoError(t, err)
+	require.Equal(t, 2, config.MaxOpenConns)
+	require.Equal(t, defaultMaxIdleConns, config.MaxIdleConns)
+}
+
 func TestConnectionPoolConfigFromEnvRejectsInvalidValues(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -88,14 +99,6 @@ func TestConnectionPoolConfigFromEnvRejectsInvalidValues(t *testing.T) {
 				dbMaxOpenConnsEnv: "-1",
 			},
 			wantErr: dbMaxOpenConnsEnv,
-		},
-		{
-			name: "max idle exceeds max open",
-			env: map[string]string{
-				dbMaxOpenConnsEnv: "4",
-				dbMaxIdleConnsEnv: "5",
-			},
-			wantErr: dbMaxIdleConnsEnv,
 		},
 		{
 			name: "invalid lifetime",
