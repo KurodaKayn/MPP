@@ -10,6 +10,13 @@ from schemas import ChatMessage
 LLM_PROVIDER_URL_ENV = "LLM_PROVIDER_URL"
 LLM_MODEL_ENV = "LLM_MODEL"
 LLM_PROVIDER_KEY_ENV = "LLM_PROVIDER_KEY"
+LLM_REQUEST_TIMEOUT_ENV = "LLM_REQUEST_TIMEOUT_SECONDS"
+LLM_MAX_RETRIES_ENV = "LLM_MAX_RETRIES"
+LLM_STREAM_CHUNK_TIMEOUT_ENV = "LLM_STREAM_CHUNK_TIMEOUT_SECONDS"
+
+DEFAULT_LLM_REQUEST_TIMEOUT_SECONDS = 90.0
+DEFAULT_LLM_MAX_RETRIES = 2
+DEFAULT_LLM_STREAM_CHUNK_TIMEOUT_SECONDS = 30.0
 
 
 def build_llm() -> ChatOpenAI:
@@ -38,7 +45,35 @@ def build_llm() -> ChatOpenAI:
         model=model,
         streaming=True,
         temperature=0,
+        timeout=float_env(LLM_REQUEST_TIMEOUT_ENV, DEFAULT_LLM_REQUEST_TIMEOUT_SECONDS),
+        max_retries=int_env(LLM_MAX_RETRIES_ENV, DEFAULT_LLM_MAX_RETRIES),
+        stream_chunk_timeout=float_env(
+            LLM_STREAM_CHUNK_TIMEOUT_ENV,
+            DEFAULT_LLM_STREAM_CHUNK_TIMEOUT_SECONDS,
+        ),
     )
+
+
+def int_env(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+def float_env(name: str, default: float) -> float:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def conversation_to_messages(conversation: list[ChatMessage]) -> list[BaseMessage]:
