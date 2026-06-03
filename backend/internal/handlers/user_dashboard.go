@@ -48,6 +48,23 @@ func (h *UserDashboardHandler) GetMyStats(c echo.Context) error {
 	return c.JSON(http.StatusOK, stats)
 }
 
+func (h *UserDashboardHandler) GetExtensionSession(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	session, err := h.dashboardService.GetExtensionSession(userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusUnauthorized, "unauthorized", "session user not found")
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, session)
+}
+
 func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {

@@ -132,6 +132,21 @@ func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStats
 	return &stats, nil
 }
 
+func (s *DashboardService) GetExtensionSession(userID uuid.UUID) (*dto.ExtensionSessionResponse, error) {
+	var user models.User
+	if err := s.db.Select("id", "username").First(&user, "id = ?", userID).Error; err != nil {
+		return nil, err
+	}
+
+	return &dto.ExtensionSessionResponse{
+		Authenticated: true,
+		User: dto.ExtensionSessionUser{
+			ID:       user.ID,
+			Username: user.Username,
+		},
+	}, nil
+}
+
 func (s *DashboardService) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
 	title := strings.TrimSpace(req.Title)
 	sourceContent := strings.TrimSpace(req.SourceContent)

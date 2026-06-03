@@ -28,6 +28,16 @@ type DashboardStatsResponse struct {
 	TotalFailedPublications    int64 `json:"total_failed_publications"`
 }
 
+type ExtensionSessionUser struct {
+	ID       uuid.UUID `json:"id"`
+	Username string    `json:"username"`
+}
+
+type ExtensionSessionResponse struct {
+	Authenticated bool                 `json:"authenticated"`
+	User          ExtensionSessionUser `json:"user"`
+}
+
 type CreateProjectRequest struct {
 	Title         string   `json:"title"`
 	SourceContent string   `json:"source_content"`
