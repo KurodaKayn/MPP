@@ -46,7 +46,7 @@ MPP 当前已经具备多服务雏形：
 | 2 | 网关与应用双层限流 | 防止爬虫、恶意请求、AI 滥用、发布任务刷爆 | Traefik 做 IP 级限流，backend 做用户/租户/接口级配额 | 5 | 2 | P0 | 完成 | SaaS 化关键能力 |
 | 3 | 可观测性基线 | 出问题能定位，能展示系统真实运行状态 | Prometheus 指标、Grafana 面板、Loki 日志、Trace ID | 5 | 3 | P0 | 完成 | backend、publish-worker、ai-service、browser-worker 已有 HTTP 指标和结构化请求日志；这是基线，不是完整分布式 tracing |
 | 4 | 健康检查与优雅关闭 | 支持滚动重启，避免请求中断 | frontend/backend/ai/browser-worker 增加 health/readiness | 5 | 2 | P0 | 完成 | 成本低，生产必备 |
-| 5 | API 服务无状态化与横向扩容 | 支撑更多并发请求 | backend 不保存本地会话，扩多副本，共享 Redis/Postgres | 5 | 2 | P1 | 进行中 | API 基本无状态并支持 `api/worker/all` 角色，生产部署仍未配置多副本和连接数治理 |
+| 5 | API 服务无状态化与横向扩容 | 支撑更多并发请求 | backend 不保存本地会话，扩多副本，共享 Redis/Postgres | 5 | 2 | P1 | 完成 | API 基本无状态并支持 `api/worker/all` 角色，生产 Compose 默认多 backend 副本，PostgreSQL 连接池已有 env 约束 |
 | 6 | Redis 队列升级为可靠任务模型 | 发布任务异步化、可重试、可恢复 | 用 Redis Streams 或 Asynq 管理 publish jobs | 5 | 3 | P1 | 进行中 | 已有 Redis List + `publish-worker`，尚缺 ack、恢复和可靠重投递语义 |
 | 7 | 幂等键与发布状态机 | 防止重复点击、重复消费、重复发布 | publish 请求带 idempotency key，publication 状态机严格流转 | 5 | 3 | P1 | 进行中 | 已有发布锁和基础状态字段，尚缺 idempotency key 和目标状态机 |
 | 8 | Outbox Pattern | 数据库更新与事件投递一致性 | publication 状态更新后写 outbox，由 worker 投递任务 | 4 | 4 | P1 | 未开始 | 适合发布流水线，但实现要谨慎 |
@@ -55,7 +55,7 @@ MPP 当前已经具备多服务雏形：
 | 11 | Browser Worker 资源池与配额 | 控制 Chromium 容器数量，避免宿主机爆掉 | 每用户/租户限制并发 browser session，全局 worker pool | 5 | 3 | P1 | 进行中 | 已有用户+平台活跃 session 锁和容器 CPU/内存限制，尚缺租户配额与全局 worker pool |
 | 12 | WebSocket/SSE 长连接治理 | 处理 AI stream 和远程浏览器 stream | 网关 timeout、连接数限制、stream token、断线恢复 | 4 | 3 | P1 | 进行中 | 已有 AI stream 和 browser stream token，尚缺网关 timeout、连接数限制和断线恢复 |
 | 13 | 数据库索引、分页与慢查询治理 | 避免列表和 dashboard 查询拖垮数据库 | projects、publications、sessions、accounts 建组合索引 | 5 | 2 | P1 | 进行中 | 已有组合索引和列表分页，尚缺慢查询观测、查询计划审计和持续治理流程 |
-| 14 | PostgreSQL 连接池 | 多副本后避免 DB 连接耗尽 | 引入 PgBouncer 或应用层连接池约束 | 4 | 3 | P2 | 未开始 | backend 扩容后再做 |
+| 14 | PostgreSQL 连接池 | 多副本后避免 DB 连接耗尽 | 引入 PgBouncer 或应用层连接池约束 | 4 | 3 | P2 | 完成 | 已接入应用层连接池约束；PgBouncer 可在更大副本规模后再评估 |
 | 15 | 对象存储与签名 URL | 图片和媒体不压在应用容器与数据库上 | S3/R2/OSS 存储媒体，backend 生成 signed URL | 5 | 3 | P2 | 未开始 | 平台媒体上传增长后很重要 |
 | 16 | CDN 与静态资源缓存 | 降低前端资源和图片访问压力 | Next 静态资源、媒体文件走 CDN | 4 | 2 | P2 | 未开始 | SaaS 上线后逐步做 |
 | 17 | 多租户配额与计费限额 | SaaS 商业化与资源隔离 | tenant plan、AI 次数、发布次数、浏览器时长限制 | 5 | 4 | P2 | 进行中 | 已有 tenant 维度限流桶，尚无 tenant/plan/quota/billing usage 数据模型 |
@@ -104,8 +104,8 @@ MPP 当前已经具备多服务雏形：
 - [x] 将 backend 拆成 `backend` API 服务和 `publish-worker` 两个运行进程。
 - [ ] browser-worker 增加全局资源池和用户级并发配额。（进行中：已有同一用户/平台活跃 session 锁、browser session 配额和容器资源限制，尚缺全局 worker pool。）
 - [ ] AI 请求增加用户级并发限制和 token/成本统计。（进行中：已有 AI 路由用户/租户限流，尚缺并发控制、token 统计和成本统计。）
-- [ ] backend-api 支持多副本运行。（进行中：API 已基本无状态，仍需配套副本部署和连接数治理。）
-- [ ] PostgreSQL 连接数治理，必要时引入 PgBouncer。
+- [x] backend-api 支持多副本运行。（已完成：API 已基本无状态，生产 Compose 默认 `BACKEND_API_REPLICAS=2`，dev override 固定单副本避免端口冲突。）
+- [x] PostgreSQL 连接数治理，必要时引入 PgBouncer。（已完成：backend/publish-worker 进程已支持 `DB_MAX_OPEN_CONNS`、`DB_MAX_IDLE_CONNS`、`DB_CONN_MAX_LIFETIME`、`DB_CONN_MAX_IDLE_TIME`；PgBouncer 留作更大规模扩展。）
 - [ ] 长连接接口统一设置 gateway timeout、连接数限制和 token 校验。（进行中：远程浏览器 stream 已有 token 校验，网关超时、连接数限制和断线恢复仍待补齐。）
 
 ### 阶段四：SaaS 增长能力
