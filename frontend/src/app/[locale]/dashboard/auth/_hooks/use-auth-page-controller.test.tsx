@@ -201,4 +201,45 @@ describe("useAuthPageController", () => {
 
     view.unmount();
   });
+
+  it("replaces the remote browser iframe URL after a stream error", async () => {
+    const initialSession = {
+      expires_at: "2026-06-01T12:15:00Z",
+      session_id: "session-1",
+      status: "ready",
+      stream_token_expires_at: "2026-06-01T12:05:00Z",
+      stream_url:
+        "/api/user/dashboard/browser-sessions/session-1/stream/initial/vnc.html",
+    };
+    const rotatedSession = {
+      ...initialSession,
+      stream_token_expires_at: "2026-06-01T12:07:30Z",
+      stream_url:
+        "/api/user/dashboard/browser-sessions/session-1/stream/rotated/vnc.html",
+    };
+    mocks.startBrowserSession.mockResolvedValue(initialSession);
+    mocks.getBrowserSession.mockResolvedValue(rotatedSession);
+    const view = renderController();
+    await flushPromises();
+
+    act(() => {
+      view.getController().douyin.onConnect();
+    });
+    await flushPromises();
+
+    act(() => {
+      view.getController().browserSession?.onStreamError?.();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(2500);
+      await Promise.resolve();
+    });
+
+    expect(view.getController().browserSession?.streamURL).toBe(
+      rotatedSession.stream_url,
+    );
+
+    view.unmount();
+  });
 });
