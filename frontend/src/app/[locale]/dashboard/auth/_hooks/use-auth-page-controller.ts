@@ -131,6 +131,8 @@ export function useAuthPageController() {
     null,
   );
   const [browserStreamURL, setBrowserStreamURL] = useState<string>();
+  const [browserStreamNeedsReconnect, setBrowserStreamNeedsReconnect] =
+    useState(false);
   const [browserError, setBrowserError] = useState<string>();
   const [xTestResult, setXTestResult] = useState<XConnectionTestResult | null>(
     null,
@@ -239,10 +241,18 @@ export function useAuthPageController() {
           }
           setBrowserSession(nextSession);
           if (nextSession.stream_url) {
-            setBrowserStreamURL(
-              (currentStreamURL) =>
-                currentStreamURL ?? resolveBrowserStreamURL(nextSession.stream_url),
+            const nextStreamURL = resolveBrowserStreamURL(
+              nextSession.stream_url,
             );
+            setBrowserStreamURL((currentStreamURL) => {
+              if (!currentStreamURL || browserStreamNeedsReconnect) {
+                return nextStreamURL;
+              }
+              return currentStreamURL;
+            });
+            if (browserStreamNeedsReconnect) {
+              setBrowserStreamNeedsReconnect(false);
+            }
           }
           if (nextSession.status === "expired") {
             setBrowserError(t("auth.toast.sessionExpired"));
@@ -266,7 +276,7 @@ export function useAuthPageController() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [browserSession, t]);
+  }, [browserSession, browserStreamNeedsReconnect, t]);
 
   useEffect(() => {
     if (xOAuthStatus === "connected") {
@@ -508,6 +518,7 @@ export function useAuthPageController() {
         stream_url: streamURL,
       });
       setBrowserStreamURL(streamURL);
+      setBrowserStreamNeedsReconnect(false);
       toast.success(t("auth.toast.browserStarted"), {
         description: t("auth.toast.browserStartedDesc", {
           platform: platformLabel,
@@ -552,6 +563,7 @@ export function useAuthPageController() {
       }
       setBrowserSession(null);
       setBrowserStreamURL(undefined);
+      setBrowserStreamNeedsReconnect(false);
       toast.success(
         t("auth.toast.browserConnected", { platform: platformLabel }),
         {
@@ -572,6 +584,7 @@ export function useAuthPageController() {
     const sessionID = browserSession?.session_id;
     setBrowserSession(null);
     setBrowserStreamURL(undefined);
+    setBrowserStreamNeedsReconnect(false);
     setBrowserError(undefined);
 
     if (!sessionID) {
@@ -607,6 +620,9 @@ export function useAuthPageController() {
             platformLabel: browserPlatformLabels[activeBrowserAccountPlatform],
             status: browserSession.status,
             streamURL: browserStreamURL,
+            onStreamError: () => {
+              setBrowserStreamNeedsReconnect(true);
+            },
             onCancel: handleCancelBrowserSession,
             onComplete: () => {
               void handleCompleteBrowserAccount(activeBrowserAccountPlatform);
