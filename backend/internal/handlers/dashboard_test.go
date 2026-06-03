@@ -239,6 +239,54 @@ func TestUserDashboardHandlerGetExtensionSessionRequiresUserContext(t *testing.T
 	require.Equal(t, "unauthorized", resp.Error.Code)
 }
 
+func TestUserDashboardHandlerListExtensionPrepublishReturnsCurrentUserItems(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Douyin draft",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "douyin",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: []byte(`{"text":"douyin preview"}`),
+	}).Error)
+
+	c, rec := newHandlerTestContext(e, http.MethodGet, "/api/user/dashboard/extension/prepublish")
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.ListExtensionPrepublish(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp dto.ExtensionPrepublishResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Items, 1)
+	require.Equal(t, project.ID, resp.Items[0].ProjectID)
+	require.Equal(t, "douyin preview", resp.Items[0].Platforms[0].Preview)
+}
+
+func TestUserDashboardHandlerListExtensionPrepublishRequiresUserContext(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	c, rec := newHandlerTestContext(e, http.MethodGet, "/api/user/dashboard/extension/prepublish")
+
+	require.NoError(t, handler.ListExtensionPrepublish(c))
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+
+	var resp dto.ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "unauthorized", resp.Error.Code)
+}
+
 func TestUserDashboardHandlerListProjectsUsesJWTUserScope(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)

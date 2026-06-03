@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -244,6 +245,99 @@ func TestGetExtensionSessionReturnsNotFoundForMissingUser(t *testing.T) {
 	_, err := s.GetExtensionSession(uuid.New())
 
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
+func TestListExtensionPrepublishReturnsCurrentUserDouyinDrafts(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	stranger := models.User{Username: "stranger", Email: "stranger@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&stranger).Error)
+
+	olderUpdatedAt := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	newerUpdatedAt := time.Date(2026, 6, 2, 10, 0, 0, 0, time.UTC)
+	unsupportedUpdatedAt := time.Date(2026, 6, 3, 10, 0, 0, 0, time.UTC)
+	otherUpdatedAt := time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC)
+	olderProject := models.Project{
+		UserID:        owner.ID,
+		Title:         "Older Douyin",
+		SourceContent: "older body",
+		Status:        models.ProjectStatusReady,
+		UpdatedAt:     olderUpdatedAt,
+	}
+	newerProject := models.Project{
+		UserID:        owner.ID,
+		Title:         "Newer Douyin",
+		SourceContent: "newer body",
+		Status:        models.ProjectStatusDraft,
+		UpdatedAt:     newerUpdatedAt,
+	}
+	unsupportedProject := models.Project{
+		UserID:        owner.ID,
+		Title:         "Zhihu only",
+		SourceContent: "zhihu body",
+		Status:        models.ProjectStatusReady,
+		UpdatedAt:     unsupportedUpdatedAt,
+	}
+	otherProject := models.Project{
+		UserID:        stranger.ID,
+		Title:         "Other Douyin",
+		SourceContent: "other body",
+		Status:        models.ProjectStatusReady,
+		UpdatedAt:     otherUpdatedAt,
+	}
+	require.NoError(t, db.Create(&olderProject).Error)
+	require.NoError(t, db.Create(&newerProject).Error)
+	require.NoError(t, db.Create(&unsupportedProject).Error)
+	require.NoError(t, db.Create(&otherProject).Error)
+	require.NoError(t, db.Model(&olderProject).UpdateColumn("updated_at", olderUpdatedAt).Error)
+	require.NoError(t, db.Model(&newerProject).UpdateColumn("updated_at", newerUpdatedAt).Error)
+	require.NoError(t, db.Model(&unsupportedProject).UpdateColumn("updated_at", unsupportedUpdatedAt).Error)
+	require.NoError(t, db.Model(&otherProject).UpdateColumn("updated_at", otherUpdatedAt).Error)
+
+	longText := strings.Repeat("a", 90)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      olderProject.ID,
+		Platform:       "douyin",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: datatypes.JSON(`{"format":"text","text":"` + longText + `"}`),
+	}).Error)
+	disabledPublication := models.ProjectPlatformPublication{
+		ProjectID:      newerProject.ID,
+		Platform:       "douyin",
+		Enabled:        false,
+		Status:         models.PublicationStatusDisabled,
+		AdaptedContent: datatypes.JSON(`{"format":"text","text":"disabled draft"}`),
+	}
+	require.NoError(t, db.Create(&disabledPublication).Error)
+	require.NoError(t, db.Model(&disabledPublication).UpdateColumn("enabled", false).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      unsupportedProject.ID,
+		Platform:       "zhihu",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: datatypes.JSON(`{"markdown":"zhihu draft"}`),
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      otherProject.ID,
+		Platform:       "douyin",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: datatypes.JSON(`{"text":"other draft"}`),
+	}).Error)
+
+	resp, err := s.ListExtensionPrepublish(owner.ID)
+
+	require.NoError(t, err)
+	require.Len(t, resp.Items, 2)
+	assert.Equal(t, newerProject.ID, resp.Items[0].ProjectID)
+	assert.False(t, resp.Items[0].Platforms[0].Enabled)
+	assert.Equal(t, "DYNAMIC_DOUYIN", resp.Items[0].Platforms[0].AdapterKey)
+	assert.Equal(t, "article", resp.Items[0].Platforms[0].ContentKind)
+	assert.Equal(t, olderProject.ID, resp.Items[1].ProjectID)
+	assert.Equal(t, strings.Repeat("a", 80), resp.Items[1].Platforms[0].Preview)
 }
 
 func TestListProjects(t *testing.T) {

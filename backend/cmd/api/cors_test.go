@@ -85,3 +85,26 @@ func TestUserDashboardRoutesIncludeExtensionSession(t *testing.T) {
 
 	t.Fatal("expected extension session route to be registered")
 }
+
+func TestUserDashboardRoutesIncludeExtensionPrepublish(t *testing.T) {
+	server, err := newServer(serverConfig{
+		runtimeConfig: backendRuntimeConfig{
+			processRole: backendProcessRoleAPI,
+		},
+		jwtSigningKey: []byte("test-secret"),
+		ready:         &atomic.Bool{},
+	}, serverHandlers{
+		userDashboard: &handlers.UserDashboardHandler{},
+	})
+	if err != nil {
+		t.Fatalf("expected server: %v", err)
+	}
+
+	for _, route := range server.Routes() {
+		if route.Method == http.MethodGet && route.Path == "/api/user/dashboard/extension/prepublish" {
+			return
+		}
+	}
+
+	t.Fatal("expected extension prepublish route to be registered")
+}
