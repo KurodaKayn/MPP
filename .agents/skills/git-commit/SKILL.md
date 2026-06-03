@@ -43,10 +43,11 @@ Follow this sequence exactly:
 8. If `{USR_PREFERRED_LANGUAGE}` is not English, prepare a
    `{USR_PREFERRED_LANGUAGE}` preview that fully matches the English message.
 9. Present the result using the output rules below and wait for explicit approval.
-10. After approval, execute the commit in three separate steps:
-   - Write only the English commit message to `commit_message.txt`
-   - Run `git commit -F commit_message.txt`
-   - Remove `commit_message.txt`
+10. After approval, execute the commit directly with `git commit -m` arguments:
+   - Use one `-m` argument for the title and one `-m` argument for each body
+     paragraph.
+   - Add an optional footer as the final `-m` argument only when applicable.
+   - Do not create `commit_message.txt` or any other temporary message file.
 
 ## User Preferred Language
 
@@ -66,9 +67,11 @@ second preview block that repeats the English commit message.
 - Do not run `git add` when staged changes already exist.
 - Do not run `git push`.
 - Do not commit without explicit user authorization.
-- Do not include any non-English preview text in the actual commit message file.
+- Do not include any non-English preview text in the actual `git commit`
+  command.
 - Do not describe unstaged or unrelated changes.
 - Do not draft or execute a commit for non-atomic staged changes.
+- Do not create `commit_message.txt` or any other temporary message file.
 - Do not hide mixed intent behind broad subjects such as `update files`,
   `misc changes`, `cleanup`, or `apply fixes`.
 - If `{USR_PREFERRED_LANGUAGE}` is not English, keep that preview accurate and
@@ -83,21 +86,34 @@ second preview block that repeats the English commit message.
 ## Atomic Scope Rules
 
 An atomic commit contains one coherent intent that can be reviewed, reverted,
-and described independently.
+and described independently. Prefer the smallest practical staged file set;
+one or two files is often ideal, but file count alone does not determine
+atomicity.
 
 Treat staged changes as atomic only when all of these are true:
 
 - They solve one problem, add one capability, or make one maintenance change.
+- They keep staged files to the minimum set required for that commit to stand
+  on its own.
 - They fit one primary `type(scope): subject` without vague wording.
 - They can be reverted together without undoing an unrelated improvement.
-- Supporting files such as tests, docs, fixtures, snapshots, migrations, or
-  lockfiles directly support the same primary change.
+- Every staged file is strictly required for the same change. If files can land
+  independently, split them even when they affect the same feature or influence
+  each other.
+- Tests, docs, examples, fixtures, and snapshots are separate commit intents.
+  Do not bundle them with production changes even when they directly describe
+  or verify the primary change.
 
 Stop and ask for a smaller staged subset when any of these are true:
 
 - The staged diff mixes unrelated features, fixes, refactors, docs, formatting,
   dependency updates, or test-only changes.
 - The staged files touch separate modules for unrelated reasons.
+- The staged diff includes production code plus tests, docs, examples, fixtures,
+  or snapshots.
+- Any staged file is related only by convenience, shared feature area, or
+  downstream influence rather than being required for the same change to stand
+  on its own.
 - The best subject would need `and`, `/`, `misc`, `various`, or multiple scopes
   to be honest.
 - Generated files, lockfiles, snapshots, or formatting churn appear without a
@@ -109,10 +125,15 @@ full release-sized plan unless the user asks for it.
 
 ## Commit Execution Rules
 
-- Treat `git commit` as the only step that needs repository write access. Keep message-file creation and cleanup as separate commands.
-- If `git commit` fails with sandbox-style permission errors such as `Operation not permitted` while creating `.git/index.lock`, immediately rerun `git commit -F commit_message.txt` with the required escalation instead of retrying the same non-privileged command.
+- Execute approved messages directly with separate `-m` arguments:
+  `git commit -m 'type(scope): subject' -m 'First body paragraph.' -m 'Second body paragraph.' -m 'Third body paragraph.'`
+- Quote each `-m` argument safely for the current shell. If the message
+  contains single quotes, escape them correctly or use double quotes only when
+  shell expansion cannot change the message.
+- Do not create, write, read, or remove a temporary commit message file.
+- Treat `git commit` as the only step that needs repository write access.
+- If `git commit` fails with sandbox-style permission errors such as `Operation not permitted` while creating `.git/index.lock`, immediately rerun the same direct `git commit -m ...` command with the required escalation instead of retrying the same non-privileged command.
 - When the environment is known to block writes under `.git`, prefer requesting the needed escalation for `git commit` directly after the user approves the message.
-- If commit succeeds, remove `commit_message.txt` afterward. If commit fails, keep the file unless cleanup is clearly safe and intentional.
 
 ## Angular-Style Commit Format
 
@@ -233,7 +254,8 @@ Choose `scope` from the touched module, feature, service, or component name when
 - Keep the `{USR_PREFERRED_LANGUAGE}` preview aligned with the English message
   in paragraph count, paragraph order, and meaning for every commit type.
 - Do not create `commit_message.txt` or run `git commit` before explicit approval.
-- Write only the English message into `commit_message.txt`.
+- Put only the English title, body paragraphs, and optional footer into the
+  actual `git commit -m ...` command.
 
 ## Example
 
