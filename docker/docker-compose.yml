@@ -120,6 +120,7 @@ services:
         condition: service_healthy
       browser-worker:
         condition: service_healthy
+    # No healthcheck: this worker role does not expose an HTTP readiness endpoint.
     networks:
       - default
       - browser-runtime
