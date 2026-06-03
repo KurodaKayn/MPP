@@ -1,12 +1,26 @@
 package email
 
 import (
+	"bytes"
 	"crypto/tls"
+	"embed"
+	"encoding/base64"
 	"fmt"
+	"html/template"
 	"io"
+	"mime"
+	"mime/multipart"
+	"mime/quotedprintable"
 	"net"
 	"net/smtp"
+	"net/textproto"
+	"strings"
 )
+
+//go:embed templates/*.html templates/*.png
+var emailTemplateFS embed.FS
+
+const logoContentID = "mpp-logo"
 
 type EmailService interface {
 	SendVerificationCode(to, code string) error
@@ -30,23 +44,41 @@ func NewSMTPEmailService(host string, port int, from, password string) *SMTPEmai
 }
 
 func (s *SMTPEmailService) SendVerificationCode(to, code string) error {
-	subject := "Verification Code"
-	body := fmt.Sprintf("Your verification code is: %s", code)
+	subject := "MPP Registration Verification Code"
+	body, err := renderVerificationCodeEmail(verificationCodeEmailData{
+		Title:       "Registering Account",
+		Description: "Please enter the following verification code on the page to complete verification",
+		Code:        code,
+		Purpose:     "account registration",
+	})
+	if err != nil {
+		return err
+	}
 	return s.send(to, subject, body)
 }
 
 func (s *SMTPEmailService) SendPasswordResetCode(to, code string) error {
-	subject := "Password Reset Code"
-	body := fmt.Sprintf("Your password reset code is: %s", code)
+	subject := "MPP Password Reset Verification Code"
+	body, err := renderVerificationCodeEmail(verificationCodeEmailData{
+		Title:       "Resetting Password",
+		Description: "Please enter the following verification code on the page to complete verification",
+		Code:        code,
+		Purpose:     "password reset",
+	})
+	if err != nil {
+		return err
+	}
 	return s.send(to, subject, body)
 }
 
 func (s *SMTPEmailService) send(to, subject, body string) error {
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s", s.From, to, subject, body)
+	msg, err := buildHTMLMessage(s.From, to, subject, body)
+	if err != nil {
+		return err
+	}
 	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
 
 	var client *smtp.Client
-	var err error
 	if s.Port == 465 {
 		conn, dialErr := tls.Dial("tcp", addr, &tls.Config{ServerName: s.Host, MinVersion: tls.VersionTLS12})
 		if dialErr != nil {
@@ -102,6 +134,89 @@ func (s *SMTPEmailService) send(to, subject, body string) error {
 	return client.Quit()
 }
 
+func buildHTMLMessage(from, to, subject, body string) (string, error) {
+	logoPNG, err := emailTemplateFS.ReadFile("templates/mpp-with-name-white.png")
+	if err != nil {
+		return "", err
+	}
+
+	var msg bytes.Buffer
+	writer := multipart.NewWriter(&msg)
+
+	fmt.Fprintf(&msg, "From: %s\r\n", from)
+	fmt.Fprintf(&msg, "To: %s\r\n", to)
+	fmt.Fprintf(&msg, "Subject: %s\r\n", mime.QEncoding.Encode("UTF-8", subject))
+	fmt.Fprintf(&msg, "MIME-Version: 1.0\r\n")
+	fmt.Fprintf(&msg, "Content-Type: multipart/related; boundary=%q; type=%q\r\n", writer.Boundary(), "text/html")
+	fmt.Fprintf(&msg, "\r\n")
+
+	htmlHeader := textproto.MIMEHeader{}
+	htmlHeader.Set("Content-Type", "text/html; charset=UTF-8")
+	htmlHeader.Set("Content-Transfer-Encoding", "quoted-printable")
+	htmlPart, err := writer.CreatePart(htmlHeader)
+	if err != nil {
+		return "", err
+	}
+	quotedHTML := quotedprintable.NewWriter(htmlPart)
+	if _, err := quotedHTML.Write([]byte(body)); err != nil {
+		quotedHTML.Close()
+		return "", err
+	}
+	if err := quotedHTML.Close(); err != nil {
+		return "", err
+	}
+
+	logoHeader := textproto.MIMEHeader{}
+	logoHeader.Set("Content-Type", `image/png; name="mpp-with-name-white.png"`)
+	logoHeader.Set("Content-Transfer-Encoding", "base64")
+	logoHeader.Set("Content-ID", fmt.Sprintf("<%s>", logoContentID))
+	logoHeader.Set("Content-Disposition", `inline; filename="mpp-with-name-white.png"`)
+	logoPart, err := writer.CreatePart(logoHeader)
+	if err != nil {
+		return "", err
+	}
+	if err := writeBase64Lines(logoPart, logoPNG); err != nil {
+		return "", err
+	}
+
+	if err := writer.Close(); err != nil {
+		return "", err
+	}
+	return msg.String(), nil
+}
+
+func writeBase64Lines(writer io.Writer, data []byte) error {
+	encoded := base64.StdEncoding.EncodeToString(data)
+	for len(encoded) > 76 {
+		if _, err := fmt.Fprintf(writer, "%s\r\n", encoded[:76]); err != nil {
+			return err
+		}
+		encoded = encoded[76:]
+	}
+	_, err := fmt.Fprintf(writer, "%s\r\n", encoded)
+	return err
+}
+
+type verificationCodeEmailData struct {
+	Title       string
+	Description string
+	Code        string
+	Purpose     string
+}
+
+func renderVerificationCodeEmail(data verificationCodeEmailData) (string, error) {
+	tmpl, err := template.ParseFS(emailTemplateFS, "templates/verification_code.html")
+	if err != nil {
+		return "", err
+	}
+
+	var body bytes.Buffer
+	if err := tmpl.Execute(&body, data); err != nil {
+		return "", err
+	}
+	return body.String(), nil
+}
+
 type MockEmailService struct {
 	LastTo      string
 	LastSubject string
@@ -110,14 +225,14 @@ type MockEmailService struct {
 
 func (m *MockEmailService) SendVerificationCode(to, code string) error {
 	m.LastTo = to
-	m.LastSubject = "Verification Code"
-	m.LastBody = code
+	m.LastSubject = "MPP Registration Verification Code"
+	m.LastBody = strings.TrimSpace(code)
 	return nil
 }
 
 func (m *MockEmailService) SendPasswordResetCode(to, code string) error {
 	m.LastTo = to
-	m.LastSubject = "Password Reset Code"
-	m.LastBody = code
+	m.LastSubject = "MPP Password Reset Verification Code"
+	m.LastBody = strings.TrimSpace(code)
 	return nil
 }

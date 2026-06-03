@@ -62,7 +62,7 @@ func TestSendCode(t *testing.T) {
 		require.NoError(t, handler.SendCode(e.NewContext(req, rec)))
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, "new@example.com", mockEmail.LastTo)
-		assert.Equal(t, "Verification Code", mockEmail.LastSubject)
+		assert.Equal(t, "MPP Registration Verification Code", mockEmail.LastSubject)
 		assert.Len(t, mockEmail.LastBody, 6)
 	})
 
@@ -106,7 +106,7 @@ func TestSendCode(t *testing.T) {
 		require.NoError(t, handler.SendCode(e.NewContext(req, rec)))
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, "user2@example.com", mockEmail.LastTo)
-		assert.Equal(t, "Password Reset Code", mockEmail.LastSubject)
+		assert.Equal(t, "MPP Password Reset Verification Code", mockEmail.LastSubject)
 	})
 
 	t.Run("ForgotPassword_UserNotFound", func(t *testing.T) {
