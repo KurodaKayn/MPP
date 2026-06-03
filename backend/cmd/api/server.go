@@ -39,6 +39,7 @@ func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 
 	e.Use(observabilitySuite.Middleware())
 	e.Use(echoMiddleware.Recover())
+	registerExtensionCORS(e, config.runtimeConfig.extensionAllowedOrigins)
 	registerPublicRoutes(e, config)
 
 	if config.runtimeConfig.servesAPI() {
@@ -48,6 +49,19 @@ func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 	}
 
 	return e, nil
+}
+
+func registerExtensionCORS(e *echo.Echo, allowedOrigins []string) {
+	if len(allowedOrigins) == 0 {
+		return
+	}
+
+	e.Use(echoMiddleware.CORSWithConfig(echoMiddleware.CORSConfig{
+		AllowOrigins:     allowedOrigins,
+		AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowHeaders:     []string{echo.HeaderAuthorization, echo.HeaderContentType},
+		AllowCredentials: true,
+	}))
 }
 
 func registerPublicRoutes(e *echo.Echo, config serverConfig) {
