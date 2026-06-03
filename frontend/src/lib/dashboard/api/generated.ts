@@ -117,6 +117,10 @@ export interface components {
       | "expired"
       | "failed";
     /** @enum {string} */
+    CollabDocumentStatus: "active";
+    /** @enum {string} */
+    CollabDocumentRole: "editor" | "viewer";
+    /** @enum {string} */
     BrowserWorkerSessionStatus: "ready" | "login_detected";
     BrowserWorkerCookie: {
       name: string;
@@ -254,6 +258,28 @@ export interface components {
       /** Format: uuid */
       project_id: string;
       items: components["schemas"]["PublicationDetail"][];
+    };
+    CreateCollabDocumentRequest: {
+      title: string;
+    };
+    CollabDocument: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      owner_user_id: string;
+      title: string;
+      status: components["schemas"]["CollabDocumentStatus"];
+      schema_version: number;
+      /** Format: int64 */
+      current_seq: number;
+      /** Format: uuid */
+      last_edited_by?: string | null;
+      /** Format: date-time */
+      last_edited_at?: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
     };
     PublishResult: {
       status: components["schemas"]["PublishResultStatus"];
