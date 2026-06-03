@@ -33,7 +33,9 @@ export function useLoginController() {
     () => resolveNextPath(searchParams.get("next")),
     [searchParams],
   );
-  const [username, setUsername] = useState("kuroda_kayn");
+  const [username, setUsername] = useState(() =>
+    process.env.NODE_ENV === "development" ? "kuroda_kayn" : "",
+  );
   const [password, setPassword] = useState("");
 
   const [registerUsername, setRegisterUsername] = useState("");
