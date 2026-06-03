@@ -429,6 +429,15 @@ type GeneratedBy struct {
 // GeneratedByType defines model for GeneratedByType.
 type GeneratedByType string
 
+// PaginationCollabDocuments defines model for PaginationCollabDocuments.
+type PaginationCollabDocuments struct {
+	Items      []CollabDocument `json:"items"`
+	Limit      int              `json:"limit"`
+	Page       int              `json:"page"`
+	Total      int              `json:"total"`
+	TotalPages int              `json:"total_pages"`
+}
+
 // PaginationProjects defines model for PaginationProjects.
 type PaginationProjects struct {
 	Items      []ProjectListItem `json:"items"`

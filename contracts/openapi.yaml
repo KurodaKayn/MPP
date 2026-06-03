@@ -659,6 +659,29 @@ components:
           type: string
           format: date-time
 
+    PaginationCollabDocuments:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - page
+        - limit
+        - total
+        - total_pages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollabDocument"
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
     PublishResult:
       type: object
       additionalProperties: false
