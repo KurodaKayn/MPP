@@ -136,11 +136,12 @@ func (h *AuthHandler) SendCode(c echo.Context) error {
 
 	// Send email
 	if h.email != nil {
+		ctx := c.Request().Context()
 		var err error
 		if req.Scene == "register" {
-			err = h.email.SendVerificationCode(req.Email, code)
+			err = h.email.SendVerificationCode(ctx, req.Email, code)
 		} else {
-			err = h.email.SendPasswordResetCode(req.Email, code)
+			err = h.email.SendPasswordResetCode(ctx, req.Email, code)
 		}
 		if err != nil {
 			return sendError(c, http.StatusInternalServerError, "internal_error", "failed to send email")

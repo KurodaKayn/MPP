@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -75,7 +76,7 @@ func main() {
 	}
 
 	// Email Service
-	var emailService email.EmailService
+	var baseEmailService email.EmailService
 	smtpHost := os.Getenv("SMTP_HOST")
 	if smtpHost != "" {
 		smtpPort := 587
@@ -91,14 +92,35 @@ func main() {
 		if smtpFrom == "" || smtpPassword == "" {
 			log.Fatal("SMTP_FROM and SMTP_PASSWORD must be set when SMTP_HOST is set")
 		}
-		emailService = email.NewSMTPEmailService(
+		baseEmailService = email.NewSMTPEmailService(
 			smtpHost,
 			smtpPort,
 			smtpFrom,
 			smtpPassword,
 		)
 	} else {
-		emailService = &email.MockEmailService{}
+		baseEmailService = &email.MockEmailService{}
+	}
+
+	emailService := baseEmailService
+	workerErrors := make(chan error, 1)
+	var workerWG sync.WaitGroup
+	if redisClient != nil {
+		asyncEmailService := email.NewAsyncEmailService(redisClient)
+		emailService = asyncEmailService
+		if runtimeConfig.runsWorkers() {
+			workerWG.Add(1)
+			go func() {
+				defer workerWG.Done()
+				if err := asyncEmailService.StartWorker(rootCtx, baseEmailService); err != nil {
+					select {
+					case workerErrors <- err:
+					default:
+						log.Printf("email worker stopped with error: %v", err)
+					}
+				}
+			}()
+		}
 	}
 
 	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
@@ -151,6 +173,8 @@ func main() {
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
 		}
+	case err := <-workerErrors:
+		log.Fatalf("email worker stopped: %v", err)
 	case <-rootCtx.Done():
 		ready.Store(false)
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -158,6 +182,7 @@ func main() {
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			log.Fatal(err)
 		}
+		workerWG.Wait()
 		if redisClient != nil {
 			_ = redisClient.Close()
 		}

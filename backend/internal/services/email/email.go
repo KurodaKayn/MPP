@@ -2,6 +2,7 @@ package email
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"embed"
 	"encoding/base64"
@@ -23,8 +24,8 @@ var emailTemplateFS embed.FS
 const logoContentID = "mpp-logo"
 
 type EmailService interface {
-	SendVerificationCode(to, code string) error
-	SendPasswordResetCode(to, code string) error
+	SendVerificationCode(ctx context.Context, to, code string) error
+	SendPasswordResetCode(ctx context.Context, to, code string) error
 }
 
 type SMTPEmailService struct {
@@ -43,7 +44,7 @@ func NewSMTPEmailService(host string, port int, from, password string) *SMTPEmai
 	}
 }
 
-func (s *SMTPEmailService) SendVerificationCode(to, code string) error {
+func (s *SMTPEmailService) SendVerificationCode(ctx context.Context, to, code string) error {
 	subject := "MPP Registration Verification Code"
 	body, err := renderVerificationCodeEmail(verificationCodeEmailData{
 		Title:       "Registering Account",
@@ -54,10 +55,10 @@ func (s *SMTPEmailService) SendVerificationCode(to, code string) error {
 	if err != nil {
 		return err
 	}
-	return s.send(to, subject, body)
+	return s.send(ctx, to, subject, body)
 }
 
-func (s *SMTPEmailService) SendPasswordResetCode(to, code string) error {
+func (s *SMTPEmailService) SendPasswordResetCode(ctx context.Context, to, code string) error {
 	subject := "MPP Password Reset Verification Code"
 	body, err := renderVerificationCodeEmail(verificationCodeEmailData{
 		Title:       "Resetting Password",
@@ -68,25 +69,34 @@ func (s *SMTPEmailService) SendPasswordResetCode(to, code string) error {
 	if err != nil {
 		return err
 	}
-	return s.send(to, subject, body)
+	return s.send(ctx, to, subject, body)
 }
 
-func (s *SMTPEmailService) send(to, subject, body string) error {
+func (s *SMTPEmailService) send(ctx context.Context, to, subject, body string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	msg, err := buildHTMLMessage(s.From, to, subject, body)
 	if err != nil {
 		return err
 	}
 	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
+	dialer := net.Dialer{}
 
 	var client *smtp.Client
 	if s.Port == 465 {
-		conn, dialErr := tls.Dial("tcp", addr, &tls.Config{ServerName: s.Host, MinVersion: tls.VersionTLS12})
+		rawConn, dialErr := dialer.DialContext(ctx, "tcp", addr)
 		if dialErr != nil {
+			return dialErr
+		}
+		conn := tls.Client(rawConn, &tls.Config{ServerName: s.Host, MinVersion: tls.VersionTLS12})
+		if dialErr := conn.Handshake(); dialErr != nil {
+			conn.Close()
 			return dialErr
 		}
 		client, err = smtp.NewClient(conn, s.Host)
 	} else {
-		conn, dialErr := net.Dial("tcp", addr)
+		conn, dialErr := dialer.DialContext(ctx, "tcp", addr)
 		if dialErr != nil {
 			return dialErr
 		}
@@ -97,7 +107,13 @@ func (s *SMTPEmailService) send(to, subject, body string) error {
 	}
 	defer client.Close()
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := client.Hello("localhost"); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if s.Port != 465 {
@@ -109,7 +125,13 @@ func (s *SMTPEmailService) send(to, subject, body string) error {
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := client.Auth(smtp.PlainAuth("", s.From, s.Password, s.Host)); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if err := client.Mail(s.From); err != nil {
@@ -223,14 +245,14 @@ type MockEmailService struct {
 	LastBody    string
 }
 
-func (m *MockEmailService) SendVerificationCode(to, code string) error {
+func (m *MockEmailService) SendVerificationCode(_ context.Context, to, code string) error {
 	m.LastTo = to
 	m.LastSubject = "MPP Registration Verification Code"
 	m.LastBody = strings.TrimSpace(code)
 	return nil
 }
 
-func (m *MockEmailService) SendPasswordResetCode(to, code string) error {
+func (m *MockEmailService) SendPasswordResetCode(_ context.Context, to, code string) error {
 	m.LastTo = to
 	m.LastSubject = "MPP Password Reset Verification Code"
 	m.LastBody = strings.TrimSpace(code)
