@@ -7,14 +7,26 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
+	"github.com/kurodakayn/mpp-backend/internal/pkg/envutil"
 	"github.com/labstack/echo/v4"
+)
+
+const (
+	webSocketDialTimeoutEnv       = "WEBSOCKET_PROXY_DIAL_TIMEOUT"
+	webSocketIdleTimeoutEnv       = "WEBSOCKET_PROXY_IDLE_TIMEOUT"
+	webSocketMaxConnectionTimeEnv = "WEBSOCKET_PROXY_MAX_CONNECTION_TIME"
+	defaultWebSocketDialTimeout   = 10 * time.Second
+	defaultWebSocketIdleTimeout   = 75 * time.Second
+	defaultWebSocketMaxLifetime   = 16 * time.Minute
 )
 
 // ProxyWebSocket hijacks the echo context connection and pipes it to the target URL
 func ProxyWebSocket(c echo.Context, target *url.URL) error {
 	req := c.Request()
 	res := c.Response()
+	config := webSocketProxyConfigFromEnv()
 
 	// 1. Setup connection to target
 	targetAddr := target.Host
@@ -26,7 +38,7 @@ func ProxyWebSocket(c echo.Context, target *url.URL) error {
 		}
 	}
 
-	d := net.Dialer{}
+	d := net.Dialer{Timeout: config.DialTimeout, KeepAlive: 30 * time.Second}
 	targetConn, err := d.DialContext(req.Context(), "tcp", targetAddr)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, "failed to connect to stream target")
@@ -64,9 +76,17 @@ func ProxyWebSocket(c echo.Context, target *url.URL) error {
 	}
 	defer clientConn.Close()
 
+	if config.MaxConnectionTime > 0 {
+		_ = targetConn.SetDeadline(time.Now().Add(config.MaxConnectionTime))
+		_ = clientConn.SetDeadline(time.Now().Add(config.MaxConnectionTime))
+	}
+
 	// 4. Pipe data
 	errChan := make(chan error, 2)
 	cp := func(dst io.Writer, src io.Reader) {
+		if config.IdleTimeout > 0 {
+			src = deadlineReader{Reader: src, Conn: deadlineConn(src), Timeout: config.IdleTimeout}
+		}
 		_, err := io.Copy(dst, src)
 		errChan <- err
 	}
@@ -83,6 +103,40 @@ func ProxyWebSocket(c echo.Context, target *url.URL) error {
 		}
 		return nil
 	}
+}
+
+type webSocketProxyConfig struct {
+	DialTimeout       time.Duration
+	IdleTimeout       time.Duration
+	MaxConnectionTime time.Duration
+}
+
+func webSocketProxyConfigFromEnv() webSocketProxyConfig {
+	return webSocketProxyConfig{
+		DialTimeout:       envutil.Duration(webSocketDialTimeoutEnv, defaultWebSocketDialTimeout),
+		IdleTimeout:       envutil.Duration(webSocketIdleTimeoutEnv, defaultWebSocketIdleTimeout),
+		MaxConnectionTime: envutil.Duration(webSocketMaxConnectionTimeEnv, defaultWebSocketMaxLifetime),
+	}
+}
+
+type deadlineReader struct {
+	io.Reader
+	Conn    net.Conn
+	Timeout time.Duration
+}
+
+func (r deadlineReader) Read(p []byte) (int, error) {
+	if r.Conn != nil && r.Timeout > 0 {
+		_ = r.Conn.SetReadDeadline(time.Now().Add(r.Timeout))
+	}
+	return r.Reader.Read(p)
+}
+
+func deadlineConn(reader io.Reader) net.Conn {
+	if conn, ok := reader.(net.Conn); ok {
+		return conn
+	}
+	return nil
 }
 
 // TransparentProxy wraps Echo's ReverseProxy but handles WebSockets

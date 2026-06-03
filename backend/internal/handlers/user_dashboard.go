@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/labstack/echo/v4"
@@ -25,6 +27,7 @@ const (
 type UserDashboardHandler struct {
 	dashboardService *services.DashboardService
 	aiContentEditor  services.AIContentEditor
+	streamLimiter    *streamgate.Limiter
 }
 
 func NewUserDashboardHandler(s *services.DashboardService) *UserDashboardHandler {
@@ -33,6 +36,10 @@ func NewUserDashboardHandler(s *services.DashboardService) *UserDashboardHandler
 
 func (h *UserDashboardHandler) UseAIContentEditor(editor services.AIContentEditor) {
 	h.aiContentEditor = editor
+}
+
+func (h *UserDashboardHandler) UseStreamLimiter(limiter *streamgate.Limiter) {
+	h.streamLimiter = limiter
 }
 
 func (h *UserDashboardHandler) GetMyStats(c echo.Context) error {
@@ -345,7 +352,8 @@ func (h *UserDashboardHandler) EditContentWithAI(c echo.Context) error {
 }
 
 func (h *UserDashboardHandler) StreamEditContentWithAI(c echo.Context) error {
-	if _, err := middleware.GetUserIDFromContext(c); err != nil {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 	if h.aiContentEditor == nil {
@@ -357,11 +365,20 @@ func (h *UserDashboardHandler) StreamEditContentWithAI(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
+	lease, err := h.acquireAIStreamLease(c, userID, "content")
+	if err != nil {
+		if handled := streamgate.SendLimitError(c, err); handled != nil {
+			return handled
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	defer lease.Release(context.Background())
+
 	stream, err := h.aiContentEditor.StreamEditContent(c.Request().Context(), *req)
 	if err != nil {
 		return sendAIEditError(c, err)
 	}
-	return writeAIStream(c, stream)
+	return writeAIStream(c, stream, lease)
 }
 
 func (h *UserDashboardHandler) EditPrepublishWithAI(c echo.Context) error {
@@ -385,7 +402,8 @@ func (h *UserDashboardHandler) EditPrepublishWithAI(c echo.Context) error {
 }
 
 func (h *UserDashboardHandler) StreamEditPrepublishWithAI(c echo.Context) error {
-	if _, err := middleware.GetUserIDFromContext(c); err != nil {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 	if h.aiContentEditor == nil {
@@ -397,11 +415,20 @@ func (h *UserDashboardHandler) StreamEditPrepublishWithAI(c echo.Context) error 
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
+	lease, err := h.acquireAIStreamLease(c, userID, "prepublish")
+	if err != nil {
+		if handled := streamgate.SendLimitError(c, err); handled != nil {
+			return handled
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	defer lease.Release(context.Background())
+
 	stream, err := h.aiContentEditor.StreamEditPrepublish(c.Request().Context(), *req)
 	if err != nil {
 		return sendAIEditError(c, err)
 	}
-	return writeAIStream(c, stream)
+	return writeAIStream(c, stream, lease)
 }
 
 func sendAIEditError(c echo.Context, err error) error {
@@ -414,7 +441,24 @@ func sendAIEditError(c echo.Context, err error) error {
 	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 }
 
-func writeAIStream(c echo.Context, stream *services.AIServiceStream) error {
+func (h *UserDashboardHandler) acquireAIStreamLease(c echo.Context, userID uuid.UUID, resource string) (*streamgate.Lease, error) {
+	if h.streamLimiter == nil {
+		return &streamgate.Lease{}, nil
+	}
+	tenantID, err := middleware.GetTenantIDFromContext(c)
+	if err != nil {
+		return nil, err
+	}
+	return h.streamLimiter.Acquire(c.Request().Context(), streamgate.AcquireRequest{
+		Kind:     streamgate.KindAI,
+		UserID:   userID,
+		TenantID: tenantID,
+		IP:       streamgate.ClientIP(c),
+		Resource: resource,
+	})
+}
+
+func writeAIStream(c echo.Context, stream *services.AIServiceStream, lease *streamgate.Lease) error {
 	if stream == nil || stream.Body == nil {
 		return sendError(c, http.StatusBadGateway, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
 	}
@@ -429,6 +473,9 @@ func writeAIStream(c echo.Context, stream *services.AIServiceStream) error {
 	resp.Header().Set(echo.HeaderContentType, contentType)
 	resp.Header().Set(echo.HeaderCacheControl, "no-cache")
 	resp.Header().Set("X-Accel-Buffering", "no")
+	if lease != nil && lease.ID != "" {
+		resp.Header().Set("X-MPP-Stream-ID", lease.ID)
+	}
 	resp.WriteHeader(http.StatusOK)
 
 	buffer := make([]byte, 1024)

@@ -16,6 +16,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/redisclient"
 	"github.com/kurodakayn/mpp-backend/internal/services"
@@ -126,6 +127,8 @@ func main() {
 	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
 	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
 	userDashboardHandler.UseAIContentEditor(services.NewAIServiceClientFromEnv())
+	streamLimiter := streamgate.New(redisClient, streamgate.ConfigFromEnv())
+	userDashboardHandler.UseStreamLimiter(streamLimiter)
 	mockLogin := mockLoginEnabled()
 	authHandler := handlers.NewAuthHandler(db.DB, redisClient, emailService, jwtSigningKey)
 	authHandler.SetUsernameLoginEnabled(mockLogin)
@@ -137,6 +140,7 @@ func main() {
 		}
 	}
 	browserSessionHandler := handlers.NewBrowserSessionHandler(browserSessionService)
+	browserSessionHandler.UseStreamLimiter(streamLimiter)
 
 	ready := atomic.Bool{}
 	ready.Store(true)
