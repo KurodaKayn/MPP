@@ -35,12 +35,23 @@ func (h *BrowserSessionHandler) StartSession(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "platform is required")
 	}
 
-	resp, err := h.service.StartSession(c.Request().Context(), userID, platform)
+	tenantID, err := middleware.GetTenantIDFromContext(c)
 	if err != nil {
-		if err == browsersession.ErrActiveSessionExists {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	resp, err := h.service.StartSessionForTenant(c.Request().Context(), userID, tenantID, platform)
+	if err != nil {
+		if errors.Is(err, browsersession.ErrActiveSessionExists) {
 			return sendError(c, http.StatusConflict, "conflict", err.Error())
 		}
-		if err == browsersession.ErrPlatformNotSupported {
+		if errors.Is(err, browsersession.ErrUserQuotaExceeded) || errors.Is(err, browsersession.ErrTenantQuotaExceeded) {
+			return sendError(c, http.StatusTooManyRequests, "quota_exceeded", err.Error())
+		}
+		if errors.Is(err, browsersession.ErrWorkerPoolExhausted) {
+			return sendError(c, http.StatusServiceUnavailable, "worker_pool_exhausted", err.Error())
+		}
+		if errors.Is(err, browsersession.ErrPlatformNotSupported) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
