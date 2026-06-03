@@ -53,6 +53,17 @@ const (
 	BrowserWorkerSessionStatusReady         BrowserWorkerSessionStatus = "ready"
 )
 
+// Defines values for CollabDocumentRole.
+const (
+	Editor CollabDocumentRole = "editor"
+	Viewer CollabDocumentRole = "viewer"
+)
+
+// Defines values for CollabDocumentStatus.
+const (
+	Active CollabDocumentStatus = "active"
+)
+
 // Defines values for ConnectionTestStatus.
 const (
 	ConnectionTestStatusConnected ConnectionTestStatus = "connected"
@@ -341,6 +352,26 @@ type CancelBrowserSessionResult struct {
 	Status    BrowserSessionStatus `json:"status"`
 }
 
+// CollabDocument defines model for CollabDocument.
+type CollabDocument struct {
+	CreatedAt     time.Time            `json:"created_at"`
+	CurrentSeq    int64                `json:"current_seq"`
+	Id            openapi_types.UUID   `json:"id"`
+	LastEditedAt  *time.Time           `json:"last_edited_at"`
+	LastEditedBy  *openapi_types.UUID  `json:"last_edited_by"`
+	OwnerUserId   openapi_types.UUID   `json:"owner_user_id"`
+	SchemaVersion int                  `json:"schema_version"`
+	Status        CollabDocumentStatus `json:"status"`
+	Title         string               `json:"title"`
+	UpdatedAt     time.Time            `json:"updated_at"`
+}
+
+// CollabDocumentRole defines model for CollabDocumentRole.
+type CollabDocumentRole string
+
+// CollabDocumentStatus defines model for CollabDocumentStatus.
+type CollabDocumentStatus string
+
 // CompleteBrowserSessionResult defines model for CompleteBrowserSessionResult.
 type CompleteBrowserSessionResult struct {
 	Account struct {
@@ -355,6 +386,11 @@ type CompleteBrowserSessionResult struct {
 
 // ConnectionTestStatus defines model for ConnectionTestStatus.
 type ConnectionTestStatus string
+
+// CreateCollabDocumentRequest defines model for CreateCollabDocumentRequest.
+type CreateCollabDocumentRequest struct {
+	Title string `json:"title"`
+}
 
 // DashboardStats defines model for DashboardStats.
 type DashboardStats struct {

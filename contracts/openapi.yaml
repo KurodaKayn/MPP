@@ -180,6 +180,17 @@ components:
         - expired
         - failed
 
+    CollabDocumentStatus:
+      type: string
+      enum:
+        - active
+
+    CollabDocumentRole:
+      type: string
+      enum:
+        - editor
+        - viewer
+
     BrowserWorkerSessionStatus:
       type: string
       enum:
@@ -592,6 +603,61 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PublicationDetail"
+
+    CreateCollabDocumentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+
+    CollabDocument:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - owner_user_id
+        - title
+        - status
+        - schema_version
+        - current_seq
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_user_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          $ref: "#/components/schemas/CollabDocumentStatus"
+        schema_version:
+          type: integer
+          minimum: 1
+        current_seq:
+          type: integer
+          format: int64
+          minimum: 0
+        last_edited_by:
+          type: string
+          format: uuid
+          nullable: true
+        last_edited_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     PublishResult:
       type: object
