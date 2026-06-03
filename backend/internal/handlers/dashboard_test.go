@@ -14,9 +14,11 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	dbobs "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/observability"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
@@ -111,6 +113,14 @@ type fakeAIContentEditor struct {
 	err              error
 }
 
+type recordingTraceObserver struct {
+	traceIDs []string
+}
+
+func (r *recordingTraceObserver) ObserveQuery(ctx context.Context, _ dbobs.QueryObservation) {
+	r.traceIDs = append(r.traceIDs, observability.TraceIDFromContext(ctx))
+}
+
 func (f *fakeAIContentEditor) EditContent(ctx context.Context, req dto.AIEditContentRequest) (*dto.AIEditContentResponse, error) {
 	f.contentReq = req
 	if f.err != nil {
@@ -156,6 +166,24 @@ func TestDashboardHandlerListProjectsNormalizesPagination(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, 1, resp.Page)
 	require.Equal(t, 100, resp.Limit)
+}
+
+func TestDashboardHandlerPropagatesTraceContextToDatabaseQueries(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	observer := &recordingTraceObserver{}
+	require.NoError(t, dbobs.InstallQueryObserver(db, observer))
+	handler := NewDashboardHandler(services.NewDashboardService(db))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/dashboard/stats", nil)
+	req = req.WithContext(observability.ContextWithTraceID(req.Context(), "trace-123"))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	require.NoError(t, handler.GetStats(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotEmpty(t, observer.traceIDs)
+	require.Contains(t, observer.traceIDs, "trace-123")
 }
 
 func TestDashboardHandlerGetProjectPublicationsRejectsInvalidUUID(t *testing.T) {
@@ -828,4 +856,3 @@ func TestUserDashboardHandlerSavesWechatAccount(t *testing.T) {
 	require.True(t, resp.HasAppSecret)
 	require.Equal(t, models.PlatformAccountStatusUntested, resp.Status)
 }
-

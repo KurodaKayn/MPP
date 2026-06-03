@@ -34,6 +34,10 @@ func NewUserDashboardHandler(s *services.DashboardService) *UserDashboardHandler
 	return &UserDashboardHandler{dashboardService: s}
 }
 
+func (h *UserDashboardHandler) serviceFor(c echo.Context) *services.DashboardService {
+	return h.dashboardService.WithContext(c.Request().Context())
+}
+
 func (h *UserDashboardHandler) UseAIContentEditor(editor services.AIContentEditor) {
 	h.aiContentEditor = editor
 }
@@ -48,7 +52,7 @@ func (h *UserDashboardHandler) GetMyStats(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 
-	stats, err := h.dashboardService.GetStats(&userID)
+	stats, err := h.serviceFor(c).GetStats(&userID)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -78,7 +82,7 @@ func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 	platform := c.QueryParam("platform")
 
 	// Personal view: enforce scopeUserID, ignore any requested filterUserID
-	resp, err := h.dashboardService.ListProjects(page, limit, status, "", platform, &userID)
+	resp, err := h.serviceFor(c).ListProjects(page, limit, status, "", platform, &userID)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -97,7 +101,7 @@ func (h *UserDashboardHandler) CreateProject(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	resp, err := h.dashboardService.CreateProject(userID, *req)
+	resp, err := h.serviceFor(c).CreateProject(userID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "title, source_content and platforms are required")
@@ -120,7 +124,7 @@ func (h *UserDashboardHandler) GetMyProject(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 
-	project, err := h.dashboardService.GetProject(projectID, &userID)
+	project, err := h.serviceFor(c).GetProject(projectID, &userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
@@ -151,7 +155,7 @@ func (h *UserDashboardHandler) UpdateProject(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	project, err := h.dashboardService.UpdateProject(projectID, userID, *req)
+	project, err := h.serviceFor(c).UpdateProject(projectID, userID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "title, source_content and platforms are required")
@@ -185,7 +189,7 @@ func (h *UserDashboardHandler) SaveProjectContent(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	project, err := h.dashboardService.SaveProjectContent(projectID, userID, *req)
+	project, err := h.serviceFor(c).SaveProjectContent(projectID, userID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "title and source_content are required")
@@ -219,7 +223,7 @@ func (h *UserDashboardHandler) SaveProjectPlatforms(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	project, err := h.dashboardService.SaveProjectPlatforms(projectID, userID, *req)
+	project, err := h.serviceFor(c).SaveProjectPlatforms(projectID, userID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "valid platforms are required")
@@ -250,7 +254,7 @@ func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
 
 	// Personal view: enforce scopeUserID to check ownership
 	includeContent := c.QueryParam("include_content") == "true"
-	publications, err := h.dashboardService.GetProjectPublications(projectID, &userID, includeContent)
+	publications, err := h.serviceFor(c).GetProjectPublications(projectID, &userID, includeContent)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
@@ -281,7 +285,7 @@ func (h *UserDashboardHandler) SyncProjectPrepublish(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	publications, err := h.dashboardService.SyncProjectPrepublish(projectID, userID, *req)
+	publications, err := h.serviceFor(c).SyncProjectPrepublish(projectID, userID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "at least one valid platform is required")
@@ -314,7 +318,7 @@ func (h *UserDashboardHandler) UpdateProjectPrepublishDraft(c echo.Context) erro
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	publications, err := h.dashboardService.UpdateProjectPrepublishDraft(projectID, userID, c.Param("platform"), *req)
+	publications, err := h.serviceFor(c).UpdateProjectPrepublishDraft(projectID, userID, c.Param("platform"), *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "valid platform and adapted_content are required")
@@ -523,7 +527,7 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 			return sendError(c, http.StatusBadRequest, "invalid_request", services.ErrManualPublishUnsupported.Error())
 		}
 
-		resp, err := h.dashboardService.CreateXPostIntent(projectID, &userID)
+		resp, err := h.serviceFor(c).CreateXPostIntent(projectID, &userID)
 		if err != nil {
 			if errors.Is(err, services.ErrPublicationDisabled) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
@@ -540,7 +544,7 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	}
 
 	if len(req.Platforms) > 0 {
-		resp, err := h.dashboardService.BatchEnqueuePublishProject(c.Request().Context(), projectID, req.Platforms, &userID)
+		resp, err := h.serviceFor(c).BatchEnqueuePublishProject(c.Request().Context(), projectID, req.Platforms, &userID)
 		if err != nil {
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		}
@@ -548,7 +552,7 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	}
 
 	// Single platform fallback
-	resp, err := h.dashboardService.EnqueuePublishProject(c.Request().Context(), projectID, req.Platform, &userID)
+	resp, err := h.serviceFor(c).EnqueuePublishProject(c.Request().Context(), projectID, req.Platform, &userID)
 	if err != nil {
 		if errors.Is(err, services.ErrPublicationDisabled) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
@@ -578,7 +582,7 @@ func (h *UserDashboardHandler) StartDouyinPublishSession(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 
-	resp, err := h.dashboardService.StartDouyinPublishSession(c.Request().Context(), projectID, userID)
+	resp, err := h.serviceFor(c).StartDouyinPublishSession(c.Request().Context(), projectID, userID)
 	if err != nil {
 		if errors.Is(err, services.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
@@ -615,7 +619,7 @@ func (h *UserDashboardHandler) GetWechatAccount(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 
-	resp, err := h.dashboardService.GetWechatAccount(userID)
+	resp, err := h.serviceFor(c).GetWechatAccount(userID)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -634,7 +638,7 @@ func (h *UserDashboardHandler) SaveWechatAccount(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	resp, err := h.dashboardService.UpsertWechatAccount(userID, *req)
+	resp, err := h.serviceFor(c).UpsertWechatAccount(userID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidPlatformAccount) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
@@ -656,7 +660,7 @@ func (h *UserDashboardHandler) TestWechatAccount(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	resp, err := h.dashboardService.TestWechatAccount(userID, *req)
+	resp, err := h.serviceFor(c).TestWechatAccount(userID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidPlatformAccount) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
@@ -673,7 +677,7 @@ func (h *UserDashboardHandler) GetDouyinAccount(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 
-	resp, err := h.dashboardService.GetDouyinAccount(userID)
+	resp, err := h.serviceFor(c).GetDouyinAccount(userID)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -687,7 +691,7 @@ func (h *UserDashboardHandler) GetZhihuAccount(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 
-	resp, err := h.dashboardService.GetZhihuAccount(userID)
+	resp, err := h.serviceFor(c).GetZhihuAccount(userID)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -701,7 +705,7 @@ func (h *UserDashboardHandler) GetXAccount(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 
-	resp, err := h.dashboardService.GetXAccount(userID)
+	resp, err := h.serviceFor(c).GetXAccount(userID)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -720,7 +724,7 @@ func (h *UserDashboardHandler) SaveXAccount(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	resp, err := h.dashboardService.UpsertXAccount(userID, *req)
+	resp, err := h.serviceFor(c).UpsertXAccount(userID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidPlatformAccount) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
@@ -742,7 +746,7 @@ func (h *UserDashboardHandler) TestXAccount(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	resp, err := h.dashboardService.TestXAccount(userID, *req)
+	resp, err := h.serviceFor(c).TestXAccount(userID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidPlatformAccount) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
@@ -759,7 +763,7 @@ func (h *UserDashboardHandler) StartXOAuth2(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 
-	authURL, err := h.dashboardService.StartXOAuth2(userID, xOAuth2RedirectURI(c))
+	authURL, err := h.serviceFor(c).StartXOAuth2(userID, xOAuth2RedirectURI(c))
 	if err != nil {
 		if errors.Is(err, services.ErrXOAuth2NotConfigured) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
@@ -774,7 +778,7 @@ func (h *UserDashboardHandler) CompleteXOAuth2(c echo.Context) error {
 		return c.Redirect(http.StatusFound, xOAuth2SettingsRedirectURL("failed"))
 	}
 
-	_, err := h.dashboardService.CompleteXOAuth2(
+	_, err := h.serviceFor(c).CompleteXOAuth2(
 		c.Request().Context(),
 		c.QueryParam("state"),
 		c.QueryParam("code"),

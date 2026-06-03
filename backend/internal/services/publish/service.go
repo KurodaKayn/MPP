@@ -42,6 +42,18 @@ func NewService(db *gorm.DB, accounts *platformaccount.Service) *Service {
 	}
 }
 
+func (s *Service) WithContext(ctx context.Context) *Service {
+	if ctx == nil {
+		return s
+	}
+	scoped := *s
+	scoped.db = s.db.WithContext(ctx)
+	if s.accounts != nil {
+		scoped.accounts = s.accounts.WithContext(ctx)
+	}
+	return &scoped
+}
+
 func (s *Service) SetQueue(queue PublishQueue) {
 	s.queue = queue
 }

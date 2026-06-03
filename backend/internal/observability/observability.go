@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	dbobs "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -17,17 +19,32 @@ import (
 )
 
 const (
-	requestIDHeader = "X-Request-ID"
-	traceIDHeader   = "X-Trace-ID"
+	requestIDHeader                   = "X-Request-ID"
+	traceIDHeader                     = "X-Trace-ID"
+	databaseSlowQueryThresholdEnv     = "DB_SLOW_QUERY_THRESHOLD"
+	defaultDatabaseSlowQueryThreshold = 250 * time.Millisecond
 )
 
+type contextKey string
+
+const traceIDContextKey contextKey = "trace_id"
+
 type Suite struct {
-	serviceName string
-	registry    *prometheus.Registry
-	requests    *prometheus.CounterVec
-	duration    *prometheus.HistogramVec
-	inFlight    *prometheus.GaugeVec
-	info        *prometheus.GaugeVec
+	serviceName      string
+	registry         *prometheus.Registry
+	requests         *prometheus.CounterVec
+	duration         *prometheus.HistogramVec
+	inFlight         *prometheus.GaugeVec
+	info             *prometheus.GaugeVec
+	databaseObserver *DatabaseQueryObserver
+}
+
+type DatabaseQueryObserver struct {
+	serviceName   string
+	slowThreshold time.Duration
+	queries       *prometheus.CounterVec
+	duration      *prometheus.HistogramVec
+	slowQueries   *prometheus.CounterVec
 }
 
 type requestLog struct {
@@ -45,6 +62,20 @@ type requestLog struct {
 	BytesIn   int64   `json:"bytes_in"`
 	BytesOut  int64   `json:"bytes_out"`
 	Error     string  `json:"error,omitempty"`
+}
+
+type databaseSlowQueryLog struct {
+	Time         string  `json:"time"`
+	Service      string  `json:"service"`
+	TraceID      string  `json:"trace_id,omitempty"`
+	Operation    string  `json:"operation"`
+	Table        string  `json:"table"`
+	Status       string  `json:"status"`
+	QueryHash    string  `json:"query_hash"`
+	DurationMS   float64 `json:"duration_ms"`
+	RowsAffected int64   `json:"rows_affected"`
+	SQL          string  `json:"sql"`
+	Error        string  `json:"error,omitempty"`
 }
 
 func New(serviceName string) *Suite {
@@ -70,6 +101,19 @@ func New(serviceName string) *Suite {
 		Name: "mpp_service_info",
 		Help: "Static information marker for an MPP service.",
 	}, []string{"service"})
+	dbQueries := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mpp_db_queries_total",
+		Help: "Total database queries executed by MPP services.",
+	}, []string{"service", "operation", "table", "status"})
+	dbDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "mpp_db_query_duration_seconds",
+		Help:    "Database query duration by service, operation, table, and status.",
+		Buckets: []float64{0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5},
+	}, []string{"service", "operation", "table", "status"})
+	dbSlowQueries := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mpp_db_slow_queries_total",
+		Help: "Total database queries that exceeded the configured slow query threshold.",
+	}, []string{"service", "operation", "table", "status"})
 
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(
@@ -79,16 +123,27 @@ func New(serviceName string) *Suite {
 		duration,
 		inFlight,
 		info,
+		dbQueries,
+		dbDuration,
+		dbSlowQueries,
 	)
 	info.WithLabelValues(serviceName).Set(1)
+	databaseObserver := &DatabaseQueryObserver{
+		serviceName:   serviceName,
+		slowThreshold: databaseSlowQueryThresholdFromEnv(),
+		queries:       dbQueries,
+		duration:      dbDuration,
+		slowQueries:   dbSlowQueries,
+	}
 
 	return &Suite{
-		serviceName: serviceName,
-		registry:    registry,
-		requests:    requests,
-		duration:    duration,
-		inFlight:    inFlight,
-		info:        info,
+		serviceName:      serviceName,
+		registry:         registry,
+		requests:         requests,
+		duration:         duration,
+		inFlight:         inFlight,
+		info:             info,
+		databaseObserver: databaseObserver,
 	}
 }
 
@@ -96,11 +151,17 @@ func (s *Suite) RegisterRoutes(e *echo.Echo) {
 	e.GET("/metrics", echo.WrapHandler(promhttp.HandlerFor(s.registry, promhttp.HandlerOpts{})))
 }
 
+func (s *Suite) DatabaseQueryObserver() *DatabaseQueryObserver {
+	return s.databaseObserver
+}
+
 func (s *Suite) Middleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			req := c.Request()
 			traceID := traceIDFromRequest(req)
+			req = req.WithContext(ContextWithTraceID(req.Context(), traceID))
+			c.SetRequest(req)
 			c.Set("trace_id", traceID)
 			c.Set("request_id", traceID)
 			c.Response().Header().Set(requestIDHeader, traceID)
@@ -128,6 +189,25 @@ func (s *Suite) Middleware() echo.MiddlewareFunc {
 			return nil
 		}
 	}
+}
+
+func ContextWithTraceID(ctx context.Context, traceID string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	traceID = strings.TrimSpace(traceID)
+	if traceID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, traceIDContextKey, traceID)
+}
+
+func TraceIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	traceID, _ := ctx.Value(traceIDContextKey).(string)
+	return strings.TrimSpace(traceID)
 }
 
 func traceIDFromRequest(req *http.Request) string {
@@ -178,4 +258,82 @@ func (s *Suite) logRequest(c echo.Context, traceID, route string, status int, la
 	if _, err := os.Stdout.Write(append(payload, '\n')); err != nil {
 		log.Printf("observability request log write failed: %v", err)
 	}
+}
+
+func (o *DatabaseQueryObserver) ObserveQuery(ctx context.Context, observation dbobs.QueryObservation) {
+	if o == nil {
+		return
+	}
+
+	operation := metricLabel(observation.Operation, "unknown")
+	table := metricLabel(observation.Table, "unknown")
+	status := "ok"
+	if observation.Err != nil {
+		status = "error"
+	}
+
+	durationSeconds := observation.Duration.Seconds()
+	if durationSeconds < 0 {
+		durationSeconds = 0
+	}
+
+	o.queries.WithLabelValues(o.serviceName, operation, table, status).Inc()
+	o.duration.WithLabelValues(o.serviceName, operation, table, status).Observe(durationSeconds)
+
+	if o.slowThreshold <= 0 || observation.Duration < o.slowThreshold {
+		return
+	}
+
+	o.slowQueries.WithLabelValues(o.serviceName, operation, table, status).Inc()
+	o.logSlowQuery(ctx, observation, operation, table, status)
+}
+
+func (o *DatabaseQueryObserver) logSlowQuery(ctx context.Context, observation dbobs.QueryObservation, operation, table, status string) {
+	event := databaseSlowQueryLog{
+		Time:         time.Now().UTC().Format(time.RFC3339Nano),
+		Service:      o.serviceName,
+		TraceID:      TraceIDFromContext(ctx),
+		Operation:    operation,
+		Table:        table,
+		Status:       status,
+		QueryHash:    observation.QueryHash,
+		DurationMS:   float64(observation.Duration.Microseconds()) / 1000,
+		RowsAffected: observation.RowsAffected,
+		SQL:          observation.SQL,
+	}
+	if observation.Err != nil {
+		event.Error = observation.Err.Error()
+	}
+
+	payload, marshalErr := json.Marshal(event)
+	if marshalErr != nil {
+		log.Printf("observability database slow query log marshal failed: %v", marshalErr)
+		return
+	}
+	if _, err := os.Stdout.Write(append(payload, '\n')); err != nil {
+		log.Printf("observability database slow query log write failed: %v", err)
+	}
+}
+
+func metricLabel(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	if len(value) > 96 {
+		return value[:96]
+	}
+	return value
+}
+
+func databaseSlowQueryThresholdFromEnv() time.Duration {
+	raw := strings.TrimSpace(os.Getenv(databaseSlowQueryThresholdEnv))
+	if raw == "" {
+		return defaultDatabaseSlowQueryThreshold
+	}
+	threshold, err := time.ParseDuration(raw)
+	if err != nil || threshold < 0 {
+		return defaultDatabaseSlowQueryThreshold
+	}
+	return threshold
 }
