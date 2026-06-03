@@ -9,12 +9,24 @@ import {
   Trash2,
 } from "lucide-react";
 import "../../src/styles.css";
+import { Alert, AlertDescription } from "../../src/components/ui/alert";
+import { Badge } from "../../src/components/ui/badge";
 import { Button } from "../../src/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../../src/components/ui/card";
+import { Separator } from "../../src/components/ui/separator";
 import type { ExtensionExecutionEvent } from "../../src/types/events";
-import type { StoredHandoff } from "../../src/types/handoff";
+import type {
+  ExtensionPublishPlatformHandoff,
+  StoredHandoff,
+} from "../../src/types/handoff";
 import type { BackgroundMessage } from "../../src/types/messages";
 import type { TrustedOrigin } from "../../src/background/origins";
-import { cn } from "../../src/lib/cn";
 
 interface MonitorState {
   extension_id: string;
@@ -24,32 +36,75 @@ interface MonitorState {
   trusted_origins: TrustedOrigin[];
 }
 
-const statusClasses: Record<string, string> = {
-  accepted: "bg-sky-100 text-sky-800",
-  opening_tabs: "bg-amber-100 text-amber-800",
-  injecting: "bg-indigo-100 text-indigo-800",
-  user_review: "bg-emerald-100 text-emerald-800",
-  submitted: "bg-violet-100 text-violet-800",
-  succeeded: "bg-emerald-100 text-emerald-800",
-  failed: "bg-red-100 text-red-800",
-  cancelled: "bg-zinc-100 text-zinc-700",
-  expired: "bg-zinc-100 text-zinc-700",
+type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
+
+const statusLabels: Record<string, string> = {
+  accepted: "accepted",
+  opening_tabs: "opening tabs",
+  injecting: "injecting",
+  user_review: "user review",
+  submitted: "submitted",
+  succeeded: "succeeded",
+  failed: "failed",
+  cancelled: "cancelled",
+  expired: "expired",
 };
+
+const terminalStatuses = new Set([
+  "user_review",
+  "submitted",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "expired",
+]);
 
 function sendBackgroundMessage<T>(message: BackgroundMessage): Promise<T> {
   return browser.runtime.sendMessage(message);
 }
 
-function StatusBadge({ status }: { status: string }) {
+function getStatusVariant(status?: string): BadgeVariant {
+  if (!status) {
+    return "secondary";
+  }
+
+  if (status === "failed" || status === "expired") {
+    return "destructive";
+  }
+
+  if (status === "opening_tabs" || status === "injecting") {
+    return "warning";
+  }
+
+  if (
+    status === "accepted" ||
+    status === "user_review" ||
+    status === "submitted" ||
+    status === "succeeded"
+  ) {
+    return "success";
+  }
+
+  return "secondary";
+}
+
+function StatusBadge({ status }: { status?: string }) {
   return (
-    <span
-      className={cn(
-        "inline-flex rounded-md px-2 py-1 text-xs font-medium",
-        statusClasses[status] ?? "bg-zinc-100 text-zinc-700",
-      )}
-    >
-      {status}
-    </span>
+    <Badge variant={getStatusVariant(status)}>
+      {status ? (statusLabels[status] ?? status) : "idle"}
+    </Badge>
+  );
+}
+
+function getLatestPlatformEvent(
+  events: ExtensionExecutionEvent[],
+  platform: ExtensionPublishPlatformHandoff["platform"],
+): ExtensionExecutionEvent | null {
+  return (
+    events
+      .slice()
+      .reverse()
+      .find((event) => event.platform === platform) ?? null
   );
 }
 
@@ -68,6 +123,48 @@ function getCallbackFailureMessage(
   return callbackError
     ? `Callback failed: ${callbackError}`
     : "Callback failed.";
+}
+
+function getNextAction(event: ExtensionExecutionEvent | null): string {
+  if (!event) {
+    return "Waiting for the first execution event.";
+  }
+
+  if (event.status === "failed") {
+    return "Reopen the platform page and check login, editor, or media upload state.";
+  }
+
+  if (event.status === "expired") {
+    return "Start a fresh handoff from MPP before continuing.";
+  }
+
+  if (event.status === "user_review") {
+    return "Review the prepared draft in the platform editor.";
+  }
+
+  if (event.status === "opening_tabs" || event.status === "injecting") {
+    return "The extension is preparing the platform editor.";
+  }
+
+  if (event.status === "accepted") {
+    return "The handoff was accepted and tab opening should begin shortly.";
+  }
+
+  if (event.status === "succeeded" || event.status === "submitted") {
+    return "No follow-up action is required for this platform.";
+  }
+
+  return "Reopen the platform page if you need to inspect the draft manually.";
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
 }
 
 function useMonitorState() {
@@ -97,11 +194,277 @@ function useMonitorState() {
     return () => window.clearInterval(intervalId);
   }, [load]);
 
-  return { state, loading, error, load };
+  return { state, loading, error, setError, load };
+}
+
+function ExecutionSummary({
+  handoff,
+  latestEvent,
+  loading,
+}: {
+  handoff: StoredHandoff["handoff"] | null | undefined;
+  latestEvent: ExtensionExecutionEvent | undefined;
+  loading: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle>Active Execution</CardTitle>
+            <CardDescription>
+              {handoff
+                ? `Execution ${handoff.execution_id}`
+                : loading
+                  ? "Loading current execution"
+                  : "Waiting for a publishing handoff"}
+            </CardDescription>
+          </div>
+          <StatusBadge status={latestEvent?.status} />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="truncate text-base font-semibold">
+              {handoff?.project.title ?? "No active handoff"}
+            </p>
+            {latestEvent ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {latestEvent.message}
+              </p>
+            ) : null}
+          </div>
+          {handoff ? (
+            <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+              <div className="rounded-md bg-muted px-3 py-2">
+                <p className="font-medium text-foreground">Accepted</p>
+                <p>{formatDateTime(handoff.expires_at)}</p>
+              </div>
+              <div className="rounded-md bg-muted px-3 py-2">
+                <p className="font-medium text-foreground">Platforms</p>
+                <p>{handoff.platforms.length}</p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PlatformCard({
+  platform,
+  event,
+  onReopen,
+}: {
+  platform: ExtensionPublishPlatformHandoff;
+  event: ExtensionExecutionEvent | null;
+  onReopen: (platform: ExtensionPublishPlatformHandoff) => void;
+}) {
+  const callbackMessage = event ? getCallbackFailureMessage(event) : null;
+  const showNextAction =
+    event?.status === "failed" ||
+    event?.status === "expired" ||
+    event?.status === "user_review";
+
+  return (
+    <div className="rounded-lg border border-border bg-background p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold capitalize">
+            {platform.platform}
+          </p>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {platform.adapter_key}
+          </p>
+        </div>
+        <StatusBadge status={event?.status} />
+      </div>
+
+      <div className="mt-3 flex flex-col gap-2 text-sm">
+        <p className="text-muted-foreground">
+          {event?.message ?? "No platform event has been recorded yet."}
+        </p>
+        {event?.error_message ? (
+          <Alert variant="destructive">
+            <AlertCircle data-icon="inline-start" />
+            <AlertDescription>{event.error_message}</AlertDescription>
+          </Alert>
+        ) : null}
+        {callbackMessage ? (
+          <Alert variant="warning">
+            <AlertCircle data-icon="inline-start" />
+            <AlertDescription>{callbackMessage}</AlertDescription>
+          </Alert>
+        ) : null}
+        {showNextAction ? (
+          <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+            {getNextAction(event)}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {platform.requires_review ? "Review required" : "Review not required"}
+        </p>
+        <Button variant="outline" onClick={() => onReopen(platform)}>
+          <ExternalLink data-icon="inline-start" />
+          Reopen
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PlatformStatusList({
+  handoff,
+  events,
+  onReopen,
+}: {
+  handoff: StoredHandoff["handoff"] | null | undefined;
+  events: ExtensionExecutionEvent[];
+  onReopen: (platform: ExtensionPublishPlatformHandoff) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Platforms</CardTitle>
+        <CardDescription>
+          Draft preparation state for each requested platform.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {handoff ? (
+          <div className="flex flex-col gap-3">
+            {handoff.platforms.map((platform) => (
+              <PlatformCard
+                key={`${platform.platform}-${platform.adapter_key}`}
+                platform={platform}
+                event={getLatestPlatformEvent(events, platform.platform)}
+                onReopen={onReopen}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No platform handoff is active.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TrustedOrigins({
+  origins,
+  onRemove,
+}: {
+  origins: TrustedOrigin[];
+  onRemove: (origin: string) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <ShieldCheck data-icon="inline-start" />
+          <CardTitle>Trusted Origins</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {origins.length ? (
+          <div className="flex flex-col gap-2">
+            {origins.map((origin) => (
+              <div
+                key={origin.origin}
+                className="flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-sm"
+              >
+                <span className="truncate">{origin.origin}</span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <CheckCircle2 className="size-4 text-emerald-700" />
+                  <Button
+                    variant="outline"
+                    className="size-8 px-0"
+                    onClick={() => onRemove(origin.origin)}
+                    aria-label={`Remove trusted origin ${origin.origin}`}
+                  >
+                    <Trash2 data-icon="inline-start" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No trusted MPP origins yet.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function EventTimeline({ events }: { events: ExtensionExecutionEvent[] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Execution Events</CardTitle>
+        <CardDescription>Newest events are shown first.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {events.length ? (
+          <div className="flex flex-col gap-3">
+            {events
+              .slice()
+              .reverse()
+              .map((event, index) => (
+                <div key={event.event_id} className="flex flex-col gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-1 flex size-3 shrink-0 rounded-full bg-primary" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium capitalize">
+                            {event.platform}
+                          </p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {event.message}
+                          </p>
+                        </div>
+                        <StatusBadge status={event.status} />
+                      </div>
+                      {event.error_message ? (
+                        <p className="mt-2 text-xs text-destructive">
+                          {event.error_message}
+                        </p>
+                      ) : null}
+                      {getCallbackFailureMessage(event) ? (
+                        <p className="mt-2 text-xs text-amber-700">
+                          {getCallbackFailureMessage(event)}
+                        </p>
+                      ) : null}
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {formatDateTime(event.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                  {index < events.length - 1 ? <Separator /> : null}
+                </div>
+              ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No execution events yet.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function PublishMonitor() {
-  const { state, loading, error, load } = useMonitorState();
+  const { state, loading, error, setError, load } = useMonitorState();
   const latestEvent = state?.events.at(-1);
   const handoff = state?.current_handoff?.handoff;
 
@@ -115,179 +478,101 @@ function PublishMonitor() {
     await load();
   };
 
+  const reopenPlatform = async (platform: ExtensionPublishPlatformHandoff) => {
+    try {
+      await browser.tabs.create({
+        active: true,
+        url: platform.inject_url,
+      });
+      setError("");
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error ? nextError.message : String(nextError),
+      );
+    }
+  };
+
+  const activePlatformEvents =
+    handoff?.platforms
+      .map((platform) =>
+        getLatestPlatformEvent(state?.events ?? [], platform.platform),
+      )
+      .filter((event): event is ExtensionExecutionEvent => event !== null) ??
+    [];
+  const readyCount = activePlatformEvents.filter((event) =>
+    terminalStatuses.has(event.status),
+  ).length;
+
   return (
-    <main className="min-h-screen">
-      <header className="border-b border-zinc-200 bg-white px-5 py-4">
+    <main className="min-h-screen bg-background">
+      <header className="border-b border-border bg-card px-5 py-4">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold text-zinc-950">
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-semibold">
               MPP Extension Publisher
             </h1>
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-muted-foreground">
               {state ? `v${state.version}` : "Loading extension state"}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex shrink-0 gap-2">
             <Button variant="outline" onClick={load} aria-label="Refresh">
-              <RefreshCw size={16} />
+              <RefreshCw data-icon="inline-start" />
             </Button>
             <Button
               variant="outline"
               onClick={clear}
               aria-label="Clear execution state"
             >
-              <Trash2 size={16} />
+              <Trash2 data-icon="inline-start" />
             </Button>
           </div>
         </div>
       </header>
 
-      <section className="space-y-4 px-5 py-5">
+      <section className="flex flex-col gap-4 px-5 py-5">
         {error ? (
-          <div className="flex items-start gap-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-            <AlertCircle className="mt-0.5 shrink-0" size={16} />
-            <span>{error}</span>
-          </div>
+          <Alert variant="destructive">
+            <AlertCircle data-icon="inline-start" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         ) : null}
-
-        <section className="rounded-md border border-zinc-200 bg-white p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-medium uppercase text-zinc-500">
-                Active Execution
-              </p>
-              <h2 className="mt-2 text-base font-semibold text-zinc-950">
-                {handoff?.project.title ?? "No active handoff"}
-              </h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                {handoff
-                  ? `Execution ${handoff.execution_id}`
-                  : loading
-                    ? "Loading current execution"
-                    : "Waiting for MPP to send a publishing handoff"}
-              </p>
-            </div>
-            {latestEvent ? <StatusBadge status={latestEvent.status} /> : null}
-          </div>
-        </section>
-
-        <section className="rounded-md border border-zinc-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <ShieldCheck size={17} className="text-zinc-600" />
-            <h2 className="text-sm font-semibold text-zinc-950">
-              Trusted Origins
-            </h2>
-          </div>
-          <div className="mt-3 space-y-2">
-            {state?.trusted_origins.length ? (
-              state.trusted_origins.map((origin) => (
-                <div
-                  key={origin.origin}
-                  className="flex items-center justify-between gap-3 rounded-md bg-zinc-50 px-3 py-2 text-sm"
-                >
-                  <span className="truncate">{origin.origin}</span>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <CheckCircle2 className="text-emerald-600" size={16} />
-                    <Button
-                      variant="outline"
-                      className="h-8 w-8 px-0 text-zinc-500 hover:text-red-700"
-                      onClick={() => removeOrigin(origin.origin)}
-                      aria-label={`Remove trusted origin ${origin.origin}`}
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-sm text-zinc-500">
-                No trusted MPP origins yet.
-              </p>
-            )}
-          </div>
-        </section>
 
         {handoff ? (
-          <section className="rounded-md border border-zinc-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-zinc-950">Platforms</h2>
-            <div className="mt-3 space-y-3">
-              {handoff.platforms.map((platform) => (
-                <div
-                  key={`${platform.platform}-${platform.adapter_key}`}
-                  className="rounded-md bg-zinc-50 p-3"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-zinc-950">
-                        {platform.platform}
-                      </p>
-                      <p className="mt-1 text-xs text-zinc-500">
-                        {platform.adapter_key}
-                      </p>
-                    </div>
-                    <a
-                      className="inline-flex items-center gap-1 text-xs font-medium text-zinc-700 hover:text-zinc-950"
-                      href={platform.inject_url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open <ExternalLink size={13} />
-                    </a>
-                  </div>
-                  <p className="mt-2 text-xs text-zinc-500">
-                    Review required. Auto-publish disabled.
-                  </p>
-                </div>
-              ))}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-xs text-muted-foreground">Platforms ready</p>
+              <p className="mt-1 text-lg font-semibold">
+                {readyCount}/{handoff.platforms.length}
+              </p>
             </div>
-          </section>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <p className="text-xs text-muted-foreground">Last event</p>
+              <p className="mt-1 text-lg font-semibold">
+                {latestEvent ? statusLabels[latestEvent.status] : "none"}
+              </p>
+            </div>
+          </div>
         ) : null}
 
-        <section className="rounded-md border border-zinc-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-zinc-950">
-            Execution Events
-          </h2>
-          <div className="mt-3 space-y-3">
-            {state?.events.length ? (
-              state.events
-                .slice()
-                .reverse()
-                .map((event) => (
-                  <div
-                    key={event.event_id}
-                    className="rounded-md bg-zinc-50 p-3"
-                  >
-                    {getCallbackFailureMessage(event) ? (
-                      <p className="mb-2 text-xs text-amber-700">
-                        {getCallbackFailureMessage(event)}
-                      </p>
-                    ) : null}
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-zinc-950">
-                          {event.platform}
-                        </p>
-                        <p className="mt-1 text-sm text-zinc-600">
-                          {event.message}
-                        </p>
-                      </div>
-                      <StatusBadge status={event.status} />
-                    </div>
-                    {event.error_message ? (
-                      <p className="mt-2 text-xs text-red-700">
-                        {event.error_message}
-                      </p>
-                    ) : null}
-                    <p className="mt-2 text-xs text-zinc-400">
-                      {new Date(event.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                ))
-            ) : (
-              <p className="text-sm text-zinc-500">No execution events yet.</p>
-            )}
-          </div>
-        </section>
+        <ExecutionSummary
+          handoff={handoff}
+          latestEvent={latestEvent}
+          loading={loading}
+        />
+
+        <PlatformStatusList
+          handoff={handoff}
+          events={state?.events ?? []}
+          onReopen={reopenPlatform}
+        />
+
+        <EventTimeline events={state?.events ?? []} />
+
+        <TrustedOrigins
+          origins={state?.trusted_origins ?? []}
+          onRemove={removeOrigin}
+        />
       </section>
     </main>
   );
