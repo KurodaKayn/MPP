@@ -20,11 +20,12 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/redisclient"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
-	echojwt "github.com/labstack/echo-jwt/v4"
+	"github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/redis/go-redis/v9"
-)
+	"gorm.io/gorm"
+	)
 
 const (
 	jwtSecretEnv       = "JWT_SECRET"
@@ -96,7 +97,7 @@ func main() {
 	e.Use(echoMiddleware.Recover())
 
 	// Public Routes
-	registerHealthRoutes(e, &ready, redisClient)
+	registerHealthRoutes(e, &ready, db.DB, redisClient)
 	e.GET("/ping", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
 			"message": "pong",
@@ -187,7 +188,7 @@ func main() {
 	}
 }
 
-func registerHealthRoutes(e *echo.Echo, ready *atomic.Bool, redisClient *redis.Client) {
+func registerHealthRoutes(e *echo.Echo, ready *atomic.Bool, sqlDB *gorm.DB, redisClient *redis.Client) {
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
 	})
@@ -199,13 +200,16 @@ func registerHealthRoutes(e *echo.Echo, ready *atomic.Bool, redisClient *redis.C
 		ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
 		defer cancel()
 
-		sqlDB, err := db.DB.DB()
-		if err != nil {
-			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "database"})
+		if sqlDB != nil {
+			dbObj, err := sqlDB.DB()
+			if err != nil {
+				return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "database"})
+			}
+			if err := dbObj.PingContext(ctx); err != nil {
+				return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "database"})
+			}
 		}
-		if err := sqlDB.PingContext(ctx); err != nil {
-			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "database"})
-		}
+
 		if redisClient != nil {
 			if err := redisClient.Ping(ctx).Err(); err != nil {
 				return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "redis"})

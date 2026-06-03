@@ -14,7 +14,7 @@ func TestHealthRouteReturnsHealthy(t *testing.T) {
 	e := echo.New()
 	ready := atomic.Bool{}
 	ready.Store(true)
-	registerHealthRoutes(e, &ready, nil)
+	registerHealthRoutes(e, &ready, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
@@ -24,10 +24,26 @@ func TestHealthRouteReturnsHealthy(t *testing.T) {
 	assert.JSONEq(t, `{"status":"healthy"}`, rec.Body.String())
 }
 
+func TestReadyRouteReturnsReadyWhenDependenciesHealthy(t *testing.T) {
+	e := echo.New()
+	ready := atomic.Bool{}
+	ready.Store(true)
+
+	// Since we mock nil DB and Redis, the handler skips PingContext and assumes healthy
+	registerHealthRoutes(e, &ready, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.JSONEq(t, `{"status":"ready"}`, rec.Body.String())
+}
+
 func TestReadyRouteRejectsWhenDraining(t *testing.T) {
 	e := echo.New()
 	ready := atomic.Bool{}
-	registerHealthRoutes(e, &ready, nil)
+	registerHealthRoutes(e, &ready, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
 	rec := httptest.NewRecorder()
