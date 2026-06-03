@@ -1,58 +1,18 @@
-export type DashboardStats = {
-  total_users: number;
-  total_projects: number;
-  total_published_publications: number;
-  total_failed_publications: number;
-};
+import type { components } from "./generated";
 
-export type AdaptedContent = {
-  schema_version?: number;
-  format?: "html" | "markdown" | "text" | string;
-  summary?: string;
-  source_revision?: string;
-  generated_by?: Record<string, unknown>;
-  html?: string;
-  markdown?: string;
-  text?: string;
-  assets?: Array<Record<string, unknown>>;
-};
+type ContractSchema<Name extends keyof components["schemas"]> =
+  components["schemas"][Name];
 
-export type PublicationSummary = {
-  id: string;
-  platform: string;
-  enabled: boolean;
-  status: string;
-  publish_url?: string;
-};
-
-export type PublicationDetail = PublicationSummary & {
-  error_message?: string;
-  config: Record<string, unknown>;
-  adapted_content: AdaptedContent;
-  remote_id?: string;
-  retry_count: number;
-  last_attempt_at?: string;
-  published_at?: string;
-  created_at: string;
-  updated_at: string;
-};
-
-export type ProjectPublications = {
-  project_id: string;
-  items: PublicationDetail[];
-};
-
-export type PublishResult = {
-  status: string;
-  job_id?: string;
-  platform?: string;
-  queued_at?: string;
-  remote_id?: string;
-  publish_url?: string;
-  error_message?: string;
-  browser_session_id?: string;
-  stream_url?: string;
-};
+export type DashboardStats = ContractSchema<"DashboardStats">;
+export type AdaptedContent = ContractSchema<"AdaptedContent">;
+export type DraftFormat = ContractSchema<"DraftFormat">;
+export type PublishPlatform = ContractSchema<"PublishPlatform">;
+export type PublicationStatus = ContractSchema<"PublicationStatus">;
+export type ProjectStatus = ContractSchema<"ProjectStatus">;
+export type PublicationSummary = ContractSchema<"PublicationSummary">;
+export type PublicationDetail = ContractSchema<"PublicationDetail">;
+export type ProjectPublications = ContractSchema<"ProjectPublications">;
+export type PublishResult = ContractSchema<"PublishResult">;
 
 export type PublishProjectOptions = {
   mode?: "manual";
@@ -63,7 +23,7 @@ export type CreateProjectInput = {
   source_content: string;
   summary?: string;
   cover_image_url?: string;
-  platforms: string[];
+  platforms: PublishPlatform[];
 };
 
 export type UpdateProjectInput = CreateProjectInput;
@@ -71,7 +31,7 @@ export type UpdateProjectInput = CreateProjectInput;
 export type SaveProjectContentInput = Omit<CreateProjectInput, "platforms">;
 
 export type SaveProjectPlatformsInput = {
-  platforms: string[];
+  platforms: PublishPlatform[];
 };
 
 export type GetProjectPublicationsOptions = {
@@ -91,7 +51,7 @@ export type WaitForProjectPublicationsOptions = {
 };
 
 export type SyncPrepublishInput = {
-  platforms: string[];
+  platforms: PublishPlatform[];
   actor?: {
     type: "system";
   };
@@ -101,10 +61,7 @@ export type UpdatePrepublishDraftInput = {
   adapted_content: AdaptedContent;
 };
 
-export type AIChatMessage = {
-  role: "user" | "assistant";
-  content: string;
-};
+export type AIChatMessage = ContractSchema<"AIChatMessage">;
 
 export type AIEditContentStreamInput = {
   title?: string;
@@ -115,7 +72,7 @@ export type AIEditContentStreamInput = {
 
 export type AIEditPrepublishStreamInput = {
   title?: string;
-  platform: string;
+  platform: PublishPlatform;
   adapted_content: AdaptedContent;
   message: string;
   conversation?: AIChatMessage[];
@@ -126,162 +83,28 @@ export type AITextStreamOptions = {
   signal?: AbortSignal;
 };
 
-export type RequirementStatus = {
-  status: "passed" | "warning" | "failed" | "unknown";
-  title: string;
-  message: string;
-};
+export type RequirementStatus = ContractSchema<"RequirementStatus">;
+export type WechatAccount = ContractSchema<"WechatAccount">;
+export type SaveWechatAccountInput = ContractSchema<"SaveWechatAccountInput">;
+export type WechatConnectionTestResult =
+  ContractSchema<"WechatConnectionTestResult">;
+export type XAccount = ContractSchema<"XAccount">;
+export type SaveXAccountInput = ContractSchema<"SaveXAccountInput">;
+export type XConnectionTestResult = ContractSchema<"XConnectionTestResult">;
+export type DouyinAccount = ContractSchema<"DouyinAccount">;
+export type ZhihuAccount = ContractSchema<"ZhihuAccount">;
 
-export type WechatAccount = {
-  platform: "wechat";
-  app_id: string;
-  has_app_secret: boolean;
-  status: "unconfigured" | "untested" | "connected" | "failed";
-  last_tested_at?: string;
-  last_test_error?: string;
-  updated_at?: string;
-  ip_whitelist: RequirementStatus;
-  account_auth: RequirementStatus;
-};
+export type BrowserSessionStatus = ContractSchema<"BrowserSessionStatus">;
+export type BrowserSession = ContractSchema<"BrowserSession">;
+export type StartBrowserSessionResult =
+  ContractSchema<"StartBrowserSessionResult">;
+export type StartPublishBrowserSessionResult =
+  ContractSchema<"StartPublishBrowserSessionResult">;
+export type CompleteBrowserSessionResult =
+  ContractSchema<"CompleteBrowserSessionResult">;
+export type CancelBrowserSessionResult =
+  ContractSchema<"CancelBrowserSessionResult">;
 
-export type SaveWechatAccountInput = {
-  app_id: string;
-  app_secret?: string;
-};
-
-export type WechatConnectionTestResult = {
-  connected: boolean;
-  status: "connected" | "failed";
-  message: string;
-  err_code?: number;
-  err_msg?: string;
-  tested_at: string;
-  ip_whitelist: RequirementStatus;
-  account_auth: RequirementStatus;
-};
-
-export type XAccount = {
-  platform: "x";
-  api_key?: string;
-  expires_at?: string;
-  username?: string;
-  has_api_secret: boolean;
-  has_access_token: boolean;
-  has_access_token_secret: boolean;
-  status: "unconfigured" | "untested" | "connected" | "failed";
-  last_tested_at?: string;
-  last_test_error?: string;
-  updated_at?: string;
-  account_auth: RequirementStatus;
-  publish_access: RequirementStatus;
-};
-
-export type SaveXAccountInput = {
-  api_key?: string;
-  api_secret?: string;
-  access_token?: string;
-  access_token_secret?: string;
-  username?: string;
-};
-
-export type XConnectionTestResult = {
-  connected: boolean;
-  status: "connected" | "failed";
-  message: string;
-  tested_at: string;
-  user_id?: string;
-  username?: string;
-  name?: string;
-  account_auth: RequirementStatus;
-  publish_access: RequirementStatus;
-};
-
-export type DouyinAccount = {
-  platform: "douyin";
-  username?: string;
-  avatar_url?: string;
-  status: "unconfigured" | "untested" | "connected" | "failed";
-  last_tested_at?: string;
-  last_test_error?: string;
-  updated_at?: string;
-};
-
-export type ZhihuAccount = {
-  platform: "zhihu";
-  username?: string;
-  avatar_url?: string;
-  status: "unconfigured" | "untested" | "connected" | "failed";
-  last_tested_at?: string;
-  last_test_error?: string;
-  updated_at?: string;
-};
-
-export type BrowserSessionStatus =
-  | "pending"
-  | "ready"
-  | "login_detected"
-  | "capturing"
-  | "connected"
-  | "expired"
-  | "failed";
-
-export type BrowserSession = {
-  session_id: string;
-  platform: string;
-  status: BrowserSessionStatus;
-  stream_url?: string;
-  stream_token_expires_at?: string;
-  expires_at: string;
-  message?: string;
-};
-
-export type StartBrowserSessionResult = {
-  session_id: string;
-  status: BrowserSessionStatus;
-  stream_url: string;
-  stream_token_expires_at: string;
-  expires_at: string;
-};
-
-export type StartPublishBrowserSessionResult = StartBrowserSessionResult & {
-  platform: string;
-  project_id: string;
-};
-
-export type CompleteBrowserSessionResult = {
-  session_id: string;
-  platform: string;
-  status: BrowserSessionStatus;
-  account: {
-    username: string;
-    avatar_url: string;
-  };
-  message: string;
-};
-
-export type CancelBrowserSessionResult = {
-  session_id: string;
-  status: BrowserSessionStatus;
-};
-
-export type ProjectListItem = {
-  id: string;
-  user_id: string;
-  title: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
-  publications: PublicationSummary[];
-};
-
-export type ProjectDetail = ProjectListItem & {
-  source_content: string;
-};
-
-export type PaginatedProjects = {
-  items: ProjectListItem[];
-  page: number;
-  limit: number;
-  total: number;
-  total_pages: number;
-};
+export type ProjectListItem = ContractSchema<"ProjectListItem">;
+export type ProjectDetail = ContractSchema<"ProjectDetail">;
+export type PaginatedProjects = ContractSchema<"PaginationProjects">;
