@@ -1,11 +1,14 @@
 package observability
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	dbobs "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/labstack/echo/v4"
 )
 
@@ -67,6 +70,45 @@ func TestMiddlewareGeneratesTraceHeaders(t *testing.T) {
 	if got := rec.Header().Get(traceIDHeader); got != requestID {
 		t.Fatalf("expected trace id to match request id, got %q and %q", got, requestID)
 	}
+}
+
+func TestDatabaseObserverRecordsQueryMetricsAndSlowQueries(t *testing.T) {
+	t.Setenv(databaseSlowQueryThresholdEnv, "1ms")
+	e := echo.New()
+	suite := New("backend-test")
+	suite.RegisterRoutes(e)
+
+	suite.DatabaseQueryObserver().ObserveQuery(
+		ContextWithTraceID(context.Background(), "trace-123"),
+		dbobs.QueryObservation{
+			Operation:    "query",
+			Table:        "projects",
+			SQL:          "SELECT id FROM projects WHERE user_id = ?",
+			QueryHash:    "abc123",
+			Duration:     2 * time.Millisecond,
+			RowsAffected: 1,
+		},
+	)
+
+	metrics := scrapeMetrics(t, e)
+	assertMetricLineContains(t, metrics, "mpp_db_queries_total", []string{
+		`service="backend-test"`,
+		`operation="query"`,
+		`table="projects"`,
+		`status="ok"`,
+	})
+	assertMetricLineContains(t, metrics, "mpp_db_query_duration_seconds_count", []string{
+		`service="backend-test"`,
+		`operation="query"`,
+		`table="projects"`,
+		`status="ok"`,
+	})
+	assertMetricLineContains(t, metrics, "mpp_db_slow_queries_total", []string{
+		`service="backend-test"`,
+		`operation="query"`,
+		`table="projects"`,
+		`status="ok"`,
+	})
 }
 
 func scrapeMetrics(t *testing.T, e *echo.Echo) string {

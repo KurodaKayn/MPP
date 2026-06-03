@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -10,6 +11,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+type recordingQueryObserver struct {
+	observations []QueryObservation
+}
+
+func (r *recordingQueryObserver) ObserveQuery(_ context.Context, observation QueryObservation) {
+	r.observations = append(r.observations, observation)
+}
 
 func TestMigrateKeepsActiveBrowserSessionUniquenessFallback(t *testing.T) {
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -136,6 +145,42 @@ func TestConfigureConnectionPoolAppliesMaxOpenConns(t *testing.T) {
 	sqlDB, err := database.DB()
 	require.NoError(t, err)
 	require.Equal(t, 3, sqlDB.Stats().MaxOpenConnections)
+}
+
+func TestInstallQueryObserverRecordsSanitizedQueryFacts(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, database.AutoMigrate(&models.User{}))
+
+	observer := &recordingQueryObserver{}
+	require.NoError(t, InstallQueryObserver(database, observer))
+	require.NoError(t, InstallQueryObserver(database, observer))
+
+	user := models.User{
+		Username:     "observed-user",
+		Email:        "observed@example.com",
+		PasswordHash: "hash",
+	}
+	require.NoError(t, database.Create(&user).Error)
+
+	var found models.User
+	require.NoError(t, database.Where("username = ?", "observed-user").First(&found).Error)
+
+	var queryObservation *QueryObservation
+	for i := range observer.observations {
+		if observer.observations[i].Operation == "query" {
+			queryObservation = &observer.observations[i]
+			break
+		}
+	}
+
+	require.NotNil(t, queryObservation)
+	require.Equal(t, "users", queryObservation.Table)
+	require.NotEmpty(t, queryObservation.QueryHash)
+	require.Positive(t, queryObservation.Duration)
+	require.Equal(t, int64(1), queryObservation.RowsAffected)
+	require.Contains(t, queryObservation.SQL, "username = ?")
+	require.NotContains(t, queryObservation.SQL, "observed-user")
 }
 
 func clearConnectionPoolEnv(t *testing.T) {
