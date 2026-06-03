@@ -89,8 +89,8 @@ func commaSeparatedEnv(name string) ([]string, error) {
 		if value == "" {
 			continue
 		}
-		if value == "*" {
-			return nil, fmt.Errorf("%s must not contain wildcard origin when credentials are enabled", name)
+		if strings.Contains(value, "*") {
+			return nil, fmt.Errorf("%s must not contain wildcard origins when credentials are enabled", name)
 		}
 		values = append(values, value)
 	}
