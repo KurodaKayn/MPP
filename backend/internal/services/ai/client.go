@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 )
 
 const (
@@ -53,7 +54,7 @@ func NewAIServiceClientFromEnv() *AIServiceClient {
 
 func NewAIServiceClient(baseURL string, httpClient *http.Client) *AIServiceClient {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: aiServiceTimeout}
+		httpClient = resilience.NewHTTPClient("ai-service", aiServiceTimeout)
 	}
 	return &AIServiceClient{
 		baseURL:    strings.TrimRight(strings.TrimSpace(baseURL), "/"),

@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 	"github.com/redis/go-redis/v9"
@@ -135,7 +136,17 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 		return nil, err
 	}
 
-	remoteID, publishURL, err := p.Publish(context.Background(), &pub, &account)
+	var remoteID string
+	var publishURL string
+	err = resilience.Run(
+		context.Background(),
+		resilience.DefaultOperationPolicy("publish-"+platform),
+		func(ctx context.Context) error {
+			var publishErr error
+			remoteID, publishURL, publishErr = p.Publish(ctx, &pub, &account)
+			return publishErr
+		},
+	)
 
 	status := models.PublicationStatusPublished
 	errMsg := ""

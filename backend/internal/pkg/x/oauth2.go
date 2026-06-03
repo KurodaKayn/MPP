@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 )
 
 const (
@@ -144,11 +146,9 @@ func (c OAuth2Config) Refresh(ctx context.Context, refreshToken string) (OAuth2T
 
 func NewOAuth2Client(creds OAuth2Credentials) *OAuth2Client {
 	return &OAuth2Client{
-		baseURL: defaultBaseURL,
-		creds:   creds,
-		httpClient: &http.Client{
-			Timeout: 20 * time.Second,
-		},
+		baseURL:    defaultBaseURL,
+		creds:      creds,
+		httpClient: resilience.NewHTTPClient("x", 20*time.Second),
 	}
 }
 
@@ -216,7 +216,7 @@ func (c OAuth2Config) tokenRequest(ctx context.Context, values url.Values) (OAut
 
 	client := c.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 20 * time.Second}
+		client = resilience.NewHTTPClient("x-oauth2", 20*time.Second)
 	}
 
 	resp, err := client.Do(req)
