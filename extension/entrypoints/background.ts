@@ -21,6 +21,7 @@ import {
 import {
   HANDOFF_SCHEMA_VERSION,
   type HandoffAsset,
+  type StoredHandoff,
 } from "../src/types/handoff";
 import type { ExtensionExecutionEvent } from "../src/types/events";
 import type {
@@ -45,6 +46,11 @@ const POST_EXPIRATION_EVENT_ALLOWED_STATUSES = new Set([
   "failed",
   "cancelled",
 ]);
+
+type CurrentHandoffSnapshot = {
+  currentHandoff: StoredHandoff | null;
+  events: ExtensionExecutionEvent[];
+};
 
 function isBackgroundMessage(value: unknown): value is BackgroundMessage {
   return (
@@ -118,14 +124,24 @@ async function getMonitorState() {
   };
 }
 
-export async function recordCurrentHandoffExpiration(): Promise<boolean> {
-  const currentHandoff = await getCurrentHandoff();
+async function getCurrentHandoffSnapshot(): Promise<CurrentHandoffSnapshot> {
+  const [currentHandoff, events] = await Promise.all([
+    getCurrentHandoff(),
+    getExecutionEvents(),
+  ]);
+
+  return { currentHandoff, events };
+}
+
+export async function recordCurrentHandoffExpiration(
+  snapshot?: CurrentHandoffSnapshot,
+): Promise<boolean> {
+  const { currentHandoff, events } = snapshot ?? (await getCurrentHandoffSnapshot());
 
   if (!currentHandoff || !isHandoffExpired(currentHandoff.handoff)) {
     return false;
   }
 
-  const events = await getExecutionEvents();
   let recordedExpiration = false;
 
   for (const platform of currentHandoff.handoff.platforms) {
@@ -167,14 +183,14 @@ function getLatestPlatformEvent(
 
 export async function shouldRejectExpiredAdapterEvent(
   message: Extract<BackgroundMessage, { type: "adapter.event" }>,
+  snapshot?: CurrentHandoffSnapshot,
 ): Promise<boolean> {
-  const currentHandoff = await getCurrentHandoff();
+  const { currentHandoff, events } = snapshot ?? (await getCurrentHandoffSnapshot());
 
   if (!currentHandoff || !isHandoffExpired(currentHandoff.handoff)) {
     return false;
   }
 
-  const events = await getExecutionEvents();
   const latestEvent = getLatestPlatformEvent(events, message.event.platform);
 
   return (
@@ -230,17 +246,18 @@ async function acceptBridgeHandoff(
 async function handleAdapterEvent(
   message: Extract<BackgroundMessage, { type: "adapter.event" }>,
 ) {
-  if (await shouldRejectExpiredAdapterEvent(message)) {
-    await recordCurrentHandoffExpiration();
+  const snapshot = await getCurrentHandoffSnapshot();
+
+  if (await shouldRejectExpiredAdapterEvent(message, snapshot)) {
+    await recordCurrentHandoffExpiration(snapshot);
     return {
       ok: false,
       error: "Current handoff has expired.",
     };
   }
 
-  await recordCurrentHandoffExpiration();
-
-  const currentHandoff = await getCurrentHandoff();
+  await recordCurrentHandoffExpiration(snapshot);
+  const { currentHandoff } = snapshot;
 
   if (
     !currentHandoff ||
