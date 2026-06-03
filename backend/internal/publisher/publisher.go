@@ -45,6 +45,7 @@ var ErrCookieEncryptionKeyMissing = browser.ErrCookieEncryptionKeyMissing
 var ErrCookieEncryptionKeyInvalid = browser.ErrCookieEncryptionKeyInvalid
 var ErrCookieValidationFailed = browser.ErrCookieValidationFailed
 var ErrCookieNotFound = browser.ErrCookieNotFound
+var ErrBrowserWorkerPoolExhausted = browser.ErrBrowserWorkerPoolExhausted
 
 var BuildXPostIntentURL = xpub.BuildXPostIntentURL
 var ContextKeyRemoteURL = browser.ContextKeyRemoteURL
