@@ -37,7 +37,8 @@ Technology selection rationale: this layer favors Go because publishing orchestr
 | GORM | Needs structured persistence without hand-writing every SQL query. | Maps users, projects, platform publications, accounts, and browser sessions to database tables. |
 | GORM PostgreSQL driver | Needs durable relational storage for production data. | Connects the backend domain model to PostgreSQL. |
 | GORM datatypes | Needs flexible JSON fields for platform-specific configuration and drafts. | Stores dynamic platform data such as `config`, `adapted_content`, cookies, and credentials. |
-| go-redis | Needs queues, locks, OAuth state, and short-lived browser-session state. | Coordinates asynchronous publishing, distributed locks, stream tokens, and TTL-based session state. |
+| go-redis | Needs locks, OAuth state, and short-lived browser-session state. | Coordinates distributed locks, stream tokens, and TTL-based session state. |
+| Asynq | Needs reliable Redis-backed background jobs with retry and crash recovery semantics. | Manages publish jobs between backend API and publish-worker without storing browser session URLs or tokens in task payloads. |
 | chromedp and cdproto | Needs controlled browser automation for platforms that require web sessions. | Drives Chromium, reads browser state, captures cookies, and supports platform automation. |
 | gorilla/websocket | Needs browser stream proxying and bidirectional browser-session traffic. | Supports remote browser session streaming between frontend, backend, and worker paths. |
 | golang.org/x/net/html | Needs reliable HTML parsing and conversion. | Powers HTML-to-text and HTML-to-Markdown draft adaptation. |
@@ -94,7 +95,7 @@ Technology selection rationale: the project is polyglot, so DevOps tooling is ch
 | Docker Compose | Needs repeatable multi-service startup. | Runs frontend, backend, browser-worker, browser runtime image, ai-service, PostgreSQL, and Redis together. |
 | Multi-stage Dockerfiles | Needs separate development and production images. | Builds smaller production images while preserving hot-reload development targets. |
 | PostgreSQL | Needs durable, queryable system-of-record storage. | Stores users, projects, platform publications, accounts, credentials, cookies, and browser-session audit records. |
-| Redis | Needs fast transient coordination state. | Stores publish queues, locks, OAuth state, browser session state, stream tokens, and TTL-controlled data. |
+| Redis | Needs fast transient coordination state. | Backs Asynq publish queues, distributed locks, OAuth state, browser session state, stream tokens, and TTL-controlled data. |
 | Browser runtime Docker image | Needs reproducible remote browser execution. | Packages Chromium, Xvfb, Openbox, x11vnc, noVNC, websockify, and the CDP proxy into a disposable runtime. |
 | pnpm, uv, and Go modules | Needs module-specific dependency management. | Keeps JavaScript, Python, and Go dependencies reproducible through their native package managers. |
 | Air | Needs live reload for Go services during development. | Rebuilds and restarts the backend API and browser-worker in dev containers. |
