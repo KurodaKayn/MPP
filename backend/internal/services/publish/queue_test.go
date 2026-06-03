@@ -90,6 +90,8 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(`CREATE TABLE users (
 		id TEXT PRIMARY KEY,
 		username TEXT NOT NULL,
+		email TEXT NOT NULL,
+		is_email_verified BOOLEAN NOT NULL DEFAULT 0,
 		password_hash TEXT NOT NULL,
 		role TEXT NOT NULL DEFAULT 'user',
 		created_at DATETIME,
