@@ -22,6 +22,7 @@ export interface PlatformCapability {
   preferred_mode: PublishingMode;
   adapter_key: AdapterKey;
   inject_url: string;
+  inject_urls?: string[];
   content_kinds: ContentKind[];
   target_formats: TargetFormat[];
   requires_review: boolean;

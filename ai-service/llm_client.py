@@ -1,15 +1,24 @@
 import os
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import HTTPException
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel
 
 from schemas import ChatMessage
 
 LLM_PROVIDER_URL_ENV = "LLM_PROVIDER_URL"
 LLM_MODEL_ENV = "LLM_MODEL"
 LLM_PROVIDER_KEY_ENV = "LLM_PROVIDER_KEY"
+LLM_REQUEST_TIMEOUT_ENV = "LLM_REQUEST_TIMEOUT_SECONDS"
+LLM_MAX_RETRIES_ENV = "LLM_MAX_RETRIES"
+LLM_STREAM_CHUNK_TIMEOUT_ENV = "LLM_STREAM_CHUNK_TIMEOUT_SECONDS"
+
+DEFAULT_LLM_REQUEST_TIMEOUT_SECONDS = 90.0
+DEFAULT_LLM_MAX_RETRIES = 2
+DEFAULT_LLM_STREAM_CHUNK_TIMEOUT_SECONDS = 30.0
 
 
 def build_llm() -> ChatOpenAI:
@@ -38,7 +47,35 @@ def build_llm() -> ChatOpenAI:
         model=model,
         streaming=True,
         temperature=0,
+        timeout=float_env(LLM_REQUEST_TIMEOUT_ENV, DEFAULT_LLM_REQUEST_TIMEOUT_SECONDS),
+        max_retries=int_env(LLM_MAX_RETRIES_ENV, DEFAULT_LLM_MAX_RETRIES),
+        stream_chunk_timeout=float_env(
+            LLM_STREAM_CHUNK_TIMEOUT_ENV,
+            DEFAULT_LLM_STREAM_CHUNK_TIMEOUT_SECONDS,
+        ),
     )
+
+
+def int_env(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+def float_env(name: str, default: float) -> float:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def conversation_to_messages(conversation: list[ChatMessage]) -> list[BaseMessage]:
@@ -71,11 +108,22 @@ def response_text(content: Any, *, strip: bool = True) -> str:
     return finish(str(content))
 
 
-def selected_adapted_text(adapted_content: dict[str, Any]) -> tuple[str, str]:
-    requested_format = str(adapted_content.get("format") or "").strip().lower()
+def adapted_content_dict(
+    adapted_content: BaseModel | Mapping[str, Any],
+) -> dict[str, Any]:
+    if isinstance(adapted_content, BaseModel):
+        return adapted_content.model_dump(mode="json", exclude_none=True)
+    return dict(adapted_content)
+
+
+def selected_adapted_text(
+    adapted_content: BaseModel | Mapping[str, Any],
+) -> tuple[str, str]:
+    content = adapted_content_dict(adapted_content)
+    requested_format = str(content.get("format") or "").strip().lower()
     for key in [requested_format, "html", "markdown", "text", "summary"]:
         if key in {"html", "markdown", "text", "summary"}:
-            value = adapted_content.get(key)
+            value = content.get(key)
             if isinstance(value, str) and value.strip():
                 return key, value
     return requested_format or "text", ""

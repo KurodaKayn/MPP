@@ -17,6 +17,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 )
 
 const defaultBaseURL = "https://api.x.com"
@@ -69,11 +71,9 @@ type apiErrorResponse struct {
 
 func NewClient(creds Credentials) *Client {
 	return &Client{
-		baseURL: defaultBaseURL,
-		creds:   creds,
-		httpClient: &http.Client{
-			Timeout: 20 * time.Second,
-		},
+		baseURL:    defaultBaseURL,
+		creds:      creds,
+		httpClient: resilience.NewHTTPClient("x", 20*time.Second),
 	}
 }
 

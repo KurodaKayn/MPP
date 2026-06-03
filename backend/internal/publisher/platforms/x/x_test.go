@@ -85,17 +85,17 @@ func TestXPublisherAdaptContentUsesUnifiedSchema(t *testing.T) {
 	if err := json.Unmarshal(content, &adapted); err != nil {
 		t.Fatalf("expected adapted content json, got %v", err)
 	}
-	if adapted.SchemaVersion != 1 {
-		t.Fatalf("expected schema version 1, got %d", adapted.SchemaVersion)
+	if adapted.SchemaVersion == nil || *adapted.SchemaVersion != 1 {
+		t.Fatalf("expected schema version 1, got %v", adapted.SchemaVersion)
 	}
 	if adapted.Format != "text" {
 		t.Fatalf("expected text format, got %q", adapted.Format)
 	}
-	if adapted.GeneratedBy.ID != "x-text-adapter" {
-		t.Fatalf("expected x adapter id, got %q", adapted.GeneratedBy.ID)
+	if adapted.GeneratedBy == nil || adapted.GeneratedBy.Id != "x-text-adapter" {
+		t.Fatalf("expected x adapter id, got %v", adapted.GeneratedBy)
 	}
-	if adapted.Text != "Title\n\nHello X" {
-		t.Fatalf("expected title and body text, got %q", adapted.Text)
+	if adapted.Text == nil || *adapted.Text != "Title\n\nHello X" {
+		t.Fatalf("expected title and body text, got %v", adapted.Text)
 	}
 }
 

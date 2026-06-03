@@ -6,12 +6,18 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
+    environmentOptions: {
+      jsdom: {
+        url: "https://creator.douyin.com/",
+      },
+    },
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(__dirname, "."),
+      "~": path.resolve(__dirname, "."),
       "~~": path.resolve(__dirname, "."),
     },
   },

@@ -29,8 +29,13 @@ export const PLATFORM_CAPABILITIES = [
     supported_modes: ["extension"],
     preferred_mode: "extension",
     adapter_key: "DYNAMIC_DOUYIN",
-    inject_url: "https://creator.douyin.com/creator-micro/content/upload",
-    content_kinds: ["image_video"],
+    inject_url:
+      "https://creator.douyin.com/creator-micro/content/upload?default-tab=5",
+    inject_urls: [
+      "https://creator.douyin.com/creator-micro/content/upload",
+      "https://creator.douyin.com/creator-micro/content/post/article",
+    ],
+    content_kinds: ["article", "image_video"],
     target_formats: ["text"],
     requires_review: true,
     auto_publish_allowed: false,
@@ -81,13 +86,17 @@ export function isCapabilityInjectUrl(
 
   try {
     const actual = new URL(value);
-    const expected = new URL(capability.inject_url);
+    const expectedUrls = capability.inject_urls ?? [capability.inject_url];
 
-    return (
-      actual.origin === expected.origin &&
-      actual.pathname.replace(/\/$/, "") ===
-        expected.pathname.replace(/\/$/, "")
-    );
+    return expectedUrls.some((expectedValue) => {
+      const expected = new URL(expectedValue);
+
+      return (
+        actual.origin === expected.origin &&
+        actual.pathname.replace(/\/$/, "") ===
+          expected.pathname.replace(/\/$/, "")
+      );
+    });
   } catch {
     return false;
   }

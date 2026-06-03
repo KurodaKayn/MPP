@@ -9,14 +9,17 @@ import (
 	"image/jpeg"
 	_ "image/png"
 	"io"
-	"net/http"
 	neturl "net/url"
 	"strings"
+	"time"
 
+	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 	"golang.org/x/image/draw"
 )
 
 const MaxWechatSize = 2 * 1024 * 1024 // 2MB
+
+var imageHTTPClient = resilience.NewHTTPClient("media-download", 20*time.Second)
 
 // DownloadAndProcess fetches an image from a URL or data URL and compresses it if it exceeds WeChat's size limit.
 func DownloadAndProcess(sourceURL string) ([]byte, error) {
@@ -72,7 +75,7 @@ func loadImageBytes(sourceURL string) ([]byte, error) {
 		return decodeDataURL(sourceURL)
 	}
 
-	resp, err := http.Get(sourceURL)
+	resp, err := imageHTTPClient.Get(sourceURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download image: %w", err)
 	}

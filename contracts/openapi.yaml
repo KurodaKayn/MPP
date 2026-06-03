@@ -1,0 +1,1127 @@
+openapi: 3.0.3
+info:
+  title: Multi-Platform Poster Shared Contract
+  version: 1.0.0
+  description: Shared API boundary schemas for backend, frontend, and ai-service.
+paths:
+  /internal/browser-sessions:
+    post:
+      tags:
+        - browser-worker
+      operationId: createBrowserWorkerSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserWorkerStartSessionRequest"
+      responses:
+        "201":
+          description: Browser worker session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserWorkerStartSessionResponse"
+
+  /internal/browser-sessions/{ref}:
+    parameters:
+      - name: ref
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - browser-worker
+      operationId: getBrowserWorkerSession
+      responses:
+        "200":
+          description: Browser worker session state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserWorkerGetSessionResponse"
+    delete:
+      tags:
+        - browser-worker
+      operationId: deleteBrowserWorkerSession
+      responses:
+        "204":
+          description: Browser worker session deleted.
+
+  /internal/browser-sessions/{ref}/capture:
+    post:
+      tags:
+        - browser-worker
+      operationId: captureBrowserWorkerSession
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Browser worker session captured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserWorkerCaptureSessionResponse"
+
+  /internal/browser-sessions/{ref}/publish/douyin:
+    post:
+      tags:
+        - browser-worker
+      operationId: startBrowserWorkerDouyinPublish
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserWorkerStartDouyinPublishRequest"
+      responses:
+        "202":
+          description: Douyin publish script started.
+components:
+  schemas:
+    DraftFormat:
+      type: string
+      enum:
+        - html
+        - markdown
+        - text
+
+    PublishPlatform:
+      type: string
+      enum:
+        - douyin
+        - wechat
+        - x
+        - zhihu
+
+    GeneratedByType:
+      type: string
+      enum:
+        - agent
+        - system
+        - user
+
+    AdaptedAssetType:
+      type: string
+      enum:
+        - image
+
+    ProjectStatus:
+      type: string
+      enum:
+        - draft
+        - ready
+        - publishing
+        - published
+        - failed
+
+    PublicationStatus:
+      type: string
+      enum:
+        - pending
+        - adapted
+        - publishing
+        - published
+        - failed
+        - disabled
+
+    PublishResultStatus:
+      type: string
+      enum:
+        - adapted
+        - error
+        - failed
+        - manual_required
+        - pending
+        - published
+        - publishing
+
+    PlatformAccountStatus:
+      type: string
+      enum:
+        - unconfigured
+        - untested
+        - connected
+        - failed
+
+    ConnectionTestStatus:
+      type: string
+      enum:
+        - connected
+        - failed
+
+    RequirementStatusValue:
+      type: string
+      enum:
+        - passed
+        - warning
+        - failed
+        - unknown
+
+    BrowserSessionStatus:
+      type: string
+      enum:
+        - pending
+        - ready
+        - login_detected
+        - capturing
+        - connected
+        - expired
+        - failed
+
+    BrowserWorkerSessionStatus:
+      type: string
+      enum:
+        - ready
+        - login_detected
+
+    BrowserWorkerCookie:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - value
+        - domain
+        - path
+        - expires
+        - secure
+        - httpOnly
+        - sameSite
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        domain:
+          type: string
+        path:
+          type: string
+        expires:
+          type: number
+          format: double
+        secure:
+          type: boolean
+        httpOnly:
+          type: boolean
+          x-go-name: HttpOnly
+        sameSite:
+          type: string
+          x-go-name: SameSite
+
+    BrowserWorkerDomainRule:
+      type: object
+      additionalProperties: false
+      required:
+        - host
+        - match
+        - schemes
+        - purpose
+      properties:
+        host:
+          type: string
+        match:
+          type: string
+          enum:
+            - exact
+            - suffix
+        schemes:
+          type: array
+          items:
+            type: string
+        purpose:
+          type: string
+
+    BrowserWorkerCookieRequirement:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - domain_suffixes
+        - required
+        - preserve
+      properties:
+        name:
+          type: string
+        domain_suffixes:
+          type: array
+          items:
+            type: string
+        required:
+          type: boolean
+        preserve:
+          type: boolean
+
+    BrowserWorkerViewport:
+      type: object
+      additionalProperties: false
+      required:
+        - width
+        - height
+      properties:
+        width:
+          type: integer
+        height:
+          type: integer
+
+    BrowserWorkerRemoteAccountProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - platform_user_id
+        - username
+        - avatar_url
+      properties:
+        platform_user_id:
+          type: string
+          x-go-name: PlatformUserID
+        username:
+          type: string
+        avatar_url:
+          type: string
+          x-go-name: AvatarURL
+
+    BrowserWorkerStartSessionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - user_id
+        - platform
+        - login_url
+        - allowed_domains
+        - required_cookies
+        - initial_cookies
+        - ttl_seconds
+        - viewport
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          x-go-name: SessionID
+        user_id:
+          type: string
+          format: uuid
+          x-go-name: UserID
+        platform:
+          type: string
+        login_url:
+          type: string
+          x-go-name: LoginURL
+        allowed_domains:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrowserWorkerDomainRule"
+        required_cookies:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrowserWorkerCookieRequirement"
+        initial_cookies:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrowserWorkerCookie"
+        ttl_seconds:
+          type: integer
+          x-go-name: TTLSeconds
+        viewport:
+          $ref: "#/components/schemas/BrowserWorkerViewport"
+
+    BrowserWorkerStartSessionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - worker_session_ref
+        - status
+        - container_id
+        - cdp_endpoint_ref
+        - stream_endpoint_ref
+        - started_at
+        - expires_at
+      properties:
+        worker_session_ref:
+          type: string
+          x-go-name: WorkerSessionRef
+        status:
+          $ref: "#/components/schemas/BrowserWorkerSessionStatus"
+        container_id:
+          type: string
+          x-go-name: ContainerID
+        cdp_endpoint_ref:
+          type: string
+          x-go-name: CDPEndpointRef
+        stream_endpoint_ref:
+          type: string
+          x-go-name: StreamEndpointRef
+        started_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    BrowserWorkerGetSessionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - worker_session_ref
+        - status
+        - current_url
+        - login_detected
+        - missing_cookies
+        - message
+      properties:
+        worker_session_ref:
+          type: string
+          x-go-name: WorkerSessionRef
+        status:
+          $ref: "#/components/schemas/BrowserWorkerSessionStatus"
+        current_url:
+          type: string
+          x-go-name: CurrentURL
+        login_detected:
+          type: boolean
+          x-go-name: LoginDetected
+        missing_cookies:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+
+    BrowserWorkerCaptureSessionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - cookies
+        - missing_cookies
+        - account
+      properties:
+        status:
+          $ref: "#/components/schemas/BrowserWorkerSessionStatus"
+        cookies:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrowserWorkerCookie"
+        missing_cookies:
+          type: array
+          items:
+            type: string
+        account:
+          $ref: "#/components/schemas/BrowserWorkerRemoteAccountProfile"
+
+    BrowserWorkerStartDouyinPublishRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+        - content
+        - cover_image_base64
+        - cover_image_name
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        cover_image_base64:
+          type: string
+          x-go-name: CoverImageBase64
+        cover_image_name:
+          type: string
+          x-go-name: CoverImageName
+
+    GeneratedBy:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - id
+      properties:
+        type:
+          $ref: "#/components/schemas/GeneratedByType"
+        id:
+          type: string
+          minLength: 1
+        version:
+          type: string
+        agent_run_id:
+          type: string
+        instructions:
+          type: string
+
+    AdaptedAsset:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - source_url
+      properties:
+        type:
+          $ref: "#/components/schemas/AdaptedAssetType"
+        source_url:
+          type: string
+          minLength: 1
+        alt:
+          type: string
+
+    AdaptedContent:
+      type: object
+      additionalProperties: false
+      required:
+        - format
+      properties:
+        schema_version:
+          type: integer
+          minimum: 1
+        format:
+          $ref: "#/components/schemas/DraftFormat"
+        summary:
+          type: string
+        source_revision:
+          type: string
+          description: RFC3339 timestamp or a future revision identifier.
+        generated_by:
+          $ref: "#/components/schemas/GeneratedBy"
+        html:
+          type: string
+        markdown:
+          type: string
+        text:
+          type: string
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdaptedAsset"
+
+    DashboardStats:
+      type: object
+      additionalProperties: false
+      required:
+        - total_users
+        - total_projects
+        - total_published_publications
+        - total_failed_publications
+      properties:
+        total_users:
+          type: integer
+        total_projects:
+          type: integer
+        total_published_publications:
+          type: integer
+        total_failed_publications:
+          type: integer
+
+    PublicationSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - platform
+        - enabled
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        platform:
+          $ref: "#/components/schemas/PublishPlatform"
+        enabled:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/PublicationStatus"
+        publish_url:
+          type: string
+
+    PublicationDetail:
+      allOf:
+        - $ref: "#/components/schemas/PublicationSummary"
+        - type: object
+          additionalProperties: false
+          required:
+            - config
+            - adapted_content
+            - retry_count
+            - created_at
+            - updated_at
+          properties:
+            error_message:
+              type: string
+            config:
+              type: object
+              additionalProperties: true
+            adapted_content:
+              $ref: "#/components/schemas/AdaptedContent"
+            remote_id:
+              type: string
+            retry_count:
+              type: integer
+            last_attempt_at:
+              type: string
+              format: date-time
+            published_at:
+              type: string
+              format: date-time
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    ProjectPublications:
+      type: object
+      additionalProperties: false
+      required:
+        - project_id
+        - items
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicationDetail"
+
+    PublishResult:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          $ref: "#/components/schemas/PublishResultStatus"
+        job_id:
+          type: string
+          format: uuid
+        platform:
+          $ref: "#/components/schemas/PublishPlatform"
+        queued_at:
+          type: string
+          format: date-time
+        remote_id:
+          type: string
+        publish_url:
+          type: string
+        error_message:
+          type: string
+        browser_session_id:
+          type: string
+          format: uuid
+        stream_url:
+          type: string
+
+    ProjectListItem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - user_id
+        - title
+        - status
+        - created_at
+        - updated_at
+        - publications
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          $ref: "#/components/schemas/ProjectStatus"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        publications:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicationSummary"
+
+    ProjectDetail:
+      allOf:
+        - $ref: "#/components/schemas/ProjectListItem"
+        - type: object
+          additionalProperties: false
+          required:
+            - source_content
+          properties:
+            source_content:
+              type: string
+
+    PaginationProjects:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - page
+        - limit
+        - total
+        - total_pages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectListItem"
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+    AIChatMessage:
+      type: object
+      additionalProperties: false
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum:
+            - user
+            - assistant
+        content:
+          type: string
+
+    AIEditContentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - content
+        - message
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        message:
+          type: string
+        conversation:
+          type: array
+          items:
+            $ref: "#/components/schemas/AIChatMessage"
+
+    AIEditContentResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - channel
+        - content
+      properties:
+        channel:
+          type: string
+          enum:
+            - content
+        content:
+          type: string
+
+    AIEditPrepublishRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - platform
+        - adapted_content
+        - message
+      properties:
+        title:
+          type: string
+        platform:
+          $ref: "#/components/schemas/PublishPlatform"
+        adapted_content:
+          $ref: "#/components/schemas/AdaptedContent"
+        message:
+          type: string
+        conversation:
+          type: array
+          items:
+            $ref: "#/components/schemas/AIChatMessage"
+
+    AIEditPrepublishResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - channel
+        - platform
+        - adapted_content
+        - content
+      properties:
+        channel:
+          type: string
+          enum:
+            - prepublish
+        platform:
+          $ref: "#/components/schemas/PublishPlatform"
+        adapted_content:
+          $ref: "#/components/schemas/AdaptedContent"
+        content:
+          type: string
+
+    RequirementStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - title
+        - message
+      properties:
+        status:
+          $ref: "#/components/schemas/RequirementStatusValue"
+        title:
+          type: string
+        message:
+          type: string
+
+    WechatAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - platform
+        - app_id
+        - has_app_secret
+        - status
+        - ip_whitelist
+        - account_auth
+      properties:
+        platform:
+          type: string
+          enum:
+            - wechat
+        app_id:
+          type: string
+        has_app_secret:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/PlatformAccountStatus"
+        last_tested_at:
+          type: string
+          format: date-time
+        last_test_error:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        ip_whitelist:
+          $ref: "#/components/schemas/RequirementStatus"
+        account_auth:
+          $ref: "#/components/schemas/RequirementStatus"
+
+    SaveWechatAccountInput:
+      type: object
+      additionalProperties: false
+      required:
+        - app_id
+      properties:
+        app_id:
+          type: string
+        app_secret:
+          type: string
+
+    WechatConnectionTestResult:
+      type: object
+      additionalProperties: false
+      required:
+        - connected
+        - status
+        - message
+        - tested_at
+        - ip_whitelist
+        - account_auth
+      properties:
+        connected:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/ConnectionTestStatus"
+        message:
+          type: string
+        err_code:
+          type: integer
+        err_msg:
+          type: string
+        tested_at:
+          type: string
+          format: date-time
+        ip_whitelist:
+          $ref: "#/components/schemas/RequirementStatus"
+        account_auth:
+          $ref: "#/components/schemas/RequirementStatus"
+
+    XAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - platform
+        - auth_type
+        - has_api_secret
+        - has_access_token
+        - has_access_token_secret
+        - has_oauth2_refresh
+        - status
+        - account_auth
+        - publish_access
+      properties:
+        platform:
+          type: string
+          enum:
+            - x
+        auth_type:
+          type: string
+          enum:
+            - oauth1
+            - oauth2
+        api_key:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        username:
+          type: string
+        has_api_secret:
+          type: boolean
+        has_access_token:
+          type: boolean
+        has_access_token_secret:
+          type: boolean
+        has_oauth2_refresh:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/PlatformAccountStatus"
+        last_tested_at:
+          type: string
+          format: date-time
+        last_test_error:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        account_auth:
+          $ref: "#/components/schemas/RequirementStatus"
+        publish_access:
+          $ref: "#/components/schemas/RequirementStatus"
+
+    SaveXAccountInput:
+      type: object
+      additionalProperties: false
+      properties:
+        api_key:
+          type: string
+        api_secret:
+          type: string
+        access_token:
+          type: string
+        access_token_secret:
+          type: string
+        username:
+          type: string
+
+    XConnectionTestResult:
+      type: object
+      additionalProperties: false
+      required:
+        - connected
+        - status
+        - message
+        - tested_at
+        - account_auth
+        - publish_access
+      properties:
+        connected:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/ConnectionTestStatus"
+        message:
+          type: string
+        tested_at:
+          type: string
+          format: date-time
+        user_id:
+          type: string
+        username:
+          type: string
+        name:
+          type: string
+        account_auth:
+          $ref: "#/components/schemas/RequirementStatus"
+        publish_access:
+          $ref: "#/components/schemas/RequirementStatus"
+
+    DouyinAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - platform
+        - status
+      properties:
+        platform:
+          type: string
+          enum:
+            - douyin
+        username:
+          type: string
+        avatar_url:
+          type: string
+        status:
+          $ref: "#/components/schemas/PlatformAccountStatus"
+        last_tested_at:
+          type: string
+          format: date-time
+        last_test_error:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    ZhihuAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - platform
+        - status
+      properties:
+        platform:
+          type: string
+          enum:
+            - zhihu
+        username:
+          type: string
+        avatar_url:
+          type: string
+        status:
+          $ref: "#/components/schemas/PlatformAccountStatus"
+        last_tested_at:
+          type: string
+          format: date-time
+        last_test_error:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    BrowserSession:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - platform
+        - status
+        - expires_at
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        platform:
+          $ref: "#/components/schemas/PublishPlatform"
+        status:
+          $ref: "#/components/schemas/BrowserSessionStatus"
+        stream_url:
+          type: string
+        stream_token_expires_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        message:
+          type: string
+
+    StartBrowserSessionResult:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - status
+        - stream_url
+        - stream_token_expires_at
+        - expires_at
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/BrowserSessionStatus"
+        stream_url:
+          type: string
+        stream_token_expires_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    StartPublishBrowserSessionResult:
+      allOf:
+        - $ref: "#/components/schemas/StartBrowserSessionResult"
+        - type: object
+          additionalProperties: false
+          required:
+            - platform
+            - project_id
+          properties:
+            platform:
+              $ref: "#/components/schemas/PublishPlatform"
+            project_id:
+              type: string
+              format: uuid
+
+    CompleteBrowserSessionResult:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - platform
+        - status
+        - account
+        - message
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        platform:
+          $ref: "#/components/schemas/PublishPlatform"
+        status:
+          $ref: "#/components/schemas/BrowserSessionStatus"
+        account:
+          type: object
+          additionalProperties: false
+          required:
+            - username
+            - avatar_url
+          properties:
+            username:
+              type: string
+            avatar_url:
+              type: string
+        message:
+          type: string
+
+    CancelBrowserSessionResult:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - status
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/BrowserSessionStatus"

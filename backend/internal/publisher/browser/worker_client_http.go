@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 )
 
 type HttpBrowserWorkerClient struct {
@@ -17,7 +20,7 @@ type HttpBrowserWorkerClient struct {
 func NewHttpBrowserWorkerClient(baseURL string) *HttpBrowserWorkerClient {
 	return &HttpBrowserWorkerClient{
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{},
+		httpClient: resilience.NewHTTPClient("browser-worker", 30*time.Second),
 	}
 }
 

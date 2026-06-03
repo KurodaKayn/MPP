@@ -3,11 +3,19 @@ from fastapi import HTTPException
 from langchain_core.messages import AIMessage, HumanMessage
 
 from llm_client import (
+    DEFAULT_LLM_MAX_RETRIES,
+    DEFAULT_LLM_REQUEST_TIMEOUT_SECONDS,
+    DEFAULT_LLM_STREAM_CHUNK_TIMEOUT_SECONDS,
     LLM_MODEL_ENV,
+    LLM_MAX_RETRIES_ENV,
     LLM_PROVIDER_KEY_ENV,
     LLM_PROVIDER_URL_ENV,
+    LLM_REQUEST_TIMEOUT_ENV,
+    LLM_STREAM_CHUNK_TIMEOUT_ENV,
     build_llm,
     conversation_to_messages,
+    float_env,
+    int_env,
     response_text,
     selected_adapted_text,
 )
@@ -25,6 +33,41 @@ def test_build_llm_reports_missing_configuration(monkeypatch):
     assert LLM_PROVIDER_URL_ENV in exc_info.value.detail
     assert LLM_MODEL_ENV in exc_info.value.detail
     assert LLM_PROVIDER_KEY_ENV in exc_info.value.detail
+
+
+def test_build_llm_applies_resilience_options(monkeypatch):
+    monkeypatch.setenv(LLM_PROVIDER_URL_ENV, "https://llm.example.test/v1")
+    monkeypatch.setenv(LLM_MODEL_ENV, "test-model")
+    monkeypatch.setenv(LLM_PROVIDER_KEY_ENV, "test-key")
+    monkeypatch.setenv(LLM_REQUEST_TIMEOUT_ENV, "12.5")
+    monkeypatch.setenv(LLM_MAX_RETRIES_ENV, "4")
+    monkeypatch.setenv(LLM_STREAM_CHUNK_TIMEOUT_ENV, "6")
+
+    llm = build_llm()
+
+    assert llm.request_timeout == 12.5
+    assert llm.max_retries == 4
+    assert llm.stream_chunk_timeout == 6.0
+
+
+def test_resilience_env_helpers_fallback_to_defaults(monkeypatch):
+    monkeypatch.setenv(LLM_REQUEST_TIMEOUT_ENV, "-1")
+    monkeypatch.setenv(LLM_MAX_RETRIES_ENV, "-1")
+    monkeypatch.setenv(LLM_STREAM_CHUNK_TIMEOUT_ENV, "not-a-number")
+
+    assert (
+        float_env(LLM_REQUEST_TIMEOUT_ENV, DEFAULT_LLM_REQUEST_TIMEOUT_SECONDS)
+        == DEFAULT_LLM_REQUEST_TIMEOUT_SECONDS
+    )
+    assert (
+        int_env(LLM_MAX_RETRIES_ENV, DEFAULT_LLM_MAX_RETRIES) == DEFAULT_LLM_MAX_RETRIES
+    )
+    assert (
+        float_env(
+            LLM_STREAM_CHUNK_TIMEOUT_ENV, DEFAULT_LLM_STREAM_CHUNK_TIMEOUT_SECONDS
+        )
+        == DEFAULT_LLM_STREAM_CHUNK_TIMEOUT_SECONDS
+    )
 
 
 def test_conversation_to_messages_trims_and_filters_empty_messages():
