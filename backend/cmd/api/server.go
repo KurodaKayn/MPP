@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	dbobs "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/observability"
@@ -36,6 +37,9 @@ func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 	e := echo.New()
 	observabilitySuite := observability.New(config.runtimeConfig.serviceName())
 	observabilitySuite.RegisterRoutes(e)
+	if err := dbobs.InstallQueryObserver(config.sqlDB, observabilitySuite.DatabaseQueryObserver()); err != nil {
+		return nil, err
+	}
 
 	e.Use(observabilitySuite.Middleware())
 	e.Use(echoMiddleware.Recover())
