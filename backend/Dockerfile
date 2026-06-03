@@ -14,7 +14,8 @@ RUN apk add --no-cache \
     freetype \
     harfbuzz \
     ca-certificates \
-    ttf-freefont
+    ttf-freefont \
+    tzdata
 
 RUN go install github.com/air-verse/air@v1.65.3
 COPY go.mod go.sum ./
@@ -31,7 +32,8 @@ RUN apk add --no-cache \
     freetype \
     harfbuzz \
     ca-certificates \
-    ttf-freefont
+    ttf-freefont \
+    tzdata
 WORKDIR /root/
 COPY --from=builder /app/main .
 EXPOSE 8080

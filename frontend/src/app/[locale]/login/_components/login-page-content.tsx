@@ -125,17 +125,30 @@ export function LoginPageContent() {
   const { t: tHome } = useTranslation(locale, "home");
   const {
     accessToken,
+    forgotPasswordCode,
+    forgotPasswordEmail,
     handleLoginSubmit,
     handleRegisterSubmit,
+    handleResetPasswordSubmit,
+    handleSendCode,
     handleTokenLoginSubmit,
     initialized,
     loginMethods,
+    newPassword,
     password,
+    registerCode,
+    registerEmail,
     registerPassword,
     registerPasswordConfirm,
     registerUsername,
+    sendingCode,
     setAccessToken,
+    setForgotPasswordCode,
+    setForgotPasswordEmail,
+    setNewPassword,
     setPassword,
+    setRegisterCode,
+    setRegisterEmail,
     setRegisterPassword,
     setRegisterPasswordConfirm,
     setRegisterUsername,
@@ -166,14 +179,21 @@ export function LoginPageContent() {
 
             {loginMethods.mock ? (
               <Tabs defaultValue="login" className="gap-6">
-                <TabsList className="grid h-10 w-full grid-cols-2 rounded-md border border-[#d9d4c8] bg-white/60 p-1">
-                  <TabsTrigger value="login" className="rounded-[4px]">
-                    <LogIn className="h-4 w-4" />
+                <TabsList className="grid h-10 w-full grid-cols-3 rounded-md border border-[#d9d4c8] bg-white/60 p-1">
+                  <TabsTrigger value="login" className="rounded-[4px] text-xs">
+                    <LogIn className="h-3.5 w-3.5" />
                     {t("login.signInTab")}
                   </TabsTrigger>
-                  <TabsTrigger value="register" className="rounded-[4px]">
-                    <UserPlus className="h-4 w-4" />
+                  <TabsTrigger
+                    value="register"
+                    className="rounded-[4px] text-xs"
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
                     {t("login.registerTab")}
+                  </TabsTrigger>
+                  <TabsTrigger value="forgot" className="rounded-[4px] text-xs">
+                    <KeyRound className="h-3.5 w-3.5" />
+                    {t("login.forgotPasswordTab", { defaultValue: "Forgot" })}
                   </TabsTrigger>
                 </TabsList>
 
@@ -215,6 +235,43 @@ export function LoginPageContent() {
                       onValueChange={setRegisterUsername}
                       placeholder={t("login.usernamePlaceholder")}
                     />
+                    <div className="space-y-2">
+                      <Label htmlFor="register-email">{t("login.email")}</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="register-email"
+                          type="email"
+                          autoComplete="email"
+                          className="h-10 border-[#cfc8ba] bg-white/70"
+                          value={registerEmail}
+                          onChange={(e) => setRegisterEmail(e.target.value)}
+                          placeholder={t("login.emailPlaceholder")}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-10 border-[#cfc8ba]"
+                          disabled={sendingCode || !registerEmail}
+                          onClick={() =>
+                            handleSendCode(registerEmail, "register")
+                          }
+                        >
+                          {sendingCode ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            t("login.getCode")
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                    <LoginFormField
+                      id="register-code"
+                      label={t("login.code")}
+                      value={registerCode}
+                      onValueChange={setRegisterCode}
+                      placeholder={t("login.codePlaceholder")}
+                    />
                     <LoginFormField
                       id="register-password"
                       type="password"
@@ -239,10 +296,70 @@ export function LoginPageContent() {
                       label={t("login.registerSubmit")}
                       icon={UserPlus}
                     />
-                    <p className="text-xs leading-5 text-[#667064]">
-                      <KeyRound className="mr-1 inline h-3.5 w-3.5" />
-                      {t("login.passwordHint")}
-                    </p>
+                  </form>
+                </TabsContent>
+
+                <TabsContent value="forgot">
+                  <form
+                    className="space-y-5"
+                    onSubmit={handleResetPasswordSubmit}
+                  >
+                    <div className="space-y-2">
+                      <Label htmlFor="forgot-email">{t("login.email")}</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="forgot-email"
+                          type="email"
+                          autoComplete="email"
+                          className="h-10 border-[#cfc8ba] bg-white/70"
+                          value={forgotPasswordEmail}
+                          onChange={(e) =>
+                            setForgotPasswordEmail(e.target.value)
+                          }
+                          placeholder={t("login.emailPlaceholder")}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-10 border-[#cfc8ba]"
+                          disabled={sendingCode || !forgotPasswordEmail}
+                          onClick={() =>
+                            handleSendCode(forgotPasswordEmail, "forgot_password")
+                          }
+                        >
+                          {sendingCode ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            t("login.getCode")
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                    <LoginFormField
+                      id="forgot-code"
+                      label={t("login.code")}
+                      value={forgotPasswordCode}
+                      onValueChange={setForgotPasswordCode}
+                      placeholder={t("login.codePlaceholder")}
+                    />
+                    <LoginFormField
+                      id="new-password"
+                      type="password"
+                      autoComplete="new-password"
+                      label={t("login.newPassword", {
+                        defaultValue: "New Password",
+                      })}
+                      value={newPassword}
+                      onValueChange={setNewPassword}
+                      placeholder={t("login.newPasswordPlaceholder")}
+                    />
+                    <LoginSubmitButton
+                      initialized={initialized}
+                      submitting={submitting}
+                      label={t("login.resetSubmit", { defaultValue: "Reset" })}
+                      icon={KeyRound}
+                    />
                   </form>
                 </TabsContent>
               </Tabs>

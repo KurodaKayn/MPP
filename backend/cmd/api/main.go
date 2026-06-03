@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/redisclient"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
+	"github.com/kurodakayn/mpp-backend/internal/services/email"
 )
 
 const shutdownTimeout = 15 * time.Second
@@ -71,11 +74,38 @@ func main() {
 		}
 	}
 
+	// Email Service
+	var emailService email.EmailService
+	smtpHost := os.Getenv("SMTP_HOST")
+	if smtpHost != "" {
+		smtpPort := 587
+		if rawPort := strings.TrimSpace(os.Getenv("SMTP_PORT")); rawPort != "" {
+			parsedPort, err := strconv.Atoi(rawPort)
+			if err != nil || parsedPort <= 0 {
+				log.Fatalf("invalid SMTP_PORT: %s", rawPort)
+			}
+			smtpPort = parsedPort
+		}
+		smtpFrom := strings.TrimSpace(os.Getenv("SMTP_FROM"))
+		smtpPassword := strings.TrimSpace(os.Getenv("SMTP_PASSWORD"))
+		if smtpFrom == "" || smtpPassword == "" {
+			log.Fatal("SMTP_FROM and SMTP_PASSWORD must be set when SMTP_HOST is set")
+		}
+		emailService = email.NewSMTPEmailService(
+			smtpHost,
+			smtpPort,
+			smtpFrom,
+			smtpPassword,
+		)
+	} else {
+		emailService = &email.MockEmailService{}
+	}
+
 	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
 	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
 	userDashboardHandler.UseAIContentEditor(services.NewAIServiceClientFromEnv())
 	mockLogin := mockLoginEnabled()
-	authHandler := handlers.NewAuthHandler(db.DB, jwtSigningKey)
+	authHandler := handlers.NewAuthHandler(db.DB, redisClient, emailService, jwtSigningKey)
 	authHandler.SetUsernameLoginEnabled(mockLogin)
 
 	if redisClient != nil {

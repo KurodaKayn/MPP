@@ -324,13 +324,82 @@ export async function loginWithCredentials(username: string, password: string) {
   return session;
 }
 
+export async function sendAuthCode(email: string, scene: string) {
+  const normalizedEmail = email.trim();
+  if (!normalizedEmail) {
+    throw new Error("Please enter email");
+  }
+
+  const response = await fetch("/api/auth/send-code", {
+    body: JSON.stringify({ email: normalizedEmail, scene }),
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await getResponseErrorMessage(response, "Failed to send code"),
+    );
+  }
+}
+
+export async function resetPassword(
+  email: string,
+  code: string,
+  password: string,
+) {
+  const normalizedEmail = email.trim();
+  if (!normalizedEmail) {
+    throw new Error("Please enter email");
+  }
+
+  if (!code) {
+    throw new Error("Please enter verification code");
+  }
+
+  if (!password) {
+    throw new Error("Please enter new password");
+  }
+
+  const response = await fetch("/api/auth/reset-password", {
+    body: JSON.stringify({ email: normalizedEmail, code, password }),
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await getResponseErrorMessage(response, "Failed to reset password"),
+    );
+  }
+}
+
 export async function registerWithCredentials(
   username: string,
+  email: string,
+  code: string,
   password: string,
 ) {
   const normalizedUsername = username.trim();
+  const normalizedEmail = email.trim();
   if (!normalizedUsername) {
     throw new Error("Please enter username");
+  }
+
+  if (!normalizedEmail) {
+    throw new Error("Please enter email");
+  }
+
+  if (!code) {
+    throw new Error("Please enter verification code");
   }
 
   if (!password) {
@@ -338,7 +407,12 @@ export async function registerWithCredentials(
   }
 
   const response = await fetch("/api/auth/register", {
-    body: JSON.stringify({ username: normalizedUsername, password }),
+    body: JSON.stringify({
+      code,
+      email: normalizedEmail,
+      password,
+      username: normalizedUsername,
+    }),
     cache: "no-store",
     credentials: "same-origin",
     headers: {

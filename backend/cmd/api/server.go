@@ -103,6 +103,8 @@ func registerAuthRoutes(e *echo.Echo, config serverConfig, h serverHandlers) {
 	}
 	e.POST("/api/auth/login", h.auth.Login)
 	e.POST("/api/auth/register", h.auth.Register)
+	e.POST("/api/auth/send-code", h.auth.SendCode)
+	e.POST("/api/auth/reset-password", h.auth.ResetPassword)
 	e.GET("/api/user/dashboard/settings/x/oauth2/callback", h.userDashboard.CompleteXOAuth2)
 }
 

@@ -48,6 +48,8 @@ const (
 type User struct {
 	ID                    uuid.UUID `gorm:"type:uuid;primaryKey"`
 	Username              string    `gorm:"not null;uniqueIndex"`
+	Email                 string    `gorm:"not null;uniqueIndex"`
+	IsEmailVerified       bool      `gorm:"not null;default:false"`
 	PasswordHash          string    `gorm:"not null"`
 	Role                  string    `gorm:"not null;default:'user'"`
 	CreatedAt             time.Time

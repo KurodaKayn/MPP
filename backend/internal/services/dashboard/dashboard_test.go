@@ -74,6 +74,8 @@ func setupTestDB() *gorm.DB {
 	db.Exec(`CREATE TABLE users (
 		id TEXT PRIMARY KEY,
 		username TEXT NOT NULL,
+		email TEXT NOT NULL,
+		is_email_verified BOOLEAN NOT NULL DEFAULT 0,
 		password_hash TEXT NOT NULL,
 		role TEXT NOT NULL DEFAULT 'user',
 		created_at DATETIME,
@@ -325,8 +327,8 @@ func TestGetProjectReturnsSourceContentForOwner(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
 
-	owner := models.User{Username: "owner"}
-	stranger := models.User{Username: "stranger"}
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	stranger := models.User{Username: "stranger", Email: "stranger@example.com"}
 	db.Create(&owner)
 	db.Create(&stranger)
 
@@ -358,8 +360,8 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
 
-	owner := models.User{Username: "owner"}
-	stranger := models.User{Username: "stranger"}
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	stranger := models.User{Username: "stranger", Email: "stranger@example.com"}
 	db.Create(&owner)
 	db.Create(&stranger)
 
@@ -1273,3 +1275,4 @@ func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
 	_, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	assert.ErrorIs(t, err, services.ErrPublicationDisabled)
 }
+

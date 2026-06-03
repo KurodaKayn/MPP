@@ -22,6 +22,8 @@ var seedDataSQL string
 
 // Stable app-specific key for the Postgres transaction advisory lock around migrations.
 const migrationAdvisoryLockKey = 776770001
+const devFallbackPasswordHash = "$2a$10$JuGX0AMl3DS3eGm/yRvY2OZLm4QuTuoIgRT4ucmVs/BCwoPYARN4C"
+const disabledPasswordHash = "legacy-password-reset-required"
 
 const (
 	dbMaxOpenConnsEnv    = "DB_MAX_OPEN_CONNS"
@@ -151,6 +153,9 @@ func durationFromEnv(name string, fallback time.Duration) (time.Duration, error)
 
 func migrate(database *gorm.DB) error {
 	return withMigrationLock(database, func(migrationDB *gorm.DB) error {
+		if err := prepareUserEmailMigration(migrationDB); err != nil {
+			return err
+		}
 		if err := migrationDB.AutoMigrate(
 			&models.User{},
 			&models.PlatformAccount{},
@@ -169,6 +174,59 @@ func migrate(database *gorm.DB) error {
 		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
 	`).Error
 	})
+}
+
+func prepareUserEmailMigration(database *gorm.DB) error {
+	if database.Dialector.Name() != "postgres" {
+		return nil
+	}
+	if !database.Migrator().HasTable(&models.User{}) {
+		return nil
+	}
+	if database.Migrator().HasColumn(&models.User{}, "email") {
+		return prepareUserPasswordHashMigration(database)
+	}
+
+	if err := database.Exec(`ALTER TABLE users ADD COLUMN email text`).Error; err != nil {
+		return err
+	}
+	if err := database.Exec(`
+		UPDATE users
+		SET email = username || '-' || substring(id::text, 1, 8) || '@local.invalid'
+		WHERE email IS NULL OR email = ''
+	`).Error; err != nil {
+		return err
+	}
+	if err := database.Exec(`ALTER TABLE users ALTER COLUMN email SET NOT NULL`).Error; err != nil {
+		return err
+	}
+	if err := database.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email)`).Error; err != nil {
+		return err
+	}
+	return prepareUserPasswordHashMigration(database)
+}
+
+func prepareUserPasswordHashMigration(database *gorm.DB) error {
+	if database.Migrator().HasColumn(&models.User{}, "password_hash") {
+		return nil
+	}
+
+	passwordHash := disabledPasswordHash
+	if devSeedEnabled() {
+		passwordHash = devFallbackPasswordHash
+	}
+
+	if err := database.Exec(`ALTER TABLE users ADD COLUMN password_hash text`).Error; err != nil {
+		return err
+	}
+	if err := database.Exec(`
+		UPDATE users
+		SET password_hash = ?
+		WHERE password_hash IS NULL OR password_hash = ''
+	`, passwordHash).Error; err != nil {
+		return err
+	}
+	return database.Exec(`ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL`).Error
 }
 
 func withMigrationLock(database *gorm.DB, run func(*gorm.DB) error) error {

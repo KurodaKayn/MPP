@@ -120,12 +120,7 @@ services:
         condition: service_healthy
       browser-worker:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ready >/dev/null"]
-      interval: 30s
-      timeout: 5s
-      start_period: 20s
-      retries: 3
+    # No healthcheck: this worker role does not expose an HTTP readiness endpoint.
     networks:
       - default
       - browser-runtime

@@ -32,6 +32,8 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(`CREATE TABLE users (
 		id TEXT PRIMARY KEY,
 		username TEXT NOT NULL UNIQUE,
+		email TEXT NOT NULL UNIQUE,
+		is_email_verified BOOLEAN NOT NULL DEFAULT 0,
 		password_hash TEXT NOT NULL,
 		role TEXT NOT NULL DEFAULT 'user',
 		created_at DATETIME,
@@ -208,8 +210,8 @@ func TestUserDashboardHandlerListProjectsUsesJWTUserScope(t *testing.T) {
 	db := setupHandlerTestDB(t)
 	handler := NewUserDashboardHandler(services.NewDashboardService(db))
 
-	owner := models.User{Username: "owner"}
-	other := models.User{Username: "other"}
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	other := models.User{Username: "other", Email: "other@example.com"}
 	require.NoError(t, db.Create(&owner).Error)
 	require.NoError(t, db.Create(&other).Error)
 
@@ -447,8 +449,8 @@ func TestUserDashboardHandlerGetProjectPublicationsReturnsForbidden(t *testing.T
 	db := setupHandlerTestDB(t)
 	handler := NewUserDashboardHandler(services.NewDashboardService(db))
 
-	owner := models.User{Username: "owner"}
-	stranger := models.User{Username: "stranger"}
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	stranger := models.User{Username: "stranger", Email: "stranger@example.com"}
 	require.NoError(t, db.Create(&owner).Error)
 	require.NoError(t, db.Create(&stranger).Error)
 
@@ -826,3 +828,4 @@ func TestUserDashboardHandlerSavesWechatAccount(t *testing.T) {
 	require.True(t, resp.HasAppSecret)
 	require.Equal(t, models.PlatformAccountStatusUntested, resp.Status)
 }
+
