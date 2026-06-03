@@ -165,6 +165,8 @@ func migrate(database *gorm.DB) error {
 			&models.Project{},
 			&models.ProjectPlatformPublication{},
 			&models.RemoteBrowserSession{},
+			&models.CollabDocument{},
+			&models.CollabDocumentCollaborator{},
 			&models.ExtensionCallbackToken{},
 			&models.ExtensionExecutionEvent{},
 		); err != nil {

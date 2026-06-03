@@ -89,6 +89,15 @@ class BrowserSessionStatus(StrEnum):
     failed = "failed"
 
 
+class CollabDocumentStatus(StrEnum):
+    active = "active"
+
+
+class CollabDocumentRole(StrEnum):
+    editor = "editor"
+    viewer = "viewer"
+
+
 class BrowserWorkerSessionStatus(StrEnum):
     ready = "ready"
     login_detected = "login_detected"
@@ -286,6 +295,29 @@ class ProjectPublications(BaseModel):
     )
     project_id: UUID
     items: list[PublicationDetail]
+
+
+class CreateCollabDocumentRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    title: constr(min_length=1)
+
+
+class CollabDocument(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: UUID
+    owner_user_id: UUID
+    title: str
+    status: CollabDocumentStatus
+    schema_version: conint(ge=1)
+    current_seq: conint(ge=0)
+    last_edited_by: UUID | None = None
+    last_edited_at: AwareDatetime | None = None
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
 
 
 class PublishResult(BaseModel):
