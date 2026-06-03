@@ -35,3 +35,14 @@ func (sm *Manager) Remove(ref string) (*WorkerSession, bool) {
 	}
 	return session, ok
 }
+
+func (sm *Manager) List() []*WorkerSession {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	sessions := make([]*WorkerSession, 0, len(sm.sessions))
+	for _, session := range sm.sessions {
+		sessions = append(sessions, session)
+	}
+	return sessions
+}

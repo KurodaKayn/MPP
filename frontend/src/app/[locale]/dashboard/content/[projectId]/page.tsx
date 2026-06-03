@@ -1,15 +1,13 @@
-import { ContentWorkspace } from "../_components/content-workspace";
+import { EditContentPageContent } from "../_components/edit-content-page-content";
 
-type EditContentPageProps = {
+type EditContentRouteProps = {
   params: Promise<{
     projectId: string;
   }>;
 };
 
-export default async function EditContentPage({
-  params,
-}: EditContentPageProps) {
+export default async function Page({ params }: EditContentRouteProps) {
   const { projectId } = await params;
 
-  return <ContentWorkspace projectId={projectId} />;
+  return <EditContentPageContent projectId={projectId} />;
 }

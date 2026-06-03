@@ -3,6 +3,12 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"sync/atomic"
+	"syscall"
+	"time"
 
 	browsercontainer "github.com/kurodakayn/mpp-browser-worker/internal/container"
 	"github.com/kurodakayn/mpp-browser-worker/internal/observability"
@@ -12,7 +18,12 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
+const shutdownTimeout = 15 * time.Second
+
 func main() {
+	rootCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+
 	e := echo.New()
 	observabilitySuite := observability.New("browser-worker")
 	observabilitySuite.RegisterRoutes(e)
@@ -29,10 +40,50 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize Redis state store: %v", err)
 	}
-	defer stateStore.Close()
 
 	app := server.New(containers, sessions, stateStore)
+	ready := atomic.Bool{}
+	ready.Store(true)
+	registerHealthRoutes(e, &ready, stateStore)
 	app.RegisterRoutes(e)
 
-	e.Logger.Fatal(e.Start(":8081"))
+	serverErrors := make(chan error, 1)
+	go func() {
+		serverErrors <- e.Start(":8081")
+	}()
+
+	select {
+	case err := <-serverErrors:
+		if err != nil && err != http.ErrServerClosed {
+			e.Logger.Fatal(err)
+		}
+	case <-rootCtx.Done():
+		ready.Store(false)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := e.Shutdown(shutdownCtx); err != nil {
+			e.Logger.Fatal(err)
+		}
+		app.ShutdownSessions(shutdownCtx)
+		if err := stateStore.Close(); err != nil {
+			log.Printf("Failed to close Redis state store: %v", err)
+		}
+	}
+}
+
+func registerHealthRoutes(e *echo.Echo, ready *atomic.Bool, stateStore *session.RedisStateStore) {
+	e.GET("/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
+	})
+	e.GET("/ready", func(c echo.Context) error {
+		if !ready.Load() {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
+		}
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
+		defer cancel()
+		if err := stateStore.Ping(ctx); err != nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "redis"})
+		}
+		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
+	})
 }

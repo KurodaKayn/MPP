@@ -1,11 +1,14 @@
 package db
 
 import (
+	"database/sql"
 	_ "embed"
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/driver/postgres"
@@ -16,6 +19,27 @@ var DB *gorm.DB
 
 //go:embed seed/seed_data.sql
 var seedDataSQL string
+
+// Stable app-specific key for the Postgres transaction advisory lock around migrations.
+const migrationAdvisoryLockKey = 776770001
+
+const (
+	dbMaxOpenConnsEnv    = "DB_MAX_OPEN_CONNS"
+	dbMaxIdleConnsEnv    = "DB_MAX_IDLE_CONNS"
+	dbConnMaxLifetimeEnv = "DB_CONN_MAX_LIFETIME"
+	dbConnMaxIdleTimeEnv = "DB_CONN_MAX_IDLE_TIME"
+	defaultMaxOpenConns  = 10
+	defaultMaxIdleConns  = 5
+	defaultConnMaxLife   = 30 * time.Minute
+	defaultConnMaxIdle   = 5 * time.Minute
+)
+
+type connectionPoolConfig struct {
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
+}
 
 func InitDB() {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Shanghai",
@@ -28,6 +52,9 @@ func InitDB() {
 	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
+	}
+	if err := configureConnectionPool(database); err != nil {
+		log.Fatal("Failed to configure database connection pool:", err)
 	}
 
 	DB = database
@@ -44,24 +71,117 @@ func InitDB() {
 	}
 }
 
-func migrate(database *gorm.DB) error {
-	if err := database.AutoMigrate(
-		&models.User{},
-		&models.PlatformAccount{},
-		&models.Project{},
-		&models.ProjectPlatformPublication{},
-		&models.PlatformAccount{},
-		&models.RemoteBrowserSession{},
-	); err != nil {
+func configureConnectionPool(database *gorm.DB) error {
+	sqlDB, err := database.DB()
+	if err != nil {
 		return err
 	}
 
-	// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
-	return database.Exec(`
+	config, err := connectionPoolConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	applyConnectionPool(sqlDB, config)
+	return nil
+}
+
+func connectionPoolConfigFromEnv() (connectionPoolConfig, error) {
+	maxOpenConns, err := nonNegativeIntFromEnv(dbMaxOpenConnsEnv, defaultMaxOpenConns)
+	if err != nil {
+		return connectionPoolConfig{}, err
+	}
+	maxIdleConns, err := nonNegativeIntFromEnv(dbMaxIdleConnsEnv, defaultMaxIdleConns)
+	if err != nil {
+		return connectionPoolConfig{}, err
+	}
+
+	connMaxLifetime, err := durationFromEnv(dbConnMaxLifetimeEnv, defaultConnMaxLife)
+	if err != nil {
+		return connectionPoolConfig{}, err
+	}
+	connMaxIdleTime, err := durationFromEnv(dbConnMaxIdleTimeEnv, defaultConnMaxIdle)
+	if err != nil {
+		return connectionPoolConfig{}, err
+	}
+
+	return connectionPoolConfig{
+		MaxOpenConns:    maxOpenConns,
+		MaxIdleConns:    maxIdleConns,
+		ConnMaxLifetime: connMaxLifetime,
+		ConnMaxIdleTime: connMaxIdleTime,
+	}, nil
+}
+
+func applyConnectionPool(database *sql.DB, config connectionPoolConfig) {
+	database.SetMaxOpenConns(config.MaxOpenConns)
+	database.SetMaxIdleConns(config.MaxIdleConns)
+	database.SetConnMaxLifetime(config.ConnMaxLifetime)
+	database.SetConnMaxIdleTime(config.ConnMaxIdleTime)
+}
+
+func nonNegativeIntFromEnv(name string, fallback int) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", name, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("invalid %s: must be non-negative", name)
+	}
+	return value, nil
+}
+
+func durationFromEnv(name string, fallback time.Duration) (time.Duration, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s: %w", name, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("invalid %s: must be non-negative", name)
+	}
+	return value, nil
+}
+
+func migrate(database *gorm.DB) error {
+	return withMigrationLock(database, func(migrationDB *gorm.DB) error {
+		if err := migrationDB.AutoMigrate(
+			&models.User{},
+			&models.PlatformAccount{},
+			&models.Project{},
+			&models.ProjectPlatformPublication{},
+			&models.PlatformAccount{},
+			&models.RemoteBrowserSession{},
+		); err != nil {
+			return err
+		}
+
+		// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
+		return migrationDB.Exec(`
 		CREATE UNIQUE INDEX IF NOT EXISTS ux_remote_browser_sessions_active_user_platform
 		ON remote_browser_sessions (user_id, platform)
 		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
 	`).Error
+	})
+}
+
+func withMigrationLock(database *gorm.DB, run func(*gorm.DB) error) error {
+	if database.Dialector.Name() != "postgres" {
+		return run(database)
+	}
+
+	return database.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", migrationAdvisoryLockKey).Error; err != nil {
+			return err
+		}
+		return run(tx)
+	})
 }
 
 func seed(database *gorm.DB) error {

@@ -16,6 +16,8 @@
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
+    "test": "vitest",
+    "test:run": "vitest run",
     "postinstall": "wxt prepare"
   },
   "dependencies": {
@@ -28,13 +30,19 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
     "@wxt-dev/module-react": "^1.1.5",
+    "jsdom": "^29.1.1",
     "oxfmt": "^0.52.0",
     "oxlint": "^1.67.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.9.3",
+    "vitest": "^4.1.8",
     "wxt": "^0.20.26"
   },
   "packageManager": "pnpm@11.5.0+sha512.dbfcc4f81cf48597afd4bc391ffdf12c11f1a9fb83a395bfa6b0a2d9cc2fd8ffebafdb1ccbd529632153f793904c2615b7f09fe1a345473fd1c35845172a8eb1"

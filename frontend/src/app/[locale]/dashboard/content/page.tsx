@@ -1,5 +1,5 @@
-import { ContentWorkspace } from "./_components/content-workspace";
+import { ContentPageContent } from "./_components/content-page-content";
 
-export default function ContentPage() {
-  return <ContentWorkspace />;
+export default function Page() {
+  return <ContentPageContent />;
 }
