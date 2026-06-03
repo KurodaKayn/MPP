@@ -19,8 +19,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
-      - frontend
-      - redis
+      frontend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   frontend:
     build:
@@ -32,8 +34,16 @@ services:
     environment:
       PORT: "3000"
     depends_on:
-      - backend
-      - ai-service
+      backend:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/ready >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     labels:
       - traefik.enable=true
       - traefik.http.routers.frontend-web.entrypoints=web
@@ -86,9 +96,18 @@ services:
       REDIS_DB: ${REDIS_DB:-0}
       BROWSER_WORKER_URL: ${BROWSER_WORKER_URL:-http://browser-worker:8081}
     depends_on:
-      - db
-      - redis
-      - browser-worker
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      browser-worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ready >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     networks:
       - default
       - browser-runtime
@@ -110,8 +129,16 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - redis
-      - browser-runtime-image
+      redis:
+        condition: service_healthy
+      browser-runtime-image:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/ready >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     networks:
       - default
       - browser-runtime
@@ -131,6 +158,12 @@ services:
       context: ../ai-service
       dockerfile: Dockerfile
     env_file: .env
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/ready >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
 
   db:
     image: postgres:17-alpine
@@ -139,6 +172,12 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_DB: ${DB_NAME:-poster_db}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -155,6 +194,19 @@ services:
           exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
         fi
         exec redis-server --appendonly yes
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - |
+          if [ -n "$$REDIS_PASSWORD" ]; then
+            redis-cli -a "$$REDIS_PASSWORD" ping | grep -q PONG
+          else
+            redis-cli ping | grep -q PONG
+          fi
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     volumes:
       - redis_data:/data
 

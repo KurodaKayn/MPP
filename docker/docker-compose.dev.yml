@@ -100,7 +100,7 @@ services:
           path: ../ai-service/uv.lock
 
   extension-dev:
-    image: node:24-alpine
+    image: node:20-alpine
     profiles:
       - extension
     working_dir: /app

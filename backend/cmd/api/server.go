@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"net/http"
+	"sync/atomic"
+	"time"
 
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
@@ -10,6 +13,7 @@ import (
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 )
 
 type serverConfig struct {
@@ -17,6 +21,8 @@ type serverConfig struct {
 	jwtSigningKey []byte
 	redisClient   *redis.Client
 	mockLogin     bool
+	ready         *atomic.Bool
+	sqlDB         *gorm.DB
 }
 
 type serverHandlers struct {
@@ -33,7 +39,7 @@ func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 
 	e.Use(observabilitySuite.Middleware())
 	e.Use(echoMiddleware.Recover())
-	registerPublicRoutes(e)
+	registerPublicRoutes(e, config)
 
 	if config.runtimeConfig.servesAPI() {
 		if err := registerAPIRoutes(e, config, h); err != nil {
@@ -44,11 +50,44 @@ func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 	return e, nil
 }
 
-func registerPublicRoutes(e *echo.Echo) {
+func registerPublicRoutes(e *echo.Echo, config serverConfig) {
 	e.GET("/ping", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
 			"message": "pong",
 		})
+	})
+	registerHealthRoutes(e, config.ready, config.sqlDB, config.redisClient)
+}
+
+func registerHealthRoutes(e *echo.Echo, ready *atomic.Bool, sqlDB *gorm.DB, redisClient *redis.Client) {
+	e.GET("/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
+	})
+	e.GET("/ready", func(c echo.Context) error {
+		if ready != nil && !ready.Load() {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
+		defer cancel()
+
+		if sqlDB != nil {
+			dbObj, err := sqlDB.DB()
+			if err != nil {
+				return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "database"})
+			}
+			if err := dbObj.PingContext(ctx); err != nil {
+				return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "database"})
+			}
+		}
+
+		if redisClient != nil {
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "redis"})
+			}
+		}
+
+		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
 	})
 }
 
