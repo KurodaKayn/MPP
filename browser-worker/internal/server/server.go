@@ -60,6 +60,15 @@ func (s *Server) createSession(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return err
 	}
+	if !s.sessions.TryReserve() {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser worker session pool exhausted")
+	}
+	reservationReleased := false
+	defer func() {
+		if !reservationReleased {
+			s.sessions.ReleaseReservation()
+		}
+	}()
 
 	// Start at about:blank so request interception is active before platform navigation.
 	containerID, containerHost, cdpPort, streamPort, err := s.containers.StartBrowserContainer(c.Request().Context(), req.SessionID.String())
@@ -136,6 +145,8 @@ func (s *Server) createSession(c echo.Context) error {
 	workerSession.StateCancel = sessionstate.StartLoop(context.Background(), workerSession)
 
 	s.sessions.Put(workerSession)
+	s.sessions.ReleaseReservation()
+	reservationReleased = true
 	time.AfterFunc(ttl, func() {
 		removedSession, ok := s.sessions.Remove(workerSession.ID)
 		if !ok {
