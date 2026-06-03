@@ -2,15 +2,19 @@ package publish
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
+	"github.com/hibiken/asynq"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
@@ -30,6 +34,20 @@ func (p queueTestPublisher) Publish(ctx context.Context, pub *models.ProjectPlat
 	return "remote-id", "https://example.com/published", nil
 }
 
+type failingQueueTestPublisher struct{}
+
+func (p failingQueueTestPublisher) ValidateConfig(config []byte) error {
+	return nil
+}
+
+func (p failingQueueTestPublisher) AdaptContent(project *models.Project) ([]byte, error) {
+	return []byte(`{"format":"html","html":"adapted"}`), nil
+}
+
+func (p failingQueueTestPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
+	return "", "", errors.New("platform unavailable")
+}
+
 type testPublishQueue struct {
 	jobs      []PublishJob
 	locks     map[string]string
@@ -45,13 +63,12 @@ func (q *testPublishQueue) Enqueue(ctx context.Context, job PublishJob) error {
 	return nil
 }
 
-func (q *testPublishQueue) Dequeue(ctx context.Context) (PublishJob, error) {
-	if len(q.jobs) == 0 {
-		return PublishJob{}, ErrPublishQueueEmpty
+func (q *testPublishQueue) Start(ctx context.Context, handler PublishJobHandler) {
+	for len(q.jobs) > 0 {
+		job := q.jobs[0]
+		q.jobs = q.jobs[1:]
+		_ = handler(ctx, job)
 	}
-	job := q.jobs[0]
-	q.jobs = q.jobs[1:]
-	return job, nil
 }
 
 func (q *testPublishQueue) AcquireLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
@@ -176,6 +193,7 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, models.PublicationStatusPublishing, resp["status"])
 	require.Len(t, queue.jobs, 1)
+	require.Equal(t, uuid.Nil, queue.jobs[0].BrowserSessionID)
 
 	lockKey := publishLockKey(project.ID, "wechat")
 	require.Equal(t, queue.jobs[0].JobID.String(), queue.locks[lockKey])
@@ -259,7 +277,7 @@ func TestProcessPublishJobPublishesAndReleasesLock(t *testing.T) {
 	lockKey := publishLockKey(project.ID, "wechat")
 	queue.locks[lockKey] = job.JobID.String()
 
-	service.processPublishJob(context.Background(), job)
+	require.NoError(t, service.processPublishJob(context.Background(), job))
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
@@ -304,10 +322,88 @@ func TestProcessPublishJobReacquiresExpiredLock(t *testing.T) {
 		EnqueuedAt: time.Now().UTC(),
 	}
 
-	service.processPublishJob(context.Background(), job)
+	require.NoError(t, service.processPublishJob(context.Background(), job))
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
 	require.Equal(t, models.PublicationStatusPublished, saved.Status)
 	require.Empty(t, queue.locks[publishLockKey(project.ID, "wechat")])
+}
+
+func TestProcessPublishJobReturnsErrorForFailedPublication(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+
+	publisher.Factory.Register("wechat", failingQueueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusPublishing,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	job := PublishJob{
+		JobID:      uuid.New(),
+		ProjectID:  project.ID,
+		UserID:     user.ID,
+		Platform:   "wechat",
+		EnqueuedAt: time.Now().UTC(),
+	}
+	lockKey := publishLockKey(project.ID, "wechat")
+	queue.locks[lockKey] = job.JobID.String()
+
+	err := service.processPublishJob(context.Background(), job)
+
+	require.Error(t, err)
+	require.Empty(t, queue.locks[lockKey])
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	require.Equal(t, models.PublicationStatusFailed, saved.Status)
+	require.Equal(t, 1, saved.RetryCount)
+	require.Contains(t, saved.ErrorMessage, "platform unavailable")
+}
+
+func TestRedisPublishQueueEnqueuesAsynqTask(t *testing.T) {
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	defer client.Close()
+
+	queue := NewRedisPublishQueue(client)
+	job := PublishJob{
+		JobID:      uuid.New(),
+		ProjectID:  uuid.New(),
+		UserID:     uuid.New(),
+		Platform:   "wechat",
+		EnqueuedAt: time.Now().UTC(),
+	}
+
+	require.NoError(t, queue.Enqueue(context.Background(), job))
+
+	inspector := asynq.NewInspectorFromRedisClient(client)
+	tasks, err := inspector.ListPendingTasks(publishQueueName)
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	require.Equal(t, publishTaskType, tasks[0].Type)
+	require.Equal(t, publishTaskMaxRetry, tasks[0].MaxRetry)
+	require.Equal(t, publishTaskTimeout, tasks[0].Timeout)
+
+	var payload PublishJob
+	require.NoError(t, json.Unmarshal(tasks[0].Payload, &payload))
+	require.Equal(t, job, payload)
 }
