@@ -502,6 +502,59 @@ func TestBrowserSessionService_StartSessionPreservesReachableRedisActiveLock(t *
 	assert.Equal(t, resp.SessionID.String(), activeSessionID)
 }
 
+func TestBrowserSessionService_StartSessionEnforcesUserConcurrencyQuota(t *testing.T) {
+	_, svc, _ := setupBrowserSessionTest(t)
+	client := setupBrowserSessionRedis(t, svc)
+	svc.UseQuotaConfig(browsersession.BrowserSessionQuotaConfig{
+		UserConcurrencyLimit:   1,
+		TenantConcurrencyLimit: 10,
+	})
+	userID := uuid.New()
+	tenantID := "tenant-acme"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	resp, err := svc.StartSessionForTenant(context.Background(), userID, tenantID, "douyin")
+	require.NoError(t, err)
+
+	_, err = svc.StartSessionForTenant(context.Background(), userID, tenantID, "zhihu")
+	assert.ErrorIs(t, err, browsersession.ErrUserQuotaExceeded)
+	assert.Equal(t, int64(1), client.ZCard(context.Background(), "mpp:browser:quota:user:"+userID.String()).Val())
+
+	require.NoError(t, svc.CancelSession(context.Background(), userID, resp.SessionID))
+	assert.Equal(t, int64(0), client.ZCard(context.Background(), "mpp:browser:quota:user:"+userID.String()).Val())
+
+	resp, err = svc.StartSessionForTenant(context.Background(), userID, tenantID, "zhihu")
+	require.NoError(t, err)
+	require.NoError(t, svc.CancelSession(context.Background(), userID, resp.SessionID))
+}
+
+func TestBrowserSessionService_StartSessionEnforcesTenantConcurrencyQuota(t *testing.T) {
+	_, svc, _ := setupBrowserSessionTest(t)
+	client := setupBrowserSessionRedis(t, svc)
+	svc.UseQuotaConfig(browsersession.BrowserSessionQuotaConfig{
+		UserConcurrencyLimit:   10,
+		TenantConcurrencyLimit: 1,
+	})
+	userID := uuid.New()
+	otherUserID := uuid.New()
+	tenantID := "tenant-acme"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	resp, err := svc.StartSessionForTenant(context.Background(), userID, tenantID, "douyin")
+	require.NoError(t, err)
+
+	_, err = svc.StartSessionForTenant(context.Background(), otherUserID, tenantID, "zhihu")
+	assert.ErrorIs(t, err, browsersession.ErrTenantQuotaExceeded)
+	assert.Equal(t, int64(1), client.ZCard(context.Background(), "mpp:browser:quota:tenant:"+tenantID).Val())
+
+	require.NoError(t, svc.CancelSession(context.Background(), userID, resp.SessionID))
+	assert.Equal(t, int64(0), client.ZCard(context.Background(), "mpp:browser:quota:tenant:"+tenantID).Val())
+
+	resp, err = svc.StartSessionForTenant(context.Background(), otherUserID, tenantID, "zhihu")
+	require.NoError(t, err)
+	require.NoError(t, svc.CancelSession(context.Background(), otherUserID, resp.SessionID))
+}
+
 func TestBrowserSessionService_GetSessionKeepsLiveRedisStateOnTransientWorkerReadFailure(t *testing.T) {
 	db, svc, _ := setupBrowserSessionTest(t)
 	client := setupBrowserSessionRedis(t, svc)

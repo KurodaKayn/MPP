@@ -14,11 +14,16 @@ import (
 )
 
 func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UUID, platform string) (*dto.StartBrowserSessionResponse, error) {
+	return s.StartSessionForTenant(ctx, userID, "", platform)
+}
+
+func (s *BrowserSessionService) StartSessionForTenant(ctx context.Context, userID uuid.UUID, tenantID string, platform string) (*dto.StartBrowserSessionResponse, error) {
 	adapter, ok := s.adapters[platform]
 	if !ok {
 		return nil, ErrPlatformNotSupported
 	}
 
+	tenantID = normalizeBrowserSessionTenantID(tenantID)
 	now := time.Now()
 	sessionID := uuid.New()
 	expiresAt := now.Add(browserSessionTTL)
@@ -49,6 +54,10 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 			_ = s.releaseRedisActiveSession(ctx, userID, platform, sessionID)
 			return nil, err
 		}
+		if err := s.acquireRedisConcurrencyQuota(ctx, userID, tenantID, sessionID, expiresAt); err != nil {
+			_ = s.releaseRedisActiveSession(ctx, userID, platform, sessionID)
+			return nil, err
+		}
 	} else {
 		activeSessionExists, err := s.activeSessionExists(ctx, userID, platform, now)
 		if err != nil {
@@ -62,7 +71,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	// 2. Generate stream token
 	token, tokenHash, err := GenerateStreamToken()
 	if err != nil {
-		_ = s.releaseRedisActiveSession(ctx, userID, platform, sessionID)
+		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, "")
 		return nil, err
 	}
 
@@ -79,7 +88,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	}
 
 	if err := s.db.Create(session).Error; err != nil {
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, "")
+		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, "")
 		if isActiveSessionUniquenessError(err) {
 			return nil, ErrActiveSessionExists
 		}
@@ -88,12 +97,13 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	if err := s.saveRedisLiveSession(ctx, browserSessionLiveState{
 		SessionID: sessionID,
 		UserID:    userID,
+		TenantID:  tenantID,
 		Platform:  platform,
 		Status:    models.BrowserSessionStatusPending,
 		CreatedAt: now,
 		ExpiresAt: expiresAt,
 	}); err != nil {
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, "")
+		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, "")
 		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}
@@ -124,7 +134,10 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	if err != nil {
 		// Update status to failed
 		s.db.Model(session).Update("status", models.BrowserSessionStatusFailed)
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, "")
+		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, "")
+		if errors.Is(err, publisher.ErrBrowserWorkerPoolExhausted) {
+			return nil, ErrWorkerPoolExhausted
+		}
 		return nil, fmt.Errorf("worker failed to create session: %w", err)
 	}
 
@@ -138,7 +151,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	}).Error
 	if err != nil {
 		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, resp.WorkerSessionRef)
+		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, resp.WorkerSessionRef)
 		return nil, err
 	}
 	session.Status = models.BrowserSessionStatusReady
@@ -150,6 +163,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	if err := s.saveRedisLiveSession(ctx, browserSessionLiveState{
 		SessionID:         sessionID,
 		UserID:            userID,
+		TenantID:          tenantID,
 		Platform:          platform,
 		Status:            models.BrowserSessionStatusReady,
 		WorkerSessionRef:  resp.WorkerSessionRef,
@@ -160,7 +174,7 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 		ExpiresAt:         expiresAt,
 	}); err != nil {
 		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, resp.WorkerSessionRef)
+		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, resp.WorkerSessionRef)
 		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}
@@ -168,13 +182,13 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 	tokenExpiresAt, err := s.rotateRedisStreamToken(ctx, sessionID, userID, platform, tokenHash, expiresAt)
 	if err != nil {
 		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, resp.WorkerSessionRef)
+		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, resp.WorkerSessionRef)
 		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}
 	if err := s.db.Model(session).Update("connect_token_expires_at", tokenExpiresAt).Error; err != nil {
 		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
-		_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, resp.WorkerSessionRef)
+		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, resp.WorkerSessionRef)
 		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}

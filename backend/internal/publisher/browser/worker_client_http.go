@@ -40,6 +40,12 @@ func (c *HttpBrowserWorkerClient) CreateSession(ctx context.Context, req StartWo
 			Message string `json:"message"`
 		}
 		json.NewDecoder(resp.Body).Decode(&errResp)
+		if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusTooManyRequests {
+			if errResp.Message != "" {
+				return nil, fmt.Errorf("%w: %s", ErrBrowserWorkerPoolExhausted, errResp.Message)
+			}
+			return nil, ErrBrowserWorkerPoolExhausted
+		}
 		if errResp.Message != "" {
 			return nil, fmt.Errorf("worker error: %s", errResp.Message)
 		}

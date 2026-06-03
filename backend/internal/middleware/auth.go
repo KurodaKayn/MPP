@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -10,6 +11,7 @@ import (
 )
 
 const jwtTokenLookup = "header:Authorization:Bearer ,cookie:sevenoxcloud.auth_token,cookie:auth_token,cookie:access_token"
+const DefaultTenantID = "default"
 
 // JWTCustomClaims are custom claims extending default ones.
 type JWTCustomClaims struct {
@@ -38,6 +40,21 @@ func GetUserIDFromContext(c echo.Context) (uuid.UUID, error) {
 	}
 
 	return claims.UserID, nil
+}
+
+// GetTenantIDFromContext extracts the tenant ID from JWT claims and falls back
+// to the shared default tenant for early single-tenant deployments.
+func GetTenantIDFromContext(c echo.Context) (string, error) {
+	claims, err := jwtClaimsFromContext(c)
+	if err != nil {
+		return "", err
+	}
+
+	tenantID := strings.TrimSpace(claims.TenantID)
+	if tenantID == "" {
+		tenantID = DefaultTenantID
+	}
+	return tenantID, nil
 }
 
 func jwtClaimsFromContext(c echo.Context) (*JWTCustomClaims, error) {
