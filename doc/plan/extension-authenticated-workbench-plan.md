@@ -20,11 +20,19 @@ The backend is a Go API built with Echo. User dashboard routes are mounted under
 - `auth_token`
 - `access_token`
 
-The frontend login client stores the token in browser storage and also writes `sevenoxcloud.auth_token` as a cookie. This makes it possible to reuse Web login state if extension requests can carry the cookie to the API layer.
+The frontend login client stores the token in browser storage and also writes `sevenoxcloud.auth_token` as a `SameSite=Lax` cookie. Direct requests from a `chrome-extension://` origin should not rely on that cookie being sent. The extension workbench contract is to reuse the Web login JWT and send it explicitly as:
+
+```text
+Authorization: Bearer <web-jwt>
+```
+
+The cookie lookup remains useful for normal Web dashboard traffic and same-site proxy flows, but the direct extension-to-backend path is bearer-token based.
 
 ## Chosen Direction
 
 Use option A: the extension requests backend data while reusing the MPP Web login state.
+
+For direct extension-origin API calls, "reusing Web login state" means reusing the JWT created by the Web login flow and sending it in the `Authorization` header. It does not mean depending on the existing `SameSite=Lax` dashboard cookie for cross-origin extension `fetch` calls.
 
 Within option A, the selected architecture is backend-generated handoff. The extension should not reconstruct handoff business data from raw project and publication records. Instead, the extension asks the backend for an executable `ExtensionPublishHandoff`.
 
@@ -80,7 +88,7 @@ Extension fetches pre-publishable projects and platform drafts
 User selects a project and one or more platforms
         |
         v
-Extension requests a backend-generated extension handoff
+Extension requests a backend-generated extension handoff with bearer auth
         |
         v
 Backend returns ExtensionPublishHandoff
@@ -110,15 +118,18 @@ EXTENSION_ALLOWED_ORIGINS=chrome-extension://<id>,http://localhost:3000
 Requirements:
 
 - Allow configured extension origins only.
-- Allow credentials for authenticated extension requests.
+- Allow `Authorization` and `Content-Type` headers for extension requests.
+- Allow credentials only as a compatibility setting for same-site proxy or future cookie-compatible flows.
 - Avoid wildcard CORS when credentials are enabled.
 - Keep dev and production extension IDs configurable.
 - Keep existing dashboard JWT middleware as the source of user identity.
+- Treat `Authorization: Bearer <web-jwt>` as the supported direct extension authentication path.
 
 Important validation:
 
-- Confirm whether the current Web login cookie is available to direct extension requests.
-- If direct cookie transport is not reliable for a deployment environment, route extension calls through the frontend proxy or adjust cookie settings intentionally.
+- Confirm the extension can obtain the Web login JWT through the approved extension-side integration.
+- Do not depend on the current `SameSite=Lax` Web login cookie for direct extension-origin requests.
+- If a deployment requires cookie-based extension auth, introduce an intentional `SameSite=None; Secure` cookie or route extension calls through a same-site frontend proxy in a separate reviewed change.
 
 ### Phase 2: Extension Session API
 
@@ -304,7 +315,8 @@ extension/src/backend/types.ts
 Responsibilities:
 
 - Store the backend or frontend API base URL.
-- Send authenticated requests with `credentials: "include"`.
+- Send authenticated requests with `Authorization: Bearer <web-jwt>`.
+- Keep `credentials: "include"` only for compatibility with same-site proxy flows; do not rely on it for `chrome-extension://` direct backend calls.
 - Fetch session state.
 - Fetch pre-publish list data.
 - Request backend-generated handoffs.
@@ -429,13 +441,15 @@ Cover:
 
 ### Cookie Transport
 
-The selected direction depends on the extension being able to make authenticated requests using the existing Web login state. This must be tested early in local and production-like environments.
+The selected direction depends on the extension being able to obtain and send the existing Web login JWT as bearer auth. This must be tested early in local and production-like environments.
 
-If direct extension-to-backend cookie transport is unreliable, the fallback is to route extension calls through the frontend API proxy while keeping the same backend API contract.
+Direct extension-to-backend cookie transport is not the primary contract because the current Web login cookie is `SameSite=Lax`. If bearer-token handoff is not acceptable in a deployment, the fallback is to route extension calls through the frontend API proxy or add a deliberately scoped extension-compatible cookie while keeping the same backend API contract.
 
 ### CORS Configuration
 
 Extension origins must be configured explicitly. The backend must not use wildcard CORS with credentials.
+
+The CORS allow-list must include `Authorization` so the extension can send the Web JWT from a configured `chrome-extension://` origin.
 
 ### Callback Persistence
 
@@ -512,4 +526,3 @@ Deliverables:
 - Do not auto-publish on platform pages.
 - Do not redesign every platform adapter.
 - Do not solve cover image semantics unless required by the first backend handoff contract.
-
