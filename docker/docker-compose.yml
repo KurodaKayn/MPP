@@ -57,6 +57,29 @@ services:
       dockerfile: Dockerfile
     env_file: .env
     environment:
+      BACKEND_PROCESS_ROLE: api
+      BACKEND_REQUIRE_REDIS: ${BACKEND_REQUIRE_REDIS:-true}
+      DB_HOST: ${DB_HOST:-db}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+      BROWSER_WORKER_URL: ${BROWSER_WORKER_URL:-http://browser-worker:8081}
+    depends_on:
+      - db
+      - redis
+      - browser-worker
+    networks:
+      - default
+      - browser-runtime
+
+  publish-worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      BACKEND_PROCESS_ROLE: worker
+      BACKEND_REQUIRE_REDIS: ${BACKEND_REQUIRE_REDIS:-true}
       DB_HOST: ${DB_HOST:-db}
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
@@ -148,6 +171,7 @@ services:
       - prometheus_data:/prometheus
     depends_on:
       - backend
+      - publish-worker
       - ai-service
       - browser-worker
 

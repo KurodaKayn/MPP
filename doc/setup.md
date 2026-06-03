@@ -133,7 +133,7 @@ pnpm dev
 
 ```bash
 cd backend
-go run cmd/api/main.go
+go run ./cmd/api
 ```
 
 ### AI 服务 (Python)

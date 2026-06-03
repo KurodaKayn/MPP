@@ -21,6 +21,14 @@ scrape_configs:
         labels:
           service: backend
 
+  - job_name: publish-worker
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - publish-worker:8080
+        labels:
+          service: publish-worker
+
   - job_name: ai-service
     metrics_path: /metrics
     static_configs:
