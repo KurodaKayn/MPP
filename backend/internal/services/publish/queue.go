@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hibiken/asynq"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/redis/go-redis/v9"
@@ -17,12 +18,16 @@ import (
 )
 
 const (
-	publishQueueName         = "mpp:publish:jobs"
-	publishLockKeyPrefix     = "mpp:publish:lock:"
-	publishLockTTL           = 30 * time.Minute
-	publishLockRefreshEvery  = publishLockTTL / 3
-	publishQueueBlockTimeout = 5 * time.Second
-	publishStaleAfter        = 2 * publishLockTTL
+	publishTaskType         = "publish:project"
+	publishQueueName        = "publish"
+	publishTaskMaxRetry     = 3
+	publishTaskTimeout      = 30 * time.Minute
+	publishTaskRetention    = 24 * time.Hour
+	publishWorkerConcurrent = 2
+	publishLockKeyPrefix    = "mpp:publish:lock:"
+	publishLockTTL          = 30 * time.Minute
+	publishLockRefreshEvery = publishLockTTL / 3
+	publishStaleAfter       = 2 * publishLockTTL
 )
 
 var (
@@ -40,9 +45,11 @@ type PublishJob struct {
 	EnqueuedAt       time.Time `json:"enqueued_at"`
 }
 
+type PublishJobHandler func(context.Context, PublishJob) error
+
 type PublishQueue interface {
 	Enqueue(ctx context.Context, job PublishJob) error
-	Dequeue(ctx context.Context) (PublishJob, error)
+	Start(ctx context.Context, handler PublishJobHandler)
 	AcquireLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error)
 	LockValue(ctx context.Context, key string) (string, error)
 	RefreshLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error)
@@ -50,50 +57,82 @@ type PublishQueue interface {
 }
 
 type RedisPublishQueue struct {
-	client    *redis.Client
-	queueName string
+	redisClient *redis.Client
+	asynqClient *asynq.Client
 }
 
 func NewRedisPublishQueue(client *redis.Client) *RedisPublishQueue {
 	return &RedisPublishQueue{
-		client:    client,
-		queueName: publishQueueName,
+		redisClient: client,
+		asynqClient: asynq.NewClientFromRedisClient(client),
 	}
 }
 
 func (q *RedisPublishQueue) Enqueue(ctx context.Context, job PublishJob) error {
-	payload, err := json.Marshal(job)
+	task, err := newPublishTask(job)
 	if err != nil {
 		return err
 	}
-	return q.client.RPush(ctx, q.queueName, payload).Err()
+	_, err = q.asynqClient.EnqueueContext(
+		ctx,
+		task,
+		asynq.Queue(publishQueueName),
+		asynq.MaxRetry(publishTaskMaxRetry),
+		asynq.Timeout(publishTaskTimeout),
+		asynq.Retention(publishTaskRetention),
+		asynq.TaskID(job.JobID.String()),
+	)
+	return err
 }
 
-func (q *RedisPublishQueue) Dequeue(ctx context.Context) (PublishJob, error) {
-	result, err := q.client.BLPop(ctx, publishQueueBlockTimeout, q.queueName).Result()
-	if errors.Is(err, redis.Nil) {
-		return PublishJob{}, ErrPublishQueueEmpty
-	}
-	if err != nil {
-		return PublishJob{}, err
-	}
-	if len(result) != 2 {
-		return PublishJob{}, fmt.Errorf("unexpected redis queue response")
-	}
+func (q *RedisPublishQueue) Start(ctx context.Context, handler PublishJobHandler) {
+	server := asynq.NewServerFromRedisClient(q.redisClient, asynq.Config{
+		Concurrency: publishWorkerConcurrent,
+		Queues: map[string]int{
+			publishQueueName: 1,
+		},
+	})
+	mux := asynq.NewServeMux()
+	mux.HandleFunc(publishTaskType, func(taskCtx context.Context, task *asynq.Task) error {
+		job, err := publishJobFromTask(task)
+		if err != nil {
+			return fmt.Errorf("invalid publish task payload: %w: %w", err, asynq.SkipRetry)
+		}
+		return handler(taskCtx, job)
+	})
 
+	go func() {
+		<-ctx.Done()
+		server.Shutdown()
+	}()
+
+	if err := server.Run(mux); err != nil && ctx.Err() == nil {
+		log.Printf("publish worker stopped with error: %v", err)
+	}
+}
+
+func newPublishTask(job PublishJob) (*asynq.Task, error) {
+	payload, err := json.Marshal(job)
+	if err != nil {
+		return nil, err
+	}
+	return asynq.NewTask(publishTaskType, payload), nil
+}
+
+func publishJobFromTask(task *asynq.Task) (PublishJob, error) {
 	var job PublishJob
-	if err := json.Unmarshal([]byte(result[1]), &job); err != nil {
+	if err := json.Unmarshal(task.Payload(), &job); err != nil {
 		return PublishJob{}, err
 	}
 	return job, nil
 }
 
 func (q *RedisPublishQueue) AcquireLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
-	return q.client.SetNX(ctx, key, value, ttl).Result()
+	return q.redisClient.SetNX(ctx, key, value, ttl).Result()
 }
 
 func (q *RedisPublishQueue) LockValue(ctx context.Context, key string) (string, error) {
-	value, err := q.client.Get(ctx, key).Result()
+	value, err := q.redisClient.Get(ctx, key).Result()
 	if errors.Is(err, redis.Nil) {
 		return "", nil
 	}
@@ -107,7 +146,7 @@ if redis.call("GET", KEYS[1]) == ARGV[1] then
 end
 return 0
 `
-	result, err := q.client.Eval(ctx, refreshLockScript, []string{key}, value, ttl.Milliseconds()).Int()
+	result, err := q.redisClient.Eval(ctx, refreshLockScript, []string{key}, value, ttl.Milliseconds()).Int()
 	if err != nil {
 		return false, err
 	}
@@ -121,7 +160,7 @@ if redis.call("GET", KEYS[1]) == ARGV[1] then
 end
 return 0
 `
-	return q.client.Eval(ctx, releaseLockScript, []string{key}, value).Err()
+	return q.redisClient.Eval(ctx, releaseLockScript, []string{key}, value).Err()
 }
 
 func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
@@ -190,58 +229,53 @@ func (s *Service) StartPublishWorker(ctx context.Context) {
 		return
 	}
 
-	go s.runPublishWorker(ctx)
+	go s.queue.Start(ctx, s.processPublishJob)
 }
 
-func (s *Service) runPublishWorker(ctx context.Context) {
-	for {
-		job, err := s.queue.Dequeue(ctx)
-		if errors.Is(err, ErrPublishQueueEmpty) {
-			continue
-		}
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			log.Printf("publish queue dequeue failed: %v", err)
-			time.Sleep(time.Second)
-			continue
-		}
-
-		s.processPublishJob(ctx, job)
-	}
-}
-
-func (s *Service) processPublishJob(ctx context.Context, job PublishJob) {
+func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 	if job.JobID == uuid.Nil || job.ProjectID == uuid.Nil || job.UserID == uuid.Nil || strings.TrimSpace(job.Platform) == "" {
 		log.Printf("discarding invalid publish job: %+v", job)
-		return
+		return nil
 	}
 
 	lockKey := publishLockKey(job.ProjectID, job.Platform)
 	locked, err := s.ensurePublishJobLock(ctx, job, lockKey)
 	if err != nil {
 		log.Printf("publish lock check failed for job %s: %v", job.JobID, err)
-		return
+		return err
 	}
 	if !locked {
 		log.Printf("skipping publish job %s because lock is not owned by this job", job.JobID)
-		return
+		return nil
 	}
 
 	stopRefreshing := s.startPublishLockRefresh(ctx, lockKey, job.JobID.String())
 	defer stopRefreshing()
 
-	if _, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID, uuid.Nil); err != nil {
+	resp, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID, uuid.Nil)
+	if err != nil {
 		log.Printf("publish job %s failed: %v", job.JobID, err)
 		if markErr := s.markPublicationFailed(job.ProjectID, job.Platform, err.Error()); markErr != nil {
 			log.Printf("failed to mark publish job %s as failed: %v", job.JobID, markErr)
 		}
+		if releaseErr := s.queue.ReleaseLock(context.Background(), lockKey, job.JobID.String()); releaseErr != nil {
+			log.Printf("publish lock release failed for failed job %s: %v", job.JobID, releaseErr)
+		}
+		return err
+	}
+	if status, _ := resp["status"].(string); status == models.PublicationStatusFailed {
+		message, _ := resp["error_message"].(string)
+		err := fmt.Errorf("publish job %s failed: %s", job.JobID, message)
+		if releaseErr := s.queue.ReleaseLock(context.Background(), lockKey, job.JobID.String()); releaseErr != nil {
+			log.Printf("publish lock release failed for failed job %s: %v", job.JobID, releaseErr)
+		}
+		return err
 	}
 
 	if err := s.queue.ReleaseLock(ctx, lockKey, job.JobID.String()); err != nil {
 		log.Printf("publish lock release failed for job %s: %v", job.JobID, err)
 	}
+	return nil
 }
 
 func (s *Service) ensurePublishJobLock(ctx context.Context, job PublishJob, lockKey string) (bool, error) {
@@ -256,11 +290,11 @@ func (s *Service) ensurePublishJobLock(ctx context.Context, job PublishJob, lock
 		return false, nil
 	}
 
-	stillPublishing, err := s.publicationStillPublishing(job.ProjectID, job.Platform)
+	retriable, err := s.publicationRetriableForJob(job.ProjectID, job.Platform)
 	if err != nil {
 		return false, err
 	}
-	if !stillPublishing {
+	if !retriable {
 		return false, nil
 	}
 
@@ -330,12 +364,15 @@ func (s *Service) preparePublishJob(projectID uuid.UUID, platform string, userID
 	return project, pub, nil
 }
 
-func (s *Service) publicationStillPublishing(projectID uuid.UUID, platform string) (bool, error) {
+func (s *Service) publicationRetriableForJob(projectID uuid.UUID, platform string) (bool, error) {
 	var pub models.ProjectPlatformPublication
-	if err := s.db.Select("status").Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
+	if err := s.db.Select("enabled", "status").Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
 		return false, err
 	}
-	return pub.Status == models.PublicationStatusPublishing, nil
+	if !pub.Enabled || pub.Status == models.PublicationStatusDisabled {
+		return false, nil
+	}
+	return pub.Status == models.PublicationStatusPublishing || pub.Status == models.PublicationStatusFailed, nil
 }
 
 func publicationPublishingStale(pub models.ProjectPlatformPublication) bool {
