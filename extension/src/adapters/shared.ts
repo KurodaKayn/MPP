@@ -60,7 +60,10 @@ export function fillTextTarget(target: TextTarget, value: string): void {
     return;
   }
 
-  if (target.isContentEditable) {
+  if (
+    target.isContentEditable ||
+    target.getAttribute("contenteditable") === "true"
+  ) {
     target.textContent = value;
     target.dispatchEvent(new InputEvent("input", { bubbles: true }));
   }
