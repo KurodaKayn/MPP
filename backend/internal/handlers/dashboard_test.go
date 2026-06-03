@@ -287,6 +287,58 @@ func TestUserDashboardHandlerListExtensionPrepublishRequiresUserContext(t *testi
 	require.Equal(t, "unauthorized", resp.Error.Code)
 }
 
+func TestUserDashboardHandlerCreateExtensionHandoffReturnsHandoff(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Douyin draft",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "douyin",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: []byte(`{"format":"text","text":"douyin body"}`),
+	}).Error)
+
+	body := `{"project_id":"` + project.ID.String() + `","platforms":["douyin"]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/user/dashboard/extension/handoffs", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.CreateExtensionHandoff(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp dto.ExtensionPublishHandoff
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, project.ID, resp.Project.ID)
+	require.Len(t, resp.Platforms, 1)
+	require.Equal(t, "douyin body", resp.Platforms[0].AdaptedContent["text"])
+	require.Equal(t, "http://example.com/api/user/dashboard/extension/events", resp.Platforms[0].Callback.URL)
+}
+
+func TestUserDashboardHandlerCreateExtensionHandoffRequiresUserContext(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	req := httptest.NewRequest(http.MethodPost, "/api/user/dashboard/extension/handoffs", strings.NewReader(`{}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	require.NoError(t, handler.CreateExtensionHandoff(c))
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
 func TestUserDashboardHandlerListProjectsUsesJWTUserScope(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)
