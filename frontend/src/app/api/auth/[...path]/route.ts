@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function proxyRequest(request: NextRequest, context: ApiRouteContext) {
-  return proxyApiRequest(request, context, "/api");
+  return proxyApiRequest(request, context, "/api/auth");
 }
 
 export const GET = proxyRequest;
