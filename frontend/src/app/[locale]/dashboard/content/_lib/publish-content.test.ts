@@ -8,6 +8,7 @@ const project: ProjectListItem = {
   created_at: "2026-05-29T12:00:00Z",
   id: "project-1",
   publications: [],
+  role: "owner",
   status: "ready",
   title: "Post title",
   updated_at: "2026-05-29T12:00:00Z",
