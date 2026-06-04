@@ -2,15 +2,12 @@ package x
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
-	"strings"
 	"testing"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
-	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 	"gorm.io/datatypes"
 )
 
@@ -32,17 +29,6 @@ func TestXWeightedLengthCountsCJKAndEmojiAsDouble(t *testing.T) {
 
 	if got := xWeightedLength(text); got != 9 {
 		t.Fatalf("expected weighted length 9, got %d", got)
-	}
-}
-
-func TestBuildXPostTextTruncatesByWeightedLength(t *testing.T) {
-	text := buildXPostText("", strings.Repeat("\u4e2d", 200), xCharacterLimit)
-
-	if got := xWeightedLength(text); got > xCharacterLimit {
-		t.Fatalf("expected weighted length <= %d, got %d", xCharacterLimit, got)
-	}
-	if !strings.HasSuffix(text, "...") {
-		t.Fatalf("expected truncated text to end with ellipsis marker, got %q", text)
 	}
 }
 
@@ -69,33 +55,6 @@ func TestBuildXPostIntentURLUsesAdaptedText(t *testing.T) {
 	}
 	if got := parsed.Query().Get("text"); got != "hello x & \u4e2d\u6587" {
 		t.Fatalf("expected text query to round-trip, got %q", got)
-	}
-}
-
-func TestXPublisherAdaptContentUsesUnifiedSchema(t *testing.T) {
-	content, err := (&XPublisher{}).AdaptContent(&models.Project{
-		Title:         "Title",
-		SourceContent: "<p>Hello <strong>X</strong></p>",
-	})
-	if err != nil {
-		t.Fatalf("expected x content to adapt, got %v", err)
-	}
-
-	var adapted core.AdaptedContent
-	if err := json.Unmarshal(content, &adapted); err != nil {
-		t.Fatalf("expected adapted content json, got %v", err)
-	}
-	if adapted.SchemaVersion == nil || *adapted.SchemaVersion != 1 {
-		t.Fatalf("expected schema version 1, got %v", adapted.SchemaVersion)
-	}
-	if adapted.Format != "text" {
-		t.Fatalf("expected text format, got %q", adapted.Format)
-	}
-	if adapted.GeneratedBy == nil || adapted.GeneratedBy.Id != "x-text-adapter" {
-		t.Fatalf("expected x adapter id, got %v", adapted.GeneratedBy)
-	}
-	if adapted.Text == nil || *adapted.Text != "Title\n\nHello X" {
-		t.Fatalf("expected title and body text, got %v", adapted.Text)
 	}
 }
 

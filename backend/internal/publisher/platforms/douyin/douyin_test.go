@@ -2,12 +2,10 @@ package douyin
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/datatypes"
 )
@@ -26,28 +24,6 @@ func TestDouyinPublisher_Publish_NoAccount(t *testing.T) {
 	assert.Contains(t, err.Error(), "requires an account with cookies")
 	assert.Empty(t, remoteID)
 	assert.Empty(t, url)
-}
-
-// TestDouyinPublisher_AdaptContent 验证正文适配逻辑
-func TestDouyinPublisher_AdaptContent(t *testing.T) {
-	p := &DouyinPublisher{}
-	project := &models.Project{
-		Title:         "抖音标题",
-		SourceContent: "<p>抖音测试正文 <strong>#自动化发布</strong></p>",
-	}
-
-	content, err := p.AdaptContent(project)
-
-	assert.NoError(t, err)
-	var adapted core.AdaptedContent
-	assert.NoError(t, json.Unmarshal(content, &adapted))
-	assert.NotNil(t, adapted.SchemaVersion)
-	assert.Equal(t, 1, *adapted.SchemaVersion)
-	assert.Equal(t, "text", string(adapted.Format))
-	assert.NotNil(t, adapted.GeneratedBy)
-	assert.Equal(t, "douyin-text-adapter", adapted.GeneratedBy.Id)
-	assert.NotNil(t, adapted.Text)
-	assert.Equal(t, "抖音测试正文 #自动化发布", *adapted.Text)
 }
 
 func TestExtractDouyinTextSupportsUnifiedSchema(t *testing.T) {

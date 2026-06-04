@@ -24,16 +24,6 @@ func (d *DouyinPublisher) ValidateConfig(config []byte) error {
 	return nil
 }
 
-func (d *DouyinPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	text := content.HTMLToText(project.SourceContent)
-	if text == "" {
-		text = strings.TrimSpace(project.SourceContent)
-	}
-	adapted := core.SystemAdaptedContent(project, "text", "douyin-text-adapter", text)
-	adapted.Text = core.String(text)
-	return json.Marshal(adapted)
-}
-
 func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
 	if account == nil {
 		return "", "", fmt.Errorf("douyin headless publishing requires an account with cookies")
