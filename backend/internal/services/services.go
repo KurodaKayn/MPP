@@ -13,6 +13,7 @@ type AIServiceClient = ai.AIServiceClient
 type AIServiceStream = ai.AIServiceStream
 
 type CollabDocumentService = collabdoc.Service
+type CollabDocumentSessionConfig = collabdoc.SessionConfig
 type DashboardService = dashboard.DashboardService
 type MemoryXOAuth2StateStore = platformaccount.MemoryXOAuth2StateStore
 type PublishJob = publishsvc.PublishJob
@@ -31,6 +32,7 @@ var ErrAIServiceUnavailable = ai.ErrAIServiceUnavailable
 var ErrExtensionCallbackTokenExpired = dashboard.ErrExtensionCallbackTokenExpired
 var ErrExtensionCallbackTokenInvalid = dashboard.ErrExtensionCallbackTokenInvalid
 var ErrForbidden = dashboard.ErrForbidden
+var ErrCollabDocumentForbidden = collabdoc.ErrDocumentForbidden
 var ErrInvalidCollabDocument = collabdoc.ErrInvalidDocument
 var ErrInvalidAIEditRequest = ai.ErrInvalidAIEditRequest
 var ErrInvalidPlatformAccount = platformaccount.ErrInvalidPlatformAccount

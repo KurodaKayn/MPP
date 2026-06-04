@@ -320,6 +320,17 @@ class CollabDocument(BaseModel):
     updated_at: AwareDatetime
 
 
+class PaginationCollabDocuments(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    items: list[CollabDocument]
+    page: int
+    limit: int
+    total: int
+    total_pages: int
+
+
 class PublishResult(BaseModel):
     model_config = ConfigDict(
         extra="forbid",

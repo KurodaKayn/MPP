@@ -262,6 +262,23 @@ export interface components {
     CreateCollabDocumentRequest: {
       title: string;
     };
+    UpdateCollabDocumentRequest: {
+      title: string;
+    };
+    CollabSessionLimits: {
+      max_message_bytes: number;
+      heartbeat_seconds: number;
+    };
+    CollabDocumentSession: {
+      /** Format: uuid */
+      document_id: string;
+      role: components["schemas"]["CollabDocumentRole"];
+      websocket_url: string;
+      token: string;
+      /** Format: date-time */
+      expires_at: string;
+      limits: components["schemas"]["CollabSessionLimits"];
+    };
     CollabDocument: {
       /** Format: uuid */
       id: string;
@@ -280,6 +297,13 @@ export interface components {
       created_at: string;
       /** Format: date-time */
       updated_at: string;
+    };
+    PaginationCollabDocuments: {
+      items: components["schemas"]["CollabDocument"][];
+      page: number;
+      limit: number;
+      total: number;
+      total_pages: number;
     };
     PublishResult: {
       status: components["schemas"]["PublishResultStatus"];
