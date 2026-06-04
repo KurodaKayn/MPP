@@ -16,11 +16,13 @@ import styles from "./content-editor.module.css";
 
 type UseContentTipTapEditorOptions = {
   content: ContentValue;
+  editable?: boolean;
   onContentChange: (content: ContentValue) => void;
 };
 
 export function useContentTipTapEditor({
   content,
+  editable = true,
   onContentChange,
 }: UseContentTipTapEditorOptions) {
   const locale = useAppLocale();
@@ -39,12 +41,17 @@ export function useContentTipTapEditor({
   const editor = useEditor({
     extensions,
     content: normalizeStoredHtml(content.html),
+    editable,
     editorProps: {
       attributes: {
         "aria-label": t("editor.ariaLabel"),
         class: styles.prose,
       },
       handleDrop: (_view, event) => {
+        if (!editable) {
+          return false;
+        }
+
         const files = getImageFiles(event.dataTransfer?.files);
 
         if (files.length === 0) {
@@ -55,6 +62,10 @@ export function useContentTipTapEditor({
         return insertImageFiles(files);
       },
       handlePaste: (_view, event) => {
+        if (!editable) {
+          return false;
+        }
+
         const files = getImageFiles(event.clipboardData?.files);
 
         if (files.length > 0) {
@@ -85,6 +96,14 @@ export function useContentTipTapEditor({
       return;
     }
 
+    editor.setEditable(editable);
+  }, [editable, editor]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) {
+      return;
+    }
+
     const nextHtml = normalizeStoredHtml(content.html);
 
     if (nextHtml === editor.getHTML()) {
@@ -95,7 +114,7 @@ export function useContentTipTapEditor({
   }, [content.html, editor]);
 
   function insertImageFiles(files: File[]) {
-    if (!editor || editor.isDestroyed) {
+    if (!editable || !editor || editor.isDestroyed) {
       return false;
     }
 
@@ -151,7 +170,7 @@ export function useContentTipTapEditor({
   }
 
   function setLink() {
-    if (!editor) {
+    if (!editable || !editor) {
       return;
     }
 

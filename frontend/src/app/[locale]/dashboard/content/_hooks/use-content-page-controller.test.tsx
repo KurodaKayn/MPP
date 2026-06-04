@@ -294,6 +294,7 @@ describe("useContentPageController", () => {
         { enabled: true, id: "pub-2", platform: "zhihu", status: "adapted" },
       ],
       source_content: "<p>Rendered body</p>",
+      role: "owner",
       status: "ready",
       title: "Post title",
       updated_at: "2026-05-30T12:00:00.000Z",
@@ -355,8 +356,11 @@ describe("useContentPageController", () => {
     const view = renderController("project-1");
 
     await act(async () => {
-      await Promise.resolve();
+      await flushPromises();
+      await flushPromises();
     });
+
+    expect(view.getController().header.projectRole).toBe("owner");
 
     act(() => {
       useContentPageStore.setState({
