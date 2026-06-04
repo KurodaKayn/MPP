@@ -83,6 +83,9 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
       BROWSER_WORKER_URL: ${BROWSER_WORKER_URL:-http://browser-worker:8081}
+      CONTENT_PIPELINE_HOST: ${CONTENT_PIPELINE_HOST:-content-pipeline-service}
+      CONTENT_PIPELINE_PORT: ${CONTENT_PIPELINE_PORT:-50051}
+      CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-false}
       COLLAB_TOKEN_SECRET: ${COLLAB_TOKEN_SECRET:?COLLAB_TOKEN_SECRET must be set}
       COLLAB_WEBSOCKET_URL_BASE: ${COLLAB_WEBSOCKET_URL_BASE:-ws://localhost}
     depends_on:
@@ -92,6 +95,8 @@ services:
         condition: service_healthy
       browser-worker:
         condition: service_healthy
+      content-pipeline-service:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ready >/dev/null"]
       interval: 30s
@@ -121,6 +126,9 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
       BROWSER_WORKER_URL: ${BROWSER_WORKER_URL:-http://browser-worker:8081}
+      CONTENT_PIPELINE_HOST: ${CONTENT_PIPELINE_HOST:-content-pipeline-service}
+      CONTENT_PIPELINE_PORT: ${CONTENT_PIPELINE_PORT:-50051}
+      CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-false}
     depends_on:
       db:
         condition: service_healthy
@@ -128,6 +136,8 @@ services:
         condition: service_healthy
       browser-worker:
         condition: service_healthy
+      content-pipeline-service:
+        condition: service_started
     # No healthcheck: this worker role does not expose an HTTP readiness endpoint.
     networks:
       - default
@@ -195,9 +205,9 @@ services:
       dockerfile: Dockerfile
     env_file: .env
     ports:
-      - "${CONTENT_PIPELINE_PORT:-50051}:50051"
+      - "${CONTENT_PIPELINE_PORT:-50051}:${CONTENT_PIPELINE_PORT:-50051}"
     environment:
-      CONTENT_PIPELINE_ADDR: 0.0.0.0:50051
+      CONTENT_PIPELINE_ADDR: "0.0.0.0:${CONTENT_PIPELINE_PORT:-50051}"
     # Add depends_on if it requires DB or Redis
     # depends_on:
     #   db:
