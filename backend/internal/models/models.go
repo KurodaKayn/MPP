@@ -69,6 +69,24 @@ type Project struct {
 	CreatedAt     time.Time `gorm:"index:idx_projects_user_status_created_at;index:idx_projects_status_created_at"`
 	UpdatedAt     time.Time
 	Publications  []ProjectPlatformPublication `gorm:"foreignKey:ProjectID"`
+	Collaborators []ProjectCollaborator        `gorm:"foreignKey:ProjectID"`
+}
+
+const (
+	ProjectRoleOwner  = "owner"
+	ProjectRoleEditor = "editor"
+	ProjectRoleViewer = "viewer"
+)
+
+type ProjectCollaborator struct {
+	ProjectID uuid.UUID `gorm:"type:uuid;primaryKey"`
+	UserID    uuid.UUID `gorm:"type:uuid;primaryKey;index:idx_project_collaborators_user_role"`
+	Role      string    `gorm:"not null;index:idx_project_collaborators_user_role"`
+	CreatedBy uuid.UUID `gorm:"type:uuid;not null;index"`
+	CreatedAt time.Time
+	Project   Project `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	User      User    `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	Creator   User    `gorm:"foreignKey:CreatedBy"`
 }
 
 type ProjectPlatformPublication struct {

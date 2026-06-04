@@ -323,6 +323,108 @@ func (h *UserDashboardHandler) SaveProjectPlatforms(c echo.Context) error {
 	return c.JSON(http.StatusOK, project)
 }
 
+func (h *UserDashboardHandler) ListProjectCollaborators(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+
+	resp, err := h.serviceFor(c).ListProjectCollaborators(projectID, userID)
+	if err != nil {
+		return sendProjectCollaboratorError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) AddProjectCollaborator(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+
+	req := new(dto.AddProjectCollaboratorRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	collaborator, err := h.serviceFor(c).AddProjectCollaborator(projectID, userID, *req)
+	if err != nil {
+		return sendProjectCollaboratorError(c, err)
+	}
+	return c.JSON(http.StatusCreated, collaborator)
+}
+
+func (h *UserDashboardHandler) UpdateProjectCollaborator(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	targetUserID, err := uuid.Parse(c.Param("userId"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid user UUID")
+	}
+
+	req := new(dto.UpdateProjectCollaboratorRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	collaborator, err := h.serviceFor(c).UpdateProjectCollaborator(projectID, userID, targetUserID, *req)
+	if err != nil {
+		return sendProjectCollaboratorError(c, err)
+	}
+	return c.JSON(http.StatusOK, collaborator)
+}
+
+func (h *UserDashboardHandler) RemoveProjectCollaborator(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	targetUserID, err := uuid.Parse(c.Param("userId"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid user UUID")
+	}
+
+	if err := h.serviceFor(c).RemoveProjectCollaborator(projectID, userID, targetUserID); err != nil {
+		return sendProjectCollaboratorError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func sendProjectCollaboratorError(c echo.Context, err error) error {
+	if errors.Is(err, services.ErrInvalidProject) || errors.Is(err, services.ErrInvalidProjectCollaborator) {
+		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return sendError(c, http.StatusNotFound, "not_found", "project collaborator not found")
+	}
+	if errors.Is(err, services.ErrForbidden) {
+		return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+	}
+	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+}
+
 func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {

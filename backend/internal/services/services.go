@@ -37,6 +37,7 @@ var ErrInvalidCollabDocument = collabdoc.ErrInvalidDocument
 var ErrInvalidAIEditRequest = ai.ErrInvalidAIEditRequest
 var ErrInvalidPlatformAccount = platformaccount.ErrInvalidPlatformAccount
 var ErrInvalidProject = dashboard.ErrInvalidProject
+var ErrInvalidProjectCollaborator = dashboard.ErrInvalidProjectCollaborator
 var ErrInvalidXOAuth2State = platformaccount.ErrInvalidXOAuth2State
 var ErrManualPublishUnsupported = dashboard.ErrManualPublishUnsupported
 var ErrPublicationAlreadyPublishing = publishsvc.ErrPublicationAlreadyPublishing
