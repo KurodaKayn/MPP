@@ -6,6 +6,7 @@ import {
   cancelBrowserSession,
   completeBrowserSession,
   createDashboardProject,
+  createProjectCollabSession,
   getBrowserSession,
   getDashboardProject,
   getDashboardProjects,
@@ -749,6 +750,35 @@ describe("dashboard api client", () => {
         credentials: "same-origin",
         headers: expect.any(Headers),
         method: "DELETE",
+      }),
+    );
+  });
+
+  it("creates a project collaboration session", async () => {
+    const session = {
+      document_id: "document-1",
+      expires_at: "2026-06-05T12:00:00Z",
+      limits: {
+        heartbeat_seconds: 30,
+        max_message_bytes: 524288,
+      },
+      role: "editor",
+      token: "collab-token",
+      websocket_url: "ws://collab.test/collab/documents/document-1",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(session));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createProjectCollabSession("project-1")).resolves.toEqual(
+      session,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/collab/session",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
       }),
     );
   });
