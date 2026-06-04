@@ -13,6 +13,7 @@ services:
     environment:
       NODE_ENV: development
       BACKEND_API_BASE_URL: http://backend:8080
+      MPP_FRONTEND_TURBOPACK_FS_CACHE: ${MPP_FRONTEND_TURBOPACK_FS_CACHE:-true}
       PORT: "3000"
       WATCHPACK_POLLING: "true"
     volumes:
