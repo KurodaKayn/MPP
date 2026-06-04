@@ -2,20 +2,27 @@ import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 
 import { createCollabAuthenticator } from "./auth/session-token.js";
-import { createCollabServer } from "./collab/hocuspocus.js";
+import { closeCollabServer, createCollabServer } from "./collab/hocuspocus.js";
 import { loadConfig } from "./config.js";
 import { createMetrics } from "./metrics.js";
+import { createPostgresDocumentPersistence } from "./persistence/document-persistence.js";
 
 import type { WebSocketLike } from "@hocuspocus/server";
 import type { FastifyInstance } from "fastify";
 import type { CollabConfig } from "./config.js";
+import type { DocumentPersistence } from "./persistence/document-persistence.js";
 
 interface CollabDocumentParams {
   documentId: string;
 }
 
+export interface BuildAppOptions {
+  persistence?: DocumentPersistence;
+}
+
 export async function buildApp(
   config: CollabConfig = loadConfig(),
+  options: BuildAppOptions = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
@@ -24,7 +31,9 @@ export async function buildApp(
   });
   const metrics = createMetrics();
   const authenticator = createCollabAuthenticator(config);
-  const collabServer = createCollabServer(config, authenticator);
+  const persistence =
+    options.persistence ?? createPostgresDocumentPersistence(config);
+  const collabServer = createCollabServer(config, authenticator, persistence);
 
   await app.register(websocket);
 
@@ -32,14 +41,25 @@ export async function buildApp(
     status: "healthy",
   }));
 
-  app.get("/ready", async () => ({
-    status: "ready",
-    dependencies: {
-      database_configured: Boolean(config.DATABASE_URL),
-      redis_addr: config.REDIS_ADDR,
-      token_secret_configured: Boolean(config.COLLAB_TOKEN_SECRET),
-    },
-  }));
+  app.get("/ready", async (_request, reply) => {
+    try {
+      await persistence.ping();
+      return {
+        status: "ready",
+        dependencies: {
+          database: "ready",
+          redis_addr: config.REDIS_ADDR,
+          token_secret_configured: Boolean(config.COLLAB_TOKEN_SECRET),
+        },
+      };
+    } catch {
+      reply.code(503);
+      return {
+        status: "not_ready",
+        dependency: "database",
+      };
+    }
+  });
 
   app.get("/metrics", async (_request, reply) => {
     reply.header("Content-Type", metrics.registry.contentType);
@@ -61,8 +81,8 @@ export async function buildApp(
   );
 
   app.addHook("onClose", async () => {
-    collabServer.flushPendingStores();
-    collabServer.closeConnections();
+    await closeCollabServer(collabServer);
+    await persistence.close();
   });
 
   return app;
