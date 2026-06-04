@@ -56,6 +56,8 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
   constructor(
     private readonly database: Queryable & { end?: () => Promise<void> },
     private readonly flushIntervalMs = 300,
+    private readonly maxUpdatesPerBatch = 32,
+    private readonly updateRetentionDays = 30,
   ) {}
 
   async load(documentId: string, document: Document): Promise<void> {
@@ -101,13 +103,12 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
     pending.push({ update: new Uint8Array(update), actorUserId });
     this.pendingUpdates.set(documentId, pending);
 
-    if (!this.flushTimers.has(documentId)) {
-      const timer = setTimeout(() => {
-        this.flushTimers.delete(documentId);
-        void this.flushDocument(documentId).catch(() => {});
-      }, this.flushIntervalMs);
-      this.flushTimers.set(documentId, timer);
+    if (pending.length >= this.maxUpdatesPerBatch) {
+      await this.flushDocument(documentId);
+      return;
     }
+
+    this.scheduleFlush(documentId);
   }
 
   async store(documentId: string, document: Document): Promise<void> {
@@ -139,6 +140,7 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
         `,
         [documentId, state, stateVector, seq, state.length],
       );
+      await this.pruneCompactedBatches(documentId, seq);
       await this.database.query("COMMIT");
     } catch (error) {
       await this.database.query("ROLLBACK");
@@ -162,6 +164,22 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
   async close(): Promise<void> {
     await this.flush();
     await this.database.end?.();
+  }
+
+  private scheduleFlush(documentId: string): void {
+    if (this.flushTimers.has(documentId)) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      this.flushTimers.delete(documentId);
+      void this.flushDocument(documentId).catch(() => {
+        if ((this.pendingUpdates.get(documentId)?.length ?? 0) > 0) {
+          this.scheduleFlush(documentId);
+        }
+      });
+    }, this.flushIntervalMs);
+    this.flushTimers.set(documentId, timer);
   }
 
   private async flushDocument(documentId: string): Promise<void> {
@@ -265,6 +283,21 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
     }
     return Number(row.current_seq);
   }
+
+  private async pruneCompactedBatches(
+    documentId: string,
+    compactedUntilSeq: number,
+  ): Promise<void> {
+    await this.database.query(
+      `
+        DELETE FROM collab_document_update_batches
+        WHERE document_id = $1
+          AND to_seq <= $2
+          AND created_at < NOW() - make_interval(days => $3)
+      `,
+      [documentId, compactedUntilSeq, this.updateRetentionDays],
+    );
+  }
 }
 
 function lastActorUserId(pending: PendingUpdate[]): string | undefined {
@@ -293,5 +326,7 @@ export function createPostgresDocumentPersistence(
   return new PostgresDocumentPersistence(
     new Pool(poolConfig),
     config.COLLAB_UPDATE_FLUSH_MS,
+    config.COLLAB_UPDATE_FLUSH_MAX_COUNT,
+    config.COLLAB_UPDATE_RETENTION_DAYS,
   );
 }
