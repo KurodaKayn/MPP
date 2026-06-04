@@ -154,6 +154,43 @@ describe("PostgresDocumentPersistence", () => {
     expect(restored.getMap("content").get("body")).toBe("Second");
   });
 
+  it("flushes immediately when the pending update count reaches the batch limit", async () => {
+    const database = new FakeDatabase();
+    database.results = [
+      [
+        {
+          current_seq: 3,
+        },
+      ],
+    ];
+    const persistence = new PostgresDocumentPersistence(database, 10_000, 2);
+    const first = new Document("first");
+    first.getMap("content").set("title", "First");
+    const second = new Document("second");
+    second.getMap("content").set("body", "Second");
+
+    await persistence.appendUpdate(
+      "11111111-1111-4111-8111-111111111111",
+      encodeStateAsUpdate(first),
+    );
+    expect(database.calls).toEqual([]);
+
+    await persistence.appendUpdate(
+      "11111111-1111-4111-8111-111111111111",
+      encodeStateAsUpdate(second),
+    );
+
+    expect(database.calls.map((call) => call.text.trim())).toEqual([
+      "BEGIN",
+      expect.stringContaining("SELECT current_seq"),
+      expect.stringContaining("INSERT INTO collab_document_update_batches"),
+      expect.stringContaining("UPDATE collab_documents"),
+      "COMMIT",
+    ]);
+    expect(database.calls[2]?.values?.[1]).toBe(4);
+    expect(database.calls[2]?.values?.[2]).toBe(5);
+  });
+
   it("upserts the current Yjs snapshot", async () => {
     const database = new FakeDatabase();
     database.results = [
@@ -181,6 +218,14 @@ describe("PostgresDocumentPersistence", () => {
     expect(call?.values?.[3]).toBe(12);
     expect(call?.values?.[4]).toBe(state.length);
     expect(call?.values?.[2]).toEqual(Buffer.from(encodeStateVector(document)));
-    expect(database.calls[3]?.text).toBe("COMMIT");
+    expect(database.calls[3]?.text).toContain(
+      "DELETE FROM collab_document_update_batches",
+    );
+    expect(database.calls[3]?.values).toEqual([
+      "11111111-1111-4111-8111-111111111111",
+      12,
+      30,
+    ]);
+    expect(database.calls[4]?.text).toBe("COMMIT");
   });
 });
