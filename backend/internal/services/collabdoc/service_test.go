@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
@@ -209,6 +210,83 @@ func TestUpdateDocumentTitleRejectsInvalidInput(t *testing.T) {
 	require.ErrorIs(t, err, collabdoc.ErrInvalidDocument)
 
 	_, err = service.UpdateDocumentTitle(context.Background(), uuid.New(), uuid.New(), "   ")
+	require.ErrorIs(t, err, collabdoc.ErrInvalidDocument)
+}
+
+func TestCreateSessionReturnsSignedOwnerSession(t *testing.T) {
+	db, service := setupCollabDocumentServiceTest(t)
+	owner := createCollabTestUser(t, db, "session-owner")
+	document := createCollabTestDocument(t, db, owner.ID, "Session Doc", time.Now().Add(time.Hour))
+	secret := []byte("collab-secret")
+	service.UseSessionConfig(collabdoc.SessionConfig{
+		TokenSecret:      secret,
+		WebsocketURLBase: "ws://collab.test",
+		TTL:              time.Minute,
+		MaxMessageBytes:  1234,
+		HeartbeatSeconds: 12,
+	})
+
+	session, err := service.CreateSession(context.Background(), owner.ID, document.ID)
+
+	require.NoError(t, err)
+	require.Equal(t, document.ID, session.DocumentID)
+	require.Equal(t, models.CollabDocumentRoleEditor, session.Role)
+	require.Equal(t, "ws://collab.test/collab/documents/"+document.ID.String(), session.WebsocketURL)
+	require.Equal(t, 1234, session.Limits.MaxMessageBytes)
+	require.Equal(t, 12, session.Limits.HeartbeatSeconds)
+	require.WithinDuration(t, time.Now().Add(time.Minute), session.ExpiresAt, 3*time.Second)
+
+	claims := jwt.MapClaims{}
+	parsed, err := jwt.ParseWithClaims(session.Token, claims, func(token *jwt.Token) (interface{}, error) {
+		return secret, nil
+	})
+	require.NoError(t, err)
+	require.True(t, parsed.Valid)
+	require.Equal(t, owner.ID.String(), claims["user_id"])
+	require.Equal(t, document.ID.String(), claims["document_id"])
+	require.Equal(t, models.CollabDocumentRoleEditor, claims["role"])
+	require.Equal(t, "collab-session", claims["purpose"])
+	require.Equal(t, "mpp-backend", claims["iss"])
+}
+
+func TestCreateSessionUsesCollaboratorRole(t *testing.T) {
+	db, service := setupCollabDocumentServiceTest(t)
+	owner := createCollabTestUser(t, db, "session-doc-owner")
+	viewer := createCollabTestUser(t, db, "session-viewer")
+	document := createCollabTestDocument(t, db, owner.ID, "Shared Session Doc", time.Now().Add(time.Hour))
+	require.NoError(t, db.Create(&models.CollabDocumentCollaborator{
+		DocumentID: document.ID,
+		UserID:     viewer.ID,
+		Role:       models.CollabDocumentRoleViewer,
+		CreatedBy:  owner.ID,
+	}).Error)
+	service.UseSessionConfig(collabdoc.SessionConfig{TokenSecret: []byte("collab-secret")})
+
+	session, err := service.CreateSession(context.Background(), viewer.ID, document.ID)
+
+	require.NoError(t, err)
+	require.Equal(t, models.CollabDocumentRoleViewer, session.Role)
+}
+
+func TestCreateSessionRejectsInaccessibleDocument(t *testing.T) {
+	db, service := setupCollabDocumentServiceTest(t)
+	owner := createCollabTestUser(t, db, "private-owner")
+	blocked := createCollabTestUser(t, db, "private-blocked")
+	document := createCollabTestDocument(t, db, owner.ID, "Private Session Doc", time.Now().Add(time.Hour))
+	service.UseSessionConfig(collabdoc.SessionConfig{TokenSecret: []byte("collab-secret")})
+
+	_, err := service.CreateSession(context.Background(), blocked.ID, document.ID)
+
+	require.ErrorIs(t, err, collabdoc.ErrDocumentForbidden)
+}
+
+func TestCreateSessionRejectsMissingTokenSecret(t *testing.T) {
+	db, service := setupCollabDocumentServiceTest(t)
+	owner := createCollabTestUser(t, db, "missing-secret-owner")
+	document := createCollabTestDocument(t, db, owner.ID, "No Secret", time.Now().Add(time.Hour))
+
+	_, err := service.CreateSession(context.Background(), owner.ID, document.ID)
+
 	require.ErrorIs(t, err, collabdoc.ErrInvalidDocument)
 }
 
