@@ -85,6 +85,10 @@ export interface components {
     /** @enum {string} */
     ProjectStatus: "draft" | "ready" | "publishing" | "published" | "failed";
     /** @enum {string} */
+    ProjectRole: "owner" | "editor" | "viewer";
+    /** @enum {string} */
+    ProjectCollaboratorRole: "editor" | "viewer";
+    /** @enum {string} */
     PublicationStatus:
       | "pending"
       | "adapted"
@@ -326,6 +330,7 @@ export interface components {
       user_id: string;
       title: string;
       status: components["schemas"]["ProjectStatus"];
+      role: components["schemas"]["ProjectRole"];
       /** Format: date-time */
       created_at: string;
       /** Format: date-time */
@@ -334,6 +339,33 @@ export interface components {
     };
     ProjectDetail: components["schemas"]["ProjectListItem"] & {
       source_content: string;
+    };
+    AddProjectCollaboratorRequest: {
+      /** Format: uuid */
+      user_id?: string;
+      /** Format: email */
+      email?: string;
+      role: components["schemas"]["ProjectCollaboratorRole"];
+    };
+    UpdateProjectCollaboratorRequest: {
+      role: components["schemas"]["ProjectCollaboratorRole"];
+    };
+    ProjectCollaborator: {
+      /** Format: uuid */
+      project_id: string;
+      /** Format: uuid */
+      user_id: string;
+      username: string;
+      /** Format: email */
+      email: string;
+      role: components["schemas"]["ProjectCollaboratorRole"];
+      /** Format: uuid */
+      created_by: string;
+      /** Format: date-time */
+      created_at: string;
+    };
+    ProjectCollaboratorsResponse: {
+      items: components["schemas"]["ProjectCollaborator"][];
     };
     PaginationProjects: {
       items: components["schemas"]["ProjectListItem"][];

@@ -97,6 +97,19 @@ const (
 	PlatformAccountStatusUntested     PlatformAccountStatus = "untested"
 )
 
+// Defines values for ProjectCollaboratorRole.
+const (
+	ProjectCollaboratorRoleEditor ProjectCollaboratorRole = "editor"
+	ProjectCollaboratorRoleViewer ProjectCollaboratorRole = "viewer"
+)
+
+// Defines values for ProjectRole.
+const (
+	ProjectRoleEditor ProjectRole = "editor"
+	ProjectRoleOwner  ProjectRole = "owner"
+	ProjectRoleViewer ProjectRole = "viewer"
+)
+
 // Defines values for ProjectStatus.
 const (
 	ProjectStatusDraft      ProjectStatus = "draft"
@@ -233,6 +246,13 @@ type AdaptedContent struct {
 	SourceRevision *string `json:"source_revision,omitempty"`
 	Summary        *string `json:"summary,omitempty"`
 	Text           *string `json:"text,omitempty"`
+}
+
+// AddProjectCollaboratorRequest defines model for AddProjectCollaboratorRequest.
+type AddProjectCollaboratorRequest struct {
+	Email  *openapi_types.Email    `json:"email,omitempty"`
+	Role   ProjectCollaboratorRole `json:"role"`
+	UserId *openapi_types.UUID     `json:"user_id,omitempty"`
 }
 
 // BrowserSession defines model for BrowserSession.
@@ -466,11 +486,31 @@ type PaginationProjects struct {
 // PlatformAccountStatus defines model for PlatformAccountStatus.
 type PlatformAccountStatus string
 
+// ProjectCollaborator defines model for ProjectCollaborator.
+type ProjectCollaborator struct {
+	CreatedAt time.Time               `json:"created_at"`
+	CreatedBy openapi_types.UUID      `json:"created_by"`
+	Email     openapi_types.Email     `json:"email"`
+	ProjectId openapi_types.UUID      `json:"project_id"`
+	Role      ProjectCollaboratorRole `json:"role"`
+	UserId    openapi_types.UUID      `json:"user_id"`
+	Username  string                  `json:"username"`
+}
+
+// ProjectCollaboratorRole defines model for ProjectCollaboratorRole.
+type ProjectCollaboratorRole string
+
+// ProjectCollaboratorsResponse defines model for ProjectCollaboratorsResponse.
+type ProjectCollaboratorsResponse struct {
+	Items []ProjectCollaborator `json:"items"`
+}
+
 // ProjectDetail defines model for ProjectDetail.
 type ProjectDetail struct {
 	CreatedAt     time.Time            `json:"created_at"`
 	Id            openapi_types.UUID   `json:"id"`
 	Publications  []PublicationSummary `json:"publications"`
+	Role          ProjectRole          `json:"role"`
 	SourceContent string               `json:"source_content"`
 	Status        ProjectStatus        `json:"status"`
 	Title         string               `json:"title"`
@@ -483,6 +523,7 @@ type ProjectListItem struct {
 	CreatedAt    time.Time            `json:"created_at"`
 	Id           openapi_types.UUID   `json:"id"`
 	Publications []PublicationSummary `json:"publications"`
+	Role         ProjectRole          `json:"role"`
 	Status       ProjectStatus        `json:"status"`
 	Title        string               `json:"title"`
 	UpdatedAt    time.Time            `json:"updated_at"`
@@ -494,6 +535,9 @@ type ProjectPublications struct {
 	Items     []PublicationDetail `json:"items"`
 	ProjectId openapi_types.UUID  `json:"project_id"`
 }
+
+// ProjectRole defines model for ProjectRole.
+type ProjectRole string
 
 // ProjectStatus defines model for ProjectStatus.
 type ProjectStatus string
@@ -595,6 +639,11 @@ type StartPublishBrowserSessionResult struct {
 // UpdateCollabDocumentRequest defines model for UpdateCollabDocumentRequest.
 type UpdateCollabDocumentRequest struct {
 	Title string `json:"title"`
+}
+
+// UpdateProjectCollaboratorRequest defines model for UpdateProjectCollaboratorRequest.
+type UpdateProjectCollaboratorRequest struct {
+	Role ProjectCollaboratorRole `json:"role"`
 }
 
 // WechatAccount defines model for WechatAccount.
