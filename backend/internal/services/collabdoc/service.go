@@ -10,7 +10,10 @@ import (
 	"gorm.io/gorm"
 )
 
-var ErrInvalidDocument = errors.New("invalid collaborative document")
+var (
+	ErrInvalidDocument   = errors.New("invalid collaborative document")
+	ErrDocumentForbidden = errors.New("collaborative document forbidden")
+)
 
 const (
 	defaultDocumentListLimit = 20
@@ -99,6 +102,34 @@ func (s *Service) ListDocuments(ctx context.Context, userID uuid.UUID, page, lim
 		Total:      total,
 		TotalPages: totalPages(total, limit),
 	}, nil
+}
+
+func (s *Service) GetDocument(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) (*models.CollabDocument, error) {
+	if userID == uuid.Nil || documentID == uuid.Nil {
+		return nil, ErrInvalidDocument
+	}
+
+	db := s.WithContext(ctx).db
+	var document models.CollabDocument
+	if err := db.First(&document, "id = ?", documentID).Error; err != nil {
+		return nil, err
+	}
+	if document.OwnerUserID == userID {
+		return &document, nil
+	}
+
+	var collaboratorCount int64
+	if err := db.
+		Model(&models.CollabDocumentCollaborator{}).
+		Where("document_id = ? AND user_id = ?", documentID, userID).
+		Count(&collaboratorCount).Error; err != nil {
+		return nil, err
+	}
+	if collaboratorCount == 0 {
+		return nil, ErrDocumentForbidden
+	}
+
+	return &document, nil
 }
 
 func normalizePagination(page, limit int) (int, int) {

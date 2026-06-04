@@ -119,6 +119,49 @@ func TestListDocumentsRejectsInvalidUser(t *testing.T) {
 	require.ErrorIs(t, err, collabdoc.ErrInvalidDocument)
 }
 
+func TestGetDocumentAllowsOwnersAndCollaborators(t *testing.T) {
+	db, service := setupCollabDocumentServiceTest(t)
+	user := createCollabTestUser(t, db, "get-user")
+	other := createCollabTestUser(t, db, "get-other")
+	owned := createCollabTestDocument(t, db, user.ID, "Owned", time.Now().Add(time.Hour))
+	shared := createCollabTestDocument(t, db, other.ID, "Shared", time.Now().Add(time.Hour))
+	require.NoError(t, db.Create(&models.CollabDocumentCollaborator{
+		DocumentID: shared.ID,
+		UserID:     user.ID,
+		Role:       models.CollabDocumentRoleEditor,
+		CreatedBy:  other.ID,
+	}).Error)
+
+	gotOwned, err := service.GetDocument(context.Background(), user.ID, owned.ID)
+	require.NoError(t, err)
+	require.Equal(t, owned.ID, gotOwned.ID)
+
+	gotShared, err := service.GetDocument(context.Background(), user.ID, shared.ID)
+	require.NoError(t, err)
+	require.Equal(t, shared.ID, gotShared.ID)
+}
+
+func TestGetDocumentRejectsInaccessibleDocument(t *testing.T) {
+	db, service := setupCollabDocumentServiceTest(t)
+	user := createCollabTestUser(t, db, "blocked-user")
+	other := createCollabTestUser(t, db, "blocked-other")
+	hidden := createCollabTestDocument(t, db, other.ID, "Hidden", time.Now().Add(time.Hour))
+
+	_, err := service.GetDocument(context.Background(), user.ID, hidden.ID)
+
+	require.ErrorIs(t, err, collabdoc.ErrDocumentForbidden)
+}
+
+func TestGetDocumentRejectsInvalidInput(t *testing.T) {
+	_, service := setupCollabDocumentServiceTest(t)
+
+	_, err := service.GetDocument(context.Background(), uuid.Nil, uuid.New())
+	require.ErrorIs(t, err, collabdoc.ErrInvalidDocument)
+
+	_, err = service.GetDocument(context.Background(), uuid.New(), uuid.Nil)
+	require.ErrorIs(t, err, collabdoc.ErrInvalidDocument)
+}
+
 func createCollabTestUser(t *testing.T, db *gorm.DB, username string) models.User {
 	t.Helper()
 

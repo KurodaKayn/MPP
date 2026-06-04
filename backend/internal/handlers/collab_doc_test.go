@@ -120,6 +120,46 @@ func TestCollabDocumentHandlerListDocuments(t *testing.T) {
 	require.False(t, ids[hidden.ID])
 }
 
+func TestCollabDocumentHandlerGetDocument(t *testing.T) {
+	e := echo.New()
+	db, handler := setupCollabDocumentHandlerTest(t)
+	user := createCollabHandlerTestUser(t, db, "get-owner")
+	document := createCollabHandlerTestDocument(t, db, user.ID, "Readable Doc", time.Now().Add(time.Hour))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/collab/documents/"+document.ID.String(), nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(document.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.GetDocument(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp contracts.CollabDocument
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, document.ID, resp.Id)
+	require.Equal(t, "Readable Doc", resp.Title)
+}
+
+func TestCollabDocumentHandlerGetDocumentRejectsInaccessibleDocument(t *testing.T) {
+	e := echo.New()
+	db, handler := setupCollabDocumentHandlerTest(t)
+	user := createCollabHandlerTestUser(t, db, "blocked-reader")
+	other := createCollabHandlerTestUser(t, db, "blocked-owner")
+	document := createCollabHandlerTestDocument(t, db, other.ID, "Blocked Doc", time.Now().Add(time.Hour))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/collab/documents/"+document.ID.String(), nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(document.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.GetDocument(c))
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
 func createCollabHandlerTestUser(t *testing.T, db *gorm.DB, username string) models.User {
 	t.Helper()
 
