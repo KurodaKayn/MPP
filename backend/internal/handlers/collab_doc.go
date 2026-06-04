@@ -105,6 +105,39 @@ func (h *CollabDocumentHandler) GetDocument(c echo.Context) error {
 	return c.JSON(http.StatusOK, collabDocumentResponse(document))
 }
 
+func (h *CollabDocumentHandler) UpdateDocument(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	documentID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid document UUID")
+	}
+
+	req := new(contracts.UpdateCollabDocumentRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	document, err := h.serviceFor(c).UpdateDocumentTitle(c.Request().Context(), userID, documentID, req.Title)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidCollabDocument) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "title is required")
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "document not found")
+		}
+		if errors.Is(err, services.ErrCollabDocumentForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, collabDocumentResponse(document))
+}
+
 func intQueryParam(c echo.Context, name string) int {
 	value, _ := strconv.Atoi(c.QueryParam(name))
 	return value
