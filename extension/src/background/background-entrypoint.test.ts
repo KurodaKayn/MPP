@@ -55,9 +55,14 @@ const originsMock = vi.hoisted(() => {
   };
 });
 
+const authMock = vi.hoisted(() => ({
+  persistExtensionAuthToken: vi.fn(() => Promise.resolve(false)),
+}));
+
 vi.mock("./handoff", () => handoffMock);
 vi.mock("./tabs", () => tabsMock);
 vi.mock("./origins", () => originsMock);
+vi.mock("../backend/auth", () => authMock);
 
 vi.stubGlobal("defineBackground", (callback: () => void) => callback);
 vi.stubGlobal("browser", {
@@ -348,6 +353,27 @@ describe("bridge compatibility", () => {
     });
 
     expect(handoffMock.getCurrentHandoff).not.toHaveBeenCalled();
+  });
+});
+
+describe("extension auth token persistence", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("persists web login tokens forwarded from the page bridge", async () => {
+    authMock.persistExtensionAuthToken.mockResolvedValue(true);
+
+    await expect(
+      handleBackgroundMessage({
+        type: "extension.persist_auth_token",
+        token: "Bearer web-token",
+      }),
+    ).resolves.toEqual({ persisted: true });
+
+    expect(authMock.persistExtensionAuthToken).toHaveBeenCalledWith(
+      "Bearer web-token",
+    );
   });
 });
 

@@ -18,6 +18,7 @@ import {
   recordAndCallbackEvent,
   startPublishingTabs,
 } from "../src/background/tabs";
+import { persistExtensionAuthToken } from "../src/backend/auth";
 import {
   HANDOFF_SCHEMA_VERSION,
   type HandoffAsset,
@@ -336,6 +337,12 @@ export async function handleBackgroundMessage(
 
   if (message.type === "extension.start_handoff") {
     return acceptExtensionHandoff(message.handoff);
+  }
+
+  if (message.type === "extension.persist_auth_token") {
+    return {
+      persisted: await persistExtensionAuthToken(message.token),
+    };
   }
 
   if (message.type === "bridge.get_status") {
