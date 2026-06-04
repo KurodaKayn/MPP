@@ -7,6 +7,7 @@ import {
   Settings,
   PlusCircle,
   Key,
+  UsersRound,
 } from "lucide-react";
 
 import Image from "next/image";
@@ -36,6 +37,10 @@ const data = {
     {
       ...dashboardRoutes.content,
       icon: PlusCircle,
+    },
+    {
+      ...dashboardRoutes.collab,
+      icon: UsersRound,
     },
     {
       ...dashboardRoutes.posts,

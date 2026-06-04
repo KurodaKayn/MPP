@@ -1,4 +1,9 @@
-import { formatBearerToken, getStoredAuthToken } from "../../auth/client";
+import {
+  clearAuthSession,
+  clearServerAuthSession,
+  formatBearerToken,
+  getStoredAuthToken,
+} from "@/lib/auth/client";
 import type { AITextStreamOptions } from "./types";
 
 type ApiErrorResponse = {
@@ -18,6 +23,24 @@ async function getDashboardErrorMessage(response: Response) {
   } catch {
     return fallback;
   }
+}
+
+function isExpiredAuthError(response: Response, message: string) {
+  return (
+    response.status === 401 ||
+    message.trim().toLowerCase() === "invalid or expired jwt"
+  );
+}
+
+async function createDashboardError(response: Response) {
+  const message = await getDashboardErrorMessage(response);
+
+  if (isExpiredAuthError(response, message) && typeof window !== "undefined") {
+    clearAuthSession();
+    await clearServerAuthSession();
+  }
+
+  return new Error(message);
 }
 
 export async function fetchDashboard<T>(
@@ -44,7 +67,7 @@ export async function fetchDashboard<T>(
   });
 
   if (!response.ok) {
-    throw new Error(await getDashboardErrorMessage(response));
+    throw await createDashboardError(response);
   }
 
   return response.json() as Promise<T>;
@@ -74,7 +97,7 @@ export async function streamDashboardText(
   });
 
   if (!response.ok) {
-    throw new Error(await getDashboardErrorMessage(response));
+    throw await createDashboardError(response);
   }
 
   if (!response.body) {
