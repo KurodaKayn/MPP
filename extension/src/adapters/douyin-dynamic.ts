@@ -20,28 +20,28 @@ import {
 const TEXT_TARGET_SELECTORS = [
   '.ProseMirror[contenteditable="true"]',
   '[role="textbox"][contenteditable="true"]',
-  '[data-placeholder="请输入正文"]',
+  '[data-placeholder="\u8bf7\u8f93\u5165\u6b63\u6587"]',
   '[contenteditable="true"]',
-  'textarea[placeholder*="描述"]',
-  'textarea[placeholder*="标题"]',
-  'textarea[placeholder*="文案"]',
+  'textarea[placeholder*="\u63cf\u8ff0"]',
+  'textarea[placeholder*="\u6807\u9898"]',
+  'textarea[placeholder*="\u6587\u6848"]',
   "textarea",
 ];
 const ARTICLE_TITLE_SELECTORS = [
-  'input[placeholder*="请输入文章标题"]',
-  'input[placeholder*="文章标题"]',
+  'input[placeholder*="\u8bf7\u8f93\u5165\u6587\u7ae0\u6807\u9898"]',
+  'input[placeholder*="\u6587\u7ae0\u6807\u9898"]',
 ];
 const ARTICLE_SUMMARY_SELECTORS = [
-  'input[placeholder*="添加内容摘要"]',
-  'input[placeholder*="文章精彩部分"]',
+  'input[placeholder*="\u6dfb\u52a0\u5185\u5bb9\u6458\u8981"]',
+  'input[placeholder*="\u6587\u7ae0\u7cbe\u5f69\u90e8\u5206"]',
 ];
 const FILE_INPUT_SELECTORS = [
   'input[type="file"][accept*="video"]',
   'input[type="file"][accept*="image"]',
   'input[type="file"]',
 ];
-const ARTICLE_BUTTON_TEXT = "我要发文";
-const ARTICLE_IMAGE_UPLOAD_TEXT = "点击上传图片";
+const ARTICLE_BUTTON_TEXT = "\u6211\u8981\u53d1\u6587";
+const ARTICLE_IMAGE_UPLOAD_TEXT = "\u70b9\u51fb\u4e0a\u4f20\u56fe\u7247";
 const DOUYIN_ARTICLE_PATH = "/creator-micro/content/post/article";
 const ELEMENT_WAIT_TIMEOUT_MS = 10_000;
 const ELEMENT_WAIT_INTERVAL_MS = 250;
