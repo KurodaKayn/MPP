@@ -14,10 +14,6 @@ interface CollabDocumentParams {
   documentId: string;
 }
 
-interface CollabDocumentQuery {
-  token?: string;
-}
-
 export async function buildApp(
   config: CollabConfig = loadConfig(),
 ): Promise<FastifyInstance> {
@@ -50,15 +46,10 @@ export async function buildApp(
     return metrics.registry.metrics();
   });
 
-  app.get<{ Params: CollabDocumentParams; Querystring: CollabDocumentQuery }>(
+  app.get<{ Params: CollabDocumentParams }>(
     config.COLLAB_WS_PATH,
     { websocket: true },
     (socket, request) => {
-      if (!request.query.token) {
-        socket.close(1008, "collab session token required");
-        return;
-      }
-
       collabServer.handleConnection(
         socket as unknown as WebSocketLike,
         request.raw as unknown as Request,
