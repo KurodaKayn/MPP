@@ -132,6 +132,29 @@ func (s *Service) GetDocument(ctx context.Context, userID uuid.UUID, documentID 
 	return &document, nil
 }
 
+func (s *Service) UpdateDocumentTitle(ctx context.Context, userID uuid.UUID, documentID uuid.UUID, title string) (*models.CollabDocument, error) {
+	title = strings.TrimSpace(title)
+	if userID == uuid.Nil || documentID == uuid.Nil || title == "" {
+		return nil, ErrInvalidDocument
+	}
+
+	db := s.WithContext(ctx).db
+	var document models.CollabDocument
+	if err := db.First(&document, "id = ?", documentID).Error; err != nil {
+		return nil, err
+	}
+	if document.OwnerUserID != userID {
+		return nil, ErrDocumentForbidden
+	}
+
+	if err := db.Model(&document).Update("title", title).Error; err != nil {
+		return nil, err
+	}
+
+	document.Title = title
+	return &document, nil
+}
+
 func normalizePagination(page, limit int) (int, int) {
 	if page < 1 {
 		page = 1
