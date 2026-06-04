@@ -9,6 +9,8 @@ export type DraftFormat = ContractSchema<"DraftFormat">;
 export type PublishPlatform = ContractSchema<"PublishPlatform">;
 export type PublicationStatus = ContractSchema<"PublicationStatus">;
 export type ProjectStatus = ContractSchema<"ProjectStatus">;
+export type ProjectRole = ContractSchema<"ProjectRole">;
+export type ProjectCollaboratorRole = ContractSchema<"ProjectCollaboratorRole">;
 export type PublicationSummary = ContractSchema<"PublicationSummary">;
 export type PublicationDetail = ContractSchema<"PublicationDetail">;
 export type ProjectPublications = ContractSchema<"ProjectPublications">;
@@ -36,6 +38,12 @@ export type CreateProjectInput = {
 };
 
 export type UpdateProjectInput = CreateProjectInput;
+
+export type AddProjectCollaboratorInput =
+  ContractSchema<"AddProjectCollaboratorRequest">;
+
+export type UpdateProjectCollaboratorInput =
+  ContractSchema<"UpdateProjectCollaboratorRequest">;
 
 export type SaveProjectContentInput = Omit<CreateProjectInput, "platforms">;
 
@@ -116,4 +124,7 @@ export type CancelBrowserSessionResult =
 
 export type ProjectListItem = ContractSchema<"ProjectListItem">;
 export type ProjectDetail = ContractSchema<"ProjectDetail">;
+export type ProjectCollaborator = ContractSchema<"ProjectCollaborator">;
+export type ProjectCollaboratorsResponse =
+  ContractSchema<"ProjectCollaboratorsResponse">;
 export type PaginatedProjects = ContractSchema<"PaginationProjects">;

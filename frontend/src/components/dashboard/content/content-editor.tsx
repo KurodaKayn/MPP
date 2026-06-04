@@ -18,6 +18,7 @@ import { streamAIContentEdit } from "@/lib/dashboard/api";
 import type { ContentValue } from "@/lib/content/types";
 
 type ContentEditorProps = {
+  canEdit?: boolean;
   title: string;
   content: ContentValue;
   onTitleChange: (title: string) => void;
@@ -26,6 +27,7 @@ type ContentEditorProps = {
 };
 
 export function ContentEditor({
+  canEdit = true,
   title,
   content,
   onTitleChange,
@@ -38,6 +40,7 @@ export function ContentEditor({
   const { editor, handleImageSelect, imageCount, setLink } =
     useContentTipTapEditor({
       content,
+      editable: canEdit,
       onContentChange,
     });
   const blockLabel = getCurrentBlockLabel(editor, t);
@@ -57,7 +60,11 @@ export function ContentEditor({
       <Card className="flex flex-col gap-4 p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
-            <ContentEditorTitle title={title} onTitleChange={onTitleChange} />
+            <ContentEditorTitle
+              disabled={!canEdit}
+              title={title}
+              onTitleChange={onTitleChange}
+            />
           </div>
           {viewSwitcher ? <div className="shrink-0">{viewSwitcher}</div> : null}
         </div>
@@ -71,7 +78,7 @@ export function ContentEditor({
         <AIEditAssistant
           title={t("ai.editTitle")}
           source={aiSource}
-          disabled={!editor}
+          disabled={!canEdit || !editor}
           onApply={applyAIProposal}
           onGenerate={(message, onChunk, signal) =>
             streamAIContentEdit(
@@ -102,6 +109,7 @@ export function ContentEditor({
           toolbar={
             <ContentEditorToolbar
               editor={editor}
+              disabled={!canEdit}
               onInsertImage={() => fileInputRef.current?.click()}
               onSetLink={setLink}
             />
