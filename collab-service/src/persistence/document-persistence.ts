@@ -1,5 +1,10 @@
 import { Pool } from "pg";
-import { applyUpdate, encodeStateAsUpdate, encodeStateVector } from "yjs";
+import {
+  applyUpdate,
+  encodeStateAsUpdate,
+  encodeStateVector,
+  mergeUpdates,
+} from "yjs";
 
 import type { Document } from "@hocuspocus/server";
 import type { PoolConfig, QueryResult } from "pg";
@@ -14,57 +19,139 @@ interface Queryable {
 
 interface DocumentStateRow extends Record<string, unknown> {
   y_doc_state: Buffer;
+  compacted_until_seq: string | number;
+}
+
+interface DocumentBatchRow extends Record<string, unknown> {
+  update_payload: Buffer;
+}
+
+interface DocumentSeqRow extends Record<string, unknown> {
+  current_seq: string | number;
 }
 
 export interface DocumentPersistence {
   load(documentId: string, document: Document): Promise<void>;
+  appendUpdate(
+    documentId: string,
+    update: Uint8Array,
+    actorUserId?: string,
+  ): Promise<void>;
   store(documentId: string, document: Document): Promise<void>;
+  flush(): Promise<void>;
   ping(): Promise<void>;
   close(): Promise<void>;
 }
 
+interface PendingUpdate {
+  update: Uint8Array;
+  actorUserId?: string;
+}
+
 export class PostgresDocumentPersistence implements DocumentPersistence {
+  private readonly pendingUpdates = new Map<string, PendingUpdate[]>();
+  private readonly flushTimers = new Map<string, NodeJS.Timeout>();
+  private readonly flushes = new Map<string, Promise<void>>();
+
   constructor(
     private readonly database: Queryable & { end?: () => Promise<void> },
+    private readonly flushIntervalMs = 300,
   ) {}
 
   async load(documentId: string, document: Document): Promise<void> {
     const result = await this.database.query<DocumentStateRow>(
       `
-        SELECT y_doc_state
+        SELECT y_doc_state, compacted_until_seq
         FROM collab_document_states
         WHERE document_id = $1
       `,
       [documentId],
     );
 
-    const state = result.rows[0]?.y_doc_state;
+    const stateRow = result.rows[0];
+    const state = stateRow?.y_doc_state;
     if (state && state.length > 0) {
       applyUpdate(document, new Uint8Array(state));
+    }
+
+    const compactedUntilSeq = Number(stateRow?.compacted_until_seq ?? 0);
+    const batches = await this.database.query<DocumentBatchRow>(
+      `
+        SELECT update_payload
+        FROM collab_document_update_batches
+        WHERE document_id = $1
+          AND to_seq > $2
+        ORDER BY from_seq ASC
+      `,
+      [documentId, compactedUntilSeq],
+    );
+    for (const batch of batches.rows) {
+      if (batch.update_payload.length > 0) {
+        applyUpdate(document, new Uint8Array(batch.update_payload));
+      }
+    }
+  }
+
+  async appendUpdate(
+    documentId: string,
+    update: Uint8Array,
+    actorUserId?: string,
+  ): Promise<void> {
+    const pending = this.pendingUpdates.get(documentId) ?? [];
+    pending.push({ update: new Uint8Array(update), actorUserId });
+    this.pendingUpdates.set(documentId, pending);
+
+    if (!this.flushTimers.has(documentId)) {
+      const timer = setTimeout(() => {
+        this.flushTimers.delete(documentId);
+        void this.flushDocument(documentId).catch(() => {});
+      }, this.flushIntervalMs);
+      this.flushTimers.set(documentId, timer);
     }
   }
 
   async store(documentId: string, document: Document): Promise<void> {
+    await this.flushDocument(documentId);
+
     const state = Buffer.from(encodeStateAsUpdate(document));
     const stateVector = Buffer.from(encodeStateVector(document));
 
-    await this.database.query(
-      `
-        INSERT INTO collab_document_states (
-          document_id,
-          y_doc_state,
-          state_vector,
-          state_size_bytes,
-          updated_at
-        )
-        VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (document_id) DO UPDATE SET
-          y_doc_state = EXCLUDED.y_doc_state,
-          state_vector = EXCLUDED.state_vector,
-          state_size_bytes = EXCLUDED.state_size_bytes,
-          updated_at = EXCLUDED.updated_at
-      `,
-      [documentId, state, stateVector, state.length],
+    await this.database.query("BEGIN");
+    try {
+      const seq = await this.lockDocumentAndReadSeq(documentId);
+      await this.database.query(
+        `
+          INSERT INTO collab_document_states (
+            document_id,
+            y_doc_state,
+            state_vector,
+            compacted_until_seq,
+            state_size_bytes,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, NOW())
+          ON CONFLICT (document_id) DO UPDATE SET
+            y_doc_state = EXCLUDED.y_doc_state,
+            state_vector = EXCLUDED.state_vector,
+            compacted_until_seq = EXCLUDED.compacted_until_seq,
+            state_size_bytes = EXCLUDED.state_size_bytes,
+            updated_at = EXCLUDED.updated_at
+        `,
+        [documentId, state, stateVector, seq, state.length],
+      );
+      await this.database.query("COMMIT");
+    } catch (error) {
+      await this.database.query("ROLLBACK");
+      throw error;
+    }
+  }
+
+  async flush(): Promise<void> {
+    await Promise.all(this.flushes.values());
+
+    const pendingDocumentIds = Array.from(this.pendingUpdates.keys());
+    await Promise.all(
+      pendingDocumentIds.map((documentId) => this.flushDocument(documentId)),
     );
   }
 
@@ -73,8 +160,121 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
   }
 
   async close(): Promise<void> {
+    await this.flush();
     await this.database.end?.();
   }
+
+  private async flushDocument(documentId: string): Promise<void> {
+    const existingFlush = this.flushes.get(documentId);
+    if (existingFlush) {
+      await existingFlush;
+    }
+
+    const flush = this.flushDocumentOnce(documentId).finally(() => {
+      if (this.flushes.get(documentId) === flush) {
+        this.flushes.delete(documentId);
+      }
+    });
+    this.flushes.set(documentId, flush);
+    await flush;
+  }
+
+  private async flushDocumentOnce(documentId: string): Promise<void> {
+    const timer = this.flushTimers.get(documentId);
+    if (timer) {
+      clearTimeout(timer);
+      this.flushTimers.delete(documentId);
+    }
+
+    const pending = this.pendingUpdates.get(documentId);
+    if (!pending || pending.length === 0) {
+      return;
+    }
+    this.pendingUpdates.delete(documentId);
+
+    const payload = Buffer.from(
+      mergeUpdates(pending.map(({ update }) => update)),
+    );
+    const actorUserId = lastActorUserId(pending);
+
+    await this.database.query("BEGIN");
+    try {
+      const currentSeq = await this.lockDocumentAndReadSeq(documentId);
+      const fromSeq = currentSeq + 1;
+      const toSeq = currentSeq + pending.length;
+      await this.database.query(
+        `
+          INSERT INTO collab_document_update_batches (
+            document_id,
+            from_seq,
+            to_seq,
+            update_payload,
+            update_count,
+            payload_size_bytes,
+            actor_user_id,
+            created_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        `,
+        [
+          documentId,
+          fromSeq,
+          toSeq,
+          payload,
+          pending.length,
+          payload.length,
+          actorUserId ?? null,
+        ],
+      );
+      await this.database.query(
+        `
+          UPDATE collab_documents
+          SET current_seq = $2,
+              last_edited_by = COALESCE($3, last_edited_by),
+              last_edited_at = NOW(),
+              updated_at = NOW()
+          WHERE id = $1
+        `,
+        [documentId, toSeq, actorUserId ?? null],
+      );
+      await this.database.query("COMMIT");
+    } catch (error) {
+      await this.database.query("ROLLBACK");
+      this.pendingUpdates.set(documentId, [
+        ...pending,
+        ...(this.pendingUpdates.get(documentId) ?? []),
+      ]);
+      throw error;
+    }
+  }
+
+  private async lockDocumentAndReadSeq(documentId: string): Promise<number> {
+    const result = await this.database.query<DocumentSeqRow>(
+      `
+        SELECT current_seq
+        FROM collab_documents
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [documentId],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error("collaborative document not found");
+    }
+    return Number(row.current_seq);
+  }
+}
+
+function lastActorUserId(pending: PendingUpdate[]): string | undefined {
+  for (let index = pending.length - 1; index >= 0; index -= 1) {
+    const actorUserId = pending[index]?.actorUserId;
+    if (actorUserId) {
+      return actorUserId;
+    }
+  }
+  return undefined;
 }
 
 export function createPostgresDocumentPersistence(
@@ -90,5 +290,8 @@ export function createPostgresDocumentPersistence(
         database: config.DB_NAME,
       };
 
-  return new PostgresDocumentPersistence(new Pool(poolConfig));
+  return new PostgresDocumentPersistence(
+    new Pool(poolConfig),
+    config.COLLAB_UPDATE_FLUSH_MS,
+  );
 }

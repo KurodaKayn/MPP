@@ -43,6 +43,13 @@ export function createCollabServer(
     async onLoadDocument({ context, document, documentName }) {
       await persistence.load(context.documentId ?? documentName, document);
     },
+    async onChange({ context, documentName, update }) {
+      await persistence.appendUpdate(
+        context.documentId ?? documentName,
+        update,
+        context.userId,
+      );
+    },
     async onStoreDocument({ lastContext, document, documentName }) {
       await persistence.store(lastContext.documentId ?? documentName, document);
     },
