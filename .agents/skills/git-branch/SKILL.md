@@ -55,6 +55,7 @@ Match the branch type to semantic commit conventions (such as Angular's commit g
 - **Strictly Lowercase**: Branch names must be exclusively lowercase to prevent case-collision issues on case-insensitive filesystems (like macOS and Windows).
 - **Kebab-Case Separators**: Use hyphens (`-`) to separate words. **Never** use spaces, underscores (`_`), or CamelCase.
 - **Concise Description**: Use 3 to 6 descriptive words. Focus on the *intent* of the branch.
+- **No AI Branding**: Never include AI-related names (e.g., `codex`, `gemini`, `claude`, `chatgpt`) or assistant-specific filler in branch names.
 - **No Trailing Separators**: Avoid ending the branch name with a hyphen or slash.
 - **Alphanumeric Only**: Stick to `a-z`, `0-9`, `/`, and `-`. Avoid special characters like `!`, `@`, `#`, `?`, or quotes.
 
