@@ -73,6 +73,34 @@ export async function fetchDashboard<T>(
   return response.json() as Promise<T>;
 }
 
+export async function fetchDashboardNoContent(
+  path: string,
+  init?: Omit<RequestInit, "headers" | "credentials">,
+): Promise<void> {
+  const headers = new Headers({
+    Accept: "application/json",
+  });
+  const token = getStoredAuthToken();
+
+  if (token) {
+    headers.set("Authorization", formatBearerToken(token));
+  }
+
+  if (init?.body) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const response = await fetch(path, {
+    ...init,
+    credentials: "same-origin",
+    headers,
+  });
+
+  if (!response.ok) {
+    throw await createDashboardError(response);
+  }
+}
+
 export async function streamDashboardText(
   path: string,
   body: unknown,
