@@ -26,10 +26,6 @@ func (p queueTestPublisher) ValidateConfig(config []byte) error {
 	return nil
 }
 
-func (p queueTestPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	return []byte(`{"format":"html","html":"adapted"}`), nil
-}
-
 func (p queueTestPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
 	return "remote-id", "https://example.com/published", nil
 }
@@ -38,10 +34,6 @@ type failingQueueTestPublisher struct{}
 
 func (p failingQueueTestPublisher) ValidateConfig(config []byte) error {
 	return nil
-}
-
-func (p failingQueueTestPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	return []byte(`{"format":"html","html":"adapted"}`), nil
 }
 
 func (p failingQueueTestPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {

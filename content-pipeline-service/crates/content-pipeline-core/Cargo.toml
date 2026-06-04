@@ -5,9 +5,12 @@ edition = "2024"
 
 [dependencies]
 base64.workspace = true
+ego-tree = "0.11.0"
 hex = "0.4.3"
 image = { version = "0.25.8", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 percent-encoding = "2.3.2"
+regex = "1.12.3"
+scraper = "0.27.0"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sha2 = "0.10.9"

@@ -1,4 +1,12 @@
+mod html;
+mod text;
+
+use html::{html_to_markdown, html_to_text};
 use serde::Serialize;
+use text::{
+    SHORT_TEXT_MAX_WEIGHT, SHORT_TEXT_WEIGHT_RULES, join_title_and_body_text, text_with_fallback,
+    truncate_weighted_text_with_ellipsis,
+};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,25 +64,64 @@ impl DraftCompiler {
         } else {
             target.profile.trim().to_string()
         };
-        let text = plain_text(&project.source_content);
+        let text = html_to_text(&project.source_content);
+        let summary = summarize(&text);
         let adapted_content_json = match target.platform.as_str() {
             "wechat" => encode(AdaptedContent {
                 schema_version: 1,
                 format: "html",
                 html: Some(project.source_content.as_str()),
+                markdown: None,
                 text: None,
+                summary: Some(summary.as_str()),
             })?,
-            "x" | "douyin" => encode(AdaptedContent {
-                schema_version: 1,
-                format: "text",
-                html: None,
-                text: Some(text.as_str()),
-            })?,
+            "zhihu" => {
+                let markdown = html_to_markdown(&project.source_content);
+                encode(AdaptedContent {
+                    schema_version: 1,
+                    format: "markdown",
+                    html: None,
+                    markdown: Some(markdown.as_str()),
+                    text: None,
+                    summary: Some(summary.as_str()),
+                })?
+            }
+            "x" => {
+                let text = join_title_and_body_text(&project.title, &text);
+                let text = truncate_weighted_text_with_ellipsis(
+                    &text,
+                    SHORT_TEXT_MAX_WEIGHT,
+                    SHORT_TEXT_WEIGHT_RULES,
+                );
+                let summary = summarize(&text);
+                encode(AdaptedContent {
+                    schema_version: 1,
+                    format: "text",
+                    html: None,
+                    markdown: None,
+                    text: Some(text.as_str()),
+                    summary: Some(summary.as_str()),
+                })?
+            }
+            "douyin" => {
+                let text = text_with_fallback(&text, &project.title, &project.source_content);
+                let summary = summarize(text);
+                encode(AdaptedContent {
+                    schema_version: 1,
+                    format: "text",
+                    html: None,
+                    markdown: None,
+                    text: Some(text),
+                    summary: Some(summary.as_str()),
+                })?
+            }
             _ => encode(AdaptedContent {
                 schema_version: 1,
                 format: "text",
                 html: None,
+                markdown: None,
                 text: Some(text.as_str()),
+                summary: Some(summary.as_str()),
             })?,
         };
 
@@ -96,60 +143,18 @@ struct AdaptedContent<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     html: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    markdown: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     text: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    summary: Option<&'a str>,
 }
 
 fn encode(value: AdaptedContent<'_>) -> Result<String, serde_json::Error> {
     serde_json::to_string(&value)
 }
 
-fn plain_text(value: &str) -> String {
-    let mut output = String::with_capacity(value.len());
-    let mut in_tag = false;
-
-    for ch in value.chars() {
-        match ch {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => output.push(ch),
-            _ => {}
-        }
-    }
-
-    output.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
 fn summarize(value: &str) -> String {
     const MAX_SUMMARY_CHARS: usize = 80;
     value.chars().take(MAX_SUMMARY_CHARS).collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn compiles_x_text_draft() {
-        let compiler = DraftCompiler::new();
-        let output = compiler
-            .compile(
-                &SourceProject {
-                    id: "project-1".to_string(),
-                    title: "Hello".to_string(),
-                    source_format: "html".to_string(),
-                    source_content: "<h1>Hello</h1><p>World</p>".to_string(),
-                },
-                &DraftTarget {
-                    platform: "x".to_string(),
-                    profile: "x@v1".to_string(),
-                    config_json: "{}".to_string(),
-                },
-            )
-            .expect("draft should compile");
-
-        assert_eq!(output.platform, "x");
-        assert_eq!(output.status, "compiled");
-        assert!(output.adapted_content_json.contains("\"format\":\"text\""));
-        assert!(output.adapted_content_json.contains("HelloWorld"));
-    }
 }

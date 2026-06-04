@@ -3,6 +3,7 @@ package dashboard_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
@@ -31,6 +32,37 @@ type fakeXOAuth2Provider struct {
 	refreshToken     string
 	token            pkgx.OAuth2Token
 	user             pkgx.User
+}
+
+type fakeProjectDraftCompiler struct {
+	err           error
+	lastProject   *models.Project
+	lastPlatforms []string
+}
+
+func (f *fakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
+	f.lastProject = project
+	f.lastPlatforms = append([]string(nil), platforms...)
+	if f.err != nil {
+		return nil, f.err
+	}
+
+	drafts := make(map[string][]byte, len(platforms))
+	for _, platform := range platforms {
+		switch platform {
+		case "wechat":
+			drafts[platform] = []byte(fmt.Sprintf(`{"format":"html","html":%q}`, project.SourceContent))
+		case "zhihu":
+			drafts[platform] = []byte(`{"format":"markdown","markdown":"## Heading\n\nHello **draft**"}`)
+		case "x":
+			drafts[platform] = []byte(fmt.Sprintf(`{"format":"text","text":%q}`, project.Title+"\n\nHello draft"))
+		case "douyin":
+			drafts[platform] = []byte(`{"format":"text","text":"Hello draft"}`)
+		default:
+			drafts[platform] = []byte(`{"format":"text","text":"Hello draft"}`)
+		}
+	}
+	return drafts, nil
 }
 
 func (f *fakeXOAuth2Provider) AuthorizationURL(config pkgx.OAuth2Config, state, codeChallenge string) (string, error) {
@@ -198,10 +230,6 @@ type fakePlatformPublisher struct {
 
 func (f *fakePlatformPublisher) ValidateConfig(config []byte) error {
 	return nil
-}
-
-func (f *fakePlatformPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	return nil, nil
 }
 
 func (f *fakePlatformPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
@@ -833,6 +861,8 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
+	compiler := &fakeProjectDraftCompiler{}
+	s.SetDraftCompiler(compiler)
 
 	owner := models.User{Username: "owner"}
 	db.Create(&owner)
@@ -881,6 +911,7 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, project.ID, resp.ProjectID)
 	assert.Len(t, resp.Items, 4)
+	assert.Equal(t, []string{"wechat", "zhihu", "x", "douyin"}, compiler.lastPlatforms)
 
 	var wechatPub models.ProjectPlatformPublication
 	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
@@ -919,6 +950,45 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(douyinPub.AdaptedContent, &douyinContent))
 	assert.Equal(t, "text", douyinContent["format"])
 	assert.Contains(t, douyinContent["text"], "Hello draft")
+}
+
+func TestSyncProjectPrepublishMarksFailedWhenContentPipelineCompilerFails(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	s.SetDraftCompiler(&fakeProjectDraftCompiler{err: fmt.Errorf("content pipeline unavailable")})
+
+	owner := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&owner).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Platform title",
+		SourceContent: `<h2>Heading</h2><p>Hello <strong>draft</strong></p>`,
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "zhihu",
+		Enabled:        true,
+		Status:         models.PublicationStatusPending,
+		Config:         datatypes.JSON(`{"title":"Platform title"}`),
+		AdaptedContent: datatypes.JSON(`{}`),
+	}).Error)
+
+	resp, err := s.SyncProjectPrepublish(project.ID, owner.ID, dto.SyncPrepublishRequest{
+		Platforms: []string{"zhihu"},
+		Actor:     dto.SyncActor{Type: "system"},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Items, 1)
+	require.Equal(t, models.PublicationStatusFailed, resp.Items[0].Status)
+	require.Contains(t, resp.Items[0].ErrorMessage, "content pipeline unavailable")
+
+	var publication models.ProjectPlatformPublication
+	require.NoError(t, db.First(&publication, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	require.Equal(t, models.PublicationStatusFailed, publication.Status)
+	require.JSONEq(t, `{}`, string(publication.AdaptedContent))
 }
 
 func TestGetProjectPublications(t *testing.T) {
@@ -1389,7 +1459,7 @@ func TestGetDouyinAccount(t *testing.T) {
 	assert.Equal(t, models.PlatformAccountStatusConnected, account.Status)
 }
 
-func TestPublishProjectAdaptsPendingPublicationBeforePublishing(t *testing.T) {
+func TestPublishProjectRequiresPrepublishSyncForPendingPublication(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
 	fakePublisher := &fakePlatformPublisher{}
@@ -1417,12 +1487,12 @@ func TestPublishProjectAdaptsPendingPublicationBeforePublishing(t *testing.T) {
 
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 
-	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	require.ErrorIs(t, err, services.ErrPublicationRequiresSync)
+	require.Nil(t, result)
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
-	assert.Equal(t, models.PublicationStatusPublished, saved.Status)
+	assert.Equal(t, models.PublicationStatusPending, saved.Status)
 	assert.Empty(t, saved.ErrorMessage)
 }
 
@@ -1604,7 +1674,7 @@ func TestCreateXPostIntentReturnsManualPublishURL(t *testing.T) {
 	assert.Empty(t, saved.ErrorMessage)
 }
 
-func TestCreateXPostIntentAdaptsPendingPublication(t *testing.T) {
+func TestCreateXPostIntentRequiresPrepublishSyncForPendingPublication(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
 
@@ -1629,20 +1699,13 @@ func TestCreateXPostIntentAdaptsPendingPublication(t *testing.T) {
 
 	result, err := s.CreateXPostIntent(project.ID, &user.ID)
 
-	require.NoError(t, err)
-	assert.Equal(t, "manual_required", result["status"])
-
-	publishURL, ok := result["publish_url"].(string)
-	require.True(t, ok)
-	parsed, err := url.Parse(publishURL)
-	require.NoError(t, err)
-	assert.Contains(t, parsed.Query().Get("text"), "pending x")
-	assert.Contains(t, parsed.Query().Get("text"), "source content")
+	require.ErrorIs(t, err, services.ErrPublicationRequiresSync)
+	require.Nil(t, result)
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
-	assert.Equal(t, models.PublicationStatusAdapted, saved.Status)
-	assert.Contains(t, string(saved.AdaptedContent), `"format":"text"`)
+	assert.Equal(t, models.PublicationStatusPending, saved.Status)
+	assert.JSONEq(t, `{}`, string(saved.AdaptedContent))
 }
 
 func TestPublishProjectRejectsDisabledPublication(t *testing.T) {

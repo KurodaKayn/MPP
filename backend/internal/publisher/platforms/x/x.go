@@ -12,7 +12,6 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
-	"github.com/kurodakayn/mpp-backend/internal/publisher/content"
 	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 )
 
@@ -61,13 +60,6 @@ func (x *XPublisher) ValidateConfig(config []byte) error {
 		return err
 	}
 	return cfg.validate()
-}
-
-func (x *XPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	text := buildXPostText(project.Title, content.HTMLToText(project.SourceContent), xCharacterLimit)
-	adapted := core.SystemAdaptedContent(project, "text", "x-text-adapter", text)
-	adapted.Text = core.String(text)
-	return json.Marshal(adapted)
 }
 
 func BuildXPostIntentURL(raw []byte) (string, error) {
@@ -224,22 +216,6 @@ func extractXText(raw []byte) string {
 	}
 
 	return strings.TrimSpace(string(raw))
-}
-
-func buildXPostText(title, body string, limit int) string {
-	title = strings.TrimSpace(title)
-	body = strings.TrimSpace(body)
-
-	var text string
-	switch {
-	case title != "" && body != "":
-		text = title + "\n\n" + body
-	case title != "":
-		text = title
-	default:
-		text = body
-	}
-	return truncateXTextWithEllipsis(text, limit)
 }
 
 func truncateXTextWithEllipsis(value string, limit int) string {
