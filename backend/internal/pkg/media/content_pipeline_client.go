@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -20,8 +21,10 @@ import (
 
 const (
 	contentPipelineMediaEnabledEnv = "CONTENT_PIPELINE_MEDIA_ENABLED"
-	contentPipelineAddrEnv         = "CONTENT_PIPELINE_GRPC_ADDR"
-	defaultContentPipelineAddr     = "127.0.0.1:50051"
+	contentPipelineHostEnv         = "CONTENT_PIPELINE_HOST"
+	contentPipelinePortEnv         = "CONTENT_PIPELINE_PORT"
+	defaultContentPipelineHost     = "content-pipeline-service"
+	defaultContentPipelinePort     = "50051"
 	contentPipelineRequestTimeout  = 20 * time.Second
 )
 
@@ -80,10 +83,17 @@ func dialContentPipelineMediaClient(_ context.Context) (contentpipelinepb.MediaA
 }
 
 func contentPipelineAddr() string {
-	if value := strings.TrimSpace(os.Getenv(contentPipelineAddrEnv)); value != "" {
-		return value
+	host := strings.TrimSpace(os.Getenv(contentPipelineHostEnv))
+	if host == "" {
+		host = defaultContentPipelineHost
 	}
-	return defaultContentPipelineAddr
+
+	port := strings.TrimSpace(os.Getenv(contentPipelinePortEnv))
+	if port == "" {
+		port = defaultContentPipelinePort
+	}
+
+	return net.JoinHostPort(host, port)
 }
 
 func mediaSourceFromURL(sourceURL string) *contentpipelinepb.MediaSource {
