@@ -13,7 +13,7 @@ interface Queryable {
 }
 
 interface DocumentStateRow extends Record<string, unknown> {
-  ydoc_state: Buffer;
+  y_doc_state: Buffer;
 }
 
 export interface DocumentPersistence {
@@ -31,14 +31,14 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
   async load(documentId: string, document: Document): Promise<void> {
     const result = await this.database.query<DocumentStateRow>(
       `
-        SELECT ydoc_state
+        SELECT y_doc_state
         FROM collab_document_states
         WHERE document_id = $1
       `,
       [documentId],
     );
 
-    const state = result.rows[0]?.ydoc_state;
+    const state = result.rows[0]?.y_doc_state;
     if (state && state.length > 0) {
       applyUpdate(document, new Uint8Array(state));
     }
@@ -52,14 +52,14 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
       `
         INSERT INTO collab_document_states (
           document_id,
-          ydoc_state,
+          y_doc_state,
           state_vector,
           state_size_bytes,
           updated_at
         )
         VALUES ($1, $2, $3, $4, NOW())
         ON CONFLICT (document_id) DO UPDATE SET
-          ydoc_state = EXCLUDED.ydoc_state,
+          y_doc_state = EXCLUDED.y_doc_state,
           state_vector = EXCLUDED.state_vector,
           state_size_bytes = EXCLUDED.state_size_bytes,
           updated_at = EXCLUDED.updated_at
