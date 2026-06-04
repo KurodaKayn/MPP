@@ -9,7 +9,7 @@ Introduce a Rust-backed content processing layer for two business capabilities:
 
 This plan does not propose rewriting the Go backend. The Go backend should continue to own authentication, user scope, project state, publication state, account credentials, queue orchestration, and database transactions. Rust should be introduced only where it provides a stronger fit than Go for the business workload: deterministic content transformation, binary media processing, strict schema validation, and bounded resource execution.
 
-The first Rust service should be a small internal service, tentatively named `content-pipeline-service`.
+The first Rust service should be a small internal gRPC service named `content-pipeline-service`.
 
 ```mermaid
 flowchart LR
@@ -29,7 +29,41 @@ Media processing deals with untrusted external bytes, large memory buffers, imag
 
 Draft compilation deals with deterministic transformations from source content into platform-specific payloads. It benefits from strong enums, explicit error variants, strict schema versions, exhaustive matching, and highly testable pure transformation pipelines. Rust can make platform rules feel closer to a compiler than scattered helper functions.
 
-## 3. Scope
+## 3. Service Name and Framework Stack
+
+### 3.1 Service Name
+
+Use `content-pipeline-service` as the production service name.
+
+Recommended internal crate layout:
+
+| Crate | Purpose |
+| --- | --- |
+| `content-pipeline-service` | Binary crate. Owns gRPC server startup, config, observability, and dependency wiring. |
+| `content-pipeline-core` | Library crate. Owns pure media processing, draft compilation, platform profiles, and tests. |
+| `content-pipeline-proto` | Generated protobuf bindings, if the workspace prefers keeping generated code separate. |
+
+The service name should appear consistently in Compose, logs, metrics labels, gRPC service config, and tracing spans.
+
+### 3.2 Framework Stack
+
+| Layer | Choice | Reason |
+| --- | --- | --- |
+| gRPC framework | `tonic` | Primary service framework for gRPC server and Go backend integration. |
+| Protobuf runtime | `prost`, `prost-types` | Standard protobuf code generation used by `tonic`. |
+| Proto build | `tonic-build` and optionally `buf` | Generates Rust bindings and keeps protobuf definitions lintable/versioned. |
+| Async runtime | `tokio` | Runtime used by `tonic`, async filesystem work, bounded tasks, and HTTP fetches. |
+| Middleware | `tower` layers | Timeouts, concurrency limits, request IDs, and tracing around gRPC calls. |
+| HTTP client | `reqwest` with `rustls` | Download external media sources with timeouts, redirect limits, and TLS. |
+| Errors | `thiserror` | Stable typed errors mapped into gRPC status codes. |
+| Serialization | `serde`, `serde_json` | Platform config and adapted-content payloads. |
+| Observability | `tracing`, `tracing-subscriber`, Prometheus exporter | Structured logs and metrics for processing latency and failure classes. |
+| Media | `image`, `fast_image_resize`, `infer`, `mime` | Safe image decoding, resizing, MIME sniffing, and platform media constraints. |
+| HTML/draft parsing | `html5ever`, `scraper` | Deterministic parsing and extraction for platform draft compilation. |
+
+Business APIs should be gRPC-first. HTTP should only be used for operational endpoints such as Prometheus metrics if the deployment stack requires HTTP scraping.
+
+## 4. Scope
 
 | Capability | Included | Notes |
 | --- | --- | --- |
@@ -46,7 +80,7 @@ Draft compilation deals with deterministic transformations from source content i
 | User permissions | No | Go backend remains the permission boundary. |
 | Database ownership | No | Rust should not directly mutate publication state in this phase. |
 
-## 4. Current Code Touchpoints
+## 5. Current Code Touchpoints
 
 The current Go backend already contains the natural seams for these modules:
 
@@ -59,9 +93,9 @@ The current Go backend already contains the natural seams for these modules:
 
 These are business-specific transformations. They are not merely infrastructure utilities.
 
-## 5. Module 1: Media Asset Processing and Platform Asset Adaptation
+## 6. Module 1: Media Asset Processing and Platform Asset Adaptation
 
-### 5.1 Responsibility
+### 6.1 Responsibility
 
 This module turns source media references into platform-ready assets.
 
@@ -84,7 +118,7 @@ Outputs:
 - Platform compliance status.
 - Structured warnings and errors.
 
-### 5.2 Platform Rules
+### 6.2 Platform Rules
 
 The first platform rules should be deliberately small:
 
@@ -103,51 +137,62 @@ douyin@v1
 generic@v1
 ```
 
-### 5.3 Proposed Interface
+### 6.3 Proposed Interface
 
-Start with an internal HTTP API. gRPC can be introduced later if there is enough traffic or if streaming payloads become important.
+Start with an internal gRPC API. The Go backend should generate a typed gRPC client from the same protobuf definition and call the Rust service from the existing media adapter.
 
-```http
-POST /internal/media/process
-Content-Type: application/json
-```
+```proto
+syntax = "proto3";
 
-```json
-{
-  "request_id": "uuid",
-  "platform": "wechat",
-  "usage": "cover",
-  "source": {
-    "type": "url",
-    "value": "https://example.com/cover.jpg"
-  },
-  "constraints": {
-    "max_bytes": 2097152,
-    "preferred_mime_types": ["image/jpeg", "image/png"]
+package mpp.contentpipeline.v1;
+
+service MediaAssetProcessor {
+  rpc ProcessAsset(ProcessAssetRequest) returns (ProcessAssetResponse);
+}
+
+message ProcessAssetRequest {
+  string request_id = 1;
+  string platform = 2;
+  string usage = 3;
+  MediaSource source = 4;
+  MediaConstraints constraints = 5;
+}
+
+message MediaSource {
+  oneof value {
+    string url = 1;
+    string data_url = 2;
+    string object_ref = 3;
   }
 }
-```
 
-Response:
+message MediaConstraints {
+  uint64 max_bytes = 1;
+  repeated string preferred_mime_types = 2;
+}
 
-```json
-{
-  "asset": {
-    "content_ref": "inline-bytes-or-object-ref",
-    "mime_type": "image/jpeg",
-    "byte_size": 732145,
-    "width": 1200,
-    "height": 675,
-    "sha256": "hex"
-  },
-  "status": "ready",
-  "warnings": []
+message ProcessAssetResponse {
+  ProcessedAsset asset = 1;
+  string status = 2;
+  repeated string warnings = 3;
+}
+
+message ProcessedAsset {
+  oneof content {
+    bytes inline_bytes = 1;
+    string object_ref = 2;
+  }
+  string mime_type = 3;
+  uint64 byte_size = 4;
+  uint32 width = 5;
+  uint32 height = 6;
+  string sha256 = 7;
 }
 ```
 
-For the first version, returning bytes as base64 is acceptable for small assets. Once object storage is introduced, the service should return an object reference instead.
+For the first version, returning `inline_bytes` is acceptable for small assets. Once object storage is introduced, the service should prefer returning `object_ref` instead.
 
-### 5.4 Why This Should Not Stay in Go Long Term
+### 6.4 Why This Should Not Stay in Go Long Term
 
 Go is good enough for the current implementation, but media processing has different pressure points:
 
@@ -159,9 +204,9 @@ Go is good enough for the current implementation, but media processing has diffe
 
 Rust gives better leverage here without forcing distributed business transactions.
 
-## 6. Module 2: Platform Draft Compiler
+## 7. Module 2: Platform Draft Compiler
 
-### 6.1 Responsibility
+### 7.1 Responsibility
 
 This module turns a canonical MPP source project into platform-specific draft payloads.
 
@@ -184,7 +229,7 @@ Outputs:
 - Validation errors.
 - Asset processing requests, if assets must be normalized before publishing.
 
-### 6.2 Draft Compilation Targets
+### 7.2 Draft Compilation Targets
 
 Initial platform targets:
 
@@ -195,72 +240,53 @@ Initial platform targets:
 | X | Text | Extract text, apply weighted length rules, truncate safely. |
 | Douyin | Text + image assets | Extract concise text and prepare image publishing inputs. |
 
-### 6.3 Proposed Interface
+### 7.3 Proposed Interface
 
-```http
-POST /internal/drafts/compile
-Content-Type: application/json
-```
+```proto
+syntax = "proto3";
 
-```json
-{
-  "request_id": "uuid",
-  "project": {
-    "id": "uuid",
-    "title": "Post title",
-    "source_format": "html",
-    "source_content": "<h1>Hello</h1><p>World</p>"
-  },
-  "targets": [
-    {
-      "platform": "wechat",
-      "profile": "wechat@v1",
-      "config": {
-        "cover_image_url": "https://example.com/cover.jpg"
-      }
-    },
-    {
-      "platform": "x",
-      "profile": "x@v1"
-    }
-  ]
+package mpp.contentpipeline.v1;
+
+service PlatformDraftCompiler {
+  rpc CompileDrafts(CompileDraftsRequest) returns (CompileDraftsResponse);
+}
+
+message CompileDraftsRequest {
+  string request_id = 1;
+  SourceProject project = 2;
+  repeated DraftTarget targets = 3;
+}
+
+message SourceProject {
+  string id = 1;
+  string title = 2;
+  string source_format = 3;
+  string source_content = 4;
+}
+
+message DraftTarget {
+  string platform = 1;
+  string profile = 2;
+  string config_json = 3;
+}
+
+message CompileDraftsResponse {
+  repeated CompiledDraft drafts = 1;
+}
+
+message CompiledDraft {
+  string platform = 1;
+  string profile = 2;
+  string status = 3;
+  string adapted_content_json = 4;
+  string summary = 5;
+  repeated string warnings = 6;
 }
 ```
 
-Response:
+`adapted_content_json` intentionally stays JSON in the first version because existing MPP platform draft schemas are already JSON-shaped. The protobuf contract provides a typed transport boundary while allowing platform-specific payloads to evolve behind versioned profiles.
 
-```json
-{
-  "drafts": [
-    {
-      "platform": "wechat",
-      "profile": "wechat@v1",
-      "status": "compiled",
-      "adapted_content": {
-        "schema_version": 1,
-        "format": "html",
-        "html": "<h1>Hello</h1><p>World</p>"
-      },
-      "summary": "Hello World",
-      "warnings": []
-    },
-    {
-      "platform": "x",
-      "profile": "x@v1",
-      "status": "compiled",
-      "adapted_content": {
-        "schema_version": 1,
-        "format": "text",
-        "text": "Hello\n\nWorld"
-      },
-      "summary": "Hello World",
-      "warnings": []
-    }
-  ]
-}
-```
-
-### 6.4 Compiler Design
+### 7.4 Compiler Design
 
 The compiler should be organized around explicit stages:
 
@@ -273,7 +299,7 @@ The compiler should be organized around explicit stages:
 
 The internal document model does not need to be a full editor schema. It only needs enough structure to produce platform drafts consistently.
 
-### 6.5 Why This Should Not Stay in Go Long Term
+### 7.5 Why This Should Not Stay in Go Long Term
 
 The current platform adapters mix draft adaptation and publishing behavior. As platforms grow, that will make publication code harder to reason about. A Rust compiler module can keep platform transformation rules:
 
@@ -285,7 +311,7 @@ The current platform adapters mix draft adaptation and publishing behavior. As p
 
 This is a better fit for Rust than Go because the core work is not HTTP orchestration. It is schema-driven transformation.
 
-## 7. Go Backend Responsibilities After Extraction
+## 8. Go Backend Responsibilities After Extraction
 
 The Go backend remains the business authority.
 
@@ -303,7 +329,7 @@ It should still own:
 
 The Rust service should not decide whether a user may publish a project. It should only process content it receives from the trusted backend.
 
-## 8. Data Ownership
+## 9. Data Ownership
 
 The first Rust implementation should be stateless.
 
@@ -320,7 +346,7 @@ The first Rust implementation should be stateless.
 
 Avoid giving the Rust service direct database write access in the first phase. This keeps the migration reversible.
 
-## 9. Migration Plan
+## 10. Migration Plan
 
 ### Phase 1: Extract Media Processing Behind an Adapter
 
@@ -328,7 +354,7 @@ Goal: replace the current in-process media processing path with an internal serv
 
 Deliverables:
 
-- Rust `POST /internal/media/process`.
+- Rust `MediaAssetProcessor.ProcessAsset` gRPC endpoint.
 - Go client wrapper in the existing media package.
 - Feature flag to switch between Go implementation and Rust implementation.
 - Golden tests comparing output constraints, not exact bytes.
@@ -347,7 +373,7 @@ Goal: move platform-specific draft adaptation out of publisher implementations.
 
 Deliverables:
 
-- Rust `POST /internal/drafts/compile`.
+- Rust `PlatformDraftCompiler.CompileDrafts` gRPC endpoint.
 - Go compiler client used by prepublish sync.
 - Platform profiles for WeChat, Zhihu, X, and Douyin.
 - Contract tests for each platform profile.
@@ -393,7 +419,7 @@ Acceptance:
 - Adding a new platform does not require editing existing platform compilers except shared utilities.
 - Profile changes are visible in tests and release notes.
 
-## 10. Failure Model
+## 11. Failure Model
 
 The Rust service must return structured errors.
 
@@ -410,13 +436,13 @@ Recommended error classes:
 
 The Go backend should translate these into existing user-facing errors and persist enough context for debugging.
 
-## 11. Observability
+## 12. Observability
 
 The Rust service should expose:
 
-- `/health`
-- `/ready`
-- `/metrics`
+- gRPC health checks through the standard gRPC health checking protocol.
+- Optional gRPC reflection in local and staging environments.
+- `/metrics` over HTTP if Prometheus scraping requires an HTTP endpoint.
 
 Metrics:
 
@@ -430,7 +456,7 @@ Metrics:
 
 Logs should include request ID, platform, profile, usage, duration, and error class. Do not log raw content, raw image bytes, credentials, cookies, or signed URLs.
 
-## 12. Security Requirements
+## 13. Security Requirements
 
 Media processing must treat all external sources as untrusted.
 
@@ -456,30 +482,31 @@ Required controls:
 - Return warnings for lossy transformations.
 - Keep platform compiler output schema-validated.
 
-## 13. Non-goals
+## 14. Non-goals
 
 This plan does not include:
 
 - Rewriting Go backend APIs in Rust.
 - Moving publication state transitions to Rust.
 - Moving queue workers to Rust.
+- Adding REST business endpoints for content processing.
 - Rewriting `browser-worker`.
 - Rewriting `collab-service`.
 - Replacing the AI service.
 - Introducing Kafka, Kubernetes, or service mesh.
 - Giving Rust direct ownership of user credentials or platform cookies.
 
-## 14. Risks and Mitigations
+## 15. Risks and Mitigations
 
 | Risk | Mitigation |
 | --- | --- |
 | The service boundary adds latency. | Batch draft compilation by project and targets; keep media processing async where possible. |
-| Byte payloads become expensive over HTTP. | Use object references after Phase 3; keep base64 only for small initial cases. |
+| Byte payloads become expensive over gRPC. | Use object references after Phase 3; keep inline bytes only for small initial cases. |
 | Draft output changes unexpectedly. | Use fixtures, golden tests, and profile versioning. |
 | Platform rules duplicate Go logic during migration. | Keep Go fallback temporarily, then delete old adapter logic once contract tests pass. |
 | Rust service failure blocks prepublish sync. | Add feature flag and fallback path during rollout. |
 
-## 15. Success Criteria
+## 16. Success Criteria
 
 The extraction is successful when:
 
@@ -490,7 +517,7 @@ The extraction is successful when:
 - Large media processing does not increase Go backend memory pressure.
 - The Rust service can be disabled without corrupting publication state.
 
-## 16. Recommended First Milestone
+## 17. Recommended First Milestone
 
 Start with media processing, not draft compilation.
 
