@@ -38,6 +38,28 @@ fn truncates_weighted_text_with_ellipsis() {
 }
 
 #[test]
+fn falls_back_to_title_for_text_draft_without_body_text() {
+    let output = compile_for(
+        "douyin",
+        "douyin@v1",
+        "Image draft",
+        r#"<img src="https://example.com/a.png" alt="Image">"#,
+    );
+
+    assert_eq!(output["format"], "text");
+    assert_eq!(output["text"], "Image draft");
+}
+
+#[test]
+fn falls_back_to_source_for_text_draft_without_title_or_body_text() {
+    let source = r#"<img src="https://example.com/a.png" alt="Image">"#;
+    let output = compile_for("douyin", "douyin@v1", "", source);
+
+    assert_eq!(output["format"], "text");
+    assert_eq!(output["text"], source);
+}
+
+#[test]
 fn compiles_html_to_markdown_draft() {
     let output = compile_for(
         "zhihu",
