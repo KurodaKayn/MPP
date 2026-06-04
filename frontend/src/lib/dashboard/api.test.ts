@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  addProjectCollaborator,
   cancelBrowserSession,
   completeBrowserSession,
   createDashboardProject,
@@ -10,10 +11,12 @@ import {
   getDashboardProjects,
   getDashboardStats,
   getDouyinAccount,
+  getProjectCollaborators,
   getProjectPublications,
   getXAccount,
   getWechatAccount,
   publishProject,
+  removeProjectCollaborator,
   saveDashboardProjectContent,
   saveDashboardProjectPlatforms,
   saveXAccount,
@@ -26,6 +29,7 @@ import {
   testWechatConnection,
   testXConnection,
   updateDashboardProject,
+  updateProjectCollaborator,
   updateProjectPrepublishDraft,
 } from "./api";
 import type { ProjectPublications } from "./api";
@@ -627,6 +631,124 @@ describe("dashboard api client", () => {
         credentials: "same-origin",
         headers: expect.any(Headers),
         method: "PATCH",
+      }),
+    );
+  });
+
+  it("lists project collaborators", async () => {
+    const collaborators = {
+      items: [
+        {
+          created_at: "2026-06-04T12:00:00Z",
+          created_by: "owner-1",
+          email: "editor@example.com",
+          project_id: "project-1",
+          role: "editor",
+          user_id: "user-2",
+          username: "editor",
+        },
+      ],
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse(collaborators),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getProjectCollaborators("project-1")).resolves.toEqual(
+      collaborators,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/collaborators",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+  });
+
+  it("adds a project collaborator", async () => {
+    const collaborator = {
+      created_at: "2026-06-04T12:00:00Z",
+      created_by: "owner-1",
+      email: "editor@example.com",
+      project_id: "project-1",
+      role: "editor",
+      user_id: "user-2",
+      username: "editor",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse(collaborator),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      addProjectCollaborator("project-1", {
+        email: "editor@example.com",
+        role: "editor",
+      }),
+    ).resolves.toEqual(collaborator);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/collaborators",
+      expect.objectContaining({
+        body: JSON.stringify({
+          email: "editor@example.com",
+          role: "editor",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("updates a project collaborator role", async () => {
+    const collaborator = {
+      created_at: "2026-06-04T12:00:00Z",
+      created_by: "owner-1",
+      email: "viewer@example.com",
+      project_id: "project-1",
+      role: "viewer",
+      user_id: "user-2",
+      username: "viewer",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse(collaborator),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      updateProjectCollaborator("project-1", "user-2", { role: "viewer" }),
+    ).resolves.toEqual(collaborator);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/collaborators/user-2",
+      expect.objectContaining({
+        body: JSON.stringify({ role: "viewer" }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "PATCH",
+      }),
+    );
+  });
+
+  it("removes a project collaborator without parsing an empty response", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      removeProjectCollaborator("project-1", "user-2"),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1/collaborators/user-2",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "DELETE",
       }),
     );
   });
