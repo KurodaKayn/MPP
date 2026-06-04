@@ -1,0 +1,215 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { BackendApiError } from "../backend/client";
+import type { ExtensionPrepublishResponse } from "../backend/types";
+import {
+  PrepublishWorkbenchCard,
+  getPrepublishViewState,
+  usePrepublishWorkbench,
+} from "./prepublish";
+
+function createPrepublishResponse(): ExtensionPrepublishResponse {
+  return {
+    items: [
+      {
+        project_id: "project-1",
+        title: "Douyin article draft",
+        status: "ready",
+        updated_at: "2026-06-03T10:00:00Z",
+        platforms: [
+          {
+            publication_id: "publication-1",
+            platform: "douyin",
+            adapter_key: "DYNAMIC_DOUYIN",
+            content_kind: "article",
+            status: "adapted",
+            enabled: true,
+            preview: "First draft preview",
+          },
+          {
+            publication_id: "publication-2",
+            platform: "bilibili",
+            adapter_key: "DYNAMIC_BILIBILI",
+            content_kind: "dynamic_post",
+            status: "disabled",
+            enabled: false,
+            preview: "Disabled draft preview",
+          },
+        ],
+      },
+      {
+        project_id: "project-2",
+        title: "Second draft",
+        status: "ready",
+        updated_at: "2026-06-03T11:00:00Z",
+        platforms: [
+          {
+            publication_id: "publication-3",
+            platform: "douyin",
+            adapter_key: "DYNAMIC_DOUYIN",
+            content_kind: "article",
+            status: "adapted",
+            enabled: true,
+            preview: "Second preview",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+describe("getPrepublishViewState", () => {
+  it("maps backend prepublish items to loaded state", async () => {
+    await expect(
+      getPrepublishViewState(() => Promise.resolve(createPrepublishResponse())),
+    ).resolves.toMatchObject({
+      status: "loaded",
+      items: expect.arrayContaining([
+        expect.objectContaining({
+          project_id: "project-1",
+          title: "Douyin article draft",
+        }),
+      ]),
+    });
+  });
+
+  it("maps empty backend lists to empty state", async () => {
+    await expect(
+      getPrepublishViewState(() => Promise.resolve({ items: [] })),
+    ).resolves.toEqual({
+      status: "empty",
+    });
+  });
+
+  it("maps backend failures to error state", async () => {
+    await expect(
+      getPrepublishViewState(() =>
+        Promise.reject(
+          new BackendApiError("prepublish unavailable", {
+            code: "internal_error",
+            status: 500,
+          }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      status: "error",
+      message: "prepublish unavailable",
+    });
+  });
+});
+
+describe("PrepublishWorkbenchCard", () => {
+  it("shows projects and enabled platform selection", () => {
+    render(
+      <PrepublishWorkbenchCard
+        state={{
+          status: "loaded",
+          items: createPrepublishResponse().items,
+        }}
+        selectedProjectId="project-1"
+        selectedPlatforms={new Set(["douyin"])}
+        onProjectSelect={vi.fn()}
+        onPlatformToggle={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Pre-Publish Drafts")).toBeInTheDocument();
+    expect(screen.getAllByText("Douyin article draft").length).toBeGreaterThan(
+      0,
+    );
+    expect(screen.getByText("First draft preview")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /douyin/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /bilibili/i })).toBeDisabled();
+  });
+
+  it("switches selected project", () => {
+    const selectProject = vi.fn();
+
+    render(
+      <PrepublishWorkbenchCard
+        state={{
+          status: "loaded",
+          items: createPrepublishResponse().items,
+        }}
+        selectedProjectId="project-1"
+        selectedPlatforms={new Set(["douyin"])}
+        onProjectSelect={selectProject}
+        onPlatformToggle={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /second draft/i }));
+
+    expect(selectProject).toHaveBeenCalledWith("project-2");
+  });
+
+  it("shows retry action for backend errors", () => {
+    const retry = vi.fn();
+
+    render(
+      <PrepublishWorkbenchCard
+        state={{
+          status: "error",
+          message: "prepublish unavailable",
+        }}
+        selectedProjectId={null}
+        selectedPlatforms={new Set()}
+        onProjectSelect={vi.fn()}
+        onPlatformToggle={vi.fn()}
+        onRetry={retry}
+      />,
+    );
+
+    expect(screen.getByText("prepublish unavailable")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+
+    expect(retry).toHaveBeenCalledOnce();
+  });
+});
+
+describe("usePrepublishWorkbench", () => {
+  it("loads prepublish items when enabled", async () => {
+    function Harness({
+      loadPrepublish,
+    }: {
+      loadPrepublish: () => Promise<ExtensionPrepublishResponse>;
+    }) {
+      const workbench = usePrepublishWorkbench(loadPrepublish, true);
+      return <PrepublishWorkbenchCard {...workbench} />;
+    }
+    const loadPrepublish = vi
+      .fn()
+      .mockResolvedValue(createPrepublishResponse());
+
+    render(<Harness loadPrepublish={loadPrepublish} />);
+
+    expect(screen.getByText("loading")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getAllByText("Douyin article draft").length,
+      ).toBeGreaterThan(0),
+    );
+    expect(loadPrepublish).toHaveBeenCalledOnce();
+    expect(screen.getByRole("checkbox", { name: /douyin/i })).toBeChecked();
+  });
+
+  it("waits for an authenticated session before loading", () => {
+    function Harness({
+      loadPrepublish,
+    }: {
+      loadPrepublish: () => Promise<ExtensionPrepublishResponse>;
+    }) {
+      const workbench = usePrepublishWorkbench(loadPrepublish, false);
+      return <PrepublishWorkbenchCard {...workbench} />;
+    }
+    const loadPrepublish = vi.fn();
+
+    render(<Harness loadPrepublish={loadPrepublish} />);
+
+    expect(screen.getByText("Sign in to load drafts.")).toBeInTheDocument();
+    expect(loadPrepublish).not.toHaveBeenCalled();
+  });
+});
