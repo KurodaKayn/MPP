@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "crates/content-pipeline-core",
+    "crates/content-pipeline-proto",
+    "crates/content-pipeline-service",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.96.0"
+license = "MIT"
+repository = "https://github.com/kurodakayn/MPP"
+
+[workspace.dependencies]
+base64 = "0.22.1"
+bytes = "1.10.1"
+prost = "0.14.1"
+prost-types = "0.14.1"
+serde = "1.0.228"
+serde_json = "1.0.145"
+thiserror = "2.0.17"
+tokio = "1.48.0"
+tonic = "0.14.2"
+tonic-health = "0.14.2"
+tonic-prost = "0.14.2"
+tonic-prost-build = "0.14.2"
+tonic-reflection = "0.14.2"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.20"
