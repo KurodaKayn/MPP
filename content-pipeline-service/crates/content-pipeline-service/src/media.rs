@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 
 use content_pipeline_core::{DEFAULT_MAX_BYTES, MediaConstraints, MediaProcessor};
@@ -7,9 +7,10 @@ use content_pipeline_proto::mpp::contentpipeline::v1::{
     media_asset_processor_server::MediaAssetProcessor, media_source, processed_asset,
 };
 use futures_util::StreamExt;
-use reqwest::header::CONTENT_TYPE;
+use reqwest::header::{CONTENT_TYPE, LOCATION};
 use reqwest::redirect::Policy;
-use reqwest::{Client, Url};
+use reqwest::{Client, Response as HttpResponse, Url};
+use tokio::time::timeout;
 use tonic::{Request, Response, Status};
 
 const MEDIA_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(20);
@@ -18,14 +19,12 @@ const MEDIA_REDIRECT_LIMIT: usize = 3;
 #[derive(Debug, Clone)]
 pub(crate) struct MediaAssetProcessorService {
     processor: MediaProcessor,
-    http_client: Client,
 }
 
 impl MediaAssetProcessorService {
     pub(crate) fn new() -> Result<Self, reqwest::Error> {
         Ok(Self {
             processor: MediaProcessor::new(),
-            http_client: media_http_client()?,
         })
     }
 
@@ -36,17 +35,7 @@ impl MediaAssetProcessorService {
     ) -> Result<content_pipeline_core::ProcessedAsset, Status> {
         let url =
             Url::parse(source_url).map_err(|_| Status::invalid_argument("invalid media URL"))?;
-        if !is_safe_media_url(&url) {
-            return Err(Status::invalid_argument("unsafe media URL"));
-        }
-
-        let response = self
-            .http_client
-            .get(url)
-            .send()
-            .await
-            .map_err(media_download_error_to_status)?;
-
+        let response = fetch_media_url(url).await?;
         if !response.status().is_success() {
             return Err(Status::unavailable(format!(
                 "media download returned HTTP {}",
@@ -146,19 +135,51 @@ fn processed_asset_to_proto(
     )
 }
 
-fn media_http_client() -> Result<Client, reqwest::Error> {
-    Client::builder()
+fn media_http_client(resolved_host: Option<&ResolvedHost>) -> Result<Client, reqwest::Error> {
+    let builder = Client::builder()
         .timeout(MEDIA_DOWNLOAD_TIMEOUT)
-        .redirect(Policy::custom(|attempt| {
-            if attempt.previous().len() >= MEDIA_REDIRECT_LIMIT {
-                attempt.stop()
-            } else if is_safe_media_url(attempt.url()) {
-                attempt.follow()
-            } else {
-                attempt.error("unsafe media redirect")
-            }
-        }))
-        .build()
+        .redirect(Policy::none());
+
+    match resolved_host {
+        Some(resolved_host) => builder
+            .resolve_to_addrs(&resolved_host.host, &resolved_host.addrs)
+            .build(),
+        None => builder.build(),
+    }
+}
+
+async fn fetch_media_url(mut url: Url) -> Result<HttpResponse, Status> {
+    let mut redirects = 0;
+
+    loop {
+        let validated = validate_media_url(url).await?;
+        let client = media_http_client(validated.resolved_host.as_ref())
+            .map_err(|_| Status::internal("failed to build media HTTP client"))?;
+        let response = client
+            .get(validated.url)
+            .send()
+            .await
+            .map_err(media_download_error_to_status)?;
+
+        if !response.status().is_redirection() {
+            return Ok(response);
+        }
+
+        if redirects >= MEDIA_REDIRECT_LIMIT {
+            return Err(Status::invalid_argument("media redirect limit exceeded"));
+        }
+        redirects += 1;
+
+        let base_url = response.url().clone();
+        let location = response
+            .headers()
+            .get(LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .ok_or_else(|| Status::invalid_argument("media redirect missing location"))?;
+        url = base_url
+            .join(location)
+            .map_err(|_| Status::invalid_argument("invalid media redirect URL"))?;
+    }
 }
 
 async fn read_limited_body(response: reqwest::Response, max_bytes: u64) -> Result<Vec<u8>, Status> {
@@ -212,29 +233,93 @@ fn media_download_error_to_status(err: reqwest::Error) -> Status {
     }
 }
 
-fn is_safe_media_url(url: &Url) -> bool {
+#[derive(Debug)]
+struct ValidatedMediaUrl {
+    url: Url,
+    resolved_host: Option<ResolvedHost>,
+}
+
+#[derive(Debug)]
+struct ResolvedHost {
+    host: String,
+    addrs: Vec<SocketAddr>,
+}
+
+async fn validate_media_url(mut url: Url) -> Result<ValidatedMediaUrl, Status> {
     if url.scheme() != "https" {
-        return false;
+        return Err(Status::invalid_argument("unsafe media URL"));
     }
 
+    let host = normalized_media_host(&url)?;
+    if is_blocked_hostname(&host) {
+        return Err(Status::invalid_argument("unsafe media URL"));
+    }
+
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        if is_public_ip(ip) {
+            return Ok(ValidatedMediaUrl {
+                url,
+                resolved_host: None,
+            });
+        }
+        return Err(Status::invalid_argument("unsafe media URL"));
+    }
+
+    url.set_host(Some(&host))
+        .map_err(|_| Status::invalid_argument("invalid media URL"))?;
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| Status::invalid_argument("invalid media URL port"))?;
+    let addrs = resolve_host_addrs(&host, port).await?;
+    validate_resolved_addrs(&host, &addrs)?;
+
+    Ok(ValidatedMediaUrl {
+        url,
+        resolved_host: Some(ResolvedHost { host, addrs }),
+    })
+}
+
+fn normalized_media_host(url: &Url) -> Result<String, Status> {
     let Some(host) = url.host_str() else {
-        return false;
+        return Err(Status::invalid_argument("invalid media URL host"));
     };
 
     let host = host.trim_end_matches('.');
-    let host = host
+    Ok(host
         .strip_prefix('[')
         .and_then(|value| value.strip_suffix(']'))
         .unwrap_or(host)
-        .to_ascii_lowercase();
-    if host == "localhost" || host.ends_with(".localhost") {
-        return false;
+        .to_ascii_lowercase())
+}
+
+fn is_blocked_hostname(host: &str) -> bool {
+    host == "localhost" || host.ends_with(".localhost")
+}
+
+async fn resolve_host_addrs(host: &str, port: u16) -> Result<Vec<SocketAddr>, Status> {
+    let lookup = timeout(
+        MEDIA_DOWNLOAD_TIMEOUT,
+        tokio::net::lookup_host((host, port)),
+    )
+    .await
+    .map_err(|_| Status::deadline_exceeded("media DNS lookup timed out"))?
+    .map_err(|_| Status::unavailable("failed to resolve media host"))?;
+    let addrs = lookup.collect::<Vec<_>>();
+    if addrs.is_empty() {
+        return Err(Status::unavailable("media host did not resolve"));
     }
 
-    match host.parse::<IpAddr>() {
-        Ok(ip) => is_public_ip(ip),
-        Err(_) => true,
+    Ok(addrs)
+}
+
+fn validate_resolved_addrs(host: &str, addrs: &[SocketAddr]) -> Result<(), Status> {
+    if addrs.iter().all(|addr| is_public_ip(addr.ip())) {
+        return Ok(());
     }
+
+    Err(Status::invalid_argument(format!(
+        "media host {host} resolved to a private address"
+    )))
 }
 
 fn is_public_ip(ip: IpAddr) -> bool {
@@ -258,6 +343,10 @@ fn is_public_ipv4(ip: Ipv4Addr) -> bool {
 }
 
 fn is_public_ipv6(ip: Ipv6Addr) -> bool {
+    if let Some(ipv4) = ip.to_ipv4_mapped() {
+        return is_public_ipv4(ipv4);
+    }
+
     let first_segment = ip.segments()[0];
     let is_unique_local = (first_segment & 0xfe00) == 0xfc00;
     let is_link_local = (first_segment & 0xffc0) == 0xfe80;
@@ -291,30 +380,63 @@ mod tests {
     }
 
     #[test]
-    fn allows_public_https_media_url() {
-        assert!(is_safe_media_url(&url("https://example.com/image.png")));
+    fn accepts_public_resolved_addresses() {
+        let addrs = vec!["93.184.216.34:443".parse().expect("address should parse")];
+
+        validate_resolved_addrs("example.com", &addrs)
+            .expect("public resolved address should be accepted");
     }
 
     #[test]
-    fn rejects_non_https_media_url() {
-        assert!(!is_safe_media_url(&url("http://example.com/image.png")));
+    fn rejects_private_resolved_addresses() {
+        let addrs = vec![
+            "93.184.216.34:443".parse().expect("address should parse"),
+            "169.254.169.254:443".parse().expect("address should parse"),
+        ];
+
+        let err = validate_resolved_addrs("attacker.example", &addrs)
+            .expect_err("private resolved address should be rejected");
+
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
     }
 
-    #[test]
-    fn rejects_localhost_media_url() {
-        assert!(!is_safe_media_url(&url("https://localhost/image.png")));
-        assert!(!is_safe_media_url(&url(
-            "https://assets.localhost/image.png"
-        )));
+    #[tokio::test]
+    async fn rejects_non_https_media_url() {
+        let err = validate_media_url(url("http://example.com/image.png"))
+            .await
+            .expect_err("non-https URL should be rejected");
+
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
     }
 
-    #[test]
-    fn rejects_private_ip_media_url() {
-        assert!(!is_safe_media_url(&url("https://127.0.0.1/image.png")));
-        assert!(!is_safe_media_url(&url("https://10.0.0.1/image.png")));
-        assert!(!is_safe_media_url(&url("https://192.168.1.10/image.png")));
-        assert!(!is_safe_media_url(&url("https://[::1]/image.png")));
-        assert!(!is_safe_media_url(&url("https://[fd00::1]/image.png")));
+    #[tokio::test]
+    async fn rejects_localhost_media_url() {
+        let err = validate_media_url(url("https://localhost/image.png"))
+            .await
+            .expect_err("localhost URL should be rejected");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+
+        let err = validate_media_url(url("https://assets.localhost/image.png"))
+            .await
+            .expect_err("localhost subdomain URL should be rejected");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn rejects_private_ip_media_url() {
+        for value in [
+            "https://127.0.0.1/image.png",
+            "https://10.0.0.1/image.png",
+            "https://192.168.1.10/image.png",
+            "https://[::1]/image.png",
+            "https://[fd00::1]/image.png",
+            "https://[::ffff:127.0.0.1]/image.png",
+        ] {
+            let err = validate_media_url(url(value))
+                .await
+                .expect_err("private IP URL should be rejected");
+            assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        }
     }
 
     #[test]
