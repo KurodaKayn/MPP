@@ -162,6 +162,56 @@ func TestGetDocumentRejectsInvalidInput(t *testing.T) {
 	require.ErrorIs(t, err, collabdoc.ErrInvalidDocument)
 }
 
+func TestUpdateDocumentTitleAllowsOwner(t *testing.T) {
+	db, service := setupCollabDocumentServiceTest(t)
+	owner := createCollabTestUser(t, db, "update-owner")
+	document := createCollabTestDocument(t, db, owner.ID, "Old Title", time.Now().Add(time.Hour))
+
+	updated, err := service.UpdateDocumentTitle(context.Background(), owner.ID, document.ID, "  New Title  ")
+
+	require.NoError(t, err)
+	require.Equal(t, document.ID, updated.ID)
+	require.Equal(t, "New Title", updated.Title)
+
+	var persisted models.CollabDocument
+	require.NoError(t, db.First(&persisted, "id = ?", document.ID).Error)
+	require.Equal(t, "New Title", persisted.Title)
+}
+
+func TestUpdateDocumentTitleRejectsNonOwner(t *testing.T) {
+	db, service := setupCollabDocumentServiceTest(t)
+	owner := createCollabTestUser(t, db, "update-owner-only")
+	collaborator := createCollabTestUser(t, db, "update-collaborator")
+	document := createCollabTestDocument(t, db, owner.ID, "Original", time.Now().Add(time.Hour))
+	require.NoError(t, db.Create(&models.CollabDocumentCollaborator{
+		DocumentID: document.ID,
+		UserID:     collaborator.ID,
+		Role:       models.CollabDocumentRoleEditor,
+		CreatedBy:  owner.ID,
+	}).Error)
+
+	_, err := service.UpdateDocumentTitle(context.Background(), collaborator.ID, document.ID, "Changed")
+
+	require.ErrorIs(t, err, collabdoc.ErrDocumentForbidden)
+
+	var persisted models.CollabDocument
+	require.NoError(t, db.First(&persisted, "id = ?", document.ID).Error)
+	require.Equal(t, "Original", persisted.Title)
+}
+
+func TestUpdateDocumentTitleRejectsInvalidInput(t *testing.T) {
+	_, service := setupCollabDocumentServiceTest(t)
+
+	_, err := service.UpdateDocumentTitle(context.Background(), uuid.Nil, uuid.New(), "Title")
+	require.ErrorIs(t, err, collabdoc.ErrInvalidDocument)
+
+	_, err = service.UpdateDocumentTitle(context.Background(), uuid.New(), uuid.Nil, "Title")
+	require.ErrorIs(t, err, collabdoc.ErrInvalidDocument)
+
+	_, err = service.UpdateDocumentTitle(context.Background(), uuid.New(), uuid.New(), "   ")
+	require.ErrorIs(t, err, collabdoc.ErrInvalidDocument)
+}
+
 func createCollabTestUser(t *testing.T, db *gorm.DB, username string) models.User {
 	t.Helper()
 
