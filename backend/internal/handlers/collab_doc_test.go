@@ -160,6 +160,88 @@ func TestCollabDocumentHandlerGetDocumentRejectsInaccessibleDocument(t *testing.
 	require.Equal(t, http.StatusForbidden, rec.Code)
 }
 
+func TestCollabDocumentHandlerUpdateDocument(t *testing.T) {
+	e := echo.New()
+	db, handler := setupCollabDocumentHandlerTest(t)
+	user := createCollabHandlerTestUser(t, db, "update-owner")
+	document := createCollabHandlerTestDocument(t, db, user.ID, "Original Doc", time.Now().Add(time.Hour))
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/collab/documents/"+document.ID.String(),
+		strings.NewReader(`{"title":" Updated Doc "}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(document.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.UpdateDocument(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp contracts.CollabDocument
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, document.ID, resp.Id)
+	require.Equal(t, "Updated Doc", resp.Title)
+
+	var persisted models.CollabDocument
+	require.NoError(t, db.First(&persisted, "id = ?", document.ID).Error)
+	require.Equal(t, "Updated Doc", persisted.Title)
+}
+
+func TestCollabDocumentHandlerUpdateDocumentRejectsBlankTitle(t *testing.T) {
+	e := echo.New()
+	db, handler := setupCollabDocumentHandlerTest(t)
+	user := createCollabHandlerTestUser(t, db, "blank-title-owner")
+	document := createCollabHandlerTestDocument(t, db, user.ID, "Original Doc", time.Now().Add(time.Hour))
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/collab/documents/"+document.ID.String(),
+		strings.NewReader(`{"title":"   "}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(document.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.UpdateDocument(c))
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCollabDocumentHandlerUpdateDocumentRejectsNonOwner(t *testing.T) {
+	e := echo.New()
+	db, handler := setupCollabDocumentHandlerTest(t)
+	owner := createCollabHandlerTestUser(t, db, "metadata-owner")
+	collaborator := createCollabHandlerTestUser(t, db, "metadata-collaborator")
+	document := createCollabHandlerTestDocument(t, db, owner.ID, "Original Doc", time.Now().Add(time.Hour))
+	require.NoError(t, db.Create(&models.CollabDocumentCollaborator{
+		DocumentID: document.ID,
+		UserID:     collaborator.ID,
+		Role:       models.CollabDocumentRoleEditor,
+		CreatedBy:  owner.ID,
+	}).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/collab/documents/"+document.ID.String(),
+		strings.NewReader(`{"title":"Collaborator Edit"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(document.ID.String())
+	setContextUser(c, collaborator.ID)
+
+	require.NoError(t, handler.UpdateDocument(c))
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
 func createCollabHandlerTestUser(t *testing.T, db *gorm.DB, username string) models.User {
 	t.Helper()
 
