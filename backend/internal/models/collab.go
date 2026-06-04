@@ -57,6 +57,21 @@ type CollabDocumentState struct {
 	Document CollabDocument `gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE"`
 }
 
+type CollabDocumentUpdateBatch struct {
+	ID               int64      `gorm:"primaryKey;autoIncrement"`
+	DocumentID       uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:ux_collab_update_batch_doc_seq,priority:1;index:idx_collab_update_batches_doc_seq,priority:1"`
+	FromSeq          int64      `gorm:"not null;uniqueIndex:ux_collab_update_batch_doc_seq,priority:2"`
+	ToSeq            int64      `gorm:"not null;uniqueIndex:ux_collab_update_batch_doc_seq,priority:3;index:idx_collab_update_batches_doc_seq,priority:2,sort:desc"`
+	UpdatePayload    []byte     `gorm:"type:bytea;not null"`
+	UpdateCount      int        `gorm:"not null"`
+	PayloadSizeBytes int        `gorm:"not null"`
+	ActorUserID      *uuid.UUID `gorm:"type:uuid"`
+	CreatedAt        time.Time  `gorm:"not null"`
+
+	Document CollabDocument `gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE"`
+	Actor    *User          `gorm:"foreignKey:ActorUserID;references:ID"`
+}
+
 func (d *CollabDocument) BeforeCreate(tx *gorm.DB) (err error) {
 	if d.ID == uuid.Nil {
 		d.ID = uuid.New()

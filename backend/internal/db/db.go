@@ -168,6 +168,7 @@ func migrate(database *gorm.DB) error {
 			&models.CollabDocument{},
 			&models.CollabDocumentCollaborator{},
 			&models.CollabDocumentState{},
+			&models.CollabDocumentUpdateBatch{},
 			&models.ExtensionCallbackToken{},
 			&models.ExtensionExecutionEvent{},
 		); err != nil {
