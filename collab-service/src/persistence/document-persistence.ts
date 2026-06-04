@@ -184,7 +184,10 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
     await this.database.end?.();
   }
 
-  private scheduleFlush(documentId: string, delayMs = this.flushIntervalMs): void {
+  private scheduleFlush(
+    documentId: string,
+    delayMs = this.flushIntervalMs,
+  ): void {
     if (this.flushTimers.has(documentId)) {
       return;
     }
