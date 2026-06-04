@@ -922,6 +922,71 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 	assert.ErrorIs(t, err, services.ErrForbidden)
 }
 
+func TestUpdateProjectAllowsEditorAndRejectsViewer(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	editor := models.User{Username: "editor", Email: "editor@example.com"}
+	viewer := models.User{Username: "viewer", Email: "viewer@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&editor).Error)
+	require.NoError(t, db.Create(&viewer).Error)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Old title",
+		SourceContent: "old body",
+		Status:        models.ProjectStatusDraft,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusPublished,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    editor.ID,
+		Role:      models.ProjectRoleEditor,
+		CreatedBy: owner.ID,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    viewer.ID,
+		Role:      models.ProjectRoleViewer,
+		CreatedBy: owner.ID,
+	}).Error)
+
+	updated, err := s.UpdateProject(project.ID, editor.ID, dto.UpdateProjectRequest{
+		Title:         "Editor title",
+		SourceContent: "editor body",
+		Platforms:     []string{"zhihu"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, models.ProjectRoleEditor, updated.Role)
+	require.Equal(t, "Editor title", updated.Title)
+	require.Equal(t, "editor body", updated.SourceContent)
+
+	var wechatPub models.ProjectPlatformPublication
+	require.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	require.False(t, wechatPub.Enabled)
+	require.Equal(t, models.PublicationStatusDisabled, wechatPub.Status)
+
+	var zhihuPub models.ProjectPlatformPublication
+	require.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	require.True(t, zhihuPub.Enabled)
+	require.Equal(t, models.PublicationStatusPending, zhihuPub.Status)
+
+	_, err = s.UpdateProject(project.ID, viewer.ID, dto.UpdateProjectRequest{
+		Title:         "Viewer title",
+		SourceContent: "viewer body",
+		Platforms:     []string{"wechat"},
+	})
+	require.ErrorIs(t, err, services.ErrForbidden)
+}
+
 func TestSaveProjectContentAllowsEditorAndRejectsViewer(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
@@ -972,6 +1037,60 @@ func TestSaveProjectContentAllowsEditorAndRejectsViewer(t *testing.T) {
 	require.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
 	require.Equal(t, "Editor title", saved.Title)
 	require.Equal(t, "editor body", saved.SourceContent)
+}
+
+func TestSaveProjectPlatformsAllowsEditorAndRejectsViewer(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	editor := models.User{Username: "editor", Email: "editor@example.com"}
+	viewer := models.User{Username: "viewer", Email: "viewer@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&editor).Error)
+	require.NoError(t, db.Create(&viewer).Error)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Draft title",
+		SourceContent: "draft body",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusAdapted,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    editor.ID,
+		Role:      models.ProjectRoleEditor,
+		CreatedBy: owner.ID,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    viewer.ID,
+		Role:      models.ProjectRoleViewer,
+		CreatedBy: owner.ID,
+	}).Error)
+
+	updated, err := s.SaveProjectPlatforms(project.ID, editor.ID, dto.SaveProjectPlatformsRequest{
+		Platforms: []string{"wechat", "zhihu"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, models.ProjectRoleEditor, updated.Role)
+
+	var zhihuPub models.ProjectPlatformPublication
+	require.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	require.True(t, zhihuPub.Enabled)
+	require.Equal(t, models.PublicationStatusPending, zhihuPub.Status)
+
+	_, err = s.SaveProjectPlatforms(project.ID, viewer.ID, dto.SaveProjectPlatformsRequest{
+		Platforms: []string{"wechat"},
+	})
+	require.ErrorIs(t, err, services.ErrForbidden)
 }
 
 func TestProjectCollaboratorManagement(t *testing.T) {
