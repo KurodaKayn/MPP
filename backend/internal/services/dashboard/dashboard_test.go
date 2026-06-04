@@ -40,6 +40,16 @@ type fakeProjectDraftCompiler struct {
 	lastPlatforms []string
 }
 
+type fakeProjectDocumentInitializer struct {
+	err         error
+	documentIDs []uuid.UUID
+}
+
+func (f *fakeProjectDocumentInitializer) InitializeProjectDocument(ctx context.Context, documentID uuid.UUID) error {
+	f.documentIDs = append(f.documentIDs, documentID)
+	return f.err
+}
+
 func (f *fakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
 	f.lastProject = project
 	f.lastPlatforms = append([]string(nil), platforms...)
@@ -1173,6 +1183,8 @@ func TestCreateProjectCollabSessionLazilyLinksDocumentAndMapsRoles(t *testing.T)
 		TokenSecret:      []byte("collab-secret"),
 		WebsocketURLBase: "ws://collab.test",
 	})
+	initializer := &fakeProjectDocumentInitializer{}
+	collabService.UseProjectDocumentInitializer(initializer)
 	s := services.NewDashboardService(db)
 	s.SetCollabDocumentService(collabService)
 
@@ -1217,6 +1229,11 @@ func TestCreateProjectCollabSessionLazilyLinksDocumentAndMapsRoles(t *testing.T)
 	require.NoError(t, err)
 	require.Equal(t, ownerSession.DocumentID, viewerSession.DocumentID)
 	require.Equal(t, models.CollabDocumentRoleViewer, viewerSession.Role)
+	require.Equal(t, []uuid.UUID{
+		ownerSession.DocumentID,
+		ownerSession.DocumentID,
+		ownerSession.DocumentID,
+	}, initializer.documentIDs)
 
 	var savedProject models.Project
 	require.NoError(t, db.First(&savedProject, "id = ?", project.ID).Error)
@@ -1242,6 +1259,8 @@ func TestCreateProjectCollabSessionRejectsNonCollaboratorWithoutCreatingDocument
 	db := setupTestDB()
 	collabService := services.NewCollabDocumentService(db)
 	collabService.UseSessionConfig(services.CollabDocumentSessionConfig{TokenSecret: []byte("collab-secret")})
+	initializer := &fakeProjectDocumentInitializer{}
+	collabService.UseProjectDocumentInitializer(initializer)
 	s := services.NewDashboardService(db)
 	s.SetCollabDocumentService(collabService)
 
@@ -1264,6 +1283,7 @@ func TestCreateProjectCollabSessionRejectsNonCollaboratorWithoutCreatingDocument
 	var documentCount int64
 	require.NoError(t, db.Model(&models.CollabDocument{}).Count(&documentCount).Error)
 	require.Zero(t, documentCount)
+	require.Empty(t, initializer.documentIDs)
 }
 
 func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
