@@ -6,6 +6,8 @@ import {
   mergeUpdates,
 } from "yjs";
 
+import { createProjectYDoc } from "../collab/project-document.js";
+
 import type { Document } from "@hocuspocus/server";
 import type { PoolConfig, QueryResult } from "pg";
 import type { CollabConfig } from "../config.js";
@@ -30,8 +32,16 @@ interface DocumentSeqRow extends Record<string, unknown> {
   current_seq: string | number;
 }
 
+interface ProjectDocumentRow extends Record<string, unknown> {
+  source_content: string;
+  current_seq: string | number;
+  has_state: boolean;
+  has_updates: boolean;
+}
+
 export interface DocumentPersistence {
   load(documentId: string, document: Document): Promise<void>;
+  initializeProjectDocument(documentId: string): Promise<boolean>;
   appendUpdate(
     documentId: string,
     update: Uint8Array,
@@ -100,6 +110,69 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
         applyUpdate(document, new Uint8Array(batch.update_payload));
       }
     }
+  }
+
+  async initializeProjectDocument(documentId: string): Promise<boolean> {
+    const result = await this.database.query<ProjectDocumentRow>(
+      `
+        SELECT
+          projects.source_content,
+          collab_documents.current_seq,
+          EXISTS (
+            SELECT 1
+            FROM collab_document_states
+            WHERE document_id = $1
+          ) AS has_state,
+          EXISTS (
+            SELECT 1
+            FROM collab_document_update_batches
+            WHERE document_id = $1
+          ) AS has_updates
+        FROM projects
+        JOIN collab_documents
+          ON collab_documents.id = projects.collab_document_id
+        WHERE projects.collab_document_id = $1
+      `,
+      [documentId],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return false;
+    }
+    if (row.has_state || row.has_updates) {
+      return true;
+    }
+
+    const currentSeq = Number(row.current_seq);
+    if (currentSeq !== 0) {
+      throw new Error("collaborative document state is incomplete");
+    }
+
+    const document = createProjectYDoc(row.source_content);
+    try {
+      const state = Buffer.from(encodeStateAsUpdate(document));
+      const stateVector = Buffer.from(encodeStateVector(document));
+      await this.database.query(
+        `
+          INSERT INTO collab_document_states (
+            document_id,
+            y_doc_state,
+            state_vector,
+            compacted_until_seq,
+            state_size_bytes,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, NOW())
+          ON CONFLICT (document_id) DO NOTHING
+        `,
+        [documentId, state, stateVector, currentSeq, state.length],
+      );
+    } finally {
+      document.destroy();
+    }
+
+    return true;
   }
 
   async appendUpdate(

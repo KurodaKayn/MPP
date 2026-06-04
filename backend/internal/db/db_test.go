@@ -58,6 +58,15 @@ func TestMigrateKeepsActiveBrowserSessionUniquenessFallback(t *testing.T) {
 	require.NoError(t, database.Create(&expiredSession).Error)
 }
 
+func TestMigrateAddsProjectCollabDocumentLink(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, migrate(database))
+
+	require.True(t, database.Migrator().HasColumn(&models.Project{}, "collab_document_id"))
+	require.True(t, database.Migrator().HasIndex(&models.Project{}, "ux_projects_collab_document"))
+}
+
 func TestConnectionPoolConfigFromEnvUsesDefaults(t *testing.T) {
 	clearConnectionPoolEnv(t)
 

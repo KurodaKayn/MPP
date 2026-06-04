@@ -14,6 +14,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/kurodakayn/mpp-backend/internal/contracts"
 	dbobs "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
@@ -24,6 +25,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+type noopProjectDocumentInitializer struct{}
+
+func (noopProjectDocumentInitializer) InitializeProjectDocument(context.Context, uuid.UUID) error {
+	return nil
+}
 
 func setupHandlerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
@@ -45,11 +52,26 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(`CREATE TABLE projects (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
+		collab_document_id TEXT UNIQUE,
 		title TEXT NOT NULL,
 		source_content TEXT NOT NULL,
 		status TEXT NOT NULL,
 		created_at DATETIME,
 		updated_at DATETIME
+	)`).Error)
+
+	require.NoError(t, db.Exec(`CREATE TABLE collab_documents (
+		id TEXT PRIMARY KEY,
+		owner_user_id TEXT NOT NULL,
+		title TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'active',
+		schema_version INTEGER NOT NULL DEFAULT 1,
+		current_seq INTEGER NOT NULL DEFAULT 0,
+		last_edited_by TEXT,
+		last_edited_at DATETIME,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		deleted_at DATETIME
 	)`).Error)
 
 	require.NoError(t, db.Exec(`CREATE TABLE project_collaborators (
@@ -684,6 +706,55 @@ func TestUserDashboardHandlerProjectCollaborators(t *testing.T) {
 	require.NoError(t, json.Unmarshal(getRecorder.Body.Bytes(), &detail))
 	require.Equal(t, project.ID, detail.ID)
 	require.Equal(t, models.ProjectRoleEditor, detail.Role)
+}
+
+func TestUserDashboardHandlerCreateProjectCollabSession(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	collabService := services.NewCollabDocumentService(db)
+	collabService.UseSessionConfig(services.CollabDocumentSessionConfig{
+		TokenSecret:      []byte("collab-secret"),
+		WebsocketURLBase: "ws://collab.test",
+	})
+	collabService.UseProjectDocumentInitializer(noopProjectDocumentInitializer{})
+	dashboardService := services.NewDashboardService(db)
+	dashboardService.SetCollabDocumentService(collabService)
+	handler := NewUserDashboardHandler(dashboardService)
+
+	owner := models.User{Username: "collab-owner", Email: "collab-owner@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Realtime project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/projects/"+project.ID.String()+"/collab/session",
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(project.ID.String())
+	setContextUser(c, owner.ID)
+
+	require.NoError(t, handler.CreateProjectCollabSession(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var session contracts.CollabDocumentSession
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &session))
+	require.Equal(t, contracts.Editor, session.Role)
+	require.Equal(t, "ws://collab.test/collab/documents/"+session.DocumentId.String(), session.WebsocketUrl)
+	require.NotEmpty(t, session.Token)
+
+	var savedProject models.Project
+	require.NoError(t, db.First(&savedProject, "id = ?", project.ID).Error)
+	require.NotNil(t, savedProject.CollabDocumentID)
+	require.Equal(t, session.DocumentId, *savedProject.CollabDocumentID)
 }
 
 func TestUserDashboardHandlerSaveProjectContentPreservesPrepublishDraft(t *testing.T) {

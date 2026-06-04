@@ -1,4 +1,5 @@
 import { Document } from "@hocuspocus/server";
+import { yDocToProsemirrorJSON } from "@tiptap/y-tiptap";
 import { describe, expect, it } from "vitest";
 import { applyUpdate, encodeStateAsUpdate, encodeStateVector } from "yjs";
 
@@ -129,6 +130,90 @@ describe("PostgresDocumentPersistence", () => {
       "11111111-1111-4111-8111-111111111111",
       4,
     ]);
+  });
+
+  it("initializes linked project source content as a Yjs snapshot", async () => {
+    const database = new FakeDatabase();
+    database.results = [
+      [
+        {
+          source_content:
+            "<h2>Project heading</h2><p>Hello <strong>team</strong></p>",
+          current_seq: 0,
+          has_state: false,
+          has_updates: false,
+        },
+      ],
+    ];
+    const persistence = new PostgresDocumentPersistence(database);
+
+    const initialized = await persistence.initializeProjectDocument(
+      "11111111-1111-4111-8111-111111111111",
+    );
+
+    expect(initialized).toBe(true);
+    expect(database.calls[0]?.text).toContain("FROM projects");
+    expect(database.calls[0]?.values).toEqual([
+      "11111111-1111-4111-8111-111111111111",
+    ]);
+    const insertCall = database.calls[1];
+    expect(insertCall?.text).toContain("INSERT INTO collab_document_states");
+    expect(insertCall?.text).toContain("ON CONFLICT (document_id) DO NOTHING");
+    expect(insertCall?.values?.[3]).toBe(0);
+
+    const restored = new Document("restored");
+    applyUpdate(restored, new Uint8Array(insertCall?.values?.[1] as Buffer));
+    expect(yDocToProsemirrorJSON(restored, "content")).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          content: [{ type: "text", text: "Project heading" }],
+        },
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Hello " },
+            { type: "text", text: "team" },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("does not overwrite existing project collaboration state", async () => {
+    const database = new FakeDatabase();
+    database.results = [
+      [
+        {
+          source_content: "<p>Stale project content</p>",
+          current_seq: 4,
+          has_state: true,
+          has_updates: false,
+        },
+      ],
+    ];
+    const persistence = new PostgresDocumentPersistence(database);
+
+    const initialized = await persistence.initializeProjectDocument(
+      "11111111-1111-4111-8111-111111111111",
+    );
+
+    expect(initialized).toBe(true);
+    expect(database.calls).toHaveLength(1);
+  });
+
+  it("returns false when a collaboration document is not linked to a project", async () => {
+    const database = new FakeDatabase();
+    database.results = [[]];
+    const persistence = new PostgresDocumentPersistence(database);
+
+    const initialized = await persistence.initializeProjectDocument(
+      "11111111-1111-4111-8111-111111111111",
+    );
+
+    expect(initialized).toBe(false);
+    expect(database.calls).toHaveLength(1);
   });
 
   it("flushes pending Yjs updates as a sequenced batch", async () => {
