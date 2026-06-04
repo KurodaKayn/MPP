@@ -46,6 +46,17 @@ type CollabDocumentCollaborator struct {
 	Creator  User           `gorm:"foreignKey:CreatedBy;references:ID"`
 }
 
+type CollabDocumentState struct {
+	DocumentID        uuid.UUID `gorm:"type:uuid;primaryKey;not null"`
+	YDocState         []byte    `gorm:"type:bytea;not null"`
+	StateVector       []byte    `gorm:"type:bytea"`
+	CompactedUntilSeq int64     `gorm:"not null;default:0"`
+	StateSizeBytes    int       `gorm:"not null;default:0"`
+	UpdatedAt         time.Time `gorm:"not null"`
+
+	Document CollabDocument `gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE"`
+}
+
 func (d *CollabDocument) BeforeCreate(tx *gorm.DB) (err error) {
 	if d.ID == uuid.Nil {
 		d.ID = uuid.New()
