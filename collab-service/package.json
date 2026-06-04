@@ -28,7 +28,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "^24",
     "oxfmt": "^0.53.0",
     "oxlint": "^1.68.0",
     "tsx": "^4.22.4",
