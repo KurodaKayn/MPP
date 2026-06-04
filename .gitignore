@@ -68,3 +68,6 @@ extension/lerna-debug.log*
 # Collab service
 collab-service/node_modules
 collab-service/dist
+
+# Content pipeline service (Rust)
+content-pipeline-service/target

@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package mpp.contentpipeline.v1;
+
+service MediaAssetProcessor {
+  rpc ProcessAsset(ProcessAssetRequest) returns (ProcessAssetResponse);
+}
+
+service PlatformDraftCompiler {
+  rpc CompileDrafts(CompileDraftsRequest) returns (CompileDraftsResponse);
+}
+
+message ProcessAssetRequest {
+  string request_id = 1;
+  string platform = 2;
+  string usage = 3;
+  MediaSource source = 4;
+  MediaConstraints constraints = 5;
+}
+
+message MediaSource {
+  oneof value {
+    string url = 1;
+    string data_url = 2;
+    string object_ref = 3;
+  }
+}
+
+message MediaConstraints {
+  uint64 max_bytes = 1;
+  repeated string preferred_mime_types = 2;
+}
+
+message ProcessAssetResponse {
+  ProcessedAsset asset = 1;
+  string status = 2;
+  repeated string warnings = 3;
+}
+
+message ProcessedAsset {
+  oneof content {
+    bytes inline_bytes = 1;
+    string object_ref = 2;
+  }
+  string mime_type = 3;
+  uint64 byte_size = 4;
+  uint32 width = 5;
+  uint32 height = 6;
+  string sha256 = 7;
+}
+
+message CompileDraftsRequest {
+  string request_id = 1;
+  SourceProject project = 2;
+  repeated DraftTarget targets = 3;
+}
+
+message SourceProject {
+  string id = 1;
+  string title = 2;
+  string source_format = 3;
+  string source_content = 4;
+}
+
+message DraftTarget {
+  string platform = 1;
+  string profile = 2;
+  string config_json = 3;
+}
+
+message CompileDraftsResponse {
+  repeated CompiledDraft drafts = 1;
+}
+
+message CompiledDraft {
+  string platform = 1;
+  string profile = 2;
+  string status = 3;
+  string adapted_content_json = 4;
+  string summary = 5;
+  repeated string warnings = 6;
+}
