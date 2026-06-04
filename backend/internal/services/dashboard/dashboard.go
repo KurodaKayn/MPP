@@ -51,6 +51,7 @@ type DashboardService struct {
 	publisher             *publishsvc.Service
 	browserWorkerClient   publisher.BrowserWorkerClient
 	browserSessionService *browsersession.BrowserSessionService
+	draftCompiler         ProjectDraftCompiler
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
@@ -83,6 +84,10 @@ func (s *DashboardService) SetBrowserSessionService(svc *browsersession.BrowserS
 	s.browserSessionService = svc
 }
 
+func (s *DashboardService) SetDraftCompiler(compiler ProjectDraftCompiler) {
+	s.draftCompiler = compiler
+}
+
 func NewDashboardServiceWithWechatTester(db *gorm.DB, tester platformaccount.WechatConnectionTester) *DashboardService {
 	return NewDashboardServiceWithPlatformTesters(db, tester, platformaccount.XAPITester{})
 }
@@ -90,18 +95,20 @@ func NewDashboardServiceWithWechatTester(db *gorm.DB, tester platformaccount.Wec
 func NewDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.WechatConnectionTester, xTester platformaccount.XConnectionTester) *DashboardService {
 	accounts := platformaccount.NewServiceWithPlatformTesters(db, tester, xTester)
 	return &DashboardService{
-		db:        db,
-		accounts:  accounts,
-		publisher: publishsvc.NewService(db, accounts),
+		db:            db,
+		accounts:      accounts,
+		publisher:     publishsvc.NewService(db, accounts),
+		draftCompiler: newContentPipelineDraftCompiler(),
 	}
 }
 
 func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider platformaccount.XOAuth2Provider) *DashboardService {
 	accounts := platformaccount.NewServiceWithXOAuth2Provider(db, provider)
 	return &DashboardService{
-		db:        db,
-		accounts:  accounts,
-		publisher: publishsvc.NewService(db, accounts),
+		db:            db,
+		accounts:      accounts,
+		publisher:     publishsvc.NewService(db, accounts),
+		draftCompiler: newContentPipelineDraftCompiler(),
 	}
 }
 
@@ -901,6 +908,32 @@ func (s *DashboardService) SyncProjectPrepublish(projectID uuid.UUID, userID uui
 		return nil, ErrInvalidProject
 	}
 
+	publications, err := s.ensurePrepublishPublications(&project, platforms)
+	if err != nil {
+		return nil, err
+	}
+
+	draftCompiler := s.draftCompiler
+	if draftCompiler == nil {
+		draftCompiler = newContentPipelineDraftCompiler()
+	}
+	compiledDrafts, err := draftCompiler.CompileProjectDrafts(s.requestContext(), &project, publications, platforms)
+	if err != nil {
+		if markErr := s.markPrepublishCompileFailure(project.ID, platforms, err); markErr != nil {
+			return nil, markErr
+		}
+		return s.GetProjectPublications(projectID, &userID, true)
+	}
+
+	if err := s.applyCompiledPrepublishDrafts(project.ID, platforms, compiledDrafts); err != nil {
+		return nil, err
+	}
+
+	return s.GetProjectPublications(projectID, &userID, true)
+}
+
+func (s *DashboardService) ensurePrepublishPublications(project *models.Project, platforms []string) ([]models.ProjectPlatformPublication, error) {
+	publications := make([]models.ProjectPlatformPublication, 0, len(platforms))
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		for _, platform := range platforms {
 			var publication models.ProjectPlatformPublication
@@ -932,51 +965,73 @@ func (s *DashboardService) SyncProjectPrepublish(projectID uuid.UUID, userID uui
 				}).Error; err != nil {
 					return err
 				}
+				publication.Enabled = true
+				publication.Status = models.PublicationStatusPending
 			}
 
-			p, err := publisher.Factory.GetPublisher(platform)
-			if err != nil {
-				if err := tx.Model(&publication).Updates(map[string]interface{}{
-					"error_message": publishsvc.SanitizeUserFacingErrorMessage(err.Error()),
-					"status":        models.PublicationStatusPending,
-				}).Error; err != nil {
-					return err
-				}
-				continue
-			}
-
-			adaptedContent, err := p.AdaptContent(&project)
-			if err != nil {
-				if err := tx.Model(&publication).Updates(map[string]interface{}{
-					"error_message": publishsvc.SanitizeUserFacingErrorMessage(err.Error()),
-					"status":        models.PublicationStatusFailed,
-				}).Error; err != nil {
-					return err
-				}
-				continue
-			}
-
-			if err := tx.Model(&publication).Updates(map[string]interface{}{
-				"adapted_content": datatypes.JSON(adaptedContent),
-				"enabled":         true,
-				"error_message":   "",
-				"last_attempt_at": nil,
-				"published_at":    nil,
-				"publish_url":     "",
-				"remote_id":       "",
-				"retry_count":     0,
-				"status":          models.PublicationStatusAdapted,
-			}).Error; err != nil {
-				return err
-			}
+			publications = append(publications, publication)
 		}
 
 		return nil
 	}); err != nil {
 		return nil, err
 	}
+	return publications, nil
+}
 
-	return s.GetProjectPublications(projectID, &userID, true)
+func (s *DashboardService) applyCompiledPrepublishDrafts(projectID uuid.UUID, platforms []string, drafts map[string][]byte) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for _, platform := range platforms {
+			adaptedContent, ok := drafts[platform]
+			if !ok {
+				if err := tx.Model(&models.ProjectPlatformPublication{}).
+					Where("project_id = ? AND platform = ?", projectID, platform).
+					Updates(map[string]interface{}{
+						"error_message": "content pipeline did not return a compiled draft",
+						"status":        models.PublicationStatusFailed,
+					}).Error; err != nil {
+					return err
+				}
+				continue
+			}
+
+			if err := tx.Model(&models.ProjectPlatformPublication{}).
+				Where("project_id = ? AND platform = ?", projectID, platform).
+				Updates(map[string]interface{}{
+					"adapted_content": datatypes.JSON(adaptedContent),
+					"enabled":         true,
+					"error_message":   "",
+					"last_attempt_at": nil,
+					"published_at":    nil,
+					"publish_url":     "",
+					"remote_id":       "",
+					"retry_count":     0,
+					"status":          models.PublicationStatusAdapted,
+				}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *DashboardService) markPrepublishCompileFailure(projectID uuid.UUID, platforms []string, err error) error {
+	if len(platforms) == 0 {
+		return nil
+	}
+	return s.db.Model(&models.ProjectPlatformPublication{}).
+		Where("project_id = ? AND platform IN ?", projectID, platforms).
+		Updates(map[string]interface{}{
+			"error_message": publishsvc.SanitizeUserFacingErrorMessage(err.Error()),
+			"status":        models.PublicationStatusFailed,
+		}).Error
+}
+
+func (s *DashboardService) requestContext() context.Context {
+	if s.db != nil && s.db.Statement != nil && s.db.Statement.Context != nil {
+		return s.db.Statement.Context
+	}
+	return context.Background()
 }
 
 func (s *DashboardService) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.UUID, platform string, req dto.UpdatePrepublishDraftRequest) (*dto.ProjectPublicationsResponse, error) {
