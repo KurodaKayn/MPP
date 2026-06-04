@@ -111,6 +111,8 @@ describe("PrepublishWorkbenchCard", () => {
         onProjectSelect={vi.fn()}
         onPlatformToggle={vi.fn()}
         onRetry={vi.fn()}
+        onStartHandoff={vi.fn()}
+        startingHandoff={false}
       />,
     );
 
@@ -145,6 +147,52 @@ describe("PrepublishWorkbenchCard", () => {
     expect(selectProject).toHaveBeenCalledWith("project-2");
   });
 
+  it("starts handoff for the selected project and platforms", () => {
+    const startHandoff = vi.fn();
+
+    render(
+      <PrepublishWorkbenchCard
+        state={{
+          status: "loaded",
+          items: createPrepublishResponse().items,
+        }}
+        selectedProjectId="project-1"
+        selectedPlatforms={new Set(["douyin"])}
+        onProjectSelect={vi.fn()}
+        onPlatformToggle={vi.fn()}
+        onRetry={vi.fn()}
+        onStartHandoff={startHandoff}
+        startingHandoff={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /start handoff/i }));
+
+    expect(startHandoff).toHaveBeenCalledWith("project-1", ["douyin"]);
+  });
+
+  it("keeps start disabled until at least one platform is selected", () => {
+    render(
+      <PrepublishWorkbenchCard
+        state={{
+          status: "loaded",
+          items: createPrepublishResponse().items,
+        }}
+        selectedProjectId="project-1"
+        selectedPlatforms={new Set()}
+        onProjectSelect={vi.fn()}
+        onPlatformToggle={vi.fn()}
+        onRetry={vi.fn()}
+        onStartHandoff={vi.fn()}
+        startingHandoff={false}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /start handoff/i }),
+    ).toBeDisabled();
+  });
+
   it("shows retry action for backend errors", () => {
     const retry = vi.fn();
 
@@ -159,6 +207,8 @@ describe("PrepublishWorkbenchCard", () => {
         onProjectSelect={vi.fn()}
         onPlatformToggle={vi.fn()}
         onRetry={retry}
+        onStartHandoff={vi.fn()}
+        startingHandoff={false}
       />,
     );
 
