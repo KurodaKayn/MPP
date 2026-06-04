@@ -7,9 +7,21 @@ import type { Document } from "@hocuspocus/server";
 import type { DocumentPersistence } from "./persistence/document-persistence.js";
 
 class FakeDocumentPersistence implements DocumentPersistence {
+  initializedDocumentIds: string[] = [];
+  initializeProjectDocumentError?: Error;
+  initializeProjectDocumentResult = true;
+
   constructor(private readonly pingError?: Error) {}
 
   async load(_documentId: string, _document: Document): Promise<void> {}
+
+  async initializeProjectDocument(documentId: string): Promise<boolean> {
+    this.initializedDocumentIds.push(documentId);
+    if (this.initializeProjectDocumentError) {
+      throw this.initializeProjectDocumentError;
+    }
+    return this.initializeProjectDocumentResult;
+  }
 
   async appendUpdate(
     _documentId: string,
@@ -94,6 +106,96 @@ describe("collab-service app", () => {
       status: "not_ready",
       dependency: "database",
     });
+
+    await app.close();
+  });
+
+  it("initializes project collaboration state for authorized backend requests", async () => {
+    const persistence = new FakeDocumentPersistence();
+    const app = await buildApp(testConfig(), { persistence });
+    const documentId = "11111111-1111-4111-8111-111111111111";
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/internal/collab/documents/${documentId}/project-state`,
+      headers: {
+        authorization: "Bearer collab-secret",
+      },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(persistence.initializedDocumentIds).toEqual([documentId]);
+
+    await app.close();
+  });
+
+  it("rejects unauthorized project collaboration initialization", async () => {
+    const persistence = new FakeDocumentPersistence();
+    const app = await buildApp(testConfig(), { persistence });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/internal/collab/documents/11111111-1111-4111-8111-111111111111/project-state",
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(persistence.initializedDocumentIds).toEqual([]);
+
+    await app.close();
+  });
+
+  it("rejects invalid project collaboration document ids", async () => {
+    const persistence = new FakeDocumentPersistence();
+    const app = await buildApp(testConfig(), { persistence });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/internal/collab/documents/not-a-uuid/project-state",
+      headers: {
+        authorization: "Bearer collab-secret",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(persistence.initializedDocumentIds).toEqual([]);
+
+    await app.close();
+  });
+
+  it("returns not found when the collaboration document is not linked to a project", async () => {
+    const persistence = new FakeDocumentPersistence();
+    persistence.initializeProjectDocumentResult = false;
+    const app = await buildApp(testConfig(), { persistence });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/internal/collab/documents/11111111-1111-4111-8111-111111111111/project-state",
+      headers: {
+        authorization: "Bearer collab-secret",
+      },
+    });
+
+    expect(response.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("returns service unavailable when project collaboration initialization fails", async () => {
+    const persistence = new FakeDocumentPersistence();
+    persistence.initializeProjectDocumentError = new Error(
+      "database unavailable",
+    );
+    const app = await buildApp(testConfig(), { persistence });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/internal/collab/documents/11111111-1111-4111-8111-111111111111/project-state",
+      headers: {
+        authorization: "Bearer collab-secret",
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
 
     await app.close();
   });
