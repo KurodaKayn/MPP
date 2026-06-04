@@ -38,22 +38,51 @@ const tabsMock = vi.hoisted(() => ({
   startPublishingTabs: vi.fn(),
 }));
 
+const originsMock = vi.hoisted(() => {
+  const state = {
+    trusted: true,
+    trustable: true,
+  };
+
+  return {
+    state,
+    getTrustOriginPageUrl: vi.fn((origin: string) => `${origin}/trust`),
+    isTrustedOrigin: vi.fn(() => Promise.resolve(state.trusted)),
+    isTrustableOrigin: vi.fn(() => state.trustable),
+    listTrustedOrigins: vi.fn(() => Promise.resolve([])),
+    removeTrustedOrigin: vi.fn(() => Promise.resolve([])),
+    trustOrigin: vi.fn((origin: string) => Promise.resolve(origin)),
+  };
+});
+
 vi.mock("./handoff", () => handoffMock);
 vi.mock("./tabs", () => tabsMock);
-vi.mock("./origins", () => ({
-  getTrustOriginPageUrl: vi.fn((origin: string) => `${origin}/trust`),
-  isTrustedOrigin: vi.fn(() => Promise.resolve(true)),
-  isTrustableOrigin: vi.fn(() => true),
-  listTrustedOrigins: vi.fn(() => Promise.resolve([])),
-  removeTrustedOrigin: vi.fn(() => Promise.resolve([])),
-  trustOrigin: vi.fn((origin: string) => Promise.resolve(origin)),
-}));
+vi.mock("./origins", () => originsMock);
 
 vi.stubGlobal("defineBackground", (callback: () => void) => callback);
+vi.stubGlobal("browser", {
+  action: {
+    onClicked: {
+      addListener: vi.fn(),
+    },
+  },
+  runtime: {
+    id: "extension-id",
+    getManifest: vi.fn(() => ({ version: "1.0.0" })),
+    getURL: vi.fn((path: string) => `chrome-extension://extension-id${path}`),
+    onMessage: {
+      addListener: vi.fn(),
+    },
+  },
+  tabs: {
+    create: vi.fn(() => Promise.resolve({ id: 1 })),
+  },
+});
 
 const {
   acceptExtensionHandoff,
   downloadHandoffAsset,
+  handleBackgroundMessage,
   recordCurrentHandoffExpiration,
   shouldRejectExpiredAdapterEvent,
 } = await import("../../entrypoints/background");
@@ -127,6 +156,8 @@ describe("background expiration handling", () => {
     handoffMock.state.currentHandoff = createStoredHandoff();
     handoffMock.state.events = [];
     handoffMock.state.expired = true;
+    originsMock.state.trusted = true;
+    originsMock.state.trustable = true;
     vi.clearAllMocks();
   });
 
@@ -185,6 +216,8 @@ describe("acceptExtensionHandoff", () => {
     handoffMock.state.currentHandoff = null;
     handoffMock.state.events = [];
     handoffMock.state.expired = false;
+    originsMock.state.trusted = true;
+    originsMock.state.trustable = true;
     vi.clearAllMocks();
   });
 
@@ -217,10 +250,131 @@ describe("acceptExtensionHandoff", () => {
   });
 });
 
+describe("bridge compatibility", () => {
+  beforeEach(() => {
+    handoffMock.state.currentHandoff = createStoredHandoff();
+    handoffMock.state.events = [];
+    handoffMock.state.expired = false;
+    originsMock.state.trusted = true;
+    originsMock.state.trustable = true;
+    vi.clearAllMocks();
+  });
+
+  it("reports detect metadata for trusted bridge origins", async () => {
+    await expect(
+      handleBackgroundMessage({
+        type: "bridge.detect",
+        origin: "https://mpp.example.com",
+      }),
+    ).resolves.toMatchObject({
+      installed: true,
+      extension_id: "extension-id",
+      version: "1.0.0",
+      trusted: true,
+      trustable: true,
+      trust_url: "https://mpp.example.com/trust",
+    });
+  });
+
+  it("opens the trust page for eligible bridge origins", async () => {
+    await expect(
+      handleBackgroundMessage({
+        type: "bridge.request_trust",
+        origin: "https://mpp.example.com",
+      }),
+    ).resolves.toEqual({
+      trust_url: "https://mpp.example.com/trust",
+    });
+
+    expect(browser.tabs.create).toHaveBeenCalledWith({
+      active: true,
+      url: "https://mpp.example.com/trust",
+    });
+  });
+
+  it("rejects bridge handoffs from untrusted origins before validation", async () => {
+    originsMock.state.trusted = false;
+
+    await expect(
+      handleBackgroundMessage({
+        type: "bridge.publish_handoff",
+        origin: "https://mpp.example.com",
+        handoff: {},
+      }),
+    ).resolves.toMatchObject({
+      accepted: false,
+      reason: "origin_untrusted",
+      trust_url: "https://mpp.example.com/trust",
+    });
+
+    expect(handoffMock.validateHandoff).not.toHaveBeenCalled();
+  });
+
+  it("keeps trusted bridge handoffs tied to their source origin", async () => {
+    const storedHandoff = createStoredHandoff().handoff;
+    handoffMock.validateHandoff.mockReturnValue({
+      ok: true,
+      handoff: storedHandoff,
+    });
+
+    await expect(
+      handleBackgroundMessage({
+        type: "bridge.publish_handoff",
+        origin: "https://mpp.example.com",
+        handoff: {},
+      }),
+    ).resolves.toMatchObject({
+      accepted: true,
+      execution_id: "execution-1",
+    });
+
+    expect(handoffMock.storeAcceptedHandoff).toHaveBeenCalledWith(
+      storedHandoff,
+      "https://mpp.example.com",
+    );
+  });
+
+  it("returns a trust prompt instead of monitor state for untrusted bridge status", async () => {
+    originsMock.state.trusted = false;
+
+    await expect(
+      handleBackgroundMessage({
+        type: "bridge.get_status",
+        origin: "https://mpp.example.com",
+      }),
+    ).resolves.toEqual({
+      trusted: false,
+      trust_url: "https://mpp.example.com/trust",
+    });
+
+    expect(handoffMock.getCurrentHandoff).not.toHaveBeenCalled();
+  });
+});
+
 describe("downloadHandoffAsset", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     vi.stubGlobal("defineBackground", (callback: () => void) => callback);
+    vi.stubGlobal("browser", {
+      action: {
+        onClicked: {
+          addListener: vi.fn(),
+        },
+      },
+      runtime: {
+        id: "extension-id",
+        getManifest: vi.fn(() => ({ version: "1.0.0" })),
+        getURL: vi.fn(
+          (path: string) => `chrome-extension://extension-id${path}`,
+        ),
+        onMessage: {
+          addListener: vi.fn(),
+        },
+      },
+      tabs: {
+        create: vi.fn(() => Promise.resolve({ id: 1 })),
+      },
+    });
   });
 
   it("downloads assets from the background with credentials omitted", async () => {
