@@ -41,7 +41,7 @@ describe("PostgresDocumentPersistence", () => {
     const database = new FakeDatabase();
     database.rows = [
       {
-        ydoc_state: Buffer.from(encodeStateAsUpdate(source)),
+        y_doc_state: Buffer.from(encodeStateAsUpdate(source)),
       },
     ];
     const persistence = new PostgresDocumentPersistence(database);
@@ -50,6 +50,8 @@ describe("PostgresDocumentPersistence", () => {
     await persistence.load("11111111-1111-4111-8111-111111111111", target);
 
     expect(target.getMap("content").get("title")).toBe("Persisted");
+    expect(database.calls[0]?.text).toContain("SELECT y_doc_state");
+    expect(database.calls[0]?.text).not.toContain("ydoc_state");
     expect(database.calls[0]?.values).toEqual([
       "11111111-1111-4111-8111-111111111111",
     ]);
@@ -64,6 +66,8 @@ describe("PostgresDocumentPersistence", () => {
     await persistence.store("11111111-1111-4111-8111-111111111111", document);
 
     const call = database.calls[0];
+    expect(call?.text).toContain("y_doc_state");
+    expect(call?.text).not.toContain("ydoc_state");
     expect(call?.text).toContain("ON CONFLICT (document_id) DO UPDATE");
     expect(call?.values?.[0]).toBe("11111111-1111-4111-8111-111111111111");
     expect(call?.values?.[1]).toBeInstanceOf(Buffer);
