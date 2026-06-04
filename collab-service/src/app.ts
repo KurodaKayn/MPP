@@ -1,6 +1,8 @@
 import websocket from "@fastify/websocket";
 import Fastify from "fastify";
+import { z } from "zod";
 
+import { isInternalTokenAuthorized } from "./auth/internal-token.js";
 import { createCollabAuthenticator } from "./auth/session-token.js";
 import { closeCollabServer, createCollabServer } from "./collab/hocuspocus.js";
 import { loadConfig } from "./config.js";
@@ -15,6 +17,8 @@ import type { DocumentPersistence } from "./persistence/document-persistence.js"
 interface CollabDocumentParams {
   documentId: string;
 }
+
+const DocumentIdSchema = z.string().uuid();
 
 export interface BuildAppOptions {
   persistence?: DocumentPersistence;
@@ -65,6 +69,43 @@ export async function buildApp(
     reply.header("Content-Type", metrics.registry.contentType);
     return metrics.registry.metrics();
   });
+
+  app.post<{ Params: CollabDocumentParams }>(
+    "/internal/collab/documents/:documentId/project-state",
+    async (request, reply) => {
+      if (
+        !isInternalTokenAuthorized(
+          request.headers.authorization,
+          config.COLLAB_TOKEN_SECRET,
+        )
+      ) {
+        return reply.code(401).send({ error: "unauthorized" });
+      }
+
+      const documentId = DocumentIdSchema.safeParse(request.params.documentId);
+      if (!documentId.success) {
+        return reply.code(400).send({ error: "invalid document id" });
+      }
+
+      try {
+        const initialized = await persistence.initializeProjectDocument(
+          documentId.data,
+        );
+        if (!initialized) {
+          return reply.code(404).send({ error: "project document not found" });
+        }
+        return reply.code(204).send();
+      } catch (error) {
+        request.log.error(
+          { documentId: documentId.data, error },
+          "failed to initialize project collaboration state",
+        );
+        return reply
+          .code(503)
+          .send({ error: "project document initialization failed" });
+      }
+    },
+  );
 
   app.get<{ Params: CollabDocumentParams }>(
     config.COLLAB_WS_PATH,
