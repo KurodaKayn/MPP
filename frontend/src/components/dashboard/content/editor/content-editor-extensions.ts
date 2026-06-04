@@ -7,6 +7,7 @@ import StarterKit from "@tiptap/starter-kit";
 
 type ContentEditorExtensionOptions = {
   emptyEditorClassName: string;
+  enableUndoRedo?: boolean;
   imageClassName: string;
   linkClassName: string;
   placeholder?: string;
@@ -14,6 +15,7 @@ type ContentEditorExtensionOptions = {
 
 export function createContentEditorExtensions({
   emptyEditorClassName,
+  enableUndoRedo = true,
   imageClassName,
   linkClassName,
   placeholder = "Start writing...",
@@ -24,6 +26,7 @@ export function createContentEditorExtensions({
         levels: [1, 2, 3],
       },
       link: false,
+      undoRedo: enableUndoRedo ? undefined : false,
     }),
     LinkExtension.configure({
       autolink: true,

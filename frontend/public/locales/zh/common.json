@@ -50,6 +50,7 @@
     "platforms": "平台",
     "useCases": "场景",
     "auth": "平台授权",
+    "collab": "协作编辑",
     "content": "内容创作",
     "dashboard": "控制台",
     "overview": "概览",

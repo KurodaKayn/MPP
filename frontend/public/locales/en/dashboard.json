@@ -214,6 +214,70 @@
       "remoteBrowserDesc": "{{platform}} uses isolated Chromium for login, no need to manually copy cookies or enter passwords into MPP forms."
     }
   },
+  "collab": {
+    "header": {
+      "badge": "Live Docs",
+      "title": "Collaboration",
+      "description": "Create or open a collaborative document and edit together in real time."
+    },
+    "documents": {
+      "title": "Documents",
+      "description": "Your owned and shared collaborative drafts.",
+      "newPlaceholder": "New document title",
+      "create": "Create document",
+      "refresh": "Refresh",
+      "empty": "No collaborative documents yet.",
+      "defaultTitle": "Untitled collaboration"
+    },
+    "editor": {
+      "titleLabel": "Document title",
+      "updatedAt": "Updated {{date}}",
+      "savingTitle": "Saving title",
+      "readonly": "You are opening this document as a viewer. Content updates are disabled.",
+      "placeholder": "Start collaborating here...",
+      "ariaLabel": "Collaborative document editor",
+      "linkPrompt": "Link Address",
+      "linkError": "Please enter a valid link address"
+    },
+    "empty": {
+      "title": "No document selected",
+      "description": "Create a document or select one from the list to start editing."
+    },
+    "status": {
+      "idle": "Idle",
+      "connecting": "Connecting",
+      "connected": "Connected",
+      "synced": "Synced",
+      "offline": "Offline",
+      "unauthorized": "Unauthorized",
+      "error": "Error",
+      "online": "{{count}} online",
+      "unsynced": "{{count}} pending"
+    },
+    "role": {
+      "editor": "Editor",
+      "viewer": "Viewer"
+    },
+    "toolbar": {
+      "undo": "Undo",
+      "redo": "Redo",
+      "bold": "Bold",
+      "italic": "Italic",
+      "underline": "Underline",
+      "strike": "Strike",
+      "link": "Edit Link",
+      "unlink": "Remove Link",
+      "alignLeft": "Align Left",
+      "alignCenter": "Align Center",
+      "alignRight": "Align Right",
+      "clearFormat": "Clear Format"
+    },
+    "toast": {
+      "requestFailed": "Collaboration request failed",
+      "retryLater": "Please refresh and try again later."
+    },
+    "userFallback": "Collaborator"
+  },
   "content": {
     "header": {
       "titleCreate": "Content Creation",

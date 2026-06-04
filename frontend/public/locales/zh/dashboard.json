@@ -214,6 +214,70 @@
       "remoteBrowserDesc": "{{platform}}使用隔离 Chromium 登录，不需要手工复制 Cookie 或输入密码到 MPP 表单。"
     }
   },
+  "collab": {
+    "header": {
+      "badge": "实时文档",
+      "title": "协作编辑",
+      "description": "创建或打开协作文档，多人实时编辑同一份内容。"
+    },
+    "documents": {
+      "title": "文档",
+      "description": "你拥有或被共享的协作草稿。",
+      "newPlaceholder": "新文档标题",
+      "create": "创建文档",
+      "refresh": "刷新",
+      "empty": "还没有协作文档。",
+      "defaultTitle": "未命名协作文档"
+    },
+    "editor": {
+      "titleLabel": "文档标题",
+      "updatedAt": "更新于 {{date}}",
+      "savingTitle": "正在保存标题",
+      "readonly": "你正以查看者身份打开此文档，正文更新已禁用。",
+      "placeholder": "在这里开始协作...",
+      "ariaLabel": "协作文档编辑器",
+      "linkPrompt": "链接地址",
+      "linkError": "请输入有效的链接地址"
+    },
+    "empty": {
+      "title": "未选择文档",
+      "description": "创建文档或从左侧选择一份文档开始编辑。"
+    },
+    "status": {
+      "idle": "空闲",
+      "connecting": "连接中",
+      "connected": "已连接",
+      "synced": "已同步",
+      "offline": "离线",
+      "unauthorized": "未授权",
+      "error": "错误",
+      "online": "{{count}} 人在线",
+      "unsynced": "{{count}} 条待同步"
+    },
+    "role": {
+      "editor": "编辑者",
+      "viewer": "查看者"
+    },
+    "toolbar": {
+      "undo": "撤销",
+      "redo": "重做",
+      "bold": "加粗",
+      "italic": "斜体",
+      "underline": "下划线",
+      "strike": "删除线",
+      "link": "编辑链接",
+      "unlink": "移除链接",
+      "alignLeft": "左对齐",
+      "alignCenter": "居中",
+      "alignRight": "右对齐",
+      "clearFormat": "清除格式"
+    },
+    "toast": {
+      "requestFailed": "协作请求失败",
+      "retryLater": "请刷新后稍后重试。"
+    },
+    "userFallback": "协作者"
+  },
   "content": {
     "header": {
       "titleCreate": "内容创作",
