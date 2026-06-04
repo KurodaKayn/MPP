@@ -31,7 +31,7 @@ export async function runXiaohongshuNoteAdapter(
 
   const bodyTarget = findFirstElement<HTMLElement | HTMLTextAreaElement>([
     '[contenteditable="true"]',
-    'textarea[placeholder*="描述"]',
+    'textarea[placeholder*="\u63cf\u8ff0"]',
     "textarea",
   ]);
 
