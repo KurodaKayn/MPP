@@ -211,26 +211,28 @@ type PublicationSummary struct {
 }
 
 type ProjectListItem struct {
-	ID           uuid.UUID            `json:"id"`
-	UserID       uuid.UUID            `json:"user_id"`
-	Title        string               `json:"title"`
-	Status       string               `json:"status"`
-	Role         string               `json:"role"`
-	CreatedAt    time.Time            `json:"created_at"`
-	UpdatedAt    time.Time            `json:"updated_at"`
-	Publications []PublicationSummary `json:"publications"`
+	ID               uuid.UUID            `json:"id"`
+	UserID           uuid.UUID            `json:"user_id"`
+	CollabDocumentID *uuid.UUID           `json:"collab_document_id,omitempty"`
+	Title            string               `json:"title"`
+	Status           string               `json:"status"`
+	Role             string               `json:"role"`
+	CreatedAt        time.Time            `json:"created_at"`
+	UpdatedAt        time.Time            `json:"updated_at"`
+	Publications     []PublicationSummary `json:"publications"`
 }
 
 type ProjectDetail struct {
-	ID            uuid.UUID            `json:"id"`
-	UserID        uuid.UUID            `json:"user_id"`
-	Title         string               `json:"title"`
-	SourceContent string               `json:"source_content"`
-	Status        string               `json:"status"`
-	Role          string               `json:"role"`
-	CreatedAt     time.Time            `json:"created_at"`
-	UpdatedAt     time.Time            `json:"updated_at"`
-	Publications  []PublicationSummary `json:"publications"`
+	ID               uuid.UUID            `json:"id"`
+	UserID           uuid.UUID            `json:"user_id"`
+	CollabDocumentID *uuid.UUID           `json:"collab_document_id,omitempty"`
+	Title            string               `json:"title"`
+	SourceContent    string               `json:"source_content"`
+	Status           string               `json:"status"`
+	Role             string               `json:"role"`
+	CreatedAt        time.Time            `json:"created_at"`
+	UpdatedAt        time.Time            `json:"updated_at"`
+	Publications     []PublicationSummary `json:"publications"`
 }
 
 type ProjectCollaborator struct {

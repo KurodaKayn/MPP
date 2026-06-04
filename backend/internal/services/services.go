@@ -14,6 +14,7 @@ type AIServiceStream = ai.AIServiceStream
 
 type CollabDocumentService = collabdoc.Service
 type CollabDocumentSessionConfig = collabdoc.SessionConfig
+type CollabDocumentSession = collabdoc.Session
 type DashboardService = dashboard.DashboardService
 type MemoryXOAuth2StateStore = platformaccount.MemoryXOAuth2StateStore
 type PublishJob = publishsvc.PublishJob
@@ -38,6 +39,7 @@ var ErrInvalidAIEditRequest = ai.ErrInvalidAIEditRequest
 var ErrInvalidPlatformAccount = platformaccount.ErrInvalidPlatformAccount
 var ErrInvalidProject = dashboard.ErrInvalidProject
 var ErrInvalidProjectCollaborator = dashboard.ErrInvalidProjectCollaborator
+var ErrProjectCollabUnavailable = dashboard.ErrProjectCollabUnavailable
 var ErrInvalidXOAuth2State = platformaccount.ErrInvalidXOAuth2State
 var ErrManualPublishUnsupported = dashboard.ErrManualPublishUnsupported
 var ErrPublicationAlreadyPublishing = publishsvc.ErrPublicationAlreadyPublishing

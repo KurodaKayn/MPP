@@ -13,6 +13,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
+	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 	"github.com/redis/go-redis/v9"
@@ -24,6 +25,7 @@ import (
 var ErrForbidden = publishsvc.ErrForbidden
 var ErrInvalidProject = errors.New("invalid project")
 var ErrInvalidProjectCollaborator = errors.New("invalid project collaborator")
+var ErrProjectCollabUnavailable = errors.New("project collaboration unavailable")
 var ErrPublicationDisabled = publishsvc.ErrPublicationDisabled
 var ErrPublicationRequiresSync = publishsvc.ErrPublicationRequiresSync
 var ErrManualPublishUnsupported = publishsvc.ErrManualPublishUnsupported
@@ -53,6 +55,7 @@ type DashboardService struct {
 	publisher             *publishsvc.Service
 	browserWorkerClient   publisher.BrowserWorkerClient
 	browserSessionService *browsersession.BrowserSessionService
+	collabDocuments       *collabdoc.Service
 	draftCompiler         ProjectDraftCompiler
 }
 
@@ -75,6 +78,9 @@ func (s *DashboardService) WithContext(ctx context.Context) *DashboardService {
 	if s.browserSessionService != nil {
 		scoped.browserSessionService = s.browserSessionService.WithContext(ctx)
 	}
+	if s.collabDocuments != nil {
+		scoped.collabDocuments = s.collabDocuments.WithContext(ctx)
+	}
 	return &scoped
 }
 
@@ -84,6 +90,10 @@ func (s *DashboardService) SetBrowserWorkerClient(client publisher.BrowserWorker
 
 func (s *DashboardService) SetBrowserSessionService(svc *browsersession.BrowserSessionService) {
 	s.browserSessionService = svc
+}
+
+func (s *DashboardService) SetCollabDocumentService(svc *collabdoc.Service) {
+	s.collabDocuments = svc
 }
 
 func (s *DashboardService) SetDraftCompiler(compiler ProjectDraftCompiler) {
@@ -164,6 +174,17 @@ func projectAccessRoleWithDB(db *gorm.DB, project models.Project, userID uuid.UU
 
 func canEditProjectRole(role string) bool {
 	return role == models.ProjectRoleOwner || role == models.ProjectRoleEditor
+}
+
+func projectCollabDocumentRole(role string) (string, error) {
+	switch role {
+	case models.ProjectRoleOwner, models.ProjectRoleEditor:
+		return models.CollabDocumentRoleEditor, nil
+	case models.ProjectRoleViewer:
+		return models.CollabDocumentRoleViewer, nil
+	default:
+		return "", ErrForbidden
+	}
 }
 
 func normalizeProjectCollaboratorRole(role string) (string, error) {
@@ -580,14 +601,15 @@ func (s *DashboardService) CreateProject(userID uuid.UUID, req dto.CreateProject
 	}
 
 	return &dto.ProjectListItem{
-		ID:           project.ID,
-		UserID:       project.UserID,
-		Title:        project.Title,
-		Status:       project.Status,
-		Role:         models.ProjectRoleOwner,
-		CreatedAt:    project.CreatedAt,
-		UpdatedAt:    project.UpdatedAt,
-		Publications: publications,
+		ID:               project.ID,
+		UserID:           project.UserID,
+		CollabDocumentID: project.CollabDocumentID,
+		Title:            project.Title,
+		Status:           project.Status,
+		Role:             models.ProjectRoleOwner,
+		CreatedAt:        project.CreatedAt,
+		UpdatedAt:        project.UpdatedAt,
+		Publications:     publications,
 	}, nil
 }
 
@@ -828,6 +850,64 @@ func (s *DashboardService) SaveProjectPlatforms(projectID uuid.UUID, userID uuid
 	return s.GetProject(projectID, &userID)
 }
 
+func (s *DashboardService) CreateProjectCollabSession(projectID uuid.UUID, userID uuid.UUID) (*collabdoc.Session, error) {
+	if projectID == uuid.Nil || userID == uuid.Nil {
+		return nil, ErrInvalidProject
+	}
+	if s.collabDocuments == nil {
+		return nil, ErrProjectCollabUnavailable
+	}
+
+	documentID, documentRole, err := s.ensureProjectCollabDocument(projectID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.collabDocuments.CreateAuthorizedSession(s.requestContext(), userID, documentID, documentRole)
+}
+
+func (s *DashboardService) ensureProjectCollabDocument(projectID uuid.UUID, userID uuid.UUID) (uuid.UUID, string, error) {
+	var documentID uuid.UUID
+	var documentRole string
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var project models.Project
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&project, "id = ?", projectID).Error; err != nil {
+			return err
+		}
+
+		role, err := projectAccessRoleWithDB(tx, project, userID)
+		if err != nil {
+			return err
+		}
+		documentRole, err = projectCollabDocumentRole(role)
+		if err != nil {
+			return err
+		}
+
+		if project.CollabDocumentID != nil && *project.CollabDocumentID != uuid.Nil {
+			documentID = *project.CollabDocumentID
+			return nil
+		}
+
+		document := models.CollabDocument{
+			OwnerUserID:   project.UserID,
+			Title:         project.Title,
+			Status:        models.CollabDocumentStatusActive,
+			SchemaVersion: 1,
+			CurrentSeq:    0,
+		}
+		if err := tx.Create(&document).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&project).Update("collab_document_id", document.ID).Error; err != nil {
+			return err
+		}
+		documentID = document.ID
+		return nil
+	})
+	return documentID, documentRole, err
+}
+
 func (s *DashboardService) ListProjectCollaborators(projectID uuid.UUID, actorUserID uuid.UUID) (*dto.ProjectCollaboratorsResponse, error) {
 	if _, err := s.requireProjectOwner(projectID, actorUserID); err != nil {
 		return nil, err
@@ -1009,15 +1089,16 @@ func projectDetailFromModel(project models.Project, role string) *dto.ProjectDet
 	}
 
 	return &dto.ProjectDetail{
-		ID:            project.ID,
-		UserID:        project.UserID,
-		Title:         project.Title,
-		SourceContent: project.SourceContent,
-		Status:        project.Status,
-		Role:          role,
-		CreatedAt:     project.CreatedAt,
-		UpdatedAt:     project.UpdatedAt,
-		Publications:  publications,
+		ID:               project.ID,
+		UserID:           project.UserID,
+		CollabDocumentID: project.CollabDocumentID,
+		Title:            project.Title,
+		SourceContent:    project.SourceContent,
+		Status:           project.Status,
+		Role:             role,
+		CreatedAt:        project.CreatedAt,
+		UpdatedAt:        project.UpdatedAt,
+		Publications:     publications,
 	}
 }
 
@@ -1144,14 +1225,15 @@ func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, p
 		}
 
 		items = append(items, dto.ProjectListItem{
-			ID:           p.ID,
-			UserID:       p.UserID,
-			Title:        p.Title,
-			Status:       p.Status,
-			Role:         roles[p.ID],
-			CreatedAt:    p.CreatedAt,
-			UpdatedAt:    p.UpdatedAt,
-			Publications: pubSummaries,
+			ID:               p.ID,
+			UserID:           p.UserID,
+			CollabDocumentID: p.CollabDocumentID,
+			Title:            p.Title,
+			Status:           p.Status,
+			Role:             roles[p.ID],
+			CreatedAt:        p.CreatedAt,
+			UpdatedAt:        p.UpdatedAt,
+			Publications:     pubSummaries,
 		})
 	}
 
