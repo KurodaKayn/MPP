@@ -56,9 +56,29 @@ Dev 模式的 Compose project name 为 `mpp-dev`。
 这个模式会启动前端、后端、AI 服务、browser-worker、数据库和 Redis，并保留原有直连端口，避免日常 Docker 开发体验变化：
 
 - 前端使用 `pnpm dev`，源码变化会触发 Next.js 热更新。
+- 前端 `.next` 使用 Docker named volume 保存，Next.js 16 的 Turbopack dev filesystem cache 会写入 `mpp-dev_frontend_next`，用于加速容器重启后的编译。
 - 后端使用 `air`，Go 源码变化会自动重新编译并重启 API。
 - AI 服务使用 `uvicorn --reload`，Python 源码变化会自动重载。
 - 依赖文件变化会触发对应服务重新构建，包括 `package.json`、`pnpm-lock.yaml`、`go.mod`、`go.sum`、`pyproject.toml`、`uv.lock`。
+
+如果前端 dev cache 变得过大，可以查看或清理该 volume：
+
+```bash
+script/docker/dev-cache.sh status
+script/docker/dev-cache.sh clean-frontend-next
+```
+
+`clean-frontend-next` 只删除 `.next` 里的 dev cache，保留 volume 本身；如果需要完全重建前端 `.next` volume，可以执行：
+
+```bash
+script/docker/dev-cache.sh reset-frontend-next
+```
+
+如果希望禁用 Next.js dev filesystem cache，可以在 `docker/.env` 中设置：
+
+```env
+MPP_FRONTEND_TURBOPACK_FS_CACHE=false
+```
 
 浏览器扩展 dev 服务是可选 profile，不会随默认 dev 模式启动。需要调试 extension 时执行：
 

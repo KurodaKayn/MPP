@@ -9,8 +9,21 @@ function getBackendApiBaseUrl() {
   );
 }
 
+function isTurbopackFileSystemCacheEnabledForDev() {
+  const value = process.env.MPP_FRONTEND_TURBOPACK_FS_CACHE?.toLowerCase();
+
+  if (value === "0" || value === "false" || value === "off") {
+    return false;
+  }
+
+  return true;
+}
+
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
+  experimental: {
+    turbopackFileSystemCacheForDev: isTurbopackFileSystemCacheEnabledForDev(),
+  },
   output: "standalone",
   async rewrites() {
     const backendApiBaseUrl = getBackendApiBaseUrl();
