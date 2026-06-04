@@ -203,5 +203,6 @@ func registerCollabRoutes(e *echo.Echo, config serverConfig, h serverHandlers) e
 	collabGroup.GET("/documents", h.collabDocument.ListDocuments)
 	collabGroup.GET("/documents/:id", h.collabDocument.GetDocument)
 	collabGroup.POST("/documents", h.collabDocument.CreateDocument)
+	collabGroup.PATCH("/documents/:id", h.collabDocument.UpdateDocument)
 	return nil
 }
