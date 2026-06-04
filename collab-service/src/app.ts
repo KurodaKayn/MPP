@@ -1,6 +1,7 @@
 import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 
+import { createCollabAuthenticator } from "./auth/session-token.js";
 import { createCollabServer } from "./collab/hocuspocus.js";
 import { loadConfig } from "./config.js";
 import { createMetrics } from "./metrics.js";
@@ -13,6 +14,10 @@ interface CollabDocumentParams {
   documentId: string;
 }
 
+interface CollabDocumentQuery {
+  token?: string;
+}
+
 export async function buildApp(
   config: CollabConfig = loadConfig(),
 ): Promise<FastifyInstance> {
@@ -22,7 +27,8 @@ export async function buildApp(
     },
   });
   const metrics = createMetrics();
-  const collabServer = createCollabServer(config);
+  const authenticator = createCollabAuthenticator(config);
+  const collabServer = createCollabServer(config, authenticator);
 
   await app.register(websocket);
 
@@ -35,7 +41,7 @@ export async function buildApp(
     dependencies: {
       database_configured: Boolean(config.DATABASE_URL),
       redis_addr: config.REDIS_ADDR,
-      token_public_key_configured: Boolean(config.COLLAB_TOKEN_PUBLIC_KEY),
+      token_secret_configured: Boolean(config.COLLAB_TOKEN_SECRET),
     },
   }));
 
@@ -44,10 +50,15 @@ export async function buildApp(
     return metrics.registry.metrics();
   });
 
-  app.get<{ Params: CollabDocumentParams }>(
+  app.get<{ Params: CollabDocumentParams; Querystring: CollabDocumentQuery }>(
     config.COLLAB_WS_PATH,
     { websocket: true },
     (socket, request) => {
+      if (!request.query.token) {
+        socket.close(1008, "collab session token required");
+        return;
+      }
+
       collabServer.handleConnection(
         socket as unknown as WebSocketLike,
         request.raw as unknown as Request,
