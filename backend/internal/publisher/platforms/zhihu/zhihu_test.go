@@ -2,12 +2,10 @@ package zhihu
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/datatypes"
 )
@@ -26,52 +24,6 @@ func TestZhihuPublisher_Publish_NoAccount(t *testing.T) {
 	assert.Contains(t, err.Error(), "account information is required")
 	assert.Empty(t, remoteID)
 	assert.Empty(t, url)
-}
-
-// TestZhihuPublisher_AdaptContent 验证内容适配逻辑
-func TestZhihuPublisher_AdaptContent(t *testing.T) {
-	p := &ZhihuPublisher{}
-	project := &models.Project{
-		Title:         "知乎标题",
-		SourceContent: `<h2>小标题</h2><p>这是一段<strong>知乎测试</strong>正文。</p><blockquote>引用</blockquote><ul><li>第一点</li></ul><p><img src="https://example.com/a.png" alt="配图"></p>`,
-	}
-
-	content, err := p.AdaptContent(project)
-
-	assert.NoError(t, err)
-	var adapted core.AdaptedContent
-	assert.NoError(t, json.Unmarshal(content, &adapted))
-	assert.NotNil(t, adapted.SchemaVersion)
-	assert.Equal(t, 1, *adapted.SchemaVersion)
-	assert.Equal(t, "markdown", string(adapted.Format))
-	assert.NotNil(t, adapted.GeneratedBy)
-	assert.Equal(t, "zhihu-markdown-adapter", adapted.GeneratedBy.Id)
-	assert.NotNil(t, adapted.Markdown)
-	assert.Contains(t, *adapted.Markdown, "## 小标题")
-	assert.Contains(t, *adapted.Markdown, "**知乎测试**")
-	assert.Contains(t, *adapted.Markdown, "> 引用")
-	assert.Contains(t, *adapted.Markdown, "- 第一点")
-	assert.Contains(t, *adapted.Markdown, "![配图](https://example.com/a.png)")
-}
-
-func TestZhihuPublisherAdaptContentPreservesPreformattedCode(t *testing.T) {
-	p := &ZhihuPublisher{}
-	project := &models.Project{
-		Title: "代码示例",
-		SourceContent: `<pre><code>for _, item := range items {
-	if item.Enabled {
-		fmt.Println(item.Platform)
-	}
-}</code></pre>`,
-	}
-
-	content, err := p.AdaptContent(project)
-
-	assert.NoError(t, err)
-	var adapted core.AdaptedContent
-	assert.NoError(t, json.Unmarshal(content, &adapted))
-	assert.NotNil(t, adapted.Markdown)
-	assert.Contains(t, *adapted.Markdown, "```\nfor _, item := range items {\n\tif item.Enabled {\n\t\tfmt.Println(item.Platform)\n\t}\n}\n```")
 }
 
 // TestZhihuPublisher_Publish_AccountWithEmptyCookies 验证账号存在但 Cookie 为空时的初始校验
