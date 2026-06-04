@@ -125,6 +125,15 @@ func setupTestDB() *gorm.DB {
 		updated_at DATETIME
 	)`)
 
+	db.Exec(`CREATE TABLE project_collaborators (
+		project_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		role TEXT NOT NULL,
+		created_by TEXT NOT NULL,
+		created_at DATETIME,
+		PRIMARY KEY (project_id, user_id)
+	)`)
+
 	db.Exec(`CREATE TABLE platform_accounts (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
@@ -681,6 +690,45 @@ func TestListProjects(t *testing.T) {
 	}
 }
 
+func TestListProjectsIncludesCollaboratorProjectsWithRoles(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	collaborator := models.User{Username: "collaborator", Email: "collab@example.com"}
+	hiddenOwner := models.User{Username: "hidden-owner", Email: "hidden@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&collaborator).Error)
+	require.NoError(t, db.Create(&hiddenOwner).Error)
+
+	ownedProject := models.Project{UserID: collaborator.ID, Title: "Owned", SourceContent: "owned", Status: models.ProjectStatusDraft, CreatedAt: time.Now().Add(2 * time.Hour)}
+	sharedProject := models.Project{UserID: owner.ID, Title: "Shared", SourceContent: "shared", Status: models.ProjectStatusReady, CreatedAt: time.Now().Add(time.Hour)}
+	hiddenProject := models.Project{UserID: hiddenOwner.ID, Title: "Hidden", SourceContent: "hidden", Status: models.ProjectStatusReady, CreatedAt: time.Now().Add(3 * time.Hour)}
+	require.NoError(t, db.Create(&ownedProject).Error)
+	require.NoError(t, db.Create(&sharedProject).Error)
+	require.NoError(t, db.Create(&hiddenProject).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: sharedProject.ID,
+		UserID:    collaborator.ID,
+		Role:      models.ProjectRoleViewer,
+		CreatedBy: owner.ID,
+	}).Error)
+
+	res, err := s.ListProjects(1, 10, "", "", "", &collaborator.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), res.Total)
+
+	items := res.Items.([]dto.ProjectListItem)
+	require.Len(t, items, 2)
+	roles := map[uuid.UUID]string{}
+	for _, item := range items {
+		roles[item.ID] = item.Role
+		require.NotEqual(t, hiddenProject.ID, item.ID)
+	}
+	require.Equal(t, models.ProjectRoleOwner, roles[ownedProject.ID])
+	require.Equal(t, models.ProjectRoleViewer, roles[sharedProject.ID])
+}
+
 func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
@@ -699,6 +747,7 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "WeChat title", resp.Title)
 	assert.Equal(t, models.ProjectStatusReady, resp.Status)
+	assert.Equal(t, models.ProjectRoleOwner, resp.Role)
 	assert.Len(t, resp.Publications, 2)
 
 	var project models.Project
@@ -751,8 +800,10 @@ func TestGetProjectReturnsSourceContentForOwner(t *testing.T) {
 	s := services.NewDashboardService(db)
 
 	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	editor := models.User{Username: "editor", Email: "editor@example.com"}
 	stranger := models.User{Username: "stranger", Email: "stranger@example.com"}
 	db.Create(&owner)
+	db.Create(&editor)
 	db.Create(&stranger)
 
 	project := models.Project{
@@ -768,12 +819,25 @@ func TestGetProjectReturnsSourceContentForOwner(t *testing.T) {
 		Enabled:   true,
 		Status:    models.PublicationStatusPublished,
 	})
+	db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    editor.ID,
+		Role:      models.ProjectRoleEditor,
+		CreatedBy: owner.ID,
+	})
 
 	resp, err := s.GetProject(project.ID, &owner.ID)
 	assert.NoError(t, err)
 	assert.Equal(t, project.ID, resp.ID)
+	assert.Equal(t, models.ProjectRoleOwner, resp.Role)
 	assert.Equal(t, "<p>Editable body</p>", resp.SourceContent)
 	assert.Len(t, resp.Publications, 1)
+
+	collaboratorResp, err := s.GetProject(project.ID, &editor.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, project.ID, collaboratorResp.ID)
+	assert.Equal(t, models.ProjectRoleEditor, collaboratorResp.Role)
+	assert.Equal(t, "<p>Editable body</p>", collaboratorResp.SourceContent)
 
 	_, err = s.GetProject(project.ID, &stranger.ID)
 	assert.ErrorIs(t, err, services.ErrForbidden)
@@ -856,6 +920,116 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 		Platforms:     []string{"wechat"},
 	})
 	assert.ErrorIs(t, err, services.ErrForbidden)
+}
+
+func TestSaveProjectContentAllowsEditorAndRejectsViewer(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	editor := models.User{Username: "editor", Email: "editor@example.com"}
+	viewer := models.User{Username: "viewer", Email: "viewer@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&editor).Error)
+	require.NoError(t, db.Create(&viewer).Error)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Old title",
+		SourceContent: "old body",
+		Status:        models.ProjectStatusDraft,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    editor.ID,
+		Role:      models.ProjectRoleEditor,
+		CreatedBy: owner.ID,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    viewer.ID,
+		Role:      models.ProjectRoleViewer,
+		CreatedBy: owner.ID,
+	}).Error)
+
+	updated, err := s.SaveProjectContent(project.ID, editor.ID, dto.SaveProjectContentRequest{
+		Title:         "Editor title",
+		SourceContent: "editor body",
+	})
+	require.NoError(t, err)
+	require.Equal(t, models.ProjectRoleEditor, updated.Role)
+	require.Equal(t, "Editor title", updated.Title)
+	require.Equal(t, "editor body", updated.SourceContent)
+
+	_, err = s.SaveProjectContent(project.ID, viewer.ID, dto.SaveProjectContentRequest{
+		Title:         "Viewer title",
+		SourceContent: "viewer body",
+	})
+	require.ErrorIs(t, err, services.ErrForbidden)
+
+	var saved models.Project
+	require.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
+	require.Equal(t, "Editor title", saved.Title)
+	require.Equal(t, "editor body", saved.SourceContent)
+}
+
+func TestProjectCollaboratorManagement(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	collaborator := models.User{Username: "collaborator", Email: "collaborator@example.com"}
+	stranger := models.User{Username: "stranger", Email: "stranger@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&collaborator).Error)
+	require.NoError(t, db.Create(&stranger).Error)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Shared project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+
+	added, err := s.AddProjectCollaborator(project.ID, owner.ID, dto.AddProjectCollaboratorRequest{
+		Email: "COLLABORATOR@example.com",
+		Role:  models.ProjectRoleEditor,
+	})
+	require.NoError(t, err)
+	require.Equal(t, collaborator.ID, added.UserID)
+	require.Equal(t, collaborator.Email, added.Email)
+	require.Equal(t, models.ProjectRoleEditor, added.Role)
+	require.Equal(t, owner.ID, added.CreatedBy)
+
+	list, err := s.ListProjectCollaborators(project.ID, owner.ID)
+	require.NoError(t, err)
+	require.Len(t, list.Items, 1)
+	require.Equal(t, collaborator.ID, list.Items[0].UserID)
+
+	updated, err := s.UpdateProjectCollaborator(project.ID, owner.ID, collaborator.ID, dto.UpdateProjectCollaboratorRequest{
+		Role: models.ProjectRoleViewer,
+	})
+	require.NoError(t, err)
+	require.Equal(t, models.ProjectRoleViewer, updated.Role)
+
+	_, err = s.AddProjectCollaborator(project.ID, owner.ID, dto.AddProjectCollaboratorRequest{
+		UserID: owner.ID,
+		Role:   models.ProjectRoleViewer,
+	})
+	require.ErrorIs(t, err, services.ErrInvalidProjectCollaborator)
+
+	_, err = s.AddProjectCollaborator(project.ID, stranger.ID, dto.AddProjectCollaboratorRequest{
+		UserID: collaborator.ID,
+		Role:   models.ProjectRoleViewer,
+	})
+	require.ErrorIs(t, err, services.ErrForbidden)
+
+	require.NoError(t, s.RemoveProjectCollaborator(project.ID, owner.ID, collaborator.ID))
+	list, err = s.ListProjectCollaborators(project.ID, owner.ID)
+	require.NoError(t, err)
+	require.Empty(t, list.Items)
 }
 
 func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
@@ -996,8 +1170,10 @@ func TestGetProjectPublications(t *testing.T) {
 	s := services.NewDashboardService(db)
 
 	u1 := models.User{Username: "owner"}
+	collaborator := models.User{Username: "collaborator", Email: "collaborator@example.com"}
 	u2 := models.User{Username: "stranger"}
 	db.Create(&u1)
+	db.Create(&collaborator)
 	db.Create(&u2)
 
 	p := models.Project{UserID: u1.ID, Title: "p1", SourceContent: "c1", Status: models.ProjectStatusPublished}
@@ -1014,6 +1190,12 @@ func TestGetProjectPublications(t *testing.T) {
 		AdaptedContent: datatypes.JSON(contentJSON),
 	}
 	db.Create(&pub)
+	db.Create(&models.ProjectCollaborator{
+		ProjectID: p.ID,
+		UserID:    collaborator.ID,
+		Role:      models.ProjectRoleViewer,
+		CreatedBy: u1.ID,
+	})
 
 	// Admin can see it
 	res, err := s.GetProjectPublications(p.ID, nil, false)
@@ -1024,6 +1206,11 @@ func TestGetProjectPublications(t *testing.T) {
 	resOwner, errOwner := s.GetProjectPublications(p.ID, &u1.ID, false)
 	assert.NoError(t, errOwner)
 	assert.Equal(t, p.ID, resOwner.ProjectID)
+
+	// Collaborator can see it
+	resCollaborator, errCollaborator := s.GetProjectPublications(p.ID, &collaborator.ID, false)
+	assert.NoError(t, errCollaborator)
+	assert.Equal(t, p.ID, resCollaborator.ProjectID)
 
 	// Stranger gets Forbidden
 	_, errStranger := s.GetProjectPublications(p.ID, &u2.ID, false)
