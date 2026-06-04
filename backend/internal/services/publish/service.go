@@ -116,9 +116,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 		return nil, err
 	}
 	if pub.Status != models.PublicationStatusAdapted && pub.Status != models.PublicationStatusPublishing {
-		if err := s.adaptPublicationForPublish(&proj, &pub, p); err != nil {
-			return nil, err
-		}
+		return nil, ErrPublicationRequiresSync
 	}
 
 	if err := s.accounts.ApplySavedCredentialsToPublication(proj.UserID, &pub); err != nil {
@@ -208,14 +206,8 @@ func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID)
 	if !pub.Enabled || pub.Status == models.PublicationStatusDisabled {
 		return nil, ErrPublicationDisabled
 	}
-	p, err := publisher.Factory.GetPublisher("x")
-	if err != nil {
-		return nil, err
-	}
 	if pub.Status != models.PublicationStatusAdapted {
-		if err := s.adaptPublicationForPublish(&proj, &pub, p); err != nil {
-			return nil, err
-		}
+		return nil, ErrPublicationRequiresSync
 	}
 
 	publishURL, err := publisher.BuildXPostIntentURL(pub.AdaptedContent)
@@ -235,42 +227,6 @@ func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID)
 		"platform":    "x",
 		"publish_url": publishURL,
 	}, nil
-}
-
-func (s *Service) adaptPublicationForPublish(project *models.Project, pub *models.ProjectPlatformPublication, p publisher.PlatformPublisher) error {
-	adaptedContent, err := p.AdaptContent(project)
-	if err != nil {
-		return err
-	}
-
-	content := pub.AdaptedContent
-	if len(adaptedContent) > 0 {
-		content = datatypes.JSON(adaptedContent)
-	}
-
-	updates := map[string]interface{}{
-		"adapted_content": content,
-		"error_message":   "",
-		"last_attempt_at": nil,
-		"published_at":    nil,
-		"publish_url":     "",
-		"remote_id":       "",
-		"retry_count":     0,
-		"status":          models.PublicationStatusAdapted,
-	}
-	if err := s.db.Model(pub).Updates(updates).Error; err != nil {
-		return err
-	}
-
-	pub.AdaptedContent = content
-	pub.ErrorMessage = ""
-	pub.LastAttemptAt = nil
-	pub.PublishedAt = nil
-	pub.PublishURL = ""
-	pub.RemoteID = ""
-	pub.RetryCount = 0
-	pub.Status = models.PublicationStatusAdapted
-	return nil
 }
 
 func (s *Service) applySavedBrowserCookies(ctx context.Context, userID uuid.UUID, platform string, account *models.PlatformAccount) error {
