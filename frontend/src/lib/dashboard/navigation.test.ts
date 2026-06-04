@@ -8,6 +8,8 @@ describe("dashboard navigation", () => {
     ["/dashboard/content", "nav.content"],
     ["/zh/dashboard/content", "nav.content"],
     ["/dashboard/content/project-1", "nav.content"],
+    ["/dashboard/collab", "nav.collab"],
+    ["/zh/dashboard/collab", "nav.collab"],
     ["/dashboard/posts", "nav.posts"],
     ["/dashboard/settings", "nav.settings"],
   ])("returns the page title for %s", (pathname, title) => {
