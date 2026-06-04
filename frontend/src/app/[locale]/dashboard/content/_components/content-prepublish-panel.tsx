@@ -27,6 +27,7 @@ import type {
 type PublishPlatform = PlatformTab["value"];
 
 type ContentPrepublishPanelProps = {
+  canEdit?: boolean;
   content: ContentValue;
   drafts: Partial<Record<PublishPlatform, PrepublishDraft>>;
   isSyncing: boolean;
@@ -139,6 +140,7 @@ function draftFromPublications(
 }
 
 export function ContentPrepublishPanel({
+  canEdit = true,
   content,
   drafts,
   isSyncing,
@@ -164,7 +166,7 @@ export function ContentPrepublishPanel({
 
   const activeDraft = drafts[activePlatform];
   const expectedFormat = platformFormats[activePlatform];
-  const canUseAI = Boolean(projectId && activeDraft);
+  const canUseAI = Boolean(canEdit && projectId && activeDraft);
   const getPlatformLabel = (platform: PlatformTab) =>
     tCommon(platform.label, { defaultValue: platform.defaultLabel });
 
@@ -184,7 +186,7 @@ export function ContentPrepublishPanel({
               size="lg"
               variant="outline"
               onClick={() => onSync([activePlatform])}
-              disabled={!hasSourceContent}
+              disabled={!canEdit || !hasSourceContent}
               className="h-9 w-full justify-center sm:w-48"
             >
               {isSyncing ? (
@@ -200,7 +202,7 @@ export function ContentPrepublishPanel({
               onClick={() =>
                 onSync(PLATFORM_TABS.map((platform) => platform.value))
               }
-              disabled={!hasSourceContent}
+              disabled={!canEdit || !hasSourceContent}
               className="h-9 w-full justify-center sm:w-48"
             >
               {isSyncing ? (

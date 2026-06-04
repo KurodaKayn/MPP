@@ -50,11 +50,14 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         mode={header.mode}
         onOpenPublishPanel={contentPage.openPublishPanel}
         onSave={header.onSave}
+        projectId={header.projectId}
+        projectRole={header.projectRole}
       />
 
       {contentView === "editor" ? (
         <div>
           <ContentEditor
+            canEdit={editor.canEdit}
             title={editor.title}
             content={editor.content}
             onTitleChange={editor.setTitle}
@@ -83,6 +86,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
       )}
 
       <ContentPrepublishPanel
+        canEdit={prepublish.canEdit}
         title={prepublish.title}
         content={prepublish.content}
         drafts={prepublish.drafts}

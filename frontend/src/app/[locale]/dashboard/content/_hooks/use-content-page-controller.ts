@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import { emptyContentValue, type ContentValue } from "@/lib/content/types";
@@ -9,6 +9,7 @@ import {
   getDashboardProject,
   getProjectPublications,
 } from "@/lib/dashboard/api";
+import type { ProjectRole } from "@/lib/dashboard/api";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import { type PublishPlatform } from "../_lib/publish-content";
 import { useContentPageStore } from "../_stores/content-page-store";
@@ -28,7 +29,10 @@ function contentValueFromSource(sourceContent: string): ContentValue {
   return {
     firstImageSrc: container.querySelector("img")?.getAttribute("src") ?? "",
     html: sourceContent,
-    text: container.innerText.trim() || sourceContent.trim(),
+    text:
+      container.innerText?.trim() ||
+      container.textContent?.trim() ||
+      sourceContent.trim(),
   };
 }
 
@@ -57,6 +61,7 @@ export function useContentPageController(projectId?: string) {
   } = useContentPageStore();
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
+  const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
   const publishBarRef = useRef<HTMLDivElement>(null);
   const isRouteContentLoaded = projectId
     ? loadedProjectId === projectId
@@ -72,20 +77,27 @@ export function useContentPageController(projectId?: string) {
   const hasSyncedSelectedPlatforms = automaticPublishPlatforms.every(
     (platform) => prepublishDrafts[platform],
   );
+  const canEditProject = !projectId || projectRole !== "viewer";
+  const canPublishProject = !projectId || projectRole === "owner";
   const canPublish = Boolean(
     projectId &&
+    canPublishProject &&
     hasRequiredContent &&
     automaticPublishPlatforms.length > 0 &&
     hasSyncedSelectedPlatforms,
   );
-  const canSelectPlatforms = hasRequiredContent;
+  const canSelectPlatforms = Boolean(canEditProject && hasRequiredContent);
   const canSave = Boolean(
-    projectId && hasRequiredContent && selectedPlatforms.length > 0,
+    projectId &&
+    canEditProject &&
+    hasRequiredContent &&
+    selectedPlatforms.length > 0,
   );
-  const canOpenXPostIntent = hasRequiredContent;
+  const canOpenXPostIntent = Boolean(canPublishProject && hasRequiredContent);
 
   useEffect(() => {
     if (!projectId) {
+      setProjectRole(null);
       resetForCreate();
       return;
     }
@@ -102,6 +114,7 @@ export function useContentPageController(projectId?: string) {
         }
 
         setTitle(project.title);
+        setProjectRole(project.role);
         setContent(contentValueFromSource(project.source_content));
         setSelectedPlatforms(
           project.publications.flatMap((publication) =>
@@ -125,6 +138,7 @@ export function useContentPageController(projectId?: string) {
         }
 
         setTitle("");
+        setProjectRole(null);
         setContent(emptyContentValue);
         setSelectedPlatforms([]);
         setPrepublishDrafts({});
@@ -176,6 +190,7 @@ export function useContentPageController(projectId?: string) {
   });
 
   const editor = {
+    canEdit: canEditProject,
     content,
     setContent: (nextContent: ContentValue) => {
       setContent(nextContent);
@@ -195,10 +210,13 @@ export function useContentPageController(projectId?: string) {
       isSaving,
       mode: projectId ? ("edit" as const) : ("create" as const),
       onSave: projectId ? workflow.save : undefined,
+      projectId,
+      projectRole,
     },
     isLoading: isPageLoading,
     openPublishPanel,
     prepublish: {
+      canEdit: canEditProject,
       content,
       drafts: prepublishDrafts,
       isSyncing: isSyncingPrepublish,

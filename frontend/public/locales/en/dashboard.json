@@ -285,7 +285,45 @@
       "descCreate": "Write your content here, and we will automatically adapt it for each platform.",
       "descEdit": "Modify current project content and reselect platforms for synchronization.",
       "saveChanges": "Save Changes",
-      "publishSettings": "Publishing Settings"
+      "publishSettings": "Publishing Settings",
+      "role": {
+        "owner": "Owner",
+        "editor": "Editor",
+        "viewer": "Viewer"
+      }
+    },
+    "share": {
+      "button": "Share",
+      "title": "Share project",
+      "description": "Invite existing MPP users to help edit or review this project.",
+      "ownerTitle": "Owner controls publishing",
+      "ownerDescription": "Editors can work on content and pre-publish drafts. Publishing and account settings stay with the owner.",
+      "roleOwner": "Owner",
+      "emailLabel": "Collaborator email",
+      "emailPlaceholder": "teammate@example.com",
+      "add": "Add collaborator",
+      "people": "People with access",
+      "peopleDescription": "Project-specific access overrides personal ownership.",
+      "count": "{{count}} shared",
+      "loading": "Loading collaborators...",
+      "empty": "No collaborators yet. Share this project with an existing user to start.",
+      "remove": "Remove collaborator",
+      "loadFailed": "Unable to load collaborators",
+      "addSuccess": "Collaborator added",
+      "addFailed": "Unable to add collaborator",
+      "roleUpdated": "Role updated",
+      "roleUpdateFailed": "Unable to update role",
+      "removeSuccess": "Collaborator removed",
+      "removeFailed": "Unable to remove collaborator",
+      "retryLater": "Please try again later.",
+      "role": {
+        "editor": "Editor",
+        "viewer": "Viewer"
+      },
+      "roleHelp": {
+        "editor": "Can edit content and drafts",
+        "viewer": "Can open read-only"
+      }
     },
     "prepublish": {
       "title": "Pre-publish",
