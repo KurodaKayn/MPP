@@ -22,6 +22,7 @@ import {
 } from "@/components/dashboard/content/editor/content-editor-toolbar-button";
 
 type ContentEditorToolbarProps = {
+  disabled?: boolean;
   editor: Editor | null;
   onInsertImage: () => void;
   onSetLink: () => void;
@@ -29,28 +30,34 @@ type ContentEditorToolbarProps = {
 
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 export function ContentEditorToolbar({
+  disabled = false,
   editor,
   onInsertImage,
   onSetLink,
 }: ContentEditorToolbarProps) {
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
+  const activeEditor = disabled ? null : editor;
 
   return (
     <div className="flex flex-wrap items-center gap-1 rounded-t-[calc(0.75rem-1px)] border-b bg-muted/30 px-3 py-2">
-      <HistoryControls editor={editor} />
+      <HistoryControls editor={activeEditor} />
       <ToolbarSeparator />
 
-      <ContentEditorBlockMenu editor={editor} />
+      <ContentEditorBlockMenu editor={activeEditor} />
       <ToolbarSeparator />
 
-      <InlineFormatControls editor={editor} onSetLink={onSetLink} />
+      <InlineFormatControls editor={activeEditor} onSetLink={onSetLink} />
       <ToolbarSeparator />
 
-      <AlignmentControls editor={editor} />
+      <AlignmentControls editor={activeEditor} />
       <ToolbarSeparator />
 
-      <ToolbarButton label={t("toolbar.insertImage")} onClick={onInsertImage}>
+      <ToolbarButton
+        label={t("toolbar.insertImage")}
+        disabled={!activeEditor}
+        onClick={onInsertImage}
+      >
         <ImagePlus className="size-4" />
       </ToolbarButton>
     </div>

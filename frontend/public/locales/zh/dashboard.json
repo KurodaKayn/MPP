@@ -285,7 +285,45 @@
       "descCreate": "在此编写您的内容，我们将为您自动适配各平台格式。",
       "descEdit": "修改当前项目内容，并重新选择需要同步的平台。",
       "saveChanges": "保存修改",
-      "publishSettings": "发布设置"
+      "publishSettings": "发布设置",
+      "role": {
+        "owner": "所有者",
+        "editor": "编辑者",
+        "viewer": "查看者"
+      }
+    },
+    "share": {
+      "button": "分享",
+      "title": "分享项目",
+      "description": "邀请已有 MPP 用户一起编辑或审阅这个项目。",
+      "ownerTitle": "所有者保留发布控制权",
+      "ownerDescription": "编辑者可以修改正文和预发布草稿；发布和账号设置仍由所有者控制。",
+      "roleOwner": "所有者",
+      "emailLabel": "协作者邮箱",
+      "emailPlaceholder": "teammate@example.com",
+      "add": "添加协作者",
+      "people": "可访问成员",
+      "peopleDescription": "项目级分享会覆盖个人所有权之外的访问权限。",
+      "count": "{{count}} 人共享",
+      "loading": "正在加载协作者...",
+      "empty": "还没有协作者。分享给已有用户后即可开始协作。",
+      "remove": "移除协作者",
+      "loadFailed": "无法加载协作者",
+      "addSuccess": "协作者已添加",
+      "addFailed": "无法添加协作者",
+      "roleUpdated": "角色已更新",
+      "roleUpdateFailed": "无法更新角色",
+      "removeSuccess": "协作者已移除",
+      "removeFailed": "无法移除协作者",
+      "retryLater": "请稍后重试。",
+      "role": {
+        "editor": "编辑者",
+        "viewer": "查看者"
+      },
+      "roleHelp": {
+        "editor": "可编辑正文和草稿",
+        "viewer": "只能只读打开"
+      }
     },
     "prepublish": {
       "title": "预发布",

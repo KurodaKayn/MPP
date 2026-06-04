@@ -12,11 +12,13 @@ type ContentEditorDocumentProps = {
 };
 
 type ContentEditorTitleProps = {
+  disabled?: boolean;
   title: string;
   onTitleChange: (title: string) => void;
 };
 
 export function ContentEditorTitle({
+  disabled = false,
   title,
   onTitleChange,
 }: ContentEditorTitleProps) {
@@ -35,6 +37,7 @@ export function ContentEditorTitle({
         id="title"
         placeholder={t("editor.titlePlaceholder")}
         value={title}
+        disabled={disabled}
         className="h-auto border-0 px-0 py-0 text-2xl font-semibold shadow-none focus-visible:ring-0 sm:text-3xl"
         onChange={(event) => onTitleChange(event.target.value)}
       />
