@@ -1,0 +1,38 @@
+{
+  "adapters": {
+    "bilibili": {
+      "dynamicPlaceholder": "动态"
+    },
+    "douyin": {
+      "bodyPlaceholder": "请输入正文",
+      "descriptionPlaceholder": "描述",
+      "titlePlaceholder": "标题",
+      "copyPlaceholder": "文案",
+      "articleTitlePlaceholder": "请输入文章标题",
+      "articleTitleText": "文章标题",
+      "articleSummaryPlaceholder": "添加内容摘要",
+      "articleHighlightPlaceholder": "文章精彩部分",
+      "articleButtonText": "我要发文",
+      "articleImageUploadText": "点击上传图片"
+    },
+    "xiaohongshu": {
+      "descriptionPlaceholder": "描述"
+    },
+    "zhihu": {
+      "titlePlaceholder": "标题",
+      "bodyPlaceholder": "正文"
+    }
+  },
+  "tests": {
+    "douyinDynamic": {
+      "defaultArticleText": "这是一段抖音文章正文。\n第二段正文。",
+      "articleText": "第一段正文内容会进入摘要。\n第二段正文。",
+      "articleSummary": "第一段正文内容会进入摘要。 第二段正文。",
+      "articleTitle": "这是一个超过三十个字的文章标题用于测试截断逻辑",
+      "shortBody": "正文",
+      "shortTitle": "文章标题",
+      "fullTitlePlaceholder": "请输入文章标题，最多不超过30个字",
+      "fullSummaryPlaceholder": "添加内容摘要或文章精彩部分吸引用户阅读，最多不超过30个字"
+    }
+  }
+}
