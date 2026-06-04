@@ -147,6 +147,16 @@ type SaveProjectPlatformsRequest struct {
 	Platforms []string `json:"platforms"`
 }
 
+type AddProjectCollaboratorRequest struct {
+	UserID uuid.UUID `json:"user_id,omitempty"`
+	Email  string    `json:"email,omitempty"`
+	Role   string    `json:"role"`
+}
+
+type UpdateProjectCollaboratorRequest struct {
+	Role string `json:"role"`
+}
+
 type SyncActor struct {
 	Type string `json:"type"`
 }
@@ -205,6 +215,7 @@ type ProjectListItem struct {
 	UserID       uuid.UUID            `json:"user_id"`
 	Title        string               `json:"title"`
 	Status       string               `json:"status"`
+	Role         string               `json:"role"`
 	CreatedAt    time.Time            `json:"created_at"`
 	UpdatedAt    time.Time            `json:"updated_at"`
 	Publications []PublicationSummary `json:"publications"`
@@ -216,9 +227,24 @@ type ProjectDetail struct {
 	Title         string               `json:"title"`
 	SourceContent string               `json:"source_content"`
 	Status        string               `json:"status"`
+	Role          string               `json:"role"`
 	CreatedAt     time.Time            `json:"created_at"`
 	UpdatedAt     time.Time            `json:"updated_at"`
 	Publications  []PublicationSummary `json:"publications"`
+}
+
+type ProjectCollaborator struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	UserID    uuid.UUID `json:"user_id"`
+	Username  string    `json:"username"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	CreatedBy uuid.UUID `json:"created_by"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type ProjectCollaboratorsResponse struct {
+	Items []ProjectCollaborator `json:"items"`
 }
 
 type PublicationDetail struct {

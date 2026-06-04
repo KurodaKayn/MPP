@@ -18,10 +18,12 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var ErrForbidden = publishsvc.ErrForbidden
 var ErrInvalidProject = errors.New("invalid project")
+var ErrInvalidProjectCollaborator = errors.New("invalid project collaborator")
 var ErrPublicationDisabled = publishsvc.ErrPublicationDisabled
 var ErrPublicationRequiresSync = publishsvc.ErrPublicationRequiresSync
 var ErrManualPublishUnsupported = publishsvc.ErrManualPublishUnsupported
@@ -127,6 +129,91 @@ func (s *DashboardService) UseRedis(client *redis.Client) {
 	}
 }
 
+func (s *DashboardService) scopeAccessibleProjects(query *gorm.DB, userID uuid.UUID) *gorm.DB {
+	collaboratorProjectIDs := s.db.
+		Model(&models.ProjectCollaborator{}).
+		Select("project_id").
+		Where("user_id = ?", userID)
+	return query.Where("projects.user_id = ? OR projects.id IN (?)", userID, collaboratorProjectIDs)
+}
+
+func (s *DashboardService) projectAccessRole(project models.Project, userID uuid.UUID) (string, error) {
+	if userID == uuid.Nil {
+		return "", ErrInvalidProject
+	}
+	if project.UserID == userID {
+		return models.ProjectRoleOwner, nil
+	}
+
+	var collaborator models.ProjectCollaborator
+	if err := s.db.
+		Select("project_id", "user_id", "role").
+		Where("project_id = ? AND user_id = ?", project.ID, userID).
+		First(&collaborator).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", ErrForbidden
+		}
+		return "", err
+	}
+	return collaborator.Role, nil
+}
+
+func canEditProjectRole(role string) bool {
+	return role == models.ProjectRoleOwner || role == models.ProjectRoleEditor
+}
+
+func normalizeProjectCollaboratorRole(role string) (string, error) {
+	role = strings.TrimSpace(role)
+	switch role {
+	case models.ProjectRoleEditor, models.ProjectRoleViewer:
+		return role, nil
+	default:
+		return "", ErrInvalidProjectCollaborator
+	}
+}
+
+func (s *DashboardService) requireProjectOwner(projectID uuid.UUID, actorUserID uuid.UUID) (*models.Project, error) {
+	if projectID == uuid.Nil || actorUserID == uuid.Nil {
+		return nil, ErrInvalidProject
+	}
+
+	var project models.Project
+	if err := s.db.Select("id", "user_id").First(&project, "id = ?", projectID).Error; err != nil {
+		return nil, err
+	}
+	if project.UserID != actorUserID {
+		return nil, ErrForbidden
+	}
+	return &project, nil
+}
+
+func (s *DashboardService) projectRolesForUser(projects []models.Project, userID uuid.UUID) (map[uuid.UUID]string, error) {
+	roles := make(map[uuid.UUID]string, len(projects))
+	sharedProjectIDs := make([]uuid.UUID, 0)
+	for _, project := range projects {
+		if project.UserID == userID {
+			roles[project.ID] = models.ProjectRoleOwner
+			continue
+		}
+		sharedProjectIDs = append(sharedProjectIDs, project.ID)
+	}
+	if len(sharedProjectIDs) == 0 {
+		return roles, nil
+	}
+
+	var collaborators []models.ProjectCollaborator
+	if err := s.db.
+		Select("project_id", "role").
+		Where("user_id = ? AND project_id IN ?", userID, sharedProjectIDs).
+		Find(&collaborators).Error; err != nil {
+		return nil, err
+	}
+	for _, collaborator := range collaborators {
+		roles[collaborator.ProjectID] = collaborator.Role
+	}
+	return roles, nil
+}
+
 func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
 	var stats dto.DashboardStatsResponse
 
@@ -142,7 +229,7 @@ func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStats
 	// Projects count
 	projQuery := s.db.Model(&models.Project{})
 	if scopeUserID != nil {
-		projQuery = projQuery.Where("user_id = ?", *scopeUserID)
+		projQuery = s.scopeAccessibleProjects(projQuery, *scopeUserID)
 	}
 	if err := projQuery.Count(&stats.TotalProjects).Error; err != nil {
 		return nil, err
@@ -152,7 +239,9 @@ func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStats
 	pubPubQuery := s.db.Model(&models.ProjectPlatformPublication{}).Where("project_platform_publications.status = ?", models.PublicationStatusPublished)
 	if scopeUserID != nil {
 		pubPubQuery = pubPubQuery.Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
-			Where("projects.user_id = ?", *scopeUserID)
+			Scopes(func(db *gorm.DB) *gorm.DB {
+				return s.scopeAccessibleProjects(db, *scopeUserID)
+			})
 	}
 	if err := pubPubQuery.Count(&stats.TotalPublishedPublications).Error; err != nil {
 		return nil, err
@@ -162,7 +251,9 @@ func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStats
 	failPubQuery := s.db.Model(&models.ProjectPlatformPublication{}).Where("project_platform_publications.status = ?", models.PublicationStatusFailed)
 	if scopeUserID != nil {
 		failPubQuery = failPubQuery.Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
-			Where("projects.user_id = ?", *scopeUserID)
+			Scopes(func(db *gorm.DB) *gorm.DB {
+				return s.scopeAccessibleProjects(db, *scopeUserID)
+			})
 	}
 	if err := failPubQuery.Count(&stats.TotalFailedPublications).Error; err != nil {
 		return nil, err
@@ -489,6 +580,7 @@ func (s *DashboardService) CreateProject(userID uuid.UUID, req dto.CreateProject
 		UserID:       project.UserID,
 		Title:        project.Title,
 		Status:       project.Status,
+		Role:         models.ProjectRoleOwner,
 		CreatedAt:    project.CreatedAt,
 		UpdatedAt:    project.UpdatedAt,
 		Publications: publications,
@@ -505,11 +597,16 @@ func (s *DashboardService) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUI
 		return nil, err
 	}
 
-	if scopeUserID != nil && project.UserID != *scopeUserID {
-		return nil, ErrForbidden
+	role := models.ProjectRoleOwner
+	if scopeUserID != nil {
+		accessRole, err := s.projectAccessRole(project, *scopeUserID)
+		if err != nil {
+			return nil, err
+		}
+		role = accessRole
 	}
 
-	return projectDetailFromModel(project), nil
+	return projectDetailFromModel(project, role), nil
 }
 
 func (s *DashboardService) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.UpdateProjectRequest) (*dto.ProjectDetail, error) {
@@ -622,7 +719,11 @@ func (s *DashboardService) SaveProjectContent(projectID uuid.UUID, userID uuid.U
 	if err := s.db.First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
 	}
-	if project.UserID != userID {
+	role, err := s.projectAccessRole(project, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !canEditProjectRole(role) {
 		return nil, ErrForbidden
 	}
 
@@ -715,6 +816,162 @@ func (s *DashboardService) SaveProjectPlatforms(projectID uuid.UUID, userID uuid
 	return s.GetProject(projectID, &userID)
 }
 
+func (s *DashboardService) ListProjectCollaborators(projectID uuid.UUID, actorUserID uuid.UUID) (*dto.ProjectCollaboratorsResponse, error) {
+	if _, err := s.requireProjectOwner(projectID, actorUserID); err != nil {
+		return nil, err
+	}
+
+	var collaborators []models.ProjectCollaborator
+	if err := s.db.
+		Preload("User", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id", "username", "email")
+		}).
+		Where("project_id = ?", projectID).
+		Order("created_at asc").
+		Find(&collaborators).Error; err != nil {
+		return nil, err
+	}
+
+	items := make([]dto.ProjectCollaborator, 0, len(collaborators))
+	for _, collaborator := range collaborators {
+		items = append(items, projectCollaboratorFromModel(collaborator))
+	}
+	return &dto.ProjectCollaboratorsResponse{Items: items}, nil
+}
+
+func (s *DashboardService) AddProjectCollaborator(projectID uuid.UUID, actorUserID uuid.UUID, req dto.AddProjectCollaboratorRequest) (*dto.ProjectCollaborator, error) {
+	project, err := s.requireProjectOwner(projectID, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+
+	role, err := normalizeProjectCollaboratorRole(req.Role)
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := s.resolveProjectCollaboratorUser(req)
+	if err != nil {
+		return nil, err
+	}
+	if user.ID == project.UserID {
+		return nil, ErrInvalidProjectCollaborator
+	}
+
+	collaborator := models.ProjectCollaborator{
+		ProjectID: projectID,
+		UserID:    user.ID,
+		Role:      role,
+		CreatedBy: actorUserID,
+	}
+	if err := s.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{
+			{Name: "project_id"},
+			{Name: "user_id"},
+		},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"role":       role,
+			"created_by": actorUserID,
+		}),
+	}).Create(&collaborator).Error; err != nil {
+		return nil, err
+	}
+
+	return s.getProjectCollaborator(projectID, user.ID)
+}
+
+func (s *DashboardService) UpdateProjectCollaborator(projectID uuid.UUID, actorUserID uuid.UUID, targetUserID uuid.UUID, req dto.UpdateProjectCollaboratorRequest) (*dto.ProjectCollaborator, error) {
+	project, err := s.requireProjectOwner(projectID, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	if targetUserID == uuid.Nil || targetUserID == project.UserID {
+		return nil, ErrInvalidProjectCollaborator
+	}
+
+	role, err := normalizeProjectCollaboratorRole(req.Role)
+	if err != nil {
+		return nil, err
+	}
+
+	var collaborator models.ProjectCollaborator
+	if err := s.db.Where("project_id = ? AND user_id = ?", projectID, targetUserID).First(&collaborator).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&collaborator).Update("role", role).Error; err != nil {
+		return nil, err
+	}
+
+	return s.getProjectCollaborator(projectID, targetUserID)
+}
+
+func (s *DashboardService) RemoveProjectCollaborator(projectID uuid.UUID, actorUserID uuid.UUID, targetUserID uuid.UUID) error {
+	project, err := s.requireProjectOwner(projectID, actorUserID)
+	if err != nil {
+		return err
+	}
+	if targetUserID == uuid.Nil || targetUserID == project.UserID {
+		return ErrInvalidProjectCollaborator
+	}
+
+	result := s.db.Delete(&models.ProjectCollaborator{}, "project_id = ? AND user_id = ?", projectID, targetUserID)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (s *DashboardService) resolveProjectCollaboratorUser(req dto.AddProjectCollaboratorRequest) (*models.User, error) {
+	var user models.User
+	if req.UserID != uuid.Nil {
+		if err := s.db.Select("id", "username", "email").First(&user, "id = ?", req.UserID).Error; err != nil {
+			return nil, err
+		}
+		return &user, nil
+	}
+
+	email := strings.TrimSpace(req.Email)
+	if email == "" {
+		return nil, ErrInvalidProjectCollaborator
+	}
+	if err := s.db.
+		Select("id", "username", "email").
+		Where("LOWER(email) = LOWER(?)", email).
+		First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (s *DashboardService) getProjectCollaborator(projectID uuid.UUID, userID uuid.UUID) (*dto.ProjectCollaborator, error) {
+	var collaborator models.ProjectCollaborator
+	if err := s.db.
+		Preload("User", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id", "username", "email")
+		}).
+		Where("project_id = ? AND user_id = ?", projectID, userID).
+		First(&collaborator).Error; err != nil {
+		return nil, err
+	}
+	item := projectCollaboratorFromModel(collaborator)
+	return &item, nil
+}
+
+func projectCollaboratorFromModel(collaborator models.ProjectCollaborator) dto.ProjectCollaborator {
+	return dto.ProjectCollaborator{
+		ProjectID: collaborator.ProjectID,
+		UserID:    collaborator.UserID,
+		Username:  collaborator.User.Username,
+		Email:     collaborator.User.Email,
+		Role:      collaborator.Role,
+		CreatedBy: collaborator.CreatedBy,
+		CreatedAt: collaborator.CreatedAt,
+	}
+}
+
 func buildPendingPublicationPayload(title, summary, coverImageURL string) (datatypes.JSON, datatypes.JSON, string, error) {
 	config, err := defaultPublicationConfig(title, summary, coverImageURL)
 	if err != nil {
@@ -724,7 +981,7 @@ func buildPendingPublicationPayload(title, summary, coverImageURL string) (datat
 	return config, datatypes.JSON([]byte(`{}`)), models.PublicationStatusPending, nil
 }
 
-func projectDetailFromModel(project models.Project) *dto.ProjectDetail {
+func projectDetailFromModel(project models.Project, role string) *dto.ProjectDetail {
 	publications := make([]dto.PublicationSummary, 0, len(project.Publications))
 	for _, pub := range project.Publications {
 		publications = append(publications, dto.PublicationSummary{
@@ -745,6 +1002,7 @@ func projectDetailFromModel(project models.Project) *dto.ProjectDetail {
 		Title:         project.Title,
 		SourceContent: project.SourceContent,
 		Status:        project.Status,
+		Role:          role,
 		CreatedAt:     project.CreatedAt,
 		UpdatedAt:     project.UpdatedAt,
 		Publications:  publications,
@@ -808,7 +1066,7 @@ func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, p
 
 	// Apply scope (User dashboard enforces scopeUserID, overriding any filterUserID)
 	if scopeUserID != nil {
-		query = query.Where("user_id = ?", *scopeUserID)
+		query = s.scopeAccessibleProjects(query, *scopeUserID)
 	} else if filterUserID != "" {
 		// Admin dashboard can filter by specific user
 		if uid, err := uuid.Parse(filterUserID); err == nil {
@@ -846,6 +1104,19 @@ func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, p
 		return nil, err
 	}
 
+	roles := make(map[uuid.UUID]string, len(projects))
+	if scopeUserID != nil {
+		var roleErr error
+		roles, roleErr = s.projectRolesForUser(projects, *scopeUserID)
+		if roleErr != nil {
+			return nil, roleErr
+		}
+	} else {
+		for _, project := range projects {
+			roles[project.ID] = models.ProjectRoleOwner
+		}
+	}
+
 	// Map to DTO
 	var items []dto.ProjectListItem
 	for _, p := range projects {
@@ -865,6 +1136,7 @@ func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, p
 			UserID:       p.UserID,
 			Title:        p.Title,
 			Status:       p.Status,
+			Role:         roles[p.ID],
 			CreatedAt:    p.CreatedAt,
 			UpdatedAt:    p.UpdatedAt,
 			Publications: pubSummaries,
@@ -889,7 +1161,11 @@ func (s *DashboardService) SyncProjectPrepublish(projectID uuid.UUID, userID uui
 	if err := s.db.Preload("Publications").First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
 	}
-	if project.UserID != userID {
+	role, err := s.projectAccessRole(project, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !canEditProjectRole(role) {
 		return nil, ErrForbidden
 	}
 
@@ -1039,7 +1315,11 @@ func (s *DashboardService) UpdateProjectPrepublishDraft(projectID uuid.UUID, use
 	if err := s.db.Select("id, user_id").First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
 	}
-	if project.UserID != userID {
+	role, err := s.projectAccessRole(project, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !canEditProjectRole(role) {
 		return nil, ErrForbidden
 	}
 
@@ -1079,15 +1359,16 @@ func (s *DashboardService) UpdateProjectPrepublishDraft(projectID uuid.UUID, use
 }
 
 func (s *DashboardService) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.UUID, includeContent bool) (*dto.ProjectPublicationsResponse, error) {
-	// Verify project exists and ownership
+	// Verify project exists and access
 	var proj models.Project
 	if err := s.db.Select("id, user_id").Where("id = ?", projectID).First(&proj).Error; err != nil {
 		return nil, err
 	}
 
-	// Enforce ownership if scoped
-	if scopeUserID != nil && proj.UserID != *scopeUserID {
-		return nil, ErrForbidden
+	if scopeUserID != nil {
+		if _, err := s.projectAccessRole(proj, *scopeUserID); err != nil {
+			return nil, err
+		}
 	}
 
 	var publications []models.ProjectPlatformPublication

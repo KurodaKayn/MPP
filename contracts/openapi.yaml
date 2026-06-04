@@ -126,6 +126,26 @@ components:
         - published
         - failed
 
+    ProjectRole:
+      type: string
+      enum:
+        - owner
+        - editor
+        - viewer
+      x-enum-varnames:
+        - ProjectRoleOwner
+        - ProjectRoleEditor
+        - ProjectRoleViewer
+
+    ProjectCollaboratorRole:
+      type: string
+      enum:
+        - editor
+        - viewer
+      x-enum-varnames:
+        - ProjectCollaboratorRoleEditor
+        - ProjectCollaboratorRoleViewer
+
     PublicationStatus:
       type: string
       enum:
@@ -768,6 +788,7 @@ components:
         - user_id
         - title
         - status
+        - role
         - created_at
         - updated_at
         - publications
@@ -782,6 +803,8 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/ProjectStatus"
+        role:
+          $ref: "#/components/schemas/ProjectRole"
         created_at:
           type: string
           format: date-time
@@ -803,6 +826,73 @@ components:
           properties:
             source_content:
               type: string
+
+    AddProjectCollaboratorRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - role
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/ProjectCollaboratorRole"
+
+    UpdateProjectCollaboratorRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - role
+      properties:
+        role:
+          $ref: "#/components/schemas/ProjectCollaboratorRole"
+
+    ProjectCollaborator:
+      type: object
+      additionalProperties: false
+      required:
+        - project_id
+        - user_id
+        - username
+        - email
+        - role
+        - created_by
+        - created_at
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/ProjectCollaboratorRole"
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    ProjectCollaboratorsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectCollaborator"
 
     PaginationProjects:
       type: object

@@ -163,6 +163,7 @@ func migrate(database *gorm.DB) error {
 			&models.User{},
 			&models.PlatformAccount{},
 			&models.Project{},
+			&models.ProjectCollaborator{},
 			&models.ProjectPlatformPublication{},
 			&models.RemoteBrowserSession{},
 			&models.CollabDocument{},
