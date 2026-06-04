@@ -301,7 +301,9 @@ async function handleAdapterEvent(
   return { ok: true };
 }
 
-async function handleBackgroundMessage(message: unknown): Promise<unknown> {
+export async function handleBackgroundMessage(
+  message: unknown,
+): Promise<unknown> {
   if (!isBackgroundMessage(message)) {
     throw new Error("Unsupported background message.");
   }
