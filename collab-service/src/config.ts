@@ -12,6 +12,16 @@ const EnvSchema = z.object({
   COLLAB_UPDATE_FLUSH_MS: z.coerce.number().int().positive().default(300),
   COLLAB_UPDATE_FLUSH_MAX_MS: z.coerce.number().int().positive().default(2_000),
   COLLAB_UPDATE_FLUSH_MAX_COUNT: z.coerce.number().int().positive().default(32),
+  COLLAB_UPDATE_FLUSH_RETRY_MAX_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5),
+  COLLAB_UPDATE_FLUSH_RETRY_MAX_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30_000),
   COLLAB_UPDATE_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   DATABASE_URL: z.string().min(1).optional(),
   DB_HOST: z.string().default("db"),
