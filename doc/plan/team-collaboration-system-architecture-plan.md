@@ -528,12 +528,12 @@ Traefik adds `/collab` WebSocket routing.
 | Add/remove collaborators API             | Not Started | No handler/service methods found.                                                                | Implement after title metadata update.                   |
 | Collab session token API                 | Done        | `POST /api/collab/documents/{id}/session` issues short-lived signed tokens with role/limits.     | Wire frontend to request sessions before connecting.     |
 | `collab-service` runtime                 | Partial     | Fastify/Hocuspocus runtime exists and validates collab session tokens for WebSocket connections. | Add PostgreSQL Yjs persistence and update batching.      |
-| Yjs document state persistence           | Not Started | No `collab_document_states` / update batch models found.                                         | Add in Phase 2.                                          |
+| Yjs document state persistence           | Partial     | `collab_document_states` model exists; `collab-service` loads and stores Yjs snapshots in PG.    | Add update batches, incremental flush, and compaction.   |
 | Frontend collab editor                   | Not Started | No `frontend/src/features/collab-editor/` found.                                                 | Build after backend session and WebSocket service exist. |
 | Presence/cursor UI                       | Not Started | Depends on collab provider and awareness.                                                        | Add in Phase 3.                                          |
 | Distributed readiness                    | Not Started | No collab Redis pub/sub or Traefik `/collab` route found.                                        | Defer to Phase 4.                                        |
 
-**Priority Pick for This Branch:** complete the collab session authentication loop: backend issues short-lived document session tokens, and `collab-service` validates them before accepting WebSocket collaboration traffic.
+**Priority Pick for This Branch:** add recoverable PostgreSQL Yjs snapshot persistence so collaborative documents survive service restarts before introducing incremental update batches and compaction.
 
 ## 16. Future Expansion Order
 
