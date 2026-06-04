@@ -119,6 +119,25 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+type handlerFakeProjectDraftCompiler struct{}
+
+func (handlerFakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
+	drafts := make(map[string][]byte, len(platforms))
+	for _, platform := range platforms {
+		switch platform {
+		case "zhihu":
+			drafts[platform] = []byte(`{"format":"markdown","markdown":"Hello **sync**"}`)
+		case "wechat":
+			drafts[platform] = []byte(`{"format":"html","html":"<p>Hello <strong>sync</strong></p>"}`)
+		case "x", "douyin":
+			drafts[platform] = []byte(`{"format":"text","text":"Hello sync"}`)
+		default:
+			drafts[platform] = []byte(`{"format":"text","text":"Hello sync"}`)
+		}
+	}
+	return drafts, nil
+}
+
 func newHandlerTestContext(e *echo.Echo, method, target string) (echo.Context, *httptest.ResponseRecorder) {
 	req := httptest.NewRequest(method, target, nil)
 	rec := httptest.NewRecorder()
@@ -730,7 +749,9 @@ func TestUserDashboardHandlerGetProjectPublicationsReturnsForbidden(t *testing.T
 func TestUserDashboardHandlerSyncProjectPrepublish(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)
-	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	service := services.NewDashboardService(db)
+	service.SetDraftCompiler(handlerFakeProjectDraftCompiler{})
+	handler := NewUserDashboardHandler(service)
 
 	user := models.User{Username: "owner"}
 	require.NoError(t, db.Create(&user).Error)
