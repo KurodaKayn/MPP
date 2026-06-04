@@ -11,7 +11,15 @@ class FakeDocumentPersistence implements DocumentPersistence {
 
   async load(_documentId: string, _document: Document): Promise<void> {}
 
+  async appendUpdate(
+    _documentId: string,
+    _update: Uint8Array,
+    _actorUserId?: string,
+  ): Promise<void> {}
+
   async store(_documentId: string, _document: Document): Promise<void> {}
+
+  async flush(): Promise<void> {}
 
   async ping(): Promise<void> {
     if (this.pingError) {
