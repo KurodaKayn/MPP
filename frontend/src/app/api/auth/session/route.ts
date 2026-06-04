@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { authTokenNames } from "../../../../lib/auth/tokens";
+import { authTokenNames } from "@/lib/auth/tokens";
 
 const appEnvEnv = "APP_ENV";
 const mockLoginFlagEnv = "ENABLE_MOCK_LOGIN";

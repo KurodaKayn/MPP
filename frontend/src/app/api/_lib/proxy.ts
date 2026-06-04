@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import type { NextRequest } from "next/server";
-import { authTokenNames, formatBearerToken } from "../../../lib/auth/tokens";
+import { authTokenNames, formatBearerToken } from "@/lib/auth/tokens";
 
 const defaultBackendApiBaseUrl = "http://localhost:8080";
 const requestIdHeader = "x-request-id";

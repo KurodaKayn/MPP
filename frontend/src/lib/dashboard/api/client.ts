@@ -1,4 +1,4 @@
-import { formatBearerToken, getStoredAuthToken } from "../../auth/client";
+import { formatBearerToken, getStoredAuthToken } from "@/lib/auth/client";
 import type { AITextStreamOptions } from "./types";
 
 type ApiErrorResponse = {
