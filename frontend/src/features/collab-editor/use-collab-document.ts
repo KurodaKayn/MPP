@@ -235,7 +235,6 @@ export function useCollabConnection({
           onUnsyncedChanges: setUnsyncedChanges,
           onUsersChange: setOnlineUsers,
           session,
-          user: nextUser,
           ydoc: nextYdoc,
         });
 
