@@ -26,6 +26,12 @@ import (
 	"gorm.io/gorm"
 )
 
+type noopProjectDocumentInitializer struct{}
+
+func (noopProjectDocumentInitializer) InitializeProjectDocument(context.Context, uuid.UUID) error {
+	return nil
+}
+
 func setupHandlerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -710,6 +716,7 @@ func TestUserDashboardHandlerCreateProjectCollabSession(t *testing.T) {
 		TokenSecret:      []byte("collab-secret"),
 		WebsocketURLBase: "ws://collab.test",
 	})
+	collabService.UseProjectDocumentInitializer(noopProjectDocumentInitializer{})
 	dashboardService := services.NewDashboardService(db)
 	dashboardService.SetCollabDocumentService(collabService)
 	handler := NewUserDashboardHandler(dashboardService)
