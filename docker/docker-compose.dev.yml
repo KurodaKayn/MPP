@@ -100,6 +100,29 @@ services:
         - action: rebuild
           path: ../ai-service/uv.lock
 
+  collab-service:
+    build:
+      target: dev
+    ports:
+      - "8090:8090"
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      COLLAB_PORT: "8090"
+      DATABASE_URL: ${DATABASE_URL:-}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      BACKEND_INTERNAL_URL: http://backend:8080
+    volumes:
+      - ../collab-service:/app
+      - collab_service_node_modules:/app/node_modules
+      - collab_service_pnpm_store:/pnpm/store
+    develop:
+      watch:
+        - action: rebuild
+          path: ../collab-service/package.json
+        - action: rebuild
+          path: ../collab-service/pnpm-lock.yaml
+
   extension-dev:
     image: node:20-alpine
     profiles:
@@ -141,5 +164,7 @@ volumes:
   browser_worker_go_build_cache:
   ai_service_venv:
   ai_service_uv_cache:
+  collab_service_node_modules:
+  collab_service_pnpm_store:
   extension_node_modules:
   extension_pnpm_store:
