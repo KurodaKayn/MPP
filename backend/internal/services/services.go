@@ -31,6 +31,7 @@ var ErrAIServiceUnavailable = ai.ErrAIServiceUnavailable
 var ErrExtensionCallbackTokenExpired = dashboard.ErrExtensionCallbackTokenExpired
 var ErrExtensionCallbackTokenInvalid = dashboard.ErrExtensionCallbackTokenInvalid
 var ErrForbidden = dashboard.ErrForbidden
+var ErrCollabDocumentForbidden = collabdoc.ErrDocumentForbidden
 var ErrInvalidCollabDocument = collabdoc.ErrInvalidDocument
 var ErrInvalidAIEditRequest = ai.ErrInvalidAIEditRequest
 var ErrInvalidPlatformAccount = platformaccount.ErrInvalidPlatformAccount
