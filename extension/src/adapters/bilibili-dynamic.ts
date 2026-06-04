@@ -29,7 +29,7 @@ export async function runBilibiliDynamicAdapter(
 
   const bodyTarget = findFirstElement<HTMLElement | HTMLTextAreaElement>([
     '[contenteditable="true"]',
-    'textarea[placeholder*="动态"]',
+    'textarea[placeholder*="\u52a8\u6001"]',
     "textarea",
   ]);
 
