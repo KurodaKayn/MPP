@@ -23,8 +23,9 @@ func TestCollabRoutesIncludeDocumentRoutes(t *testing.T) {
 	}
 
 	expectedRoutes := map[string]bool{
-		http.MethodGet + " /api/collab/documents":  false,
-		http.MethodPost + " /api/collab/documents": false,
+		http.MethodGet + " /api/collab/documents":     false,
+		http.MethodGet + " /api/collab/documents/:id": false,
+		http.MethodPost + " /api/collab/documents":    false,
 	}
 	for _, route := range server.Routes() {
 		key := route.Method + " " + route.Path
