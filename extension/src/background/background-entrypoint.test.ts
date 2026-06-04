@@ -52,6 +52,7 @@ vi.mock("./origins", () => ({
 vi.stubGlobal("defineBackground", (callback: () => void) => callback);
 
 const {
+  acceptExtensionHandoff,
   downloadHandoffAsset,
   recordCurrentHandoffExpiration,
   shouldRejectExpiredAdapterEvent,
@@ -176,6 +177,43 @@ describe("background expiration handling", () => {
     await expect(
       shouldRejectExpiredAdapterEvent(createAdapterEventMessage()),
     ).resolves.toBe(true);
+  });
+});
+
+describe("acceptExtensionHandoff", () => {
+  beforeEach(() => {
+    handoffMock.state.currentHandoff = null;
+    handoffMock.state.events = [];
+    handoffMock.state.expired = false;
+    vi.clearAllMocks();
+  });
+
+  it("stores backend-generated handoffs and starts publishing tabs", async () => {
+    const storedHandoff = createStoredHandoff().handoff;
+    handoffMock.validateHandoff.mockReturnValue({
+      ok: true,
+      handoff: storedHandoff,
+    });
+
+    await expect(acceptExtensionHandoff({})).resolves.toEqual({
+      accepted: true,
+      execution_id: storedHandoff.execution_id,
+      platforms: storedHandoff.platforms,
+    });
+
+    expect(handoffMock.storeAcceptedHandoff).toHaveBeenCalledWith(
+      storedHandoff,
+      "extension_workbench",
+    );
+    expect(tabsMock.recordAndCallbackEvent).toHaveBeenCalledWith(
+      storedHandoff.platforms[0],
+      expect.objectContaining({
+        platform: "douyin",
+        status: "accepted",
+        message: "Extension accepted the publishing handoff.",
+      }),
+    );
+    expect(tabsMock.startPublishingTabs).toHaveBeenCalledWith(storedHandoff);
   });
 });
 
