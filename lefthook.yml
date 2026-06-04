@@ -32,3 +32,9 @@ pre-commit:
       glob: "*.{js,jsx,ts,tsx}"
       run: pnpm format {staged_files}
       stage_fixed: true
+
+    collab-service-format:
+      root: "collab-service/"
+      glob: "*.{ts}"
+      run: pnpm format {staged_files}
+      stage_fixed: true
