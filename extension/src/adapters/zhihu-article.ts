@@ -9,6 +9,9 @@ import {
   isOnExpectedHost,
   userReview,
 } from "./shared";
+import zhCn from "../i18n/zh-CN.json";
+
+const { zhihu } = zhCn.adapters;
 
 export async function runZhihuArticleAdapter(
   platform: ExtensionPublishPlatformHandoff,
@@ -25,13 +28,13 @@ export async function runZhihuArticleAdapter(
   }
 
   const titleTarget = findFirstElement<HTMLInputElement | HTMLTextAreaElement>([
-    'textarea[placeholder*="\u6807\u9898"]',
-    'input[placeholder*="\u6807\u9898"]',
-    '[contenteditable="true"][data-placeholder*="\u6807\u9898"]',
+    `textarea[placeholder*="${zhihu.titlePlaceholder}"]`,
+    `input[placeholder*="${zhihu.titlePlaceholder}"]`,
+    `[contenteditable="true"][data-placeholder*="${zhihu.titlePlaceholder}"]`,
   ]);
   const bodyTarget = findFirstElement<HTMLElement | HTMLTextAreaElement>([
-    '[contenteditable="true"][data-placeholder*="\u6b63\u6587"]',
-    '[contenteditable="true"][aria-label*="\u6b63\u6587"]',
+    `[contenteditable="true"][data-placeholder*="${zhihu.bodyPlaceholder}"]`,
+    `[contenteditable="true"][aria-label*="${zhihu.bodyPlaceholder}"]`,
     '[contenteditable="true"]',
     "textarea",
   ]);

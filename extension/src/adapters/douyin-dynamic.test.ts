@@ -4,6 +4,7 @@ import type {
   ExtensionPublishPlatformHandoff,
   HandoffAsset,
 } from "../types/handoff";
+import zhCn from "../i18n/zh-CN.json";
 
 const asset: HandoffAsset = {
   type: "image",
@@ -11,23 +12,22 @@ const asset: HandoffAsset = {
   name: "douyin-cover.png",
   mime_type: "image/png",
 };
-const defaultArticleText =
-  "\u8fd9\u662f\u4e00\u6bb5\u6296\u97f3\u6587\u7ae0\u6b63\u6587\u3002\n\u7b2c\u4e8c\u6bb5\u6b63\u6587\u3002";
-const articleText =
-  "\u7b2c\u4e00\u6bb5\u6b63\u6587\u5185\u5bb9\u4f1a\u8fdb\u5165\u6458\u8981\u3002\n\u7b2c\u4e8c\u6bb5\u6b63\u6587\u3002";
-const articleSummary =
-  "\u7b2c\u4e00\u6bb5\u6b63\u6587\u5185\u5bb9\u4f1a\u8fdb\u5165\u6458\u8981\u3002 \u7b2c\u4e8c\u6bb5\u6b63\u6587\u3002";
-const articleTitle =
-  "\u8fd9\u662f\u4e00\u4e2a\u8d85\u8fc7\u4e09\u5341\u4e2a\u5b57\u7684\u6587\u7ae0\u6807\u9898\u7528\u4e8e\u6d4b\u8bd5\u622a\u65ad\u903b\u8f91";
-const shortBody = "\u6b63\u6587";
-const shortTitle = "\u6587\u7ae0\u6807\u9898";
-const articleButtonText = "\u6211\u8981\u53d1\u6587";
-const articleImageUploadText = "\u70b9\u51fb\u4e0a\u4f20\u56fe\u7247";
-const titlePlaceholder = "\u8bf7\u8f93\u5165\u6587\u7ae0\u6807\u9898";
-const fullTitlePlaceholder = `${titlePlaceholder}\uff0c\u6700\u591a\u4e0d\u8d85\u8fc730\u4e2a\u5b57`;
-const summaryPlaceholder = "\u6dfb\u52a0\u5185\u5bb9\u6458\u8981";
-const fullSummaryPlaceholder = `${summaryPlaceholder}\u6216\u6587\u7ae0\u7cbe\u5f69\u90e8\u5206\u5438\u5f15\u7528\u6237\u9605\u8bfb\uff0c\u6700\u591a\u4e0d\u8d85\u8fc730\u4e2a\u5b57`;
-const bodyPlaceholder = "\u8bf7\u8f93\u5165\u6b63\u6587";
+const { douyin } = zhCn.adapters;
+const {
+  defaultArticleText,
+  articleText,
+  articleSummary,
+  articleTitle,
+  shortBody,
+  shortTitle,
+  fullTitlePlaceholder,
+  fullSummaryPlaceholder,
+} = zhCn.tests.douyinDynamic;
+const articleButtonText = douyin.articleButtonText;
+const articleImageUploadText = douyin.articleImageUploadText;
+const titlePlaceholder = douyin.articleTitlePlaceholder;
+const summaryPlaceholder = douyin.articleSummaryPlaceholder;
+const bodyPlaceholder = douyin.bodyPlaceholder;
 
 describe("assetToFile", () => {
   beforeEach(() => {
