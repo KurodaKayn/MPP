@@ -130,13 +130,13 @@ impl MediaProcessor {
         }
 
         let byte_size = bytes.len() as u64;
-        if let Some(max) = constraints.max_bytes {
-            if byte_size > max {
-                return Err(MediaError::ResourceLimitExceeded {
-                    actual: byte_size,
-                    max,
-                });
-            }
+        if let Some(max) = constraints.max_bytes
+            && byte_size > max
+        {
+            return Err(MediaError::ResourceLimitExceeded {
+                actual: byte_size,
+                max,
+            });
         }
 
         let format = image::guess_format(&bytes).map_err(|_| MediaError::UnsupportedFormat)?;
