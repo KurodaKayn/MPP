@@ -1,4 +1,10 @@
+packages:
+  - "."
+
 allowBuilds:
-  msw: false
-  sharp: false
+  msw: true
+  sharp: true
   unrs-resolver: false
+
+overrides:
+  '@types/node': 24.12.4
