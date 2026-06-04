@@ -259,23 +259,10 @@ export function ContentPrepublishPanel({
         ) : (
           <>
             <div className="flex flex-col gap-4 overflow-hidden">
-              <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-medium">
-                    {activeDraft
-                      ? t("content.prepublish.targetFormat", {
-                          date: new Date(
-                            activeDraft.syncedAt,
-                          ).toLocaleTimeString(),
-                          format: formatLabel(activeDraft.format),
-                        })
-                      : t("content.prepublish.notSyncedTarget", {
-                          format: formatLabel(expectedFormat),
-                        })}
-                  </h3>
-                </div>
-                {canUseAI ? (
+              {canUseAI ? (
+                <div className="px-1">
                   <AIEditAssistant
+                    className="w-full"
                     title={t("content.prepublish.aiEditTitle")}
                     format={activeDraft?.format}
                     source={activeDraft?.raw ?? ""}
@@ -326,8 +313,8 @@ export function ContentPrepublishPanel({
                       toast.success(t("content.prepublish.aiSaveSuccess"));
                     }}
                   />
-                ) : null}
-              </div>
+                </div>
+              ) : null}
               <Card className="flex-1 overflow-hidden bg-muted/30">
                 <CardHeader className="py-2">
                   <CardTitle className="text-xs text-muted-foreground">

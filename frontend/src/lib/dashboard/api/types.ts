@@ -13,6 +13,15 @@ export type PublicationSummary = ContractSchema<"PublicationSummary">;
 export type PublicationDetail = ContractSchema<"PublicationDetail">;
 export type ProjectPublications = ContractSchema<"ProjectPublications">;
 export type PublishResult = ContractSchema<"PublishResult">;
+export type CollabDocumentRole = ContractSchema<"CollabDocumentRole">;
+export type CollabDocumentSession = ContractSchema<"CollabDocumentSession">;
+export type CollabDocument = ContractSchema<"CollabDocument">;
+export type PaginatedCollabDocuments =
+  ContractSchema<"PaginationCollabDocuments">;
+export type CreateCollabDocumentInput =
+  ContractSchema<"CreateCollabDocumentRequest">;
+export type UpdateCollabDocumentInput =
+  ContractSchema<"UpdateCollabDocumentRequest">;
 
 export type PublishProjectOptions = {
   mode?: "manual";

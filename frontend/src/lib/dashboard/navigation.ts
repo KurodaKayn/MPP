@@ -3,6 +3,10 @@ export const dashboardRoutes = {
     title: "nav.auth",
     url: "/dashboard/auth",
   },
+  collab: {
+    title: "nav.collab",
+    url: "/dashboard/collab",
+  },
   content: {
     title: "nav.content",
     url: "/dashboard/content",
@@ -24,6 +28,7 @@ export const dashboardRoutes = {
 export const dashboardMainNavItems = [
   dashboardRoutes.overview,
   dashboardRoutes.content,
+  dashboardRoutes.collab,
   dashboardRoutes.posts,
   dashboardRoutes.auth,
 ] as const;

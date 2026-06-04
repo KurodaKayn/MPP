@@ -136,6 +136,45 @@ describe("dashboard api client", () => {
     await expect(getDashboardStats()).rejects.toThrow("not your project");
   });
 
+  it("clears auth sessions when the dashboard token expires", async () => {
+    const authChanges: string[] = [];
+    const onAuthChange = () => authChanges.push("changed");
+    window.addEventListener("sevenoxcloud.auth_changed", onAuthChange);
+    window.localStorage.setItem("sevenoxcloud.auth_token", "expired-token");
+    document.cookie = "sevenoxcloud.auth_token=expired-token; path=/";
+
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      if (input === "/api/auth/session") {
+        return jsonResponse({ ok: true });
+      }
+
+      return jsonResponse(
+        { message: "invalid or expired jwt" },
+        { status: 401 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      await expect(getDashboardStats()).rejects.toThrow(
+        "invalid or expired jwt",
+      );
+    } finally {
+      window.removeEventListener("sevenoxcloud.auth_changed", onAuthChange);
+    }
+
+    expect(window.localStorage.getItem("sevenoxcloud.auth_token")).toBeNull();
+    expect(document.cookie).not.toContain("sevenoxcloud.auth_token=");
+    expect(authChanges).toEqual(["changed"]);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/auth/session",
+      expect.objectContaining({
+        credentials: "same-origin",
+        method: "DELETE",
+      }),
+    );
+  });
+
   it("fetches publication details for a project", async () => {
     const publications = {
       items: [
