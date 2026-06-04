@@ -328,6 +328,8 @@ export interface components {
       id: string;
       /** Format: uuid */
       user_id: string;
+      /** Format: uuid */
+      collab_document_id?: string | null;
       title: string;
       status: components["schemas"]["ProjectStatus"];
       role: components["schemas"]["ProjectRole"];

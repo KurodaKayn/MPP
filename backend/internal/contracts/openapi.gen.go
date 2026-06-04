@@ -507,27 +507,29 @@ type ProjectCollaboratorsResponse struct {
 
 // ProjectDetail defines model for ProjectDetail.
 type ProjectDetail struct {
-	CreatedAt     time.Time            `json:"created_at"`
-	Id            openapi_types.UUID   `json:"id"`
-	Publications  []PublicationSummary `json:"publications"`
-	Role          ProjectRole          `json:"role"`
-	SourceContent string               `json:"source_content"`
-	Status        ProjectStatus        `json:"status"`
-	Title         string               `json:"title"`
-	UpdatedAt     time.Time            `json:"updated_at"`
-	UserId        openapi_types.UUID   `json:"user_id"`
+	CollabDocumentId *openapi_types.UUID  `json:"collab_document_id"`
+	CreatedAt        time.Time            `json:"created_at"`
+	Id               openapi_types.UUID   `json:"id"`
+	Publications     []PublicationSummary `json:"publications"`
+	Role             ProjectRole          `json:"role"`
+	SourceContent    string               `json:"source_content"`
+	Status           ProjectStatus        `json:"status"`
+	Title            string               `json:"title"`
+	UpdatedAt        time.Time            `json:"updated_at"`
+	UserId           openapi_types.UUID   `json:"user_id"`
 }
 
 // ProjectListItem defines model for ProjectListItem.
 type ProjectListItem struct {
-	CreatedAt    time.Time            `json:"created_at"`
-	Id           openapi_types.UUID   `json:"id"`
-	Publications []PublicationSummary `json:"publications"`
-	Role         ProjectRole          `json:"role"`
-	Status       ProjectStatus        `json:"status"`
-	Title        string               `json:"title"`
-	UpdatedAt    time.Time            `json:"updated_at"`
-	UserId       openapi_types.UUID   `json:"user_id"`
+	CollabDocumentId *openapi_types.UUID  `json:"collab_document_id"`
+	CreatedAt        time.Time            `json:"created_at"`
+	Id               openapi_types.UUID   `json:"id"`
+	Publications     []PublicationSummary `json:"publications"`
+	Role             ProjectRole          `json:"role"`
+	Status           ProjectStatus        `json:"status"`
+	Title            string               `json:"title"`
+	UpdatedAt        time.Time            `json:"updated_at"`
+	UserId           openapi_types.UUID   `json:"user_id"`
 }
 
 // ProjectPublications defines model for ProjectPublications.

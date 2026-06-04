@@ -352,6 +352,7 @@ class ProjectListItem(BaseModel):
     )
     id: UUID
     user_id: UUID
+    collab_document_id: UUID | None = None
     title: str
     status: ProjectStatus
     created_at: AwareDatetime
