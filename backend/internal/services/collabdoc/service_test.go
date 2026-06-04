@@ -268,6 +268,37 @@ func TestCreateSessionUsesCollaboratorRole(t *testing.T) {
 	require.Equal(t, models.CollabDocumentRoleViewer, session.Role)
 }
 
+func TestCreateAuthorizedSessionUsesCallerResolvedRole(t *testing.T) {
+	db, service := setupCollabDocumentServiceTest(t)
+	owner := createCollabTestUser(t, db, "authorized-owner")
+	user := createCollabTestUser(t, db, "authorized-user")
+	document := createCollabTestDocument(t, db, owner.ID, "Authorized Session", time.Now().Add(time.Hour))
+	secret := []byte("collab-secret")
+	service.UseSessionConfig(collabdoc.SessionConfig{TokenSecret: secret})
+
+	session, err := service.CreateAuthorizedSession(
+		context.Background(),
+		user.ID,
+		document.ID,
+		models.CollabDocumentRoleViewer,
+	)
+	require.NoError(t, err)
+	require.Equal(t, models.CollabDocumentRoleViewer, session.Role)
+
+	claims := jwt.MapClaims{}
+	parsed, err := jwt.ParseWithClaims(session.Token, claims, func(token *jwt.Token) (interface{}, error) {
+		return secret, nil
+	})
+	require.NoError(t, err)
+	require.True(t, parsed.Valid)
+	require.Equal(t, user.ID.String(), claims["user_id"])
+	require.Equal(t, document.ID.String(), claims["document_id"])
+	require.Equal(t, models.CollabDocumentRoleViewer, claims["role"])
+
+	_, err = service.CreateAuthorizedSession(context.Background(), user.ID, document.ID, "owner")
+	require.ErrorIs(t, err, collabdoc.ErrInvalidDocument)
+}
+
 func TestCreateSessionRejectsInaccessibleDocument(t *testing.T) {
 	db, service := setupCollabDocumentServiceTest(t)
 	owner := createCollabTestUser(t, db, "private-owner")
