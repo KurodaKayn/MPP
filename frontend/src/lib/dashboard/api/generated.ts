@@ -262,6 +262,9 @@ export interface components {
     CreateCollabDocumentRequest: {
       title: string;
     };
+    UpdateCollabDocumentRequest: {
+      title: string;
+    };
     CollabDocument: {
       /** Format: uuid */
       id: string;

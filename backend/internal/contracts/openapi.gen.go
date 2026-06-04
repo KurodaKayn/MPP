@@ -576,6 +576,11 @@ type StartPublishBrowserSessionResult struct {
 	StreamUrl            string               `json:"stream_url"`
 }
 
+// UpdateCollabDocumentRequest defines model for UpdateCollabDocumentRequest.
+type UpdateCollabDocumentRequest struct {
+	Title string `json:"title"`
+}
+
 // WechatAccount defines model for WechatAccount.
 type WechatAccount struct {
 	AccountAuth   RequirementStatus     `json:"account_auth"`

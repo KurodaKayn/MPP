@@ -614,6 +614,16 @@ components:
           type: string
           minLength: 1
 
+    UpdateCollabDocumentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+
     CollabDocument:
       type: object
       additionalProperties: false
