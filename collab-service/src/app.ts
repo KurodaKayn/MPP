@@ -1,0 +1,67 @@
+import websocket from "@fastify/websocket";
+import Fastify from "fastify";
+
+import { createCollabServer } from "./collab/hocuspocus.js";
+import { loadConfig } from "./config.js";
+import { createMetrics } from "./metrics.js";
+
+import type { WebSocketLike } from "@hocuspocus/server";
+import type { FastifyInstance } from "fastify";
+import type { CollabConfig } from "./config.js";
+
+interface CollabDocumentParams {
+  documentId: string;
+}
+
+export async function buildApp(
+  config: CollabConfig = loadConfig(),
+): Promise<FastifyInstance> {
+  const app = Fastify({
+    logger: {
+      level: config.LOG_LEVEL,
+    },
+  });
+  const metrics = createMetrics();
+  const collabServer = createCollabServer(config);
+
+  await app.register(websocket);
+
+  app.get("/health", async () => ({
+    status: "healthy",
+  }));
+
+  app.get("/ready", async () => ({
+    status: "ready",
+    dependencies: {
+      database_configured: Boolean(config.DATABASE_URL),
+      redis_addr: config.REDIS_ADDR,
+      token_public_key_configured: Boolean(config.COLLAB_TOKEN_PUBLIC_KEY),
+    },
+  }));
+
+  app.get("/metrics", async (_request, reply) => {
+    reply.header("Content-Type", metrics.registry.contentType);
+    return metrics.registry.metrics();
+  });
+
+  app.get<{ Params: CollabDocumentParams }>(
+    config.COLLAB_WS_PATH,
+    { websocket: true },
+    (socket, request) => {
+      collabServer.handleConnection(
+        socket as unknown as WebSocketLike,
+        request.raw as unknown as Request,
+        {
+          documentId: request.params.documentId,
+        },
+      );
+    },
+  );
+
+  app.addHook("onClose", async () => {
+    collabServer.flushPendingStores();
+    collabServer.closeConnections();
+  });
+
+  return app;
+}
