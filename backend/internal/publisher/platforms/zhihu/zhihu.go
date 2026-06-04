@@ -11,28 +11,12 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher/browser"
 	"github.com/kurodakayn/mpp-backend/internal/publisher/content"
-	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 )
 
 type ZhihuPublisher struct{}
 
 func (z *ZhihuPublisher) ValidateConfig(config []byte) error {
 	return nil
-}
-
-func (z *ZhihuPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	markdown, err := content.HTMLToMarkdown(project.SourceContent)
-	if err != nil {
-		return nil, err
-	}
-	adapted := core.SystemAdaptedContent(
-		project,
-		"markdown",
-		"zhihu-markdown-adapter",
-		content.HTMLToText(project.SourceContent),
-	)
-	adapted.Markdown = core.String(markdown)
-	return json.Marshal(adapted)
 }
 
 func (z *ZhihuPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {

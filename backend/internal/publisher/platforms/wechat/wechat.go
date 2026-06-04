@@ -9,8 +9,6 @@ import (
 	htmlutil "github.com/kurodakayn/mpp-backend/internal/pkg/html"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/media"
 	pkgwechat "github.com/kurodakayn/mpp-backend/internal/pkg/wechat"
-	"github.com/kurodakayn/mpp-backend/internal/publisher/content"
-	"github.com/kurodakayn/mpp-backend/internal/publisher/core"
 )
 
 type WechatPublisher struct{}
@@ -33,17 +31,6 @@ func (w *WechatPublisher) ValidateConfig(config []byte) error {
 		return fmt.Errorf("app_id and app_secret are required")
 	}
 	return nil
-}
-
-func (w *WechatPublisher) AdaptContent(project *models.Project) ([]byte, error) {
-	adapted := core.SystemAdaptedContent(
-		project,
-		"html",
-		"wechat-html-adapter",
-		content.HTMLToText(project.SourceContent),
-	)
-	adapted.Html = core.String(project.SourceContent)
-	return json.Marshal(adapted)
 }
 
 func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {

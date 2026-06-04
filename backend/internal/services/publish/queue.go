@@ -352,13 +352,7 @@ func (s *Service) preparePublishJob(projectID uuid.UUID, platform string, userID
 		return models.Project{}, models.ProjectPlatformPublication{}, err
 	}
 	if pub.Status != models.PublicationStatusAdapted && pub.Status != models.PublicationStatusPublishing {
-		p, err := publisher.Factory.GetPublisher(platform)
-		if err != nil {
-			return models.Project{}, models.ProjectPlatformPublication{}, err
-		}
-		if err := s.adaptPublicationForPublish(&project, &pub, p); err != nil {
-			return models.Project{}, models.ProjectPlatformPublication{}, err
-		}
+		return models.Project{}, models.ProjectPlatformPublication{}, ErrPublicationRequiresSync
 	}
 
 	return project, pub, nil
