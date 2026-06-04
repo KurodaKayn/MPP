@@ -6,6 +6,8 @@ import {
   type PageBridgeResponse,
   isPageBridgeRequestType,
 } from "../src/types/messages";
+import { getWebAuthTokenFromStorage } from "../src/backend/auth";
+import { startWebAuthTokenSync } from "../src/backend/web-auth-sync";
 
 const DASHBOARD_MATCHES = [
   "https://mpp.example.com/*",
@@ -62,10 +64,45 @@ function postBridgeResponse(
   window.postMessage(response, targetOrigin);
 }
 
+async function persistPageAuthToken(): Promise<void> {
+  const token = getWebAuthTokenFromStorage();
+
+  if (!token) {
+    return;
+  }
+
+  await browser.runtime.sendMessage({
+    type: "extension.persist_auth_token",
+    token,
+  } satisfies BackgroundMessage);
+}
+
+async function forwardBackgroundMessage(
+  message: BackgroundMessage,
+): Promise<unknown> {
+  await persistPageAuthToken().catch((error) => {
+    console.warn("Failed to persist MPP page auth token.", error);
+  });
+
+  return browser.runtime.sendMessage(message);
+}
+
 export default defineContentScript({
   matches: DASHBOARD_MATCHES,
   runAt: "document_start",
   main() {
+    startWebAuthTokenSync({
+      onError: (error) => {
+        console.warn("Failed to persist MPP page auth token.", error);
+      },
+      persistToken: (token) =>
+        browser.runtime.sendMessage({
+          type: "extension.persist_auth_token",
+          token,
+        } satisfies BackgroundMessage),
+      readToken: getWebAuthTokenFromStorage,
+    });
+
     window.addEventListener("message", (event) => {
       if (
         event.source !== window ||
@@ -91,8 +128,7 @@ export default defineContentScript({
         return;
       }
 
-      browser.runtime
-        .sendMessage(backgroundMessage)
+      forwardBackgroundMessage(backgroundMessage)
         .then((data) => {
           postBridgeResponse(
             {

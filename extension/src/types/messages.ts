@@ -59,6 +59,14 @@ export type BackgroundMessage =
       origin: string;
     }
   | {
+      type: "extension.start_handoff";
+      handoff: unknown;
+    }
+  | {
+      type: "extension.persist_auth_token";
+      token: unknown;
+    }
+  | {
       type: "monitor.get";
     }
   | {
