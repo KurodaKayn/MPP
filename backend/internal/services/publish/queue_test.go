@@ -109,6 +109,7 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(`CREATE TABLE projects (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
+		workspace_id TEXT,
 		collab_document_id TEXT UNIQUE,
 		title TEXT NOT NULL,
 		source_content TEXT NOT NULL,
