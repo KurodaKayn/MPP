@@ -9,6 +9,12 @@ import {
   Trash2,
 } from "lucide-react";
 import "../../src/styles.css";
+import { getStoredExtensionAuthToken } from "../../src/backend/auth";
+import {
+  createBackendClient,
+  normalizeBackendError,
+} from "../../src/backend/client";
+import { backendConfig } from "../../src/backend/config";
 import { Alert, AlertDescription } from "../../src/components/ui/alert";
 import { Badge } from "../../src/components/ui/badge";
 import { Button } from "../../src/components/ui/button";
@@ -25,8 +31,24 @@ import type {
   ExtensionPublishPlatformHandoff,
   StoredHandoff,
 } from "../../src/types/handoff";
-import type { BackgroundMessage } from "../../src/types/messages";
+import type {
+  BackgroundMessage,
+  HandoffResponse,
+} from "../../src/types/messages";
+import type { PlatformKey } from "../../src/types/platform";
 import type { TrustedOrigin } from "../../src/background/origins";
+import {
+  SessionStatusCard,
+  useExtensionSession,
+} from "../../src/publish/session";
+import {
+  PrepublishWorkbenchCard,
+  usePrepublishWorkbench,
+} from "../../src/publish/prepublish";
+
+const backendClient = createBackendClient({
+  authTokenProvider: getStoredExtensionAuthToken,
+});
 
 interface MonitorState {
   extension_id: string;
@@ -465,8 +487,25 @@ function EventTimeline({ events }: { events: ExtensionExecutionEvent[] }) {
 
 function PublishMonitor() {
   const { state, loading, error, setError, load } = useMonitorState();
+  const { state: sessionState, refresh: refreshSession } = useExtensionSession(
+    backendClient.getSession,
+  );
+  const prepublishWorkbench = usePrepublishWorkbench(
+    backendClient.listPrepublish,
+    sessionState.status === "authenticated",
+  );
+  const [startingHandoff, setStartingHandoff] = React.useState(false);
+  const [handoffStartError, setHandoffStartError] = React.useState("");
   const latestEvent = state?.events.at(-1);
   const handoff = state?.current_handoff?.handoff;
+
+  const refreshAll = async () => {
+    await Promise.all([
+      load(),
+      refreshSession(),
+      prepublishWorkbench.onRetry(),
+    ]);
+  };
 
   const clear = async () => {
     await sendBackgroundMessage({ type: "monitor.clear" });
@@ -492,6 +531,49 @@ function PublishMonitor() {
     }
   };
 
+  const openLogin = async () => {
+    try {
+      await browser.tabs.create({
+        active: true,
+        url: backendConfig.loginUrl,
+      });
+      setError("");
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error ? nextError.message : String(nextError),
+      );
+    }
+  };
+
+  const startSelectedHandoff = React.useCallback(
+    async (projectId: string, platforms: PlatformKey[]) => {
+      try {
+        setStartingHandoff(true);
+        setHandoffStartError("");
+
+        const handoffResponse = await backendClient.createHandoff({
+          project_id: projectId,
+          platforms,
+        });
+        const response = await sendBackgroundMessage<HandoffResponse>({
+          type: "extension.start_handoff",
+          handoff: handoffResponse,
+        });
+
+        if (!response.accepted) {
+          throw new Error(response.message);
+        }
+
+        await load();
+      } catch (nextError) {
+        setHandoffStartError(normalizeBackendError(nextError).message);
+      } finally {
+        setStartingHandoff(false);
+      }
+    },
+    [load],
+  );
+
   const activePlatformEvents =
     handoff?.platforms
       .map((platform) =>
@@ -516,7 +598,7 @@ function PublishMonitor() {
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
-            <Button variant="outline" onClick={load} aria-label="Refresh">
+            <Button variant="outline" onClick={refreshAll} aria-label="Refresh">
               <RefreshCw data-icon="inline-start" />
             </Button>
             <Button
@@ -537,6 +619,19 @@ function PublishMonitor() {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
+
+        <SessionStatusCard
+          state={sessionState}
+          onOpenLogin={openLogin}
+          onRetry={refreshSession}
+        />
+
+        <PrepublishWorkbenchCard
+          {...prepublishWorkbench}
+          onStartHandoff={startSelectedHandoff}
+          startingHandoff={startingHandoff}
+          startError={handoffStartError}
+        />
 
         {handoff ? (
           <div className="grid grid-cols-2 gap-3">

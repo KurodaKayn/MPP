@@ -38,3 +38,9 @@ pre-commit:
       glob: "*.{ts}"
       run: pnpm format {staged_files}
       stage_fixed: true
+
+    content-pipeline-service-format:
+      root: "content-pipeline-service/"
+      glob: "*.rs"
+      run: cargo fmt -- {staged_files}
+      stage_fixed: true
