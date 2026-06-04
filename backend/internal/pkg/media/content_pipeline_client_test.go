@@ -86,6 +86,27 @@ func TestDownloadAndProcessDoesNotFallbackForContentPipelineValidationErrors(t *
 	require.Nil(t, data)
 }
 
+func TestContentPipelineAddrUsesConfiguredHostAndPort(t *testing.T) {
+	t.Setenv(contentPipelineHostEnv, "pipeline")
+	t.Setenv(contentPipelinePortEnv, "50052")
+
+	require.Equal(t, "pipeline:50052", contentPipelineAddr())
+}
+
+func TestContentPipelineAddrFallsBackToServiceNameAndDefaultPort(t *testing.T) {
+	t.Setenv(contentPipelineHostEnv, " ")
+	t.Setenv(contentPipelinePortEnv, " ")
+
+	require.Equal(t, "content-pipeline-service:50051", contentPipelineAddr())
+}
+
+func TestContentPipelineAddrSupportsIPv6Hosts(t *testing.T) {
+	t.Setenv(contentPipelineHostEnv, "::1")
+	t.Setenv(contentPipelinePortEnv, "50051")
+
+	require.Equal(t, "[::1]:50051", contentPipelineAddr())
+}
+
 func withContentPipelineMediaClientFactory(t *testing.T, factory contentPipelineMediaClientFactory) {
 	t.Helper()
 	previous := newContentPipelineMediaClient
