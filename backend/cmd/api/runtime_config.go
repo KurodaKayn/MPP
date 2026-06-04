@@ -8,6 +8,8 @@ import (
 
 const (
 	jwtSecretEnv               = "JWT_SECRET"
+	collabTokenSecretEnv       = "COLLAB_TOKEN_SECRET"
+	collabWebsocketURLBaseEnv  = "COLLAB_WEBSOCKET_URL_BASE"
 	appEnvEnv                  = "APP_ENV"
 	mockLoginFlagEnv           = "ENABLE_MOCK_LOGIN"
 	nodeEnvFallbackEnv         = "NODE_ENV"
@@ -21,6 +23,7 @@ const (
 	backendWorkerServiceName   = "publish-worker"
 	backendDefaultProcessRole  = backendProcessRoleAll
 	backendDefaultRequireRedis = false
+	defaultCollabWebsocketURL  = "ws://localhost:8090"
 )
 
 type backendRuntimeConfig struct {
@@ -79,6 +82,20 @@ func requiredEnv(name string) (string, error) {
 		return "", fmt.Errorf("%s must be set", name)
 	}
 	return value, nil
+}
+
+func collabTokenSecret(jwtSecret string) string {
+	if value := strings.TrimSpace(os.Getenv(collabTokenSecretEnv)); value != "" {
+		return value
+	}
+	return jwtSecret
+}
+
+func collabWebsocketURLBase() string {
+	if value := strings.TrimRight(strings.TrimSpace(os.Getenv(collabWebsocketURLBaseEnv)), "/"); value != "" {
+		return value
+	}
+	return defaultCollabWebsocketURL
 }
 
 func commaSeparatedEnv(name string) ([]string, error) {
