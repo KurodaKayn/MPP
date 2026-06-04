@@ -138,6 +138,44 @@ func (h *CollabDocumentHandler) UpdateDocument(c echo.Context) error {
 	return c.JSON(http.StatusOK, collabDocumentResponse(document))
 }
 
+func (h *CollabDocumentHandler) CreateSession(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	documentID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid document UUID")
+	}
+
+	session, err := h.serviceFor(c).CreateSession(c.Request().Context(), userID, documentID)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidCollabDocument) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "invalid session request")
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "document not found")
+		}
+		if errors.Is(err, services.ErrCollabDocumentForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, contracts.CollabDocumentSession{
+		DocumentId:   openapi_types.UUID(session.DocumentID),
+		Role:         contracts.CollabDocumentRole(session.Role),
+		WebsocketUrl: session.WebsocketURL,
+		Token:        session.Token,
+		ExpiresAt:    session.ExpiresAt,
+		Limits: contracts.CollabSessionLimits{
+			MaxMessageBytes:  session.Limits.MaxMessageBytes,
+			HeartbeatSeconds: session.Limits.HeartbeatSeconds,
+		},
+	})
+}
+
 func intQueryParam(c echo.Context, name string) int {
 	value, _ := strconv.Atoi(c.QueryParam(name))
 	return value
