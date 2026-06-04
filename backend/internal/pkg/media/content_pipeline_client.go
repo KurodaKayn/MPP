@@ -51,13 +51,11 @@ func processWithContentPipeline(sourceURL string, platform string, usage string)
 	}
 
 	response, err := client.ProcessAsset(ctx, &contentpipelinepb.ProcessAssetRequest{
-		RequestId: uuid.NewString(),
-		Platform:  strings.TrimSpace(platform),
-		Usage:     strings.TrimSpace(usage),
-		Source:    mediaSourceFromURL(sourceURL),
-		Constraints: &contentpipelinepb.MediaConstraints{
-			MaxBytes: MaxWechatSize,
-		},
+		RequestId:   uuid.NewString(),
+		Platform:    strings.TrimSpace(platform),
+		Usage:       strings.TrimSpace(usage),
+		Source:      mediaSourceFromURL(sourceURL),
+		Constraints: mediaConstraintsForPlatform(platform),
 	})
 	if err != nil {
 		return nil, err
@@ -72,6 +70,15 @@ func processWithContentPipeline(sourceURL string, platform string, usage string)
 		return nil, fmt.Errorf("%w: processed asset did not include inline bytes", errContentPipelineContract)
 	}
 	return inlineBytes, nil
+}
+
+func mediaConstraintsForPlatform(platform string) *contentpipelinepb.MediaConstraints {
+	if strings.EqualFold(strings.TrimSpace(platform), "wechat") {
+		return &contentpipelinepb.MediaConstraints{
+			MaxBytes: MaxWechatSize,
+		}
+	}
+	return nil
 }
 
 func dialContentPipelineMediaClient(_ context.Context) (contentpipelinepb.MediaAssetProcessorClient, io.Closer, error) {

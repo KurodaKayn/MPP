@@ -56,6 +56,31 @@ func TestDownloadAndProcessUsesContentPipelineWhenEnabled(t *testing.T) {
 	require.Equal(t, "data:image/png;base64,aGVsbG8=", fakeClient.request.GetSource().GetDataUrl())
 }
 
+func TestDownloadAndProcessUsesContentPipelineDefaultsForNonWechatPlatforms(t *testing.T) {
+	t.Setenv(contentPipelineMediaEnabledEnv, "true")
+	fakeClient := &fakeContentPipelineMediaClient{
+		response: &contentpipelinepb.ProcessAssetResponse{
+			Asset: &contentpipelinepb.ProcessedAsset{
+				Content: &contentpipelinepb.ProcessedAsset_InlineBytes{
+					InlineBytes: []byte("processed-by-rust"),
+				},
+				MimeType: "image/jpeg",
+			},
+			Status: "processed",
+		},
+	}
+	withContentPipelineMediaClientFactory(t, func(context.Context) (contentpipelinepb.MediaAssetProcessorClient, io.Closer, error) {
+		return fakeClient, noopCloser{}, nil
+	})
+
+	data, err := DownloadAndProcessForPlatform("data:image/png;base64,aGVsbG8=", "douyin", "cover")
+
+	require.NoError(t, err)
+	require.Equal(t, []byte("processed-by-rust"), data)
+	require.Equal(t, "douyin", fakeClient.request.GetPlatform())
+	require.Nil(t, fakeClient.request.GetConstraints())
+}
+
 func TestDownloadAndProcessFallsBackForTransientContentPipelineErrors(t *testing.T) {
 	t.Setenv(contentPipelineMediaEnabledEnv, "true")
 	fakeClient := &fakeContentPipelineMediaClient{
