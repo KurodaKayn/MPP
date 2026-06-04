@@ -9,6 +9,7 @@ import (
 const (
 	jwtSecretEnv               = "JWT_SECRET"
 	collabTokenSecretEnv       = "COLLAB_TOKEN_SECRET"
+	collabInternalURLEnv       = "COLLAB_INTERNAL_URL"
 	collabWebsocketURLBaseEnv  = "COLLAB_WEBSOCKET_URL_BASE"
 	appEnvEnv                  = "APP_ENV"
 	mockLoginFlagEnv           = "ENABLE_MOCK_LOGIN"
@@ -24,6 +25,7 @@ const (
 	backendDefaultProcessRole  = backendProcessRoleAll
 	backendDefaultRequireRedis = false
 	defaultCollabWebsocketURL  = "ws://localhost:8090"
+	defaultCollabInternalURL   = "http://localhost:8090"
 )
 
 type backendRuntimeConfig struct {
@@ -96,6 +98,13 @@ func collabWebsocketURLBase() string {
 		return value
 	}
 	return defaultCollabWebsocketURL
+}
+
+func collabInternalURL() string {
+	if value := strings.TrimRight(strings.TrimSpace(os.Getenv(collabInternalURLEnv)), "/"); value != "" {
+		return value
+	}
+	return defaultCollabInternalURL
 }
 
 func commaSeparatedEnv(name string) ([]string, error) {

@@ -27,8 +27,9 @@ const (
 )
 
 type Service struct {
-	db            *gorm.DB
-	sessionConfig SessionConfig
+	db                         *gorm.DB
+	sessionConfig              SessionConfig
+	projectDocumentInitializer ProjectDocumentInitializer
 }
 
 type DocumentList struct {
@@ -97,6 +98,10 @@ func (s *Service) UseSessionConfig(config SessionConfig) {
 	if config.HeartbeatSeconds > 0 {
 		s.sessionConfig.HeartbeatSeconds = config.HeartbeatSeconds
 	}
+}
+
+func (s *Service) UseProjectDocumentInitializer(initializer ProjectDocumentInitializer) {
+	s.projectDocumentInitializer = initializer
 }
 
 func (s *Service) WithContext(ctx context.Context) *Service {
@@ -187,6 +192,13 @@ func (s *Service) CreateSession(ctx context.Context, userID uuid.UUID, documentI
 	}
 
 	return s.createSession(userID, document.ID, role)
+}
+
+func (s *Service) InitializeProjectDocument(ctx context.Context, documentID uuid.UUID) error {
+	if documentID == uuid.Nil || s.projectDocumentInitializer == nil {
+		return ErrProjectDocumentInitialization
+	}
+	return s.projectDocumentInitializer.InitializeProjectDocument(ctx, documentID)
 }
 
 // CreateAuthorizedSession issues a session after the caller has resolved access.
