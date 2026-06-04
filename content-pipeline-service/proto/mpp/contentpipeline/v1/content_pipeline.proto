@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package mpp.contentpipeline.v1;
 
+option go_package = "github.com/kurodakayn/mpp-backend/internal/contracts/contentpipelinepb;contentpipelinepb";
+
 service MediaAssetProcessor {
   rpc ProcessAsset(ProcessAssetRequest) returns (ProcessAssetResponse);
 }
