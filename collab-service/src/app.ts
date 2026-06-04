@@ -1,6 +1,7 @@
 import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 
+import { createCollabAuthenticator } from "./auth/session-token.js";
 import { createCollabServer } from "./collab/hocuspocus.js";
 import { loadConfig } from "./config.js";
 import { createMetrics } from "./metrics.js";
@@ -22,7 +23,8 @@ export async function buildApp(
     },
   });
   const metrics = createMetrics();
-  const collabServer = createCollabServer(config);
+  const authenticator = createCollabAuthenticator(config);
+  const collabServer = createCollabServer(config, authenticator);
 
   await app.register(websocket);
 
@@ -35,7 +37,7 @@ export async function buildApp(
     dependencies: {
       database_configured: Boolean(config.DATABASE_URL),
       redis_addr: config.REDIS_ADDR,
-      token_public_key_configured: Boolean(config.COLLAB_TOKEN_PUBLIC_KEY),
+      token_secret_configured: Boolean(config.COLLAB_TOKEN_SECRET),
     },
   }));
 

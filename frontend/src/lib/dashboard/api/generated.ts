@@ -265,6 +265,20 @@ export interface components {
     UpdateCollabDocumentRequest: {
       title: string;
     };
+    CollabSessionLimits: {
+      max_message_bytes: number;
+      heartbeat_seconds: number;
+    };
+    CollabDocumentSession: {
+      /** Format: uuid */
+      document_id: string;
+      role: components["schemas"]["CollabDocumentRole"];
+      websocket_url: string;
+      token: string;
+      /** Format: date-time */
+      expires_at: string;
+      limits: components["schemas"]["CollabSessionLimits"];
+    };
     CollabDocument: {
       /** Format: uuid */
       id: string;

@@ -35,6 +35,8 @@ services:
     environment:
       APP_ENV: development
       ENABLE_DEV_SEED: "true"
+      COLLAB_TOKEN_SECRET: ${COLLAB_TOKEN_SECRET:-change-me-collab-token-secret}
+      COLLAB_WEBSOCKET_URL_BASE: ${COLLAB_WEBSOCKET_URL_BASE:-ws://localhost:8090}
     volumes:
       - ../backend:/app
       - backend_go_cache:/go/pkg/mod
@@ -112,6 +114,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-}
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
       BACKEND_INTERNAL_URL: http://backend:8080
+      COLLAB_TOKEN_SECRET: ${COLLAB_TOKEN_SECRET:-change-me-collab-token-secret}
     volumes:
       - ../collab-service:/app
       - collab_service_node_modules:/app/node_modules

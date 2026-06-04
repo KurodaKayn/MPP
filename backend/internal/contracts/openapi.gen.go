@@ -369,8 +369,24 @@ type CollabDocument struct {
 // CollabDocumentRole defines model for CollabDocumentRole.
 type CollabDocumentRole string
 
+// CollabDocumentSession defines model for CollabDocumentSession.
+type CollabDocumentSession struct {
+	DocumentId   openapi_types.UUID  `json:"document_id"`
+	ExpiresAt    time.Time           `json:"expires_at"`
+	Limits       CollabSessionLimits `json:"limits"`
+	Role         CollabDocumentRole  `json:"role"`
+	Token        string              `json:"token"`
+	WebsocketUrl string              `json:"websocket_url"`
+}
+
 // CollabDocumentStatus defines model for CollabDocumentStatus.
 type CollabDocumentStatus string
+
+// CollabSessionLimits defines model for CollabSessionLimits.
+type CollabSessionLimits struct {
+	HeartbeatSeconds int `json:"heartbeat_seconds"`
+	MaxMessageBytes  int `json:"max_message_bytes"`
+}
 
 // CompleteBrowserSessionResult defines model for CompleteBrowserSessionResult.
 type CompleteBrowserSessionResult struct {
