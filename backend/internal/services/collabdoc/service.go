@@ -180,20 +180,39 @@ func (s *Service) CreateSession(ctx context.Context, userID uuid.UUID, documentI
 	if userID == uuid.Nil || documentID == uuid.Nil {
 		return nil, ErrInvalidDocument
 	}
-	if len(s.sessionConfig.TokenSecret) == 0 {
-		return nil, ErrInvalidDocument
-	}
 
 	document, role, err := s.getAccessibleDocument(ctx, userID, documentID)
 	if err != nil {
 		return nil, err
 	}
 
+	return s.createSession(userID, document.ID, role)
+}
+
+// CreateAuthorizedSession issues a session after the caller has resolved access.
+func (s *Service) CreateAuthorizedSession(ctx context.Context, userID uuid.UUID, documentID uuid.UUID, role string) (*Session, error) {
+	if userID == uuid.Nil || documentID == uuid.Nil {
+		return nil, ErrInvalidDocument
+	}
+
+	var document models.CollabDocument
+	if err := s.WithContext(ctx).db.Select("id").First(&document, "id = ?", documentID).Error; err != nil {
+		return nil, err
+	}
+
+	return s.createSession(userID, document.ID, role)
+}
+
+func (s *Service) createSession(userID uuid.UUID, documentID uuid.UUID, role string) (*Session, error) {
+	if len(s.sessionConfig.TokenSecret) == 0 || !isCollabDocumentRole(role) {
+		return nil, ErrInvalidDocument
+	}
+
 	now := time.Now().UTC()
 	expiresAt := now.Add(s.sessionConfig.TTL)
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, sessionClaims{
 		UserID:     userID,
-		DocumentID: document.ID,
+		DocumentID: documentID,
 		Role:       role,
 		Purpose:    "collab-session",
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -209,9 +228,9 @@ func (s *Service) CreateSession(ctx context.Context, userID uuid.UUID, documentI
 	}
 
 	return &Session{
-		DocumentID:   document.ID,
+		DocumentID:   documentID,
 		Role:         role,
-		WebsocketURL: s.sessionConfig.WebsocketURLBase + "/collab/documents/" + document.ID.String(),
+		WebsocketURL: s.sessionConfig.WebsocketURLBase + "/collab/documents/" + documentID.String(),
 		Token:        token,
 		ExpiresAt:    expiresAt,
 		Limits: SessionLimits{
@@ -219,6 +238,10 @@ func (s *Service) CreateSession(ctx context.Context, userID uuid.UUID, documentI
 			HeartbeatSeconds: s.sessionConfig.HeartbeatSeconds,
 		},
 	}, nil
+}
+
+func isCollabDocumentRole(role string) bool {
+	return role == models.CollabDocumentRoleEditor || role == models.CollabDocumentRoleViewer
 }
 
 func (s *Service) getAccessibleDocument(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) (*models.CollabDocument, string, error) {
