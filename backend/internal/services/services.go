@@ -13,6 +13,7 @@ type AIServiceClient = ai.AIServiceClient
 type AIServiceStream = ai.AIServiceStream
 
 type CollabDocumentService = collabdoc.Service
+type CollabDocumentSessionConfig = collabdoc.SessionConfig
 type DashboardService = dashboard.DashboardService
 type MemoryXOAuth2StateStore = platformaccount.MemoryXOAuth2StateStore
 type PublishJob = publishsvc.PublishJob

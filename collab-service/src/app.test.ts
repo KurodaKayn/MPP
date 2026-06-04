@@ -11,6 +11,7 @@ function testConfig() {
     COLLAB_PORT: "8090",
     COLLAB_WS_PATH: "/collab/documents/:documentId",
     BACKEND_INTERNAL_URL: "http://backend:8080",
+    COLLAB_TOKEN_SECRET: "collab-secret",
   });
 }
 
@@ -29,7 +30,7 @@ describe("collab-service app", () => {
       dependencies: {
         database_configured: false,
         redis_addr: "redis:6379",
-        token_public_key_configured: false,
+        token_secret_configured: true,
       },
     });
 

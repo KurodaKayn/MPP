@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/gorm"
@@ -18,10 +20,15 @@ var (
 const (
 	defaultDocumentListLimit = 20
 	maxDocumentListLimit     = 100
+	defaultSessionTTL        = 5 * time.Minute
+	defaultHeartbeatSeconds  = 30
+	defaultMaxMessageBytes   = 512 * 1024
+	defaultWebsocketURLBase  = "ws://localhost:8090"
 )
 
 type Service struct {
-	db *gorm.DB
+	db            *gorm.DB
+	sessionConfig SessionConfig
 }
 
 type DocumentList struct {
@@ -32,8 +39,64 @@ type DocumentList struct {
 	TotalPages int
 }
 
+type SessionConfig struct {
+	TokenSecret      []byte
+	WebsocketURLBase string
+	TTL              time.Duration
+	MaxMessageBytes  int
+	HeartbeatSeconds int
+}
+
+type SessionLimits struct {
+	MaxMessageBytes  int
+	HeartbeatSeconds int
+}
+
+type Session struct {
+	DocumentID   uuid.UUID
+	Role         string
+	WebsocketURL string
+	Token        string
+	ExpiresAt    time.Time
+	Limits       SessionLimits
+}
+
+type sessionClaims struct {
+	UserID     uuid.UUID `json:"user_id"`
+	DocumentID uuid.UUID `json:"document_id"`
+	Role       string    `json:"role"`
+	Purpose    string    `json:"purpose"`
+	jwt.RegisteredClaims
+}
+
 func NewService(db *gorm.DB) *Service {
-	return &Service{db: db}
+	return &Service{
+		db: db,
+		sessionConfig: SessionConfig{
+			WebsocketURLBase: defaultWebsocketURLBase,
+			TTL:              defaultSessionTTL,
+			MaxMessageBytes:  defaultMaxMessageBytes,
+			HeartbeatSeconds: defaultHeartbeatSeconds,
+		},
+	}
+}
+
+func (s *Service) UseSessionConfig(config SessionConfig) {
+	if len(config.TokenSecret) > 0 {
+		s.sessionConfig.TokenSecret = config.TokenSecret
+	}
+	if strings.TrimSpace(config.WebsocketURLBase) != "" {
+		s.sessionConfig.WebsocketURLBase = strings.TrimRight(strings.TrimSpace(config.WebsocketURLBase), "/")
+	}
+	if config.TTL > 0 {
+		s.sessionConfig.TTL = config.TTL
+	}
+	if config.MaxMessageBytes > 0 {
+		s.sessionConfig.MaxMessageBytes = config.MaxMessageBytes
+	}
+	if config.HeartbeatSeconds > 0 {
+		s.sessionConfig.HeartbeatSeconds = config.HeartbeatSeconds
+	}
 }
 
 func (s *Service) WithContext(ctx context.Context) *Service {
@@ -109,27 +172,76 @@ func (s *Service) GetDocument(ctx context.Context, userID uuid.UUID, documentID 
 		return nil, ErrInvalidDocument
 	}
 
+	document, _, err := s.getAccessibleDocument(ctx, userID, documentID)
+	return document, err
+}
+
+func (s *Service) CreateSession(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) (*Session, error) {
+	if userID == uuid.Nil || documentID == uuid.Nil {
+		return nil, ErrInvalidDocument
+	}
+	if len(s.sessionConfig.TokenSecret) == 0 {
+		return nil, ErrInvalidDocument
+	}
+
+	document, role, err := s.getAccessibleDocument(ctx, userID, documentID)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	expiresAt := now.Add(s.sessionConfig.TTL)
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, sessionClaims{
+		UserID:     userID,
+		DocumentID: document.ID,
+		Role:       role,
+		Purpose:    "collab-session",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID.String(),
+			Audience:  []string{"mpp-collab-service"},
+			Issuer:    "mpp-backend",
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+		},
+	}).SignedString(s.sessionConfig.TokenSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Session{
+		DocumentID:   document.ID,
+		Role:         role,
+		WebsocketURL: s.sessionConfig.WebsocketURLBase + "/collab/documents/" + document.ID.String(),
+		Token:        token,
+		ExpiresAt:    expiresAt,
+		Limits: SessionLimits{
+			MaxMessageBytes:  s.sessionConfig.MaxMessageBytes,
+			HeartbeatSeconds: s.sessionConfig.HeartbeatSeconds,
+		},
+	}, nil
+}
+
+func (s *Service) getAccessibleDocument(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) (*models.CollabDocument, string, error) {
 	db := s.WithContext(ctx).db
 	var document models.CollabDocument
 	if err := db.First(&document, "id = ?", documentID).Error; err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if document.OwnerUserID == userID {
-		return &document, nil
+		return &document, models.CollabDocumentRoleEditor, nil
 	}
 
-	var collaboratorCount int64
+	var collaborator models.CollabDocumentCollaborator
 	if err := db.
 		Model(&models.CollabDocumentCollaborator{}).
 		Where("document_id = ? AND user_id = ?", documentID, userID).
-		Count(&collaboratorCount).Error; err != nil {
-		return nil, err
+		First(&collaborator).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, "", ErrDocumentForbidden
+		}
+		return nil, "", err
 	}
-	if collaboratorCount == 0 {
-		return nil, ErrDocumentForbidden
-	}
-
-	return &document, nil
+	return &document, collaborator.Role, nil
 }
 
 func (s *Service) UpdateDocumentTitle(ctx context.Context, userID uuid.UUID, documentID uuid.UUID, title string) (*models.CollabDocument, error) {

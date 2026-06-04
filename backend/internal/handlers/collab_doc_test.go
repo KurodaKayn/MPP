@@ -26,7 +26,12 @@ func setupCollabDocumentHandlerTest(t *testing.T) (*gorm.DB, *CollabDocumentHand
 		&models.CollabDocumentCollaborator{},
 	))
 
-	return db, NewCollabDocumentHandler(services.NewCollabDocumentService(db))
+	service := services.NewCollabDocumentService(db)
+	service.UseSessionConfig(services.CollabDocumentSessionConfig{
+		TokenSecret:      []byte("collab-secret"),
+		WebsocketURLBase: "ws://collab.test",
+	})
+	return db, NewCollabDocumentHandler(service)
 }
 
 func TestCollabDocumentHandlerCreateDocument(t *testing.T) {
@@ -239,6 +244,59 @@ func TestCollabDocumentHandlerUpdateDocumentRejectsNonOwner(t *testing.T) {
 	setContextUser(c, collaborator.ID)
 
 	require.NoError(t, handler.UpdateDocument(c))
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestCollabDocumentHandlerCreateSession(t *testing.T) {
+	e := echo.New()
+	db, handler := setupCollabDocumentHandlerTest(t)
+	user := createCollabHandlerTestUser(t, db, "session-owner")
+	document := createCollabHandlerTestDocument(t, db, user.ID, "Session Doc", time.Now().Add(time.Hour))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/collab/documents/"+document.ID.String()+"/session",
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(document.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.CreateSession(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp contracts.CollabDocumentSession
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, document.ID, resp.DocumentId)
+	require.Equal(t, contracts.Editor, resp.Role)
+	require.Equal(t, "ws://collab.test/collab/documents/"+document.ID.String(), resp.WebsocketUrl)
+	require.NotEmpty(t, resp.Token)
+	require.Equal(t, 524288, resp.Limits.MaxMessageBytes)
+	require.Equal(t, 30, resp.Limits.HeartbeatSeconds)
+	require.True(t, resp.ExpiresAt.After(time.Now()))
+}
+
+func TestCollabDocumentHandlerCreateSessionRejectsInaccessibleDocument(t *testing.T) {
+	e := echo.New()
+	db, handler := setupCollabDocumentHandlerTest(t)
+	owner := createCollabHandlerTestUser(t, db, "session-blocked-owner")
+	blocked := createCollabHandlerTestUser(t, db, "session-blocked")
+	document := createCollabHandlerTestDocument(t, db, owner.ID, "Blocked Session", time.Now().Add(time.Hour))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/collab/documents/"+document.ID.String()+"/session",
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(document.ID.String())
+	setContextUser(c, blocked.ID)
+
+	require.NoError(t, handler.CreateSession(c))
 	require.Equal(t, http.StatusForbidden, rec.Code)
 }
 

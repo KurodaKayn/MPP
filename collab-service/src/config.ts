@@ -14,7 +14,7 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().optional(),
   REDIS_ADDR: z.string().default("redis:6379"),
   BACKEND_INTERNAL_URL: z.string().url().default("http://backend:8080"),
-  COLLAB_TOKEN_PUBLIC_KEY: z.string().optional(),
+  COLLAB_TOKEN_SECRET: z.string().optional(),
 });
 
 export type CollabConfig = z.infer<typeof EnvSchema>;
