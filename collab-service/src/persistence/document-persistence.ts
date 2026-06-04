@@ -48,14 +48,24 @@ interface PendingUpdate {
   actorUserId?: string;
 }
 
+interface PersistenceLogger {
+  error(message?: unknown, ...optionalParams: unknown[]): void;
+}
+
 export class PostgresDocumentPersistence implements DocumentPersistence {
   private readonly pendingUpdates = new Map<string, PendingUpdate[]>();
   private readonly flushTimers = new Map<string, NodeJS.Timeout>();
   private readonly flushes = new Map<string, Promise<void>>();
+  private readonly flushRetryAttempts = new Map<string, number>();
 
   constructor(
     private readonly database: Queryable & { end?: () => Promise<void> },
     private readonly flushIntervalMs = 300,
+    private readonly maxUpdatesPerBatch = 32,
+    private readonly updateRetentionDays = 30,
+    private readonly maxFlushRetryAttempts = 5,
+    private readonly maxFlushRetryDelayMs = 30_000,
+    private readonly logger: PersistenceLogger = console,
   ) {}
 
   async load(documentId: string, document: Document): Promise<void> {
@@ -100,14 +110,18 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
     const pending = this.pendingUpdates.get(documentId) ?? [];
     pending.push({ update: new Uint8Array(update), actorUserId });
     this.pendingUpdates.set(documentId, pending);
+    this.flushRetryAttempts.delete(documentId);
 
-    if (!this.flushTimers.has(documentId)) {
-      const timer = setTimeout(() => {
-        this.flushTimers.delete(documentId);
-        void this.flushDocument(documentId).catch(() => {});
-      }, this.flushIntervalMs);
-      this.flushTimers.set(documentId, timer);
+    if (pending.length >= this.maxUpdatesPerBatch) {
+      try {
+        await this.flushDocument(documentId);
+      } catch (error) {
+        this.handleFlushFailure(documentId, error);
+      }
+      return;
     }
+
+    this.scheduleFlush(documentId);
   }
 
   async store(documentId: string, document: Document): Promise<void> {
@@ -140,6 +154,12 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
         [documentId, state, stateVector, seq, state.length],
       );
       await this.database.query("COMMIT");
+      await this.pruneCompactedBatches(documentId, seq).catch((error) => {
+        this.logger.error("failed to prune compacted collab update batches", {
+          documentId,
+          error,
+        });
+      });
     } catch (error) {
       await this.database.query("ROLLBACK");
       throw error;
@@ -162,6 +182,53 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
   async close(): Promise<void> {
     await this.flush();
     await this.database.end?.();
+  }
+
+  private scheduleFlush(
+    documentId: string,
+    delayMs = this.flushIntervalMs,
+  ): void {
+    if (this.flushTimers.has(documentId)) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      this.flushTimers.delete(documentId);
+      void this.flushDocument(documentId).catch((error) => {
+        this.handleFlushFailure(documentId, error);
+      });
+    }, delayMs);
+    this.flushTimers.set(documentId, timer);
+  }
+
+  private handleFlushFailure(documentId: string, error?: unknown): void {
+    if ((this.pendingUpdates.get(documentId)?.length ?? 0) === 0) {
+      this.flushRetryAttempts.delete(documentId);
+      return;
+    }
+
+    const attempt = (this.flushRetryAttempts.get(documentId) ?? 0) + 1;
+    this.flushRetryAttempts.set(documentId, attempt);
+    this.logger.error("failed to flush collab update batch", {
+      documentId,
+      attempt,
+      maxAttempts: this.maxFlushRetryAttempts,
+      error,
+    });
+
+    if (attempt >= this.maxFlushRetryAttempts) {
+      this.logger.error("collab update batch retries exhausted", {
+        documentId,
+        attempts: attempt,
+      });
+      return;
+    }
+
+    const retryDelayMs = Math.min(
+      this.flushIntervalMs * 2 ** (attempt - 1),
+      this.maxFlushRetryDelayMs,
+    );
+    this.scheduleFlush(documentId, retryDelayMs);
   }
 
   private async flushDocument(documentId: string): Promise<void> {
@@ -238,6 +305,7 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
         [documentId, toSeq, actorUserId ?? null],
       );
       await this.database.query("COMMIT");
+      this.flushRetryAttempts.delete(documentId);
     } catch (error) {
       await this.database.query("ROLLBACK");
       this.pendingUpdates.set(documentId, [
@@ -264,6 +332,21 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
       throw new Error("collaborative document not found");
     }
     return Number(row.current_seq);
+  }
+
+  private async pruneCompactedBatches(
+    documentId: string,
+    compactedUntilSeq: number,
+  ): Promise<void> {
+    await this.database.query(
+      `
+        DELETE FROM collab_document_update_batches
+        WHERE document_id = $1
+          AND to_seq <= $2
+          AND created_at < NOW() - make_interval(days => $3)
+      `,
+      [documentId, compactedUntilSeq, this.updateRetentionDays],
+    );
   }
 }
 
@@ -293,5 +376,9 @@ export function createPostgresDocumentPersistence(
   return new PostgresDocumentPersistence(
     new Pool(poolConfig),
     config.COLLAB_UPDATE_FLUSH_MS,
+    config.COLLAB_UPDATE_FLUSH_MAX_COUNT,
+    config.COLLAB_UPDATE_RETENTION_DAYS,
+    config.COLLAB_UPDATE_FLUSH_RETRY_MAX_ATTEMPTS,
+    config.COLLAB_UPDATE_FLUSH_RETRY_MAX_MS,
   );
 }
