@@ -1,552 +1,552 @@
-# MPP Collaborative Editing MVP Technical Architecture Plan
+# MPP Workspace and Team Collaboration Architecture Plan
 
-## 1. Current Goal
+## 1. Product Direction
 
-At this stage, the focus is on a single task: enabling real-time collaborative editing of the same content within MPP.
+The merged collaborative editor work provides the real-time editing foundation,
+but the current standalone "collaborative document" page is not the final
+product model.
 
-This version is not intended to be a complete suite like Notion, Feishu/Lark Docs, or Google Docs. It will not include comments, complex permissions, version history, search, attachment libraries, approval flows, database views, or knowledge bases. The architecture will only retain the essential capabilities for collaborative editing while maintaining clear boundaries for future extensions.
+The product should move toward a WPS/Notion-like collaboration model:
 
-## 2. Scope for This Phase
+1. Users can share an existing MPP Project with other users.
+2. Users can create a Workspace, invite team members, and let members access the
+   Projects that belong to that Workspace.
 
-| Capability                   | Included              | Description                                                                             |
-| ---------------------------- | --------------------- | --------------------------------------------------------------------------------------- |
-| Multi-user Real-time Editing | Yes                   | Multiple users editing the same document simultaneously with real-time synchronization. |
-| Auto-save                    | Yes                   | Automatic persistence of edited content; survives refreshes and restarts.               |
-| Presence/Cursor              | Lightweight           | Displaying collaborator status, cursors, and selections (non-persistent).               |
-| Doc Creation/Opening         | Minimal               | Ability to create, open, and read document titles.                                      |
-| Editing Permissions          | Minimal               | `editor` (can edit), `viewer` (read-only).                                              |
-| Distributed Scalability      | Architectural Reserve | P0 for single instance, P1 for horizontal scaling.                                      |
-| Integration with Publishing  | Delayed               | Syncing collaborative docs to MPP Projects in the future.                               |
-| Comments/Mentions/Notif      | Delayed               | Won't affect the core collaborative editing foundation.                                 |
-| Version History              | Basic Snapshots       | Technical snapshots for recovery only; no user-facing version panel.                    |
-| Full-text Search             | Delayed               | Focused on editing availability first.                                                  |
-| Attachments/Assets           | Delayed               | Integration with object storage later.                                                  |
-| Notion Database              | No                    | Part of future product capabilities.                                                    |
+The standalone collaborative document experience should be treated as a
+technical foundation and temporary entry point. Long term, collaboration belongs
+inside the user's actual content workflow: Projects, prepublish drafts, platform
+settings, publishing permissions, and team ownership.
 
-## 3. Recommended General Architecture
+## 2. Current Merged State
 
-Continue using the existing TipTap frontend and add an independent collaboration service:
+### 2.1 Completed Foundation
 
-- `frontend`: TipTap + Yjs client, responsible for Editor UI and WebSocket connections.
-- `backend`: Go API, responsible for authentication, document metadata, collaborator permissions, and issuing collaboration session tokens.
-- `collab-service`: New Node.js/TypeScript service using Hocuspocus + Yjs, responsible for real-time collaboration, broadcasting, presence, and persistence.
-- `PostgreSQL`: Stores document metadata, Yjs states, and incremental update logs.
-- `Redis`: Stores temporary presence, multi-instance broadcasting, short-term token cache, and rate limiting.
+| Area | Status | Evidence |
+| --- | --- | --- |
+| Backend collaborative document model | Done | `backend/internal/models/collab.go` defines documents, collaborators, Yjs states, and update batches. |
+| Backend collaborative document APIs | Done | Create/list/get/rename/session APIs exist under `backend/internal/handlers/collab_doc.go` and `backend/internal/services/collabdoc/service.go`. |
+| Session token issuing | Done | Backend issues short-lived JWTs with user, document, role, purpose, expiry, and session limits. |
+| Realtime collab service | Done | `collab-service` runs Hocuspocus/Yjs WebSocket sessions and validates collab tokens. |
+| PostgreSQL Yjs persistence | Done | `collab-service/src/persistence/document-persistence.ts` loads snapshots, appends update batches, stores compacted state, and prunes compacted batches. |
+| Frontend collab API client | Done | `frontend/src/lib/dashboard/api/collab.ts` wraps document and session APIs. |
+| Frontend standalone collab editor | Done | `frontend/src/features/collab-editor/` supports list/create/open/rename, TipTap/Yjs editing, toolbar, status, presence/cursors, and read-only role handling. |
+| Auth expiry handling | Done | Dashboard API client clears expired sessions and returns users to login instead of leaving stale JWT errors in-page. |
+
+### 2.2 Current Product Limitation
+
+The current UI asks users to create a separate collaborative document. This is
+technically useful, but product-wise it is disconnected from MPP's main unit of
+work: a Project.
+
+Problems with the current model:
+
+- It does not let a user share an existing Project.
+- It does not create a team/workspace boundary.
+- It does not answer "who owns this Project?" once multiple people can edit it.
+- It has no workspace member list, invite flow, or role management.
+- It cannot yet control publishing permissions separately from editing
+  permissions.
+- It risks becoming a second content system beside Projects instead of a
+  collaboration layer over Projects.
+
+## 3. Target Collaboration Model
+
+MPP should support two collaboration entry points.
+
+### 3.1 Project Sharing
+
+Project sharing is the smaller and more direct next step.
+
+A user opens an existing Project and shares it with another user or team. The
+recipient can access that Project according to a role.
+
+Recommended roles:
+
+| Role | Project Access | Publishing Access |
+| --- | --- | --- |
+| owner | Full control, can delete/share/manage settings. | Can publish and manage platform settings. |
+| editor | Can edit source content and prepublish drafts. | Cannot publish unless explicitly granted. |
+| commenter | Can comment/review later. | Cannot publish. |
+| viewer | Read-only access. | Cannot publish. |
+
+Initial MVP can implement only `owner`, `editor`, and `viewer`.
+
+Project sharing should answer the WPS-like use case: "I have this document or
+project; I want someone else to help me edit it."
+
+### 3.2 Workspace and Team
+
+Workspace is the stronger long-term model.
+
+A Workspace owns Projects. Users are Workspace members. Members can access
+workspace Projects through workspace-level roles and optional project-specific
+overrides.
+
+Workspace should answer the Notion-like use case: "This team works together in
+one space, and all team Projects live there."
+
+Recommended workspace roles:
+
+| Role | Capability |
+| --- | --- |
+| owner | Manage workspace, billing later, members, roles, all projects. |
+| admin | Manage members and projects, cannot transfer ownership. |
+| member | Create/edit workspace projects depending on policy. |
+| viewer | Read workspace projects unless a project override grants more. |
+
+## 4. Revised Architecture
+
+The existing collab-service remains valid. The change is in ownership and access
+control.
 
 ```mermaid
 flowchart LR
-  UserA["User A Browser"] --> FrontendA["Next.js + TipTap"]
-  UserB["User B Browser"] --> FrontendB["Next.js + TipTap"]
+  User["User Browser"] --> FE["Next.js Dashboard"]
+  FE --> BE["Go Backend"]
+  FE --> CS["collab-service<br/>Hocuspocus + Yjs"]
 
-  FrontendA -->|REST: create/open/session| Backend["Go Backend"]
-  FrontendB -->|REST: create/open/session| Backend
+  BE --> PG[("PostgreSQL")]
+  CS --> PG
+  CS --> Redis[("Redis / future pubsub")]
 
-  FrontendA -->|WebSocket: Yjs updates| Collab["collab-service<br/>Hocuspocus + Yjs"]
-  FrontendB -->|WebSocket: Yjs updates| Collab
-
-  Backend --> Pg[("PostgreSQL")]
-  Backend --> Redis[("Redis")]
-
-  Collab --> Pg
-  Collab --> Redis
+  Workspace["Workspace / Team"] --> Project["MPP Project"]
+  Project --> CollabDoc["Collaborative Editing State"]
+  BE --> Workspace
+  BE --> Project
+  BE --> CollabDoc
 ```
 
-## 4. Design Rationale
+Key shift:
 
-### 4.1 Why Not Put WebSockets in the Go Backend?
+- Before: `collab_documents.owner_user_id` is the main ownership boundary.
+- Next: Project or Workspace access becomes the ownership boundary.
+- The Yjs document becomes an implementation detail for collaborative editing,
+  not the primary product object.
 
-The Go backend is currently better suited for business APIs: authentication, permissions, publishing orchestration, account, and project management. Collaborative editing has different runtime characteristics:
+## 5. Data Model Direction
 
-- High number of long-lived connections.
-- High message frequency.
-- Handling of Yjs binary updates.
-- Requirement for presence and cross-instance broadcasting.
-- Independent rate limiting and scaling needs.
+### 5.1 Keep Current Collab Tables
 
-Building a separate `collab-service` prevents real-time editing from overloading general APIs and simplifies future horizontal scaling.
+Keep these tables as the editing substrate:
 
-### 4.2 Why Stick with TipTap + Yjs?
+- `collab_documents`
+- `collab_document_collaborators`
+- `collab_document_states`
+- `collab_document_update_batches`
 
-The frontend already depends on TipTap. Sticking with it is most cost-effective. Yjs is excellent for real-time collaboration and offline conflict resolution. Hocuspocus is a straightforward self-hosted solution within the Yjs/TipTap ecosystem.
+They already solve session, role, Yjs state, and persistence concerns.
 
-### 4.3 PostgreSQL as the Source of Truth, Redis for Temporary Coordination
-
-Collaborative data cannot reside solely in Redis. While Redis is great for presence, tokens, pubsub, and rate limiting, the recoverable document state must be persisted in PostgreSQL.
-
-## 5. Minimal Data Model
-
-Avoid complex models like workspaces, teams, organizations, or comments for now. Only add tables required for collaborative editing.
-
-### 5.1 Documents Table
+### 5.2 Add Project Sharing
 
 ```sql
-CREATE TABLE collab_documents (
+CREATE TABLE project_collaborators (
+  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role text NOT NULL CHECK (role IN ('editor', 'viewer')),
+  created_by uuid NOT NULL REFERENCES users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (project_id, user_id)
+);
+
+CREATE INDEX idx_project_collaborators_user
+  ON project_collaborators(user_id, role);
+```
+
+Access rules:
+
+- Project owner has implicit full access.
+- `project_collaborators` grants project-specific access.
+- Later, workspace membership can grant access before project-specific overrides.
+
+### 5.3 Link Projects to Collaborative Editing State
+
+```sql
+ALTER TABLE projects
+  ADD COLUMN collab_document_id uuid REFERENCES collab_documents(id);
+
+CREATE UNIQUE INDEX ux_projects_collab_document
+  ON projects(collab_document_id)
+  WHERE collab_document_id IS NOT NULL;
+```
+
+Notes:
+
+- A Project may lazily create a `collab_document` when collaboration is first
+  enabled.
+- The Project remains the product object; the collab document stores realtime
+  editor state.
+- Saving/compaction should synchronize the canonical source content back to the
+  Project at safe boundaries.
+
+### 5.4 Add Workspace and Team
+
+```sql
+CREATE TABLE workspaces (
   id uuid PRIMARY KEY,
   owner_user_id uuid NOT NULL REFERENCES users(id),
-  title text NOT NULL,
+  name text NOT NULL,
+  slug text,
   status text NOT NULL DEFAULT 'active',
-  schema_version int NOT NULL DEFAULT 1,
-  current_seq bigint NOT NULL DEFAULT 0,
-  last_edited_by uuid REFERENCES users(id),
-  last_edited_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz
 );
 
-CREATE INDEX idx_collab_documents_owner_updated
-  ON collab_documents(owner_user_id, updated_at DESC);
-```
-
-**Notes:**
-
-- Documents are currently organized by owner.
-- Add `workspace_id` or migrate to a workspace model later when team spaces are needed.
-- `schema_version` is for future editor schema migrations.
-- `current_seq` is the server-side sequence number for Yjs updates.
-
-### 5.2 Collaborators Table
-
-```sql
-CREATE TABLE collab_document_collaborators (
-  document_id uuid NOT NULL REFERENCES collab_documents(id) ON DELETE CASCADE,
+CREATE TABLE workspace_members (
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role text NOT NULL CHECK (role IN ('editor', 'viewer')),
-  created_by uuid NOT NULL REFERENCES users(id),
+  role text NOT NULL CHECK (role IN ('owner', 'admin', 'member', 'viewer')),
+  invited_by uuid REFERENCES users(id),
+  joined_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (document_id, user_id)
+  PRIMARY KEY (workspace_id, user_id)
 );
 
-CREATE INDEX idx_collab_document_collaborators_user
-  ON collab_document_collaborators(user_id, role);
+ALTER TABLE projects
+  ADD COLUMN workspace_id uuid REFERENCES workspaces(id);
+
+CREATE INDEX idx_projects_workspace_status_created
+  ON projects(workspace_id, status, created_at DESC);
 ```
 
-**Roles:**
-| Role | Capability |
+Migration strategy:
+
+1. Create a personal workspace for each existing user.
+2. Backfill existing Projects into the user's personal workspace.
+3. Keep `projects.user_id` as creator/legacy owner until the migration is
+   stable.
+4. Gradually switch project listing and access checks to workspace-aware
+   policies.
+
+## 6. Access Policy
+
+Access should be checked in this order:
+
+1. Project owner or legacy `projects.user_id`.
+2. Project collaborator override.
+3. Workspace role on the Project's workspace.
+4. Future public/share-link policy.
+
+Editing and publishing should be separated.
+
+```text
+can_view_project
+can_edit_project_content
+can_edit_project_settings
+can_manage_project_collaborators
+can_publish_project
+can_manage_workspace_members
+```
+
+This prevents a common collaboration mistake: giving someone text editing access
+also accidentally gives them publishing authority.
+
+## 7. API Direction
+
+### 7.1 Project Sharing APIs
+
+| API | Purpose |
 | --- | --- |
-| editor | Can edit content, see others' cursors. |
-| viewer | Read-only, see others' cursors, cannot send edit updates. |
+| `GET /api/user/dashboard/projects/{id}/collaborators` | List project collaborators. |
+| `POST /api/user/dashboard/projects/{id}/collaborators` | Invite or add a collaborator. |
+| `PATCH /api/user/dashboard/projects/{id}/collaborators/{userId}` | Change collaborator role. |
+| `DELETE /api/user/dashboard/projects/{id}/collaborators/{userId}` | Remove collaborator. |
+| `POST /api/user/dashboard/projects/{id}/collab/session` | Issue collab session for the Project's editing state. |
 
-Owners have `editor` permissions by default and don't necessarily need an entry in the collaborators table.
+### 7.2 Workspace APIs
 
-### 5.3 Document State Table
+| API | Purpose |
+| --- | --- |
+| `POST /api/workspaces` | Create a workspace. |
+| `GET /api/workspaces` | List workspaces the user can access. |
+| `GET /api/workspaces/{id}` | Read workspace metadata and role. |
+| `PATCH /api/workspaces/{id}` | Update workspace metadata. |
+| `GET /api/workspaces/{id}/members` | List workspace members. |
+| `POST /api/workspaces/{id}/members` | Invite/add workspace member. |
+| `PATCH /api/workspaces/{id}/members/{userId}` | Change member role. |
+| `DELETE /api/workspaces/{id}/members/{userId}` | Remove member. |
+| `GET /api/workspaces/{id}/projects` | List workspace projects. |
+| `POST /api/workspaces/{id}/projects` | Create project inside workspace. |
 
-```sql
-CREATE TABLE collab_document_states (
-  document_id uuid PRIMARY KEY REFERENCES collab_documents(id) ON DELETE CASCADE,
-  ydoc_state bytea NOT NULL,
-  state_vector bytea,
-  compacted_until_seq bigint NOT NULL DEFAULT 0,
-  state_size_bytes int NOT NULL DEFAULT 0,
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
+### 7.3 Existing Collab APIs
+
+Current standalone APIs remain useful internally:
+
+| API | Keep? | Future Role |
+| --- | --- | --- |
+| `POST /api/collab/documents` | Yes | Internal/lab creation, or lazy Project collab state creation. |
+| `GET /api/collab/documents` | Maybe | Useful for debugging/lab only. Not primary product navigation. |
+| `GET /api/collab/documents/{id}` | Yes | Metadata lookup for editor/session. |
+| `PATCH /api/collab/documents/{id}` | Yes | Internal title update or future doc metadata edit. |
+| `POST /api/collab/documents/{id}/session` | Yes | Can be reused by Project session endpoint after access is resolved. |
+
+## 8. Frontend Direction
+
+### 8.1 Current UI
+
+Current page:
+
+```text
+/dashboard/collab
 ```
 
-**Notes:**
+It supports standalone collaborative documents. Keep it temporarily as an
+engineering/lab page while the system is still being hardened.
 
-- `ydoc_state` is the current compressed Yjs document state.
-- `collab-service` prioritizes loading this state when a new user opens a document.
-- Do not store only HTML/Markdown; otherwise, the full collaborative state cannot be restored.
+### 8.2 Desired Project Sharing UI
 
-### 5.4 Update Batches Table
+Add sharing to existing Project screens:
 
-```sql
-CREATE TABLE collab_document_update_batches (
-  id bigserial PRIMARY KEY,
-  document_id uuid NOT NULL REFERENCES collab_documents(id) ON DELETE CASCADE,
-  from_seq bigint NOT NULL,
-  to_seq bigint NOT NULL,
-  update_payload bytea NOT NULL,
-  update_count int NOT NULL,
-  payload_size_bytes int NOT NULL,
-  actor_user_id uuid REFERENCES users(id),
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(document_id, from_seq, to_seq)
-);
-
-CREATE INDEX idx_collab_update_batches_doc_seq
-  ON collab_document_update_batches(document_id, to_seq DESC);
+```text
+/dashboard/content/{projectId}
+  Share button
+  Collaborators dialog
+  Role selector
+  Realtime editor status
 ```
 
-**Why Update Batches?**
+Project editor behavior:
 
-- Prevents data loss if the service crashes (avoiding reliance solely on debounced full-doc saves).
-- Supports recovery from the latest snapshot plus incremental updates.
-- Enables future version history, auditing, and syncing to publishing projects.
+- Owner can share the Project.
+- Editors can edit source content collaboratively.
+- Viewers can open read-only mode.
+- Publishing controls stay visible only to roles with publish permission.
+- Prepublish drafts should be workspace/project scoped, not personal-only.
 
-## 6. Collaboration Workflow
+### 8.3 Desired Workspace UI
 
-### 6.1 Opening a Document
+Add workspace navigation:
+
+```text
+Workspace switcher
+  Personal
+  Team A
+  Team B
+
+/dashboard/workspaces/{workspaceId}
+/dashboard/workspaces/{workspaceId}/projects
+/dashboard/workspaces/{workspaceId}/settings/members
+```
+
+The dashboard should eventually be workspace-scoped:
+
+```text
+/dashboard/{workspaceSlug}/content
+/dashboard/{workspaceSlug}/content/{projectId}
+/dashboard/{workspaceSlug}/auth
+/dashboard/{workspaceSlug}/settings/members
+```
+
+Use a compatibility redirect while migrating existing routes.
+
+## 9. Realtime Editing Integration
+
+The current collab editor uses a standalone `collab_document_id`. For Project
+sharing, the flow should become:
 
 ```mermaid
 sequenceDiagram
-  participant FE as Frontend
+  participant FE as Frontend Project Editor
   participant BE as Go Backend
   participant CS as collab-service
   participant PG as PostgreSQL
-  participant RD as Redis
 
-  FE->>BE: POST /api/collab/documents/{id}/session
-  BE->>PG: check owner/collaborator role
-  BE->>RD: cache short-lived session
+  FE->>BE: GET /api/user/dashboard/projects/{projectId}
+  BE->>PG: check project/workspace access
+  BE-->>FE: project + role + collab_document_id
+  FE->>BE: POST /api/user/dashboard/projects/{projectId}/collab/session
+  BE->>PG: check can_edit/can_view
   BE-->>FE: websocket url + short token + role
-  FE->>CS: connect WebSocket with token
-  CS->>RD: validate token
-  CS->>PG: load ydoc_state + pending update batches
-  CS-->>FE: sync document state
+  FE->>CS: connect WebSocket
+  CS->>PG: load Yjs state
+  CS-->>FE: sync editor state
 ```
 
-### 6.2 Edit Synchronization
-
-```mermaid
-sequenceDiagram
-  participant A as User A
-  participant CS as collab-service
-  participant B as User B
-  participant PG as PostgreSQL
-
-  A->>CS: send Yjs update
-  CS->>CS: validate role is editor
-  CS-->>B: broadcast update
-  CS->>CS: buffer update by document
-  CS->>PG: flush update batch every 200-500ms
-  CS->>PG: update current_seq / last_edited_at
-```
-
-### 6.3 Snapshot Compaction
-
-Executed periodically by `collab-service` or a worker:
-
-1. Read current `ydoc_state`.
-2. Apply uncompressed update batches.
-3. Generate new `ydoc_state` and `state_vector`.
-4. Update `compacted_until_seq`.
-5. Retain update batches for 7-30 days (cleanup older ones later).
-
-**Trigger Conditions:**
-| Condition | Suggested Value |
-| --- | --- |
-| Update Batch Count | Every 100 batches |
-| Time Interval | Every 5 minutes |
-| Incremental Size | Over 1 MB |
-| Doc Closure | One delayed compaction within 30s |
-
-## 7. API Design
-
-Only a few APIs are needed initially.
-
-| API                                                        | Description                     |
-| ---------------------------------------------------------- | ------------------------------- |
-| `POST /api/collab/documents`                               | Create collaborative document   |
-| `GET /api/collab/documents`                                | List my collaborative documents |
-| `GET /api/collab/documents/{id}`                           | Get document metadata           |
-| `PATCH /api/collab/documents/{id}`                         | Update title                    |
-| `POST /api/collab/documents/{id}/collaborators`            | Add collaborator                |
-| `DELETE /api/collab/documents/{id}/collaborators/{userId}` | Remove collaborator             |
-| `POST /api/collab/documents/{id}/session`                  | Issue collab session token      |
-| `GET /collab/documents/{id}`                               | WebSocket collaboration channel |
-
-**Session Response Example:**
-
-```json
-{
-  "document_id": "uuid",
-  "role": "editor",
-  "websocket_url": "ws://localhost:8090/collab/documents/{id}",
-  "token": "short-lived-token",
-  "expires_at": "2026-06-03T12:00:00Z",
-  "limits": {
-    "max_message_bytes": 524288,
-    "heartbeat_seconds": 30
-  }
-}
-```
-
-## 8. collab-service Design
-
-### 8.1 Responsibilities
-
-`collab-service` focuses exclusively on collaboration:
-
-- Validating short-lived session tokens.
-- Loading Yjs document state.
-- Receiving Yjs updates.
-- Broadcasting to online users in the same document.
-- Handling awareness/presence.
-- Batch persisting updates.
-- Periodic snapshot compaction.
-- Exposing metrics, health, and readiness.
-
-**Exclusions:**
-
-- Login/Registration.
-- Long-term permission management.
-- Publishing platform adapters.
-- AI editing.
-- Comments, notifications, search.
-
-### 8.2 Recommended Directory Structure
-
-```text
-collab-service/
-  package.json
-  Dockerfile
-  src/
-    server.ts
-    auth.ts
-    config.ts
-    persistence/postgres.ts
-    presence/redis.ts
-    metrics.ts
-    logger.ts
-```
+Save semantics:
 
-### 8.3 Key Configuration
-
-| Env Var                         | Description                | Default Value         |
-| ------------------------------- | -------------------------- | --------------------- |
-| `COLLAB_PORT`                   | Service port               | `8090`                |
-| `DATABASE_URL`                  | PostgreSQL connection      | Required              |
-| `REDIS_ADDR`                    | Redis address              | `redis:6379`          |
-| `BACKEND_INTERNAL_URL`          | Backend internal address   | `http://backend:8080` |
-| `COLLAB_TOKEN_PUBLIC_KEY`       | Token signature public key | Required              |
-| `COLLAB_UPDATE_FLUSH_MS`        | Update flush interval      | `300`                 |
-| `COLLAB_UPDATE_FLUSH_MAX_COUNT` | Max updates per batch      | `32`                  |
-| `COLLAB_MAX_MESSAGE_BYTES`      | Single message size limit  | `524288`              |
-| `COLLAB_MAX_DOC_CONNECTIONS`    | Max connections per doc    | `100`                 |
-| `COLLAB_HEARTBEAT_SECONDS`      | Heartbeat interval         | `30`                  |
+- Yjs is the realtime state of the editor.
+- Project source content must be synchronized from Yjs snapshots at controlled
+  boundaries.
+- Prepublish sync should read from the latest safe Project content snapshot.
+- The UI must explain whether content is synced, saving, or offline.
 
-## 9. Distribution and Performance
+## 10. Security Boundaries
 
-### 9.1 P0: Single Instance
+Mandatory:
 
-Start with a single instance:
-
-- Simple implementation.
-- Easier verification of data consistency.
-- Sufficient for early testing and internal use.
-- PostgreSQL already stores recoverable states.
-
-P0 isn't "unscalable"; it's about getting the protocol, data, and recovery right first.
-
-### 9.2 P1: Multi-instance
-
-Scale as connection counts grow:
-
-```mermaid
-flowchart LR
-  FE["Frontend Clients"] --> GW["Traefik"]
-  GW --> C1["collab-service-1"]
-  GW --> C2["collab-service-2"]
-  C1 <--> Redis["Redis PubSub / Hocuspocus Redis"]
-  C2 <--> Redis
-  C1 --> PG[("PostgreSQL")]
-  C2 --> PG
-```
-
-**Requirements:**
-
-- Traefik supporting WebSocket upgrades.
-- Sticky sessions to keep users on the same instance when possible.
-- Redis pub/sub or Hocuspocus Redis extension for sync.
-- Future: Consistency routing by document ID.
-
-### 9.3 P2: Document Sharding
-
-When a single instance cannot handle all active documents:
-
-- Route via `hash(document_id) % shard_count`.
-- Shards can have primary-secondary setups.
-- Hot documents can migrate shards independently.
-
-### 9.4 Suggested Performance Parameters
-
-| Item                        | Suggested Value         |
-| --------------------------- | ----------------------- |
-| Concurrent Editors per Doc  | P0: 20, P1: 100         |
-| Connections per User        | 5-10                    |
-| Single Update Size          | 512 KB Limit            |
-| Update Flush Interval       | 200-500 ms              |
-| Update Batch Count          | 16-32 updates           |
-| WebSocket Heartbeat         | 30s                     |
-| Doc Open p95                | < 800 ms for small docs |
-| Broadcast p95 (same region) | < 150 ms                |
-| Persistence p99             | < 2s                    |
-
-## 10. Integration Path
-
-### 10.1 Frontend
-
-Additions:
-
-```text
-frontend/src/features/collab-editor/
-  collab-editor.tsx
-  use-collab-document.ts
-  collab-provider.ts
-  toolbar.tsx
-```
-
-**Responsibilities:**
-
-- Call backend to create/open docs.
-- Request collab sessions.
-- Initialize Y.Doc and TipTap editor.
-- Connect to `collab-service`.
-- Show status: connecting, synced, offline, readonly.
-
-### 10.2 Backend
-
-Additions:
-
-```text
-backend/internal/services/collabdoc/
-backend/internal/handlers/collab_doc.go
-backend/internal/models/collab.go
-```
-
-**Responsibilities:**
-
-- Document creation and collaborator management.
-- Permission validation (editor/viewer).
-- Issuing short-lived tokens.
-- Providing APIs for doc list and title updates.
+- Never trust frontend role state; backend must resolve roles for every API.
+- Collab session tokens must be short-lived and scoped to one document/project.
+- `viewer` roles must be rejected from sending update payloads.
+- Project editing permission must not imply publishing permission.
+- Workspace membership changes must be audited.
+- Logs must not print content, Yjs update binaries, or tokens.
 
-### 10.3 Docker
+Delayed:
 
-New `collab-service`:
+- Public share links.
+- Domain allowlists.
+- SSO workspace membership.
+- Billing/seat limits.
+- External guest expiration.
 
-```yaml
-collab-service:
-  build:
-    context: ../collab-service
-    dockerfile: Dockerfile
-  env_file: .env
-  environment:
-    COLLAB_PORT: "8090"
-    DATABASE_URL: ${DATABASE_URL}
-    REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
-    BACKEND_INTERNAL_URL: http://backend:8080
-  depends_on:
-    db:
-      condition: service_healthy
-    redis:
-      condition: service_healthy
-```
-
-Traefik adds `/collab` WebSocket routing.
-
-## 11. Security Boundaries
-
-**Mandatory:**
-
-- WebSockets require short-lived backend tokens.
-- Tokens must contain `user_id`, `document_id`, `role`, `exp`.
-- `collab-service` must reject content updates from `viewer` roles.
-- WebSocket Origin validation.
-- Rate limiting for connections per user/doc.
-- Logs must not print content or Yjs update binaries.
-
-**Delayed:**
-
-- Block-level permissions.
-- Public sharing links.
-- Document watermarks.
-- E2E encryption.
-
-## 12. Monitoring Metrics
-
-| Metric                                  | Description                      |
-| --------------------------------------- | -------------------------------- |
-| `collab_ws_connections`                 | Current connection count         |
-| `collab_active_documents`               | Number of active documents       |
-| `collab_update_bytes_total`             | Total update bytes               |
-| `collab_update_flush_duration_seconds`  | DB write latency for batches     |
-| `collab_document_load_duration_seconds` | Document load latency            |
-| `collab_broadcast_duration_seconds`     | Broadcast latency                |
-| `collab_auth_denied_total`              | Number of failed authentications |
-| `collab_snapshot_duration_seconds`      | Compaction latency               |
-
-**Log Fields:**
-
-- `trace_id`, `document_id`, `user_id`, `role`, `connection_id`, `event`, `duration_ms`, `error_code`.
-
-## 13. Testing and Acceptance
-
-### 13.1 Scenarios
-
-| Scenario                     | Acceptance Criteria                                              |
-| ---------------------------- | ---------------------------------------------------------------- |
-| Dual-user Simultaneous Edit  | Eventual consistency on both ends.                               |
-| Concurrent Input at Same Pos | No character loss or overwrites.                                 |
-| Page Refresh                 | Content persists.                                                |
-| collab-service Restart       | Documents are recoverable.                                       |
-| Viewer Opens Doc             | Readable, not editable.                                          |
-| Token Expiration             | Connection rejected; session re-fetch required.                  |
-| Redis Unavailable            | P0 single instance degrades (no presence), but persists content. |
-| PostgreSQL Transient Failure | Stop confirmation; frontend shows offline/save failed.           |
-
-### 13.2 Load Test Targets
-
-- 20 users editing the same document.
-- 100 users opening 20 different documents.
-- 30 minutes of continuous editing without data loss.
-- Service recovery under 30s after restart.
-
-## 14. Implementation Roadmap
-
-### Phase 1: Minimal Collab Link
-
-- **Deliverables:** `collab_documents`, `collab_document_collaborators` tables. Backend APIs for creation/session. `collab-service` supporting single-doc Yjs WebSocket. Frontend collab editor.
-- **Acceptance:** Two browsers editing the same doc and syncing.
-
-### Phase 2: Reliable Persistence
-
-- **Deliverables:** `collab_document_states`, `collab_document_update_batches`. Flush logic. Snapshot compaction. Recovery after restart.
-- **Acceptance:** No loss after refresh or service restart. Data visible in PG.
-
-### Phase 3: Permissions and Experience
-
-- **Deliverables:** Editor/Viewer roles. Read-only mode. Presence/Cursor. Status UI. Rate limiting.
-- **Acceptance:** Viewers cannot edit. Cursors visible. Offline state detectable.
-
-### Phase 4: Distributed Readiness
-
-- **Deliverables:** Redis presence. Redis pub/sub research. Traefik routing. Prometheus metrics. Multi-instance local validation.
-- **Acceptance:** Sync works across two `collab-service` instances. Metrics visible.
-
-## 15. Completion Tracking
-
-| Area                                     | Status      | Evidence / Notes                                                                                 | Next Action                                              |
-| ---------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| `collab_documents` model                 | Partial     | GORM model exists in `backend/internal/models/collab.go`; no explicit migration file found.      | Confirm migration strategy or add database migration.    |
-| `collab_document_collaborators` model    | Partial     | GORM model exists in `backend/internal/models/collab.go`; collaborator APIs are not implemented. | Add collaborator create/delete APIs.                     |
-| Create collaborative document API        | Done        | `POST /api/collab/documents` handler/service/tests exist.                                        | Use as metadata foundation for editor entry.             |
-| List collaborative documents API         | Done        | `GET /api/collab/documents` handler/service/tests exist.                                         | Add frontend document list later.                        |
-| Read collaborative document metadata API | Done        | `GET /api/collab/documents/{id}` handler/service/tests exist.                                    | Use before requesting collab session.                    |
-| Update collaborative document title API  | Done        | `PATCH /api/collab/documents/{id}` handler/service/tests exist.                                  | Wire into frontend document metadata UI later.           |
-| Add/remove collaborators API             | Not Started | No handler/service methods found.                                                                | Implement after title metadata update.                   |
-| Collab session token API                 | Done        | `POST /api/collab/documents/{id}/session` issues short-lived signed tokens with role/limits.     | Wire frontend to request sessions before connecting.     |
-| `collab-service` runtime                 | Done        | Fastify/Hocuspocus runtime exists and validates collab session tokens for WebSocket connections. | Add PostgreSQL Yjs persistence and update batching.      |
-| Yjs document state persistence           | Done        | `collab-service` loads snapshots, flushes update batches, and compacts Yjs state in PG.          | Add retention cleanup policy later.                      |
-| Frontend collab editor                   | Not Started | No `frontend/src/features/collab-editor/` found.                                                 | Build after backend session and WebSocket service exist. |
-| Presence/cursor UI                       | Not Started | Depends on collab provider and awareness.                                                        | Add in Phase 3.                                          |
-| Distributed readiness                    | Not Started | No collab Redis pub/sub or Traefik `/collab` route found.                                        | Defer to Phase 4.                                        |
-
-**Priority Pick for This Branch:** add recoverable PostgreSQL Yjs snapshot persistence so collaborative documents survive service restarts before introducing incremental update batches and compaction.
-
-## 16. Future Expansion Order
-
-1. Sync docs to MPP Project for multi-platform publishing.
-2. User-visible version history.
-3. Comments and mentions.
-4. Image/Attachment object storage.
-5. Document search.
-6. Full workspace/team model.
-7. AI-assisted editing.
-8. Notion-like database.
-
-## 17. References
+## 11. Implementation Roadmap
+
+### Phase 0: Realtime Collaboration Foundation - Done
+
+Delivered:
+
+- Backend collab document metadata APIs.
+- Short-lived collab session tokens.
+- Hocuspocus/Yjs collab-service.
+- PostgreSQL Yjs snapshot and update-batch persistence.
+- Frontend standalone collaborative editor.
+- Presence/cursor UI and status toolbar.
+- Frontend tests for API and provider helpers.
+
+Remaining hardening:
+
+- Confirm database migration strategy for collab tables.
+- Add operational metrics dashboards and alerts.
+- Validate multi-user editing under realistic load.
+
+### Phase 1: Project Sharing MVP - Next
+
+Deliverables:
+
+- `project_collaborators` model.
+- Project collaborator list/add/update/remove APIs.
+- Project detail/list APIs include current user's role.
+- Existing Project editor accepts collaborator access.
+- Project-level collab session endpoint.
+- Share dialog in Project editor.
+
+Acceptance:
+
+- Owner shares a Project with another user.
+- Editor opens the same Project and edits content collaboratively.
+- Viewer opens the Project in read-only mode.
+- Non-collaborator cannot access the Project.
+- Publishing controls are hidden/disabled for roles without publish permission.
+
+### Phase 2: Project-Collab State Integration
+
+Deliverables:
+
+- `projects.collab_document_id`.
+- Lazy creation of Project collab document.
+- Migration path from existing `source_content` to Yjs state.
+- Controlled snapshot sync from Yjs back to Project source content.
+- Prepublish sync reads from latest safe Project content.
+
+Acceptance:
+
+- Existing Projects can enter realtime editing without creating a separate doc.
+- Refresh/restart preserves Project editor state.
+- Prepublish generation uses collaborative content, not stale owner-local state.
+
+### Phase 3: Workspace and Team MVP
+
+Deliverables:
+
+- `workspaces` and `workspace_members`.
+- Personal workspace backfill for existing users.
+- Workspace switcher.
+- Workspace-scoped Project list and create flow.
+- Member management screen.
+- Workspace-aware access checks in Project APIs.
+
+Acceptance:
+
+- A user creates a workspace and invites a member.
+- Workspace members can access Projects in that workspace by role.
+- Project owner/collaborator overrides still work.
+- Existing personal Projects remain accessible after migration.
+
+### Phase 4: Collaboration Experience
+
+Deliverables:
+
+- Comments/review mode.
+- Activity feed for Project changes and member actions.
+- Version history from collab snapshots/update batches.
+- Better conflict/offline messaging.
+- Optional share links.
+
+Acceptance:
+
+- Teams can review, edit, and publish Projects with clear accountability.
+- Users can inspect recent changes and recover prior content.
+
+### Phase 5: Distributed Readiness
+
+Deliverables:
+
+- Redis pub/sub or Hocuspocus Redis extension.
+- Traefik `/collab` WebSocket routing validation.
+- Multi-instance collab-service test.
+- Prometheus/Grafana dashboards.
+- Load test scripts.
+
+Acceptance:
+
+- Two collab-service instances can synchronize active documents.
+- Metrics show connection count, active documents, update flush latency, and auth
+  denials.
+- No data loss under restart tests.
+
+## 12. Completion Tracking
+
+| Area | Status | Next Action |
+| --- | --- | --- |
+| Standalone collaborative editor | Done | Keep as temporary/lab surface. |
+| Backend collab document APIs | Done | Reuse for Project collab session flow. |
+| Collab service token auth | Done | Keep short-lived project-scoped tokens. |
+| Yjs PostgreSQL persistence | Done | Add migration confirmation and ops dashboards. |
+| Presence/cursor UI | Done | Reuse inside Project editor. |
+| Project sharing | Not Started | Add `project_collaborators` and share dialog. |
+| Project-collab linking | Not Started | Add `projects.collab_document_id` and lazy state creation. |
+| Workspace/team model | Not Started | Add `workspaces`, `workspace_members`, workspace switcher. |
+| Workspace-scoped project access | Not Started | Refactor dashboard project queries and policies. |
+| Publishing permission split | Not Started | Separate edit permission from publish permission. |
+| Comments/activity/version UX | Not Started | Build after Project/workspace access is stable. |
+| Distributed collab-service | Not Started | Validate Redis pub/sub and multi-instance routing. |
+
+## 13. Open Decisions
+
+1. Should Project sharing ship before Workspace, or should Workspace be created
+   first and all sharing happen through Workspace membership?
+2. Should personal accounts automatically get a default personal workspace?
+3. Should Project collaborators support external guests before workspace members
+   exist?
+4. Should publishing permission be a separate boolean/capability or a role such
+   as `publisher`?
+5. Should standalone `/dashboard/collab` remain visible after Project sharing
+   lands, or become an internal/debug route?
+
+## 14. Recommended Next Slice
+
+Build Project sharing first.
+
+Reason:
+
+- It fixes the current product mismatch fastest.
+- It uses existing Projects as the user's mental model.
+- It reuses the completed collab infrastructure.
+- It creates the access policy concepts needed by Workspace later.
+
+Smallest useful slice:
+
+1. Add `project_collaborators`.
+2. Let Project owner share with another existing user by user ID/email.
+3. Include role in Project detail responses.
+4. Allow shared users to open the Project editor.
+5. Gate source editing and publishing controls by role.
+6. Add Project collab session endpoint that maps Project access to collab
+   document access.
+
+Then add Workspace/team as the next structural layer.
+
+## 15. References
 
 - [Yjs Document Updates](https://docs.yjs.dev/api/document-updates)
 - [Yjs Awareness](https://docs.yjs.dev/getting-started/adding-awareness)
