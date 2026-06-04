@@ -1,6 +1,7 @@
 import { fetchDashboard, fetchDashboardNoContent } from "./client";
 import type {
   AddProjectCollaboratorInput,
+  CollabDocumentSession,
   CreateProjectInput,
   DashboardStats,
   GetProjectPublicationsOptions,
@@ -126,6 +127,13 @@ export function removeProjectCollaborator(projectId: string, userId: string) {
   return fetchDashboardNoContent(
     `/api/user/dashboard/projects/${projectId}/collaborators/${userId}`,
     { method: "DELETE" },
+  );
+}
+
+export function createProjectCollabSession(projectId: string) {
+  return fetchDashboard<CollabDocumentSession>(
+    `/api/user/dashboard/projects/${projectId}/collab/session`,
+    { method: "POST" },
   );
 }
 
