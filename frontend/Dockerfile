@@ -1,6 +1,6 @@
 ARG FRONTEND_BASE_URL=http://127.0.0.1:3000
 
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
 # Install pnpm
 ENV PNPM_HOME="/pnpm"

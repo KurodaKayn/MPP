@@ -126,7 +126,7 @@ services:
           path: ../collab-service/pnpm-lock.yaml
 
   extension-dev:
-    image: node:20-alpine
+    image: node:24-alpine
     profiles:
       - extension
     working_dir: /app
