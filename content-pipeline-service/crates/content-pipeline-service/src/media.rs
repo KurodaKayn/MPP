@@ -44,8 +44,7 @@ impl MediaAssetProcessorService {
         }
 
         let declared_mime_type = response_content_type(&response);
-        let bytes =
-            read_limited_body(response, constraints.max_bytes.unwrap_or(DEFAULT_MAX_BYTES)).await?;
+        let bytes = read_limited_body(response, DEFAULT_MAX_BYTES).await?;
 
         self.processor
             .process_bytes(bytes, declared_mime_type.as_deref(), constraints)
@@ -361,7 +360,8 @@ fn media_error_to_status(err: content_pipeline_core::MediaError) -> Status {
         | content_pipeline_core::MediaError::UnsupportedSource
         | content_pipeline_core::MediaError::UnsupportedFormat
         | content_pipeline_core::MediaError::UnsupportedMimeType { .. }
-        | content_pipeline_core::MediaError::DecodeImage => {
+        | content_pipeline_core::MediaError::DecodeImage
+        | content_pipeline_core::MediaError::EncodeImage => {
             Status::invalid_argument(err.to_string())
         }
         content_pipeline_core::MediaError::ResourceLimitExceeded { .. }
