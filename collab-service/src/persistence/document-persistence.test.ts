@@ -9,9 +9,15 @@ interface QueryCall {
   values?: unknown[];
 }
 
+interface QueryFailure {
+  pattern: string;
+  error: Error;
+}
+
 class FakeDatabase {
   calls: QueryCall[] = [];
   results: Record<string, unknown>[][] = [];
+  failures: QueryFailure[] = [];
 
   async query<Row extends Record<string, unknown>>(
     text: string,
@@ -24,6 +30,14 @@ class FakeDatabase {
     rows: Row[];
   }> {
     this.calls.push({ text, values });
+    const failureIndex = this.failures.findIndex(({ pattern }) =>
+      text.includes(pattern),
+    );
+    if (failureIndex >= 0) {
+      const [{ error }] = this.failures.splice(failureIndex, 1);
+      throw error;
+    }
+
     const rows = text.trim().startsWith("SELECT")
       ? (this.results.shift() ?? [])
       : [];
@@ -35,6 +49,20 @@ class FakeDatabase {
       rows: rows as Row[],
     };
   }
+}
+
+class FakeLogger {
+  errors: unknown[][] = [];
+
+  error(...values: unknown[]): void {
+    this.errors.push(values);
+  }
+}
+
+async function waitForRetryTimer(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 20);
+  });
 }
 
 describe("PostgresDocumentPersistence", () => {
@@ -154,6 +182,97 @@ describe("PostgresDocumentPersistence", () => {
     expect(restored.getMap("content").get("body")).toBe("Second");
   });
 
+  it("flushes immediately when the pending update count reaches the batch limit", async () => {
+    const database = new FakeDatabase();
+    database.results = [
+      [
+        {
+          current_seq: 3,
+        },
+      ],
+    ];
+    const persistence = new PostgresDocumentPersistence(database, 10_000, 2);
+    const first = new Document("first");
+    first.getMap("content").set("title", "First");
+    const second = new Document("second");
+    second.getMap("content").set("body", "Second");
+
+    await persistence.appendUpdate(
+      "11111111-1111-4111-8111-111111111111",
+      encodeStateAsUpdate(first),
+    );
+    expect(database.calls).toEqual([]);
+
+    await persistence.appendUpdate(
+      "11111111-1111-4111-8111-111111111111",
+      encodeStateAsUpdate(second),
+    );
+
+    expect(database.calls.map((call) => call.text.trim())).toEqual([
+      "BEGIN",
+      expect.stringContaining("SELECT current_seq"),
+      expect.stringContaining("INSERT INTO collab_document_update_batches"),
+      expect.stringContaining("UPDATE collab_documents"),
+      "COMMIT",
+    ]);
+    expect(database.calls[2]?.values?.[1]).toBe(4);
+    expect(database.calls[2]?.values?.[2]).toBe(5);
+  });
+
+  it("retries batch-limit flush failures without rejecting appendUpdate", async () => {
+    const database = new FakeDatabase();
+    database.results = [
+      [
+        {
+          current_seq: 3,
+        },
+      ],
+      [
+        {
+          current_seq: 3,
+        },
+      ],
+    ];
+    database.failures = [
+      {
+        pattern: "INSERT INTO collab_document_update_batches",
+        error: new Error("database unavailable"),
+      },
+    ];
+    const logger = new FakeLogger();
+    const persistence = new PostgresDocumentPersistence(
+      database,
+      1,
+      2,
+      30,
+      2,
+      5,
+      logger,
+    );
+    const first = new Document("first");
+    first.getMap("content").set("title", "First");
+    const second = new Document("second");
+    second.getMap("content").set("body", "Second");
+
+    await persistence.appendUpdate(
+      "11111111-1111-4111-8111-111111111111",
+      encodeStateAsUpdate(first),
+    );
+    await expect(
+      persistence.appendUpdate(
+        "11111111-1111-4111-8111-111111111111",
+        encodeStateAsUpdate(second),
+      ),
+    ).resolves.toBeUndefined();
+    await waitForRetryTimer();
+
+    expect(database.calls.map((call) => call.text.trim())).toContain(
+      "ROLLBACK",
+    );
+    expect(database.calls.map((call) => call.text.trim())).toContain("COMMIT");
+    expect(logger.errors[0]?.[0]).toBe("failed to flush collab update batch");
+  });
+
   it("upserts the current Yjs snapshot", async () => {
     const database = new FakeDatabase();
     database.results = [
@@ -182,5 +301,60 @@ describe("PostgresDocumentPersistence", () => {
     expect(call?.values?.[4]).toBe(state.length);
     expect(call?.values?.[2]).toEqual(Buffer.from(encodeStateVector(document)));
     expect(database.calls[3]?.text).toBe("COMMIT");
+    expect(database.calls[4]?.text).toContain(
+      "DELETE FROM collab_document_update_batches",
+    );
+    expect(database.calls[4]?.values).toEqual([
+      "11111111-1111-4111-8111-111111111111",
+      12,
+      30,
+    ]);
+  });
+
+  it("does not roll back a snapshot when compacted batch pruning fails", async () => {
+    const database = new FakeDatabase();
+    database.results = [
+      [
+        {
+          current_seq: 12,
+        },
+      ],
+    ];
+    database.failures = [
+      {
+        pattern: "DELETE FROM collab_document_update_batches",
+        error: new Error("lock timeout"),
+      },
+    ];
+    const logger = new FakeLogger();
+    const persistence = new PostgresDocumentPersistence(
+      database,
+      300,
+      32,
+      30,
+      5,
+      30_000,
+      logger,
+    );
+    const document = new Document("document");
+    document.getMap("content").set("title", "Saved");
+
+    await expect(
+      persistence.store("11111111-1111-4111-8111-111111111111", document),
+    ).resolves.toBeUndefined();
+
+    expect(database.calls.map((call) => call.text.trim())).toEqual([
+      "BEGIN",
+      expect.stringContaining("SELECT current_seq"),
+      expect.stringContaining("INSERT INTO collab_document_states"),
+      "COMMIT",
+      expect.stringContaining("DELETE FROM collab_document_update_batches"),
+    ]);
+    expect(database.calls.map((call) => call.text.trim())).not.toContain(
+      "ROLLBACK",
+    );
+    expect(logger.errors[0]?.[0]).toBe(
+      "failed to prune compacted collab update batches",
+    );
   });
 });
