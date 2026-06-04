@@ -863,6 +863,10 @@ func (s *DashboardService) CreateProjectCollabSession(projectID uuid.UUID, userI
 		return nil, err
 	}
 
+	if err := s.collabDocuments.InitializeProjectDocument(s.requestContext(), documentID); err != nil {
+		return nil, errors.Join(ErrProjectCollabUnavailable, err)
+	}
+
 	return s.collabDocuments.CreateAuthorizedSession(s.requestContext(), userID, documentID, documentRole)
 }
 
