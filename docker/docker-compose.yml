@@ -83,7 +83,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
       BROWSER_WORKER_URL: ${BROWSER_WORKER_URL:-http://browser-worker:8081}
-      COLLAB_TOKEN_SECRET: ${COLLAB_TOKEN_SECRET:-change-me-collab-token-secret}
+      COLLAB_TOKEN_SECRET: ${COLLAB_TOKEN_SECRET:?COLLAB_TOKEN_SECRET must be set}
       COLLAB_WEBSOCKET_URL_BASE: ${COLLAB_WEBSOCKET_URL_BASE:-ws://localhost}
     depends_on:
       db:
@@ -199,7 +199,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-}
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
       BACKEND_INTERNAL_URL: http://backend:8080
-      COLLAB_TOKEN_SECRET: ${COLLAB_TOKEN_SECRET:-change-me-collab-token-secret}
+      COLLAB_TOKEN_SECRET: ${COLLAB_TOKEN_SECRET:?COLLAB_TOKEN_SECRET must be set}
       COLLAB_WEBSOCKET_URL_BASE: ${COLLAB_WEBSOCKET_URL_BASE:-ws://localhost}
     depends_on:
       backend:
