@@ -138,6 +138,10 @@ func (s *DashboardService) scopeAccessibleProjects(query *gorm.DB, userID uuid.U
 }
 
 func (s *DashboardService) projectAccessRole(project models.Project, userID uuid.UUID) (string, error) {
+	return projectAccessRoleWithDB(s.db, project, userID)
+}
+
+func projectAccessRoleWithDB(db *gorm.DB, project models.Project, userID uuid.UUID) (string, error) {
 	if userID == uuid.Nil {
 		return "", ErrInvalidProject
 	}
@@ -146,7 +150,7 @@ func (s *DashboardService) projectAccessRole(project models.Project, userID uuid
 	}
 
 	var collaborator models.ProjectCollaborator
-	if err := s.db.
+	if err := db.
 		Select("project_id", "user_id", "role").
 		Where("project_id = ? AND user_id = ?", project.ID, userID).
 		First(&collaborator).Error; err != nil {
@@ -625,7 +629,11 @@ func (s *DashboardService) UpdateProject(projectID uuid.UUID, userID uuid.UUID, 
 		if err := tx.First(&project, "id = ?", projectID).Error; err != nil {
 			return err
 		}
-		if project.UserID != userID {
+		role, err := projectAccessRoleWithDB(tx, project, userID)
+		if err != nil {
+			return err
+		}
+		if !canEditProjectRole(role) {
 			return ErrForbidden
 		}
 
@@ -749,7 +757,11 @@ func (s *DashboardService) SaveProjectPlatforms(projectID uuid.UUID, userID uuid
 		if err := tx.First(&project, "id = ?", projectID).Error; err != nil {
 			return err
 		}
-		if project.UserID != userID {
+		role, err := projectAccessRoleWithDB(tx, project, userID)
+		if err != nil {
+			return err
+		}
+		if !canEditProjectRole(role) {
 			return ErrForbidden
 		}
 
