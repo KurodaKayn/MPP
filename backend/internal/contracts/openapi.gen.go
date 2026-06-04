@@ -369,8 +369,24 @@ type CollabDocument struct {
 // CollabDocumentRole defines model for CollabDocumentRole.
 type CollabDocumentRole string
 
+// CollabDocumentSession defines model for CollabDocumentSession.
+type CollabDocumentSession struct {
+	DocumentId   openapi_types.UUID  `json:"document_id"`
+	ExpiresAt    time.Time           `json:"expires_at"`
+	Limits       CollabSessionLimits `json:"limits"`
+	Role         CollabDocumentRole  `json:"role"`
+	Token        string              `json:"token"`
+	WebsocketUrl string              `json:"websocket_url"`
+}
+
 // CollabDocumentStatus defines model for CollabDocumentStatus.
 type CollabDocumentStatus string
+
+// CollabSessionLimits defines model for CollabSessionLimits.
+type CollabSessionLimits struct {
+	HeartbeatSeconds int `json:"heartbeat_seconds"`
+	MaxMessageBytes  int `json:"max_message_bytes"`
+}
 
 // CompleteBrowserSessionResult defines model for CompleteBrowserSessionResult.
 type CompleteBrowserSessionResult struct {
@@ -428,6 +444,15 @@ type GeneratedBy struct {
 
 // GeneratedByType defines model for GeneratedByType.
 type GeneratedByType string
+
+// PaginationCollabDocuments defines model for PaginationCollabDocuments.
+type PaginationCollabDocuments struct {
+	Items      []CollabDocument `json:"items"`
+	Limit      int              `json:"limit"`
+	Page       int              `json:"page"`
+	Total      int              `json:"total"`
+	TotalPages int              `json:"total_pages"`
+}
 
 // PaginationProjects defines model for PaginationProjects.
 type PaginationProjects struct {
@@ -565,6 +590,11 @@ type StartPublishBrowserSessionResult struct {
 	Status               BrowserSessionStatus `json:"status"`
 	StreamTokenExpiresAt time.Time            `json:"stream_token_expires_at"`
 	StreamUrl            string               `json:"stream_url"`
+}
+
+// UpdateCollabDocumentRequest defines model for UpdateCollabDocumentRequest.
+type UpdateCollabDocumentRequest struct {
+	Title string `json:"title"`
 }
 
 // WechatAccount defines model for WechatAccount.

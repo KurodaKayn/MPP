@@ -31,6 +31,7 @@ type serverHandlers struct {
 	userDashboard  *handlers.UserDashboardHandler
 	auth           *handlers.AuthHandler
 	browserSession *handlers.BrowserSessionHandler
+	collabDocument *handlers.CollabDocumentHandler
 }
 
 func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
@@ -115,7 +116,10 @@ func registerAPIRoutes(e *echo.Echo, config serverConfig, h serverHandlers) erro
 	registerAuthRoutes(e, config, h)
 	registerAdminDashboardRoutes(e, h)
 	e.POST("/api/user/dashboard/extension/events", h.userDashboard.RecordExtensionEvent)
-	return registerUserDashboardRoutes(e, config, h)
+	if err := registerUserDashboardRoutes(e, config, h); err != nil {
+		return err
+	}
+	return registerCollabRoutes(e, config, h)
 }
 
 func registerAuthRoutes(e *echo.Echo, config serverConfig, h serverHandlers) {
@@ -182,5 +186,24 @@ func registerUserDashboardRoutes(e *echo.Echo, config serverConfig, h serverHand
 	userGroup.GET("/browser-sessions/:id/stream/*", h.browserSession.StreamSession)
 	userGroup.POST("/browser-sessions/:id/complete", h.browserSession.CompleteSession)
 	userGroup.DELETE("/browser-sessions/:id", h.browserSession.CancelSession)
+	return nil
+}
+
+func registerCollabRoutes(e *echo.Echo, config serverConfig, h serverHandlers) error {
+	collabGroup := e.Group("/api/collab")
+	collabGroup.Use(echojwt.WithConfig(middleware.GetJWTConfig(config.jwtSigningKey)))
+	rateLimitConfig, err := middleware.RateLimitConfigFromEnv(config.redisClient)
+	if err != nil {
+		return err
+	}
+	if rateLimitConfig.Enabled {
+		collabGroup.Use(middleware.ApplicationRateLimiter(rateLimitConfig))
+	}
+
+	collabGroup.GET("/documents", h.collabDocument.ListDocuments)
+	collabGroup.GET("/documents/:id", h.collabDocument.GetDocument)
+	collabGroup.POST("/documents", h.collabDocument.CreateDocument)
+	collabGroup.PATCH("/documents/:id", h.collabDocument.UpdateDocument)
+	collabGroup.POST("/documents/:id/session", h.collabDocument.CreateSession)
 	return nil
 }
