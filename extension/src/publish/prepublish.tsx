@@ -1,5 +1,11 @@
 import * as React from "react";
-import { AlertCircle, CheckCircle2, FileText, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  FileText,
+  Play,
+  RefreshCw,
+} from "lucide-react";
 import { normalizeBackendError } from "../backend/client";
 import type {
   ExtensionPrepublishItem,
@@ -46,6 +52,9 @@ export interface PrepublishWorkbenchProps {
   onProjectSelect: (projectId: string) => void;
   onPlatformToggle: (platform: PlatformKey) => void;
   onRetry: () => void;
+  onStartHandoff?: (projectId: string, platforms: PlatformKey[]) => void;
+  startingHandoff?: boolean;
+  startError?: string;
 }
 
 export async function getPrepublishViewState(
@@ -278,12 +287,26 @@ function LoadedWorkbench({
   selectedPlatforms,
   onProjectSelect,
   onPlatformToggle,
+  onStartHandoff,
+  startingHandoff = false,
+  startError = "",
 }: PrepublishWorkbenchProps & {
   state: Extract<PrepublishViewState, { status: "loaded" }>;
 }) {
   const selectedProject =
     state.items.find((item) => item.project_id === selectedProjectId) ??
     state.items[0];
+  const selectedPlatformList = selectedProject.platforms
+    .filter(
+      (platform) =>
+        platform.enabled && selectedPlatforms.has(platform.platform),
+    )
+    .map((platform) => platform.platform);
+  const canStart =
+    Boolean(onStartHandoff) &&
+    Boolean(selectedProject.project_id) &&
+    selectedPlatformList.length > 0 &&
+    !startingHandoff;
 
   return (
     <div className="flex flex-col gap-4">
@@ -309,6 +332,24 @@ function LoadedWorkbench({
           selectedPlatforms={selectedPlatforms}
           onPlatformToggle={onPlatformToggle}
         />
+        {startError ? (
+          <Alert variant="destructive" className="mt-3">
+            <AlertCircle data-icon="inline-start" />
+            <AlertDescription>{startError}</AlertDescription>
+          </Alert>
+        ) : null}
+        <div className="mt-3 flex justify-end">
+          <Button
+            type="button"
+            disabled={!canStart}
+            onClick={() =>
+              onStartHandoff?.(selectedProject.project_id, selectedPlatformList)
+            }
+          >
+            <Play data-icon="inline-start" />
+            {startingHandoff ? "Starting Handoff" : "Start Handoff"}
+          </Button>
+        </div>
       </div>
     </div>
   );
