@@ -316,4 +316,25 @@ mod tests {
         assert!(!is_safe_media_url(&url("https://[::1]/image.png")));
         assert!(!is_safe_media_url(&url("https://[fd00::1]/image.png")));
     }
+
+    #[test]
+    fn treats_zero_max_bytes_as_unset() {
+        let request = ProcessAssetRequest {
+            request_id: "request-1".to_string(),
+            platform: "generic".to_string(),
+            usage: "inline_image".to_string(),
+            source: None,
+            constraints: Some(
+                content_pipeline_proto::mpp::contentpipeline::v1::MediaConstraints {
+                    max_bytes: 0,
+                    preferred_mime_types: vec!["image/png".to_string()],
+                },
+            ),
+        };
+
+        let constraints = media_constraints_from_request(&request);
+
+        assert_eq!(constraints.max_bytes, Some(DEFAULT_MAX_BYTES));
+        assert_eq!(constraints.preferred_mime_types, vec!["image/png"]);
+    }
 }
