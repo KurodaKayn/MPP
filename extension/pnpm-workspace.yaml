@@ -1,4 +1,10 @@
+packages:
+  - "."
+
 allowBuilds:
   esbuild: true
   msw: false
   spawn-sync: false
+
+overrides:
+  "@types/node": 24.12.4
