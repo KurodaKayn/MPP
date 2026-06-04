@@ -2,7 +2,7 @@ import websocket from "@fastify/websocket";
 import Fastify from "fastify";
 
 import { createCollabAuthenticator } from "./auth/session-token.js";
-import { createCollabServer } from "./collab/hocuspocus.js";
+import { closeCollabServer, createCollabServer } from "./collab/hocuspocus.js";
 import { loadConfig } from "./config.js";
 import { createMetrics } from "./metrics.js";
 import { createPostgresDocumentPersistence } from "./persistence/document-persistence.js";
@@ -81,8 +81,7 @@ export async function buildApp(
   );
 
   app.addHook("onClose", async () => {
-    collabServer.flushPendingStores();
-    collabServer.closeConnections();
+    await closeCollabServer(collabServer);
     await persistence.close();
   });
 
