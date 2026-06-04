@@ -21,6 +21,8 @@ services:
     depends_on:
       frontend:
         condition: service_healthy
+      collab-service:
+        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -185,6 +187,42 @@ services:
       start_period: 20s
       retries: 3
 
+  collab-service:
+    build:
+      context: ../collab-service
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      COLLAB_PORT: "8090"
+      DATABASE_URL: ${DATABASE_URL:-}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      BACKEND_INTERNAL_URL: http://backend:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8090/ready >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.collab-web.entrypoints=web
+      - traefik.http.routers.collab-web.rule=PathPrefix(`/collab`)
+      - traefik.http.routers.collab-web.priority=100
+      - traefik.http.routers.collab-web.middlewares=mpp-gateway-ratelimit@docker
+      - traefik.http.routers.collab-websecure.entrypoints=websecure
+      - traefik.http.routers.collab-websecure.rule=PathPrefix(`/collab`)
+      - traefik.http.routers.collab-websecure.priority=100
+      - traefik.http.routers.collab-websecure.tls=true
+      - traefik.http.routers.collab-websecure.middlewares=mpp-gateway-ratelimit@docker
+      - traefik.http.services.collab.loadbalancer.server.port=8090
+
   db:
     image: postgres:17-alpine
     env_file: .env
@@ -246,6 +284,7 @@ services:
       - publish-worker
       - ai-service
       - browser-worker
+      - collab-service
 
   loki:
     image: grafana/loki:3.7.0
