@@ -50,6 +50,10 @@ func main() {
 	// Initialize Services and Handlers
 	dashboardService := services.NewDashboardService(db.DB)
 	collabDocumentService := services.NewCollabDocumentService(db.DB)
+	collabDocumentService.UseSessionConfig(services.CollabDocumentSessionConfig{
+		TokenSecret:      []byte(collabTokenSecret(jwtSecret)),
+		WebsocketURLBase: collabWebsocketURLBase(),
+	})
 	redisClient, err := redisclient.NewFromEnv(context.Background())
 	if err != nil {
 		log.Fatal(err)
