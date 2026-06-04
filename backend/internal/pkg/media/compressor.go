@@ -23,6 +23,24 @@ var imageHTTPClient = resilience.NewHTTPClient("media-download", 20*time.Second)
 
 // DownloadAndProcess fetches an image from a URL or data URL and compresses it if it exceeds WeChat's size limit.
 func DownloadAndProcess(sourceURL string) ([]byte, error) {
+	return DownloadAndProcessForPlatform(sourceURL, "wechat", "inline_image")
+}
+
+func DownloadAndProcessForPlatform(sourceURL string, platform string, usage string) ([]byte, error) {
+	if contentPipelineMediaEnabled() {
+		data, err := processWithContentPipeline(sourceURL, platform, usage)
+		if err == nil {
+			return data, nil
+		}
+		if !shouldFallbackContentPipelineError(err) {
+			return nil, err
+		}
+	}
+
+	return downloadAndProcessGo(sourceURL)
+}
+
+func downloadAndProcessGo(sourceURL string) ([]byte, error) {
 	data, err := loadImageBytes(sourceURL)
 	if err != nil {
 		return nil, err
