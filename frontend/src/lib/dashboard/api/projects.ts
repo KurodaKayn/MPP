@@ -1,9 +1,12 @@
-import { fetchDashboard } from "./client";
+import { fetchDashboard, fetchDashboardNoContent } from "./client";
 import type {
+  AddProjectCollaboratorInput,
   CreateProjectInput,
   DashboardStats,
   GetProjectPublicationsOptions,
   PaginatedProjects,
+  ProjectCollaborator,
+  ProjectCollaboratorsResponse,
   ProjectDetail,
   ProjectListItem,
   ProjectPublications,
@@ -14,6 +17,7 @@ import type {
   SyncPrepublishInput,
   StartPublishBrowserSessionResult,
   UpdatePrepublishDraftInput,
+  UpdateProjectCollaboratorInput,
   UpdateProjectInput,
   WaitForProjectPublicationsOptions,
 } from "./types";
@@ -82,6 +86,46 @@ export function saveDashboardProjectPlatforms(
       body: JSON.stringify(input),
       method: "PATCH",
     },
+  );
+}
+
+export function getProjectCollaborators(projectId: string) {
+  return fetchDashboard<ProjectCollaboratorsResponse>(
+    `/api/user/dashboard/projects/${projectId}/collaborators`,
+  );
+}
+
+export function addProjectCollaborator(
+  projectId: string,
+  input: AddProjectCollaboratorInput,
+) {
+  return fetchDashboard<ProjectCollaborator>(
+    `/api/user/dashboard/projects/${projectId}/collaborators`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
+}
+
+export function updateProjectCollaborator(
+  projectId: string,
+  userId: string,
+  input: UpdateProjectCollaboratorInput,
+) {
+  return fetchDashboard<ProjectCollaborator>(
+    `/api/user/dashboard/projects/${projectId}/collaborators/${userId}`,
+    {
+      body: JSON.stringify(input),
+      method: "PATCH",
+    },
+  );
+}
+
+export function removeProjectCollaborator(projectId: string, userId: string) {
+  return fetchDashboardNoContent(
+    `/api/user/dashboard/projects/${projectId}/collaborators/${userId}`,
+    { method: "DELETE" },
   );
 }
 
