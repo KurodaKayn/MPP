@@ -9,6 +9,9 @@ import {
   isOnExpectedHost,
   userReview,
 } from "./shared";
+import zhCn from "../i18n/zh-CN.json";
+
+const { xiaohongshu } = zhCn.adapters;
 
 export async function runXiaohongshuNoteAdapter(
   platform: ExtensionPublishPlatformHandoff,
@@ -31,7 +34,7 @@ export async function runXiaohongshuNoteAdapter(
 
   const bodyTarget = findFirstElement<HTMLElement | HTMLTextAreaElement>([
     '[contenteditable="true"]',
-    'textarea[placeholder*="\u63cf\u8ff0"]',
+    `textarea[placeholder*="${xiaohongshu.descriptionPlaceholder}"]`,
     "textarea",
   ]);
 

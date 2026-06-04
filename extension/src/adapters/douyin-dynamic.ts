@@ -16,32 +16,35 @@ import {
   isOnExpectedHost,
   userReview,
 } from "./shared";
+import zhCn from "../i18n/zh-CN.json";
+
+const { douyin } = zhCn.adapters;
 
 const TEXT_TARGET_SELECTORS = [
   '.ProseMirror[contenteditable="true"]',
   '[role="textbox"][contenteditable="true"]',
-  '[data-placeholder="\u8bf7\u8f93\u5165\u6b63\u6587"]',
+  `[data-placeholder="${douyin.bodyPlaceholder}"]`,
   '[contenteditable="true"]',
-  'textarea[placeholder*="\u63cf\u8ff0"]',
-  'textarea[placeholder*="\u6807\u9898"]',
-  'textarea[placeholder*="\u6587\u6848"]',
+  `textarea[placeholder*="${douyin.descriptionPlaceholder}"]`,
+  `textarea[placeholder*="${douyin.titlePlaceholder}"]`,
+  `textarea[placeholder*="${douyin.copyPlaceholder}"]`,
   "textarea",
 ];
 const ARTICLE_TITLE_SELECTORS = [
-  'input[placeholder*="\u8bf7\u8f93\u5165\u6587\u7ae0\u6807\u9898"]',
-  'input[placeholder*="\u6587\u7ae0\u6807\u9898"]',
+  `input[placeholder*="${douyin.articleTitlePlaceholder}"]`,
+  `input[placeholder*="${douyin.articleTitleText}"]`,
 ];
 const ARTICLE_SUMMARY_SELECTORS = [
-  'input[placeholder*="\u6dfb\u52a0\u5185\u5bb9\u6458\u8981"]',
-  'input[placeholder*="\u6587\u7ae0\u7cbe\u5f69\u90e8\u5206"]',
+  `input[placeholder*="${douyin.articleSummaryPlaceholder}"]`,
+  `input[placeholder*="${douyin.articleHighlightPlaceholder}"]`,
 ];
 const FILE_INPUT_SELECTORS = [
   'input[type="file"][accept*="video"]',
   'input[type="file"][accept*="image"]',
   'input[type="file"]',
 ];
-const ARTICLE_BUTTON_TEXT = "\u6211\u8981\u53d1\u6587";
-const ARTICLE_IMAGE_UPLOAD_TEXT = "\u70b9\u51fb\u4e0a\u4f20\u56fe\u7247";
+const ARTICLE_BUTTON_TEXT = douyin.articleButtonText;
+const ARTICLE_IMAGE_UPLOAD_TEXT = douyin.articleImageUploadText;
 const DOUYIN_ARTICLE_PATH = "/creator-micro/content/post/article";
 const ELEMENT_WAIT_TIMEOUT_MS = 10_000;
 const ELEMENT_WAIT_INTERVAL_MS = 250;
