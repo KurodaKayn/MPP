@@ -48,3 +48,42 @@ export function createCollabServer(
     },
   });
 }
+
+export async function closeCollabServer(
+  collabServer: Hocuspocus<CollabConnectionContext>,
+): Promise<void> {
+  const pendingStores = flushPendingStoreHooks(collabServer);
+
+  collabServer.closeConnections();
+
+  await Promise.all(pendingStores);
+  await Promise.all(
+    Array.from(collabServer.documents.values(), (document) =>
+      document.saveMutex.waitForUnlock(),
+    ),
+  );
+  await waitForPendingDocumentUnloads(collabServer);
+}
+
+function flushPendingStoreHooks(
+  collabServer: Hocuspocus<CollabConnectionContext>,
+): Promise<unknown>[] {
+  return Array.from(collabServer.documents.values()).flatMap((document) => {
+    const debounceId = `onStoreDocument-${document.name}`;
+    if (document.isLoading || !collabServer.debouncer.isDebounced(debounceId)) {
+      return [];
+    }
+
+    return [Promise.resolve(collabServer.debouncer.executeNow(debounceId))];
+  });
+}
+
+async function waitForPendingDocumentUnloads(
+  collabServer: Hocuspocus<CollabConnectionContext>,
+): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+
+  await Promise.all(collabServer.unloadingDocuments.values());
+}
