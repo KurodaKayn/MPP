@@ -214,13 +214,20 @@ async function acceptBridgeHandoff(
     };
   }
 
+  return acceptValidatedHandoff(origin, rawHandoff);
+}
+
+async function acceptValidatedHandoff(
+  sourceOrigin: string,
+  rawHandoff: unknown,
+): Promise<HandoffResponse> {
   const validation = validateHandoff(rawHandoff);
 
   if (!validation.ok) {
     return validation.rejection;
   }
 
-  await storeAcceptedHandoff(validation.handoff, origin);
+  await storeAcceptedHandoff(validation.handoff, sourceOrigin);
 
   for (const platform of validation.handoff.platforms) {
     await recordAndCallbackEvent(platform, {
@@ -229,20 +236,28 @@ async function acceptBridgeHandoff(
       message: "Extension accepted the publishing handoff.",
       metadata: {
         execution_id: validation.handoff.execution_id,
-        source_origin: origin,
+        source_origin: sourceOrigin,
       },
     });
   }
 
-  startPublishingTabs(validation.handoff).catch((error) => {
-    console.warn("MPP extension publishing failed.", error);
-  });
+  void Promise.resolve(startPublishingTabs(validation.handoff)).catch(
+    (error) => {
+      console.warn("MPP extension publishing failed.", error);
+    },
+  );
 
   return {
     accepted: true,
     execution_id: validation.handoff.execution_id,
     platforms: validation.handoff.platforms,
   };
+}
+
+export async function acceptExtensionHandoff(
+  rawHandoff: unknown,
+): Promise<HandoffResponse> {
+  return acceptValidatedHandoff("extension_workbench", rawHandoff);
 }
 
 async function handleAdapterEvent(
@@ -315,6 +330,10 @@ async function handleBackgroundMessage(message: unknown): Promise<unknown> {
 
   if (message.type === "bridge.publish_handoff") {
     return acceptBridgeHandoff(message.origin, message.handoff);
+  }
+
+  if (message.type === "extension.start_handoff") {
+    return acceptExtensionHandoff(message.handoff);
   }
 
   if (message.type === "bridge.get_status") {

@@ -10,7 +10,10 @@ import {
 } from "lucide-react";
 import "../../src/styles.css";
 import { getStoredExtensionAuthToken } from "../../src/backend/auth";
-import { createBackendClient } from "../../src/backend/client";
+import {
+  createBackendClient,
+  normalizeBackendError,
+} from "../../src/backend/client";
 import { backendConfig } from "../../src/backend/config";
 import { Alert, AlertDescription } from "../../src/components/ui/alert";
 import { Badge } from "../../src/components/ui/badge";
@@ -28,7 +31,11 @@ import type {
   ExtensionPublishPlatformHandoff,
   StoredHandoff,
 } from "../../src/types/handoff";
-import type { BackgroundMessage } from "../../src/types/messages";
+import type {
+  BackgroundMessage,
+  HandoffResponse,
+} from "../../src/types/messages";
+import type { PlatformKey } from "../../src/types/platform";
 import type { TrustedOrigin } from "../../src/background/origins";
 import {
   SessionStatusCard,
@@ -487,6 +494,8 @@ function PublishMonitor() {
     backendClient.listPrepublish,
     sessionState.status === "authenticated",
   );
+  const [startingHandoff, setStartingHandoff] = React.useState(false);
+  const [handoffStartError, setHandoffStartError] = React.useState("");
   const latestEvent = state?.events.at(-1);
   const handoff = state?.current_handoff?.handoff;
 
@@ -535,6 +544,35 @@ function PublishMonitor() {
       );
     }
   };
+
+  const startSelectedHandoff = React.useCallback(
+    async (projectId: string, platforms: PlatformKey[]) => {
+      try {
+        setStartingHandoff(true);
+        setHandoffStartError("");
+
+        const handoffResponse = await backendClient.createHandoff({
+          project_id: projectId,
+          platforms,
+        });
+        const response = await sendBackgroundMessage<HandoffResponse>({
+          type: "extension.start_handoff",
+          handoff: handoffResponse,
+        });
+
+        if (!response.accepted) {
+          throw new Error(response.message);
+        }
+
+        await load();
+      } catch (nextError) {
+        setHandoffStartError(normalizeBackendError(nextError).message);
+      } finally {
+        setStartingHandoff(false);
+      }
+    },
+    [load],
+  );
 
   const activePlatformEvents =
     handoff?.platforms
@@ -588,7 +626,12 @@ function PublishMonitor() {
           onRetry={refreshSession}
         />
 
-        <PrepublishWorkbenchCard {...prepublishWorkbench} />
+        <PrepublishWorkbenchCard
+          {...prepublishWorkbench}
+          onStartHandoff={startSelectedHandoff}
+          startingHandoff={startingHandoff}
+          startError={handoffStartError}
+        />
 
         {handoff ? (
           <div className="grid grid-cols-2 gap-3">
