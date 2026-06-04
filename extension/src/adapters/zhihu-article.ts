@@ -25,13 +25,13 @@ export async function runZhihuArticleAdapter(
   }
 
   const titleTarget = findFirstElement<HTMLInputElement | HTMLTextAreaElement>([
-    'textarea[placeholder*="标题"]',
-    'input[placeholder*="标题"]',
-    '[contenteditable="true"][data-placeholder*="标题"]',
+    'textarea[placeholder*="\u6807\u9898"]',
+    'input[placeholder*="\u6807\u9898"]',
+    '[contenteditable="true"][data-placeholder*="\u6807\u9898"]',
   ]);
   const bodyTarget = findFirstElement<HTMLElement | HTMLTextAreaElement>([
-    '[contenteditable="true"][data-placeholder*="正文"]',
-    '[contenteditable="true"][aria-label*="正文"]',
+    '[contenteditable="true"][data-placeholder*="\u6b63\u6587"]',
+    '[contenteditable="true"][aria-label*="\u6b63\u6587"]',
     '[contenteditable="true"]',
     "textarea",
   ]);
