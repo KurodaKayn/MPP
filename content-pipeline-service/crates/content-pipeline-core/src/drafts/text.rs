@@ -16,6 +16,18 @@ pub(super) fn join_title_and_body_text(title: &str, text: &str) -> String {
         .join("\n\n")
 }
 
+pub(super) fn text_with_fallback<'a>(
+    text: &'a str,
+    title: &'a str,
+    source_content: &'a str,
+) -> &'a str {
+    [text, title, source_content]
+        .into_iter()
+        .map(str::trim)
+        .find(|part| !part.is_empty())
+        .unwrap_or("")
+}
+
 pub(super) fn truncate_weighted_text_with_ellipsis(
     value: &str,
     limit: usize,

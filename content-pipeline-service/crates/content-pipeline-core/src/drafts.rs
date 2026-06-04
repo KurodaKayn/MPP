@@ -4,7 +4,7 @@ mod text;
 use html::{html_to_markdown, html_to_text};
 use serde::Serialize;
 use text::{
-    SHORT_TEXT_MAX_WEIGHT, SHORT_TEXT_WEIGHT_RULES, join_title_and_body_text,
+    SHORT_TEXT_MAX_WEIGHT, SHORT_TEXT_WEIGHT_RULES, join_title_and_body_text, text_with_fallback,
     truncate_weighted_text_with_ellipsis,
 };
 use thiserror::Error;
@@ -103,14 +103,18 @@ impl DraftCompiler {
                     summary: Some(summary.as_str()),
                 })?
             }
-            "douyin" => encode(AdaptedContent {
-                schema_version: 1,
-                format: "text",
-                html: None,
-                markdown: None,
-                text: Some(text.as_str()),
-                summary: Some(summary.as_str()),
-            })?,
+            "douyin" => {
+                let text = text_with_fallback(&text, &project.title, &project.source_content);
+                let summary = summarize(text);
+                encode(AdaptedContent {
+                    schema_version: 1,
+                    format: "text",
+                    html: None,
+                    markdown: None,
+                    text: Some(text),
+                    summary: Some(summary.as_str()),
+                })?
+            }
             _ => encode(AdaptedContent {
                 schema_version: 1,
                 format: "text",
