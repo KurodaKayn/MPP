@@ -624,6 +624,46 @@ components:
           type: string
           minLength: 1
 
+    CollabSessionLimits:
+      type: object
+      additionalProperties: false
+      required:
+        - max_message_bytes
+        - heartbeat_seconds
+      properties:
+        max_message_bytes:
+          type: integer
+          minimum: 1
+        heartbeat_seconds:
+          type: integer
+          minimum: 1
+
+    CollabDocumentSession:
+      type: object
+      additionalProperties: false
+      required:
+        - document_id
+        - role
+        - websocket_url
+        - token
+        - expires_at
+        - limits
+      properties:
+        document_id:
+          type: string
+          format: uuid
+        role:
+          $ref: "#/components/schemas/CollabDocumentRole"
+        websocket_url:
+          type: string
+        token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        limits:
+          $ref: "#/components/schemas/CollabSessionLimits"
+
     CollabDocument:
       type: object
       additionalProperties: false
