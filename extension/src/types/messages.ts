@@ -63,6 +63,10 @@ export type BackgroundMessage =
       handoff: unknown;
     }
   | {
+      type: "extension.persist_auth_token";
+      token: unknown;
+    }
+  | {
       type: "monitor.get";
     }
   | {

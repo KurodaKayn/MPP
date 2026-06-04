@@ -5,8 +5,18 @@ export const extensionAuthTokenStorageKeys = [
   "mpp.web_auth_token",
 ] as const;
 
+const canonicalExtensionAuthTokenStorageKey = extensionAuthTokenStorageKeys[0];
+
 export interface ExtensionAuthTokenStorage {
   get(keys: readonly string[]): Promise<Record<string, unknown>>;
+}
+
+export interface ExtensionAuthTokenWritableStorage {
+  set(values: Record<string, string>): Promise<void>;
+}
+
+export interface WebAuthTokenStorage {
+  getItem(key: string): string | null;
 }
 
 function normalizeToken(value: unknown): string | null {
@@ -24,6 +34,20 @@ function normalizeToken(value: unknown): string | null {
     : token;
 }
 
+export function getWebAuthTokenFromStorage(
+  storage: WebAuthTokenStorage = window.localStorage,
+): string | null {
+  for (const key of extensionAuthTokenStorageKeys) {
+    const token = normalizeToken(storage.getItem(key));
+
+    if (token) {
+      return token;
+    }
+  }
+
+  return null;
+}
+
 export async function getStoredExtensionAuthToken(
   storage: ExtensionAuthTokenStorage = browser.storage.local,
 ): Promise<string | null> {
@@ -37,4 +61,21 @@ export async function getStoredExtensionAuthToken(
   }
 
   return null;
+}
+
+export async function persistExtensionAuthToken(
+  token: unknown,
+  storage: ExtensionAuthTokenWritableStorage = browser.storage.local,
+): Promise<boolean> {
+  const normalizedToken = normalizeToken(token);
+
+  if (!normalizedToken) {
+    return false;
+  }
+
+  await storage.set({
+    [canonicalExtensionAuthTokenStorageKey]: normalizedToken,
+  });
+
+  return true;
 }
