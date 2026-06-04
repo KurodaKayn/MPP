@@ -166,6 +166,19 @@ volumes:
   browser_worker_go_build_cache:
   ai_service_venv:
   ai_service_uv_cache:
+  content_pipeline_cargo_registry:
+  content_pipeline_cargo_target:
+  collab_service_node_modules:
+  collab_service_pnpm_store:
+  extension_node_modules:
+  extension_pnpm_store:
+ext:
+  backend_go_cache:
+  backend_go_build_cache:
+  browser_worker_go_cache:
+  browser_worker_go_build_cache:
+  ai_service_venv:
+  ai_service_uv_cache:
   collab_service_node_modules:
   collab_service_pnpm_store:
   extension_node_modules:
