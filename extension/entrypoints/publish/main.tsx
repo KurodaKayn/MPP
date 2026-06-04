@@ -34,6 +34,10 @@ import {
   SessionStatusCard,
   useExtensionSession,
 } from "../../src/publish/session";
+import {
+  PrepublishWorkbenchCard,
+  usePrepublishWorkbench,
+} from "../../src/publish/prepublish";
 
 const backendClient = createBackendClient({
   authTokenProvider: getStoredExtensionAuthToken,
@@ -479,11 +483,19 @@ function PublishMonitor() {
   const { state: sessionState, refresh: refreshSession } = useExtensionSession(
     backendClient.getSession,
   );
+  const prepublishWorkbench = usePrepublishWorkbench(
+    backendClient.listPrepublish,
+    sessionState.status === "authenticated",
+  );
   const latestEvent = state?.events.at(-1);
   const handoff = state?.current_handoff?.handoff;
 
   const refreshAll = async () => {
-    await Promise.all([load(), refreshSession()]);
+    await Promise.all([
+      load(),
+      refreshSession(),
+      prepublishWorkbench.onRetry(),
+    ]);
   };
 
   const clear = async () => {
@@ -575,6 +587,8 @@ function PublishMonitor() {
           onOpenLogin={openLogin}
           onRetry={refreshSession}
         />
+
+        <PrepublishWorkbenchCard {...prepublishWorkbench} />
 
         {handoff ? (
           <div className="grid grid-cols-2 gap-3">
