@@ -11,7 +11,7 @@ export const config = {
   ],
 };
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const localeInPath = languages.find((loc) =>
     req.nextUrl.pathname.startsWith(`/${loc}`),
   );

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NextRequest } from "next/server";
-import { config, middleware } from "./middleware";
+import { config, proxy } from "./proxy";
 import { cookieName } from "./lib/i18n/settings";
 
 function createRequest({
@@ -28,7 +28,7 @@ function createRequest({
   } as unknown as NextRequest;
 }
 
-describe("locale middleware", () => {
+describe("locale proxy", () => {
   it("excludes root metadata routes from locale redirects", () => {
     const matcher = config.matcher[0];
 
@@ -37,7 +37,7 @@ describe("locale middleware", () => {
   });
 
   it("uses the referer locale when redirecting an unprefixed internal path", () => {
-    const response = middleware(
+    const response = proxy(
       createRequest({
         cookies: {
           [cookieName]: "en",
