@@ -54,6 +54,7 @@ func main() {
 		TokenSecret:      []byte(collabTokenSecret(jwtSecret)),
 		WebsocketURLBase: collabWebsocketURLBase(),
 	})
+	dashboardService.SetCollabDocumentService(collabDocumentService)
 	redisClient, err := redisclient.NewFromEnv(context.Background())
 	if err != nil {
 		log.Fatal(err)

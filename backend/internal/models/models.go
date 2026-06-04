@@ -61,15 +61,17 @@ type User struct {
 }
 
 type Project struct {
-	ID            uuid.UUID `gorm:"type:uuid;primaryKey"`
-	UserID        uuid.UUID `gorm:"type:uuid;not null;index:idx_projects_user_status_created_at"`
-	Title         string    `gorm:"not null"`
-	SourceContent string    `gorm:"type:text;not null"`
-	Status        string    `gorm:"not null;index:idx_projects_user_status_created_at;index:idx_projects_status_created_at"`
-	CreatedAt     time.Time `gorm:"index:idx_projects_user_status_created_at;index:idx_projects_status_created_at"`
-	UpdatedAt     time.Time
-	Publications  []ProjectPlatformPublication `gorm:"foreignKey:ProjectID"`
-	Collaborators []ProjectCollaborator        `gorm:"foreignKey:ProjectID"`
+	ID               uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	UserID           uuid.UUID  `gorm:"type:uuid;not null;index:idx_projects_user_status_created_at"`
+	CollabDocumentID *uuid.UUID `gorm:"type:uuid;uniqueIndex:ux_projects_collab_document"`
+	Title            string     `gorm:"not null"`
+	SourceContent    string     `gorm:"type:text;not null"`
+	Status           string     `gorm:"not null;index:idx_projects_user_status_created_at;index:idx_projects_status_created_at"`
+	CreatedAt        time.Time  `gorm:"index:idx_projects_user_status_created_at;index:idx_projects_status_created_at"`
+	UpdatedAt        time.Time
+	Publications     []ProjectPlatformPublication `gorm:"foreignKey:ProjectID"`
+	Collaborators    []ProjectCollaborator        `gorm:"foreignKey:ProjectID"`
+	CollabDocument   *CollabDocument              `gorm:"foreignKey:CollabDocumentID;references:ID;constraint:OnDelete:SET NULL"`
 }
 
 const (

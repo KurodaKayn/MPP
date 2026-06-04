@@ -163,6 +163,7 @@ func registerUserDashboardRoutes(e *echo.Echo, config serverConfig, h serverHand
 	userGroup.POST("/projects/:id/collaborators", h.userDashboard.AddProjectCollaborator)
 	userGroup.PATCH("/projects/:id/collaborators/:userId", h.userDashboard.UpdateProjectCollaborator)
 	userGroup.DELETE("/projects/:id/collaborators/:userId", h.userDashboard.RemoveProjectCollaborator)
+	userGroup.POST("/projects/:id/collab/session", h.userDashboard.CreateProjectCollabSession)
 	userGroup.PATCH("/projects/:id/content", h.userDashboard.SaveProjectContent)
 	userGroup.PATCH("/projects/:id/platforms", h.userDashboard.SaveProjectPlatforms)
 	userGroup.GET("/projects/:id/publications", h.userDashboard.GetMyProjectPublications)

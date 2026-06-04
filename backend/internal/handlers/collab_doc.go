@@ -163,7 +163,11 @@ func (h *CollabDocumentHandler) CreateSession(c echo.Context) error {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 
-	return c.JSON(http.StatusOK, contracts.CollabDocumentSession{
+	return c.JSON(http.StatusOK, collabDocumentSessionResponse(session))
+}
+
+func collabDocumentSessionResponse(session *services.CollabDocumentSession) contracts.CollabDocumentSession {
+	return contracts.CollabDocumentSession{
 		DocumentId:   openapi_types.UUID(session.DocumentID),
 		Role:         contracts.CollabDocumentRole(session.Role),
 		WebsocketUrl: session.WebsocketURL,
@@ -173,7 +177,7 @@ func (h *CollabDocumentHandler) CreateSession(c echo.Context) error {
 			MaxMessageBytes:  session.Limits.MaxMessageBytes,
 			HeartbeatSeconds: session.Limits.HeartbeatSeconds,
 		},
-	})
+	}
 }
 
 func intQueryParam(c echo.Context, name string) int {
