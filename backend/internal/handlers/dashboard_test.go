@@ -52,6 +52,15 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		updated_at DATETIME
 	)`).Error)
 
+	require.NoError(t, db.Exec(`CREATE TABLE project_collaborators (
+		project_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		role TEXT NOT NULL,
+		created_by TEXT NOT NULL,
+		created_at DATETIME,
+		PRIMARY KEY (project_id, user_id)
+	)`).Error)
+
 	require.NoError(t, db.Exec(`CREATE TABLE platform_accounts (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
@@ -522,6 +531,7 @@ func TestUserDashboardHandlerListProjectsUsesJWTUserScope(t *testing.T) {
 	require.Len(t, resp.Items, 1)
 	require.Equal(t, ownerProject.ID, resp.Items[0].ID)
 	require.Equal(t, owner.ID, resp.Items[0].UserID)
+	require.Equal(t, models.ProjectRoleOwner, resp.Items[0].Role)
 }
 
 func TestUserDashboardHandlerCreateProject(t *testing.T) {
@@ -549,6 +559,7 @@ func TestUserDashboardHandlerCreateProject(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, "Post title", resp.Title)
 	require.Equal(t, user.ID, resp.UserID)
+	require.Equal(t, models.ProjectRoleOwner, resp.Role)
 	require.Len(t, resp.Publications, 1)
 	require.Equal(t, "wechat", resp.Publications[0].Platform)
 }
@@ -586,6 +597,7 @@ func TestUserDashboardHandlerGetAndUpdateProject(t *testing.T) {
 	var detail dto.ProjectDetail
 	require.NoError(t, json.Unmarshal(getRecorder.Body.Bytes(), &detail))
 	require.Equal(t, project.ID, detail.ID)
+	require.Equal(t, models.ProjectRoleOwner, detail.Role)
 	require.Equal(t, "<p>Draft body</p>", detail.SourceContent)
 
 	updateRequest := httptest.NewRequest(
@@ -607,6 +619,71 @@ func TestUserDashboardHandlerGetAndUpdateProject(t *testing.T) {
 	require.Equal(t, "Updated title", detail.Title)
 	require.Equal(t, "<p>Updated body</p>", detail.SourceContent)
 	require.Len(t, detail.Publications, 2)
+}
+
+func TestUserDashboardHandlerProjectCollaborators(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	collaborator := models.User{Username: "collaborator", Email: "collaborator@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&collaborator).Error)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Shared title",
+		SourceContent: "Shared body",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+
+	addReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/projects/"+project.ID.String()+"/collaborators",
+		strings.NewReader(`{"email":"collaborator@example.com","role":"editor"}`),
+	)
+	addReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	addRec := httptest.NewRecorder()
+	addContext := e.NewContext(addReq, addRec)
+	addContext.SetParamNames("id")
+	addContext.SetParamValues(project.ID.String())
+	setContextUser(addContext, owner.ID)
+
+	require.NoError(t, handler.AddProjectCollaborator(addContext))
+	require.Equal(t, http.StatusCreated, addRec.Code)
+
+	var added dto.ProjectCollaborator
+	require.NoError(t, json.Unmarshal(addRec.Body.Bytes(), &added))
+	require.Equal(t, collaborator.ID, added.UserID)
+	require.Equal(t, models.ProjectRoleEditor, added.Role)
+
+	listContext, listRec := newHandlerTestContext(e, http.MethodGet, "/api/user/dashboard/projects/"+project.ID.String()+"/collaborators")
+	listContext.SetParamNames("id")
+	listContext.SetParamValues(project.ID.String())
+	setContextUser(listContext, owner.ID)
+
+	require.NoError(t, handler.ListProjectCollaborators(listContext))
+	require.Equal(t, http.StatusOK, listRec.Code)
+
+	var list dto.ProjectCollaboratorsResponse
+	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &list))
+	require.Len(t, list.Items, 1)
+	require.Equal(t, collaborator.ID, list.Items[0].UserID)
+
+	getContext, getRecorder := newHandlerTestContext(e, http.MethodGet, "/api/user/dashboard/projects/"+project.ID.String())
+	getContext.SetParamNames("id")
+	getContext.SetParamValues(project.ID.String())
+	setContextUser(getContext, collaborator.ID)
+
+	require.NoError(t, handler.GetMyProject(getContext))
+	require.Equal(t, http.StatusOK, getRecorder.Code)
+
+	var detail dto.ProjectDetail
+	require.NoError(t, json.Unmarshal(getRecorder.Body.Bytes(), &detail))
+	require.Equal(t, project.ID, detail.ID)
+	require.Equal(t, models.ProjectRoleEditor, detail.Role)
 }
 
 func TestUserDashboardHandlerSaveProjectContentPreservesPrepublishDraft(t *testing.T) {
