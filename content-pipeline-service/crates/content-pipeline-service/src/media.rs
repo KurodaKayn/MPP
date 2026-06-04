@@ -162,12 +162,12 @@ fn media_http_client() -> Result<Client, reqwest::Error> {
 }
 
 async fn read_limited_body(response: reqwest::Response, max_bytes: u64) -> Result<Vec<u8>, Status> {
-    if let Some(content_length) = response.content_length() {
-        if content_length > max_bytes {
-            return Err(Status::resource_exhausted(format!(
-                "media exceeds max bytes: {content_length} > {max_bytes}"
-            )));
-        }
+    if let Some(content_length) = response.content_length()
+        && content_length > max_bytes
+    {
+        return Err(Status::resource_exhausted(format!(
+            "media exceeds max bytes: {content_length} > {max_bytes}"
+        )));
     }
 
     let mut body = Vec::new();
