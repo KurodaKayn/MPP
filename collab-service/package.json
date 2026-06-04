@@ -23,12 +23,14 @@
     "@hocuspocus/server": "^4.1.0",
     "fastify": "^5.8.5",
     "jose": "^6.2.3",
+    "pg": "^8.21.0",
     "prom-client": "^15.1.3",
     "yjs": "^13.6.31",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "@types/pg": "^8.20.0",
     "oxfmt": "^0.53.0",
     "oxlint": "^1.68.0",
     "tsx": "^4.22.4",
