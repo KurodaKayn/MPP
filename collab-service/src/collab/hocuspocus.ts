@@ -2,6 +2,7 @@ import { Hocuspocus } from "@hocuspocus/server";
 
 import type { CollabAuthenticator } from "../auth/session-token.js";
 import type { CollabConfig } from "../config.js";
+import type { DocumentPersistence } from "../persistence/document-persistence.js";
 
 export interface CollabConnectionContext {
   documentId?: string;
@@ -12,6 +13,7 @@ export interface CollabConnectionContext {
 export function createCollabServer(
   config: CollabConfig,
   authenticator: CollabAuthenticator,
+  persistence: DocumentPersistence,
 ): Hocuspocus<CollabConnectionContext> {
   return new Hocuspocus<CollabConnectionContext>({
     name: "mpp-collab-service",
@@ -37,6 +39,12 @@ export function createCollabServer(
       context.role = session.role;
       connectionConfig.isAuthenticated = true;
       connectionConfig.readOnly = session.role === "viewer";
+    },
+    async onLoadDocument({ context, document, documentName }) {
+      await persistence.load(context.documentId ?? documentName, document);
+    },
+    async onStoreDocument({ lastContext, document, documentName }) {
+      await persistence.store(lastContext.documentId ?? documentName, document);
     },
   });
 }
