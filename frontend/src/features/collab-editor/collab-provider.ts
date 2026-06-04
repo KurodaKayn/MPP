@@ -36,7 +36,6 @@ type CreateCollabProviderOptions = {
   onUnsyncedChanges?: (count: number) => void;
   onUsersChange?: (users: CollabUserProfile[]) => void;
   session: CollabDocumentSession;
-  user: CollabUserProfile;
   ydoc: Y.Doc;
 };
 
@@ -95,7 +94,6 @@ export function createCollabProvider({
   onUnsyncedChanges,
   onUsersChange,
   session,
-  user,
   ydoc,
 }: CreateCollabProviderOptions) {
   return new HocuspocusProvider({
