@@ -5,12 +5,14 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/contracts"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/labstack/echo/v4"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+	"gorm.io/gorm"
 )
 
 type CollabDocumentHandler struct {
@@ -73,6 +75,34 @@ func (h *CollabDocumentHandler) ListDocuments(c echo.Context) error {
 		Total:      int(result.Total),
 		TotalPages: result.TotalPages,
 	})
+}
+
+func (h *CollabDocumentHandler) GetDocument(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	documentID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid document UUID")
+	}
+
+	document, err := h.serviceFor(c).GetDocument(c.Request().Context(), userID, documentID)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidCollabDocument) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "invalid document")
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "document not found")
+		}
+		if errors.Is(err, services.ErrCollabDocumentForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, collabDocumentResponse(document))
 }
 
 func intQueryParam(c echo.Context, name string) int {
