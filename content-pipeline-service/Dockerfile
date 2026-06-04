@@ -1,8 +1,13 @@
-FROM rust:1.89-bookworm AS builder
+FROM rust:1.96.0-bookworm AS builder
 
 WORKDIR /app
 COPY . .
 RUN cargo build --release -p content-pipeline-service
+
+FROM rust:1.96.0-bookworm AS dev
+WORKDIR /app
+RUN cargo install cargo-watch
+CMD ["cargo", "watch", "-x", "run -p content-pipeline-service"]
 
 FROM debian:bookworm-slim AS runtime
 

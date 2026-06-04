@@ -189,6 +189,25 @@ services:
       start_period: 20s
       retries: 3
 
+  content-pipeline-service:
+    build:
+      context: ../content-pipeline-service
+      dockerfile: Dockerfile
+    env_file: .env
+    ports:
+      - "${CONTENT_PIPELINE_PORT:-50051}:50051"
+    environment:
+      CONTENT_PIPELINE_ADDR: 0.0.0.0:50051
+    # Add depends_on if it requires DB or Redis
+    # depends_on:
+    #   db:
+    #     condition: service_healthy
+    #   redis:
+    #     condition: service_healthy
+    # Add healthcheck when the service implements a grpc health probe or HTTP endpoint
+    networks:
+      - default
+
   collab-service:
     build:
       context: ../collab-service
