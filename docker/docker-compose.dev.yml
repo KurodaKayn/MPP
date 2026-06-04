@@ -111,7 +111,6 @@ services:
       NODE_ENV: development
       LOG_LEVEL: debug
       COLLAB_PORT: "8090"
-      DATABASE_URL: ${DATABASE_URL:-}
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
       BACKEND_INTERNAL_URL: http://backend:8080
       COLLAB_TOKEN_SECRET: ${COLLAB_TOKEN_SECRET:-change-me-collab-token-secret}
