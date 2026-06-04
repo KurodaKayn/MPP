@@ -799,6 +799,10 @@ components:
         user_id:
           type: string
           format: uuid
+        collab_document_id:
+          type: string
+          format: uuid
+          nullable: true
         title:
           type: string
         status:
