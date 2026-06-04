@@ -9,6 +9,9 @@ import {
   isOnExpectedHost,
   userReview,
 } from "./shared";
+import zhCn from "../i18n/zh-CN.json";
+
+const { bilibili } = zhCn.adapters;
 
 export async function runBilibiliDynamicAdapter(
   platform: ExtensionPublishPlatformHandoff,
@@ -29,7 +32,7 @@ export async function runBilibiliDynamicAdapter(
 
   const bodyTarget = findFirstElement<HTMLElement | HTMLTextAreaElement>([
     '[contenteditable="true"]',
-    'textarea[placeholder*="\u52a8\u6001"]',
+    `textarea[placeholder*="${bilibili.dynamicPlaceholder}"]`,
     "textarea",
   ]);
 
