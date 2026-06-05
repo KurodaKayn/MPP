@@ -129,6 +129,14 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 		created_at DATETIME,
 		updated_at DATETIME
 	)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE project_collaborators (
+		project_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		role TEXT NOT NULL,
+		created_by TEXT NOT NULL,
+		created_at DATETIME,
+		PRIMARY KEY (project_id, user_id)
+	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE platform_accounts (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
@@ -231,6 +239,48 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 	duplicate, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-1"})
 	require.NoError(t, err)
 	require.Equal(t, resp["job_id"], duplicate["job_id"])
+}
+
+func TestEnqueuePublishProjectRejectsProjectEditor(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	editor := models.User{Username: "editor", Email: "editor@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&editor).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    editor.ID,
+		Role:      models.ProjectRoleEditor,
+		CreatedBy: owner.ID,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &editor.ID, PublishRequest{IdempotencyKey: "click-editor"})
+
+	require.ErrorIs(t, err, ErrForbidden)
+	require.Nil(t, resp)
+	require.Empty(t, queue.jobs)
 }
 
 func TestEnqueuePublishProjectReplaysDuplicateWhenLockWinsBeforeQueuedEvent(t *testing.T) {
