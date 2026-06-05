@@ -5,9 +5,11 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 // TestDouyinPublisher_Publish_NoAccount 验证没有账号信息时是否正确报错
@@ -20,7 +22,7 @@ func TestDouyinPublisher_Publish_NoAccount(t *testing.T) {
 
 	remoteID, url, err := p.Publish(context.Background(), pub, nil)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "requires an account with cookies")
 	assert.Empty(t, remoteID)
 	assert.Empty(t, url)
@@ -51,5 +53,5 @@ func TestDouyinPublisher_Publish_InvalidContext(t *testing.T) {
 	_, _, err := p.Publish(ctx, pub, account)
 
 	// 由于 context 已取消，应该报错
-	assert.Error(t, err)
+	require.Error(t, err)
 }

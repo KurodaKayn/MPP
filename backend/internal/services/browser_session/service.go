@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/publisher"
 )
 
 var (
@@ -37,7 +38,7 @@ const (
 
 	browserSessionActiveKeyPrefix       = "mpp:browser:active:"
 	browserSessionKeyPrefix             = "mpp:browser:session:"
-	browserSessionStreamTokenPrefix     = "mpp:browser:stream-token:"
+	browserSessionStreamTokenPrefix     = "mpp:browser:stream-token:" //nolint:gosec // Redis key prefix, not a token value.
 	browserSessionStreamCurrentPrefix   = "mpp:browser:stream-current:"
 	browserSessionWorkerHeartbeatPrefix = "mpp:browser:worker-heartbeat:"
 	browserSessionQuotaUserPrefix       = "mpp:browser:quota:user:"

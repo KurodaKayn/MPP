@@ -2,7 +2,6 @@ package streamgate
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -33,7 +32,7 @@ func TestLimiterEnforcesUserConnectionLimit(t *testing.T) {
 
 	_, err = limiter.Acquire(context.Background(), req)
 	require.Error(t, err)
-	require.True(t, errors.Is(err, ErrLimitExceeded))
+	require.ErrorIs(t, err, ErrLimitExceeded)
 
 	require.NoError(t, lease.Release(context.Background()))
 	lease, err = limiter.Acquire(context.Background(), req)
@@ -62,7 +61,7 @@ func TestLimiterSeparatesStreamKinds(t *testing.T) {
 		IP:       "203.0.113.10",
 	})
 	require.NoError(t, err)
-	defer aiLease.Release(context.Background())
+	defer func() { _ = aiLease.Release(context.Background()) }()
 
 	browserLease, err := limiter.Acquire(context.Background(), AcquireRequest{
 		Kind:     KindBrowser,
@@ -71,7 +70,7 @@ func TestLimiterSeparatesStreamKinds(t *testing.T) {
 		IP:       "203.0.113.10",
 	})
 	require.NoError(t, err)
-	defer browserLease.Release(context.Background())
+	defer func() { _ = browserLease.Release(context.Background()) }()
 }
 
 func TestKeyPartFallsBackWhenSanitizedValueIsEmpty(t *testing.T) {

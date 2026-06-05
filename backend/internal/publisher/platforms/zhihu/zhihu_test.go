@@ -5,9 +5,11 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 // TestZhihuPublisher_Publish_NoAccount 验证没有账号信息时是否报错
@@ -20,7 +22,7 @@ func TestZhihuPublisher_Publish_NoAccount(t *testing.T) {
 
 	remoteID, url, err := p.Publish(context.Background(), pub, nil)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "account information is required")
 	assert.Empty(t, remoteID)
 	assert.Empty(t, url)
@@ -49,5 +51,5 @@ func TestZhihuPublisher_Publish_AccountWithEmptyCookies(t *testing.T) {
 	_, _, err := p.Publish(ctx, pub, account)
 
 	// 验证是否触发了流程（因为 context 已取消，会报 context canceled）
-	assert.Error(t, err)
+	require.Error(t, err)
 }

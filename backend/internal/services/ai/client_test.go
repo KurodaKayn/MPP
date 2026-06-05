@@ -2,25 +2,26 @@ package ai
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kurodakayn/mpp-backend/internal/dto"
 )
 
 func TestAIServiceClientEditContentPostsToAIService(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "/content/edit", r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/content/edit", r.URL.Path)
 
 		var req dto.AIEditContentRequest
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
-		require.Equal(t, "<p>Draft</p>", req.Content)
-		require.Equal(t, "Make it sharper", req.Message)
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		assert.Equal(t, "<p>Draft</p>", req.Content)
+		assert.Equal(t, "Make it sharper", req.Message)
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"channel":"content","content":"<p>Sharper draft</p>"}`))
@@ -41,9 +42,9 @@ func TestAIServiceClientEditContentPostsToAIService(t *testing.T) {
 func TestAIServiceClientEditContentAllowsEmptySource(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req dto.AIEditContentRequest
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
-		require.Empty(t, req.Content)
-		require.Equal(t, "Write a hello world example", req.Message)
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		assert.Empty(t, req.Content)
+		assert.Equal(t, "Write a hello world example", req.Message)
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"channel":"content","content":"print(\"hello world\")"}`))
@@ -61,12 +62,12 @@ func TestAIServiceClientEditContentAllowsEmptySource(t *testing.T) {
 
 func TestAIServiceClientEditPrepublishPostsToAIService(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/prepublish/edit", r.URL.Path)
+		assert.Equal(t, "/prepublish/edit", r.URL.Path)
 
 		var req dto.AIEditPrepublishRequest
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
-		require.Equal(t, "wechat", req.Platform)
-		require.Equal(t, "Make it concise", req.Message)
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		assert.Equal(t, "wechat", req.Platform)
+		assert.Equal(t, "Make it concise", req.Message)
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"channel":"prepublish","platform":"wechat","adapted_content":{"format":"html","html":"<p>Concise</p>"},"content":"<p>Concise</p>"}`))
@@ -77,7 +78,7 @@ func TestAIServiceClientEditPrepublishPostsToAIService(t *testing.T) {
 	resp, err := client.EditPrepublish(t.Context(), dto.AIEditPrepublishRequest{
 		Platform: "wechat",
 		Message:  "Make it concise",
-		AdaptedContent: map[string]interface{}{
+		AdaptedContent: map[string]any{
 			"format": "html",
 			"html":   "<p>Long draft</p>",
 		},
@@ -92,8 +93,8 @@ func TestAIServiceClientEditPrepublishPostsToAIService(t *testing.T) {
 
 func TestAIServiceClientStreamsEditedContent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "/content/edit/stream", r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/content/edit/stream", r.URL.Path)
 
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 		_, _ = w.Write([]byte("first "))
@@ -107,7 +108,7 @@ func TestAIServiceClientStreamsEditedContent(t *testing.T) {
 		Message: "Edit",
 	})
 	require.NoError(t, err)
-	defer stream.Body.Close()
+	defer func() { _ = stream.Body.Close() }()
 
 	body, err := io.ReadAll(stream.Body)
 	require.NoError(t, err)
@@ -116,7 +117,7 @@ func TestAIServiceClientStreamsEditedContent(t *testing.T) {
 }
 
 func TestAIServiceClientMapsBadRequest(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"detail":"message is required"}`))
@@ -130,7 +131,7 @@ func TestAIServiceClientMapsBadRequest(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	require.True(t, errors.Is(err, ErrInvalidAIEditRequest))
+	require.ErrorIs(t, err, ErrInvalidAIEditRequest)
 	require.Contains(t, err.Error(), "message is required")
 }
 

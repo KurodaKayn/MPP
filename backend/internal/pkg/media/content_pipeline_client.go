@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/kurodakayn/mpp-backend/internal/contracts/contentpipelinepb"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/contentpipeline"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/envutil"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -42,7 +43,7 @@ func processWithContentPipeline(sourceURL string, platform string, usage string)
 		return nil, fmt.Errorf("connect content pipeline: %w", err)
 	}
 	if closer != nil {
-		defer closer.Close()
+		defer func() { _ = closer.Close() }()
 	}
 
 	response, err := client.ProcessAsset(ctx, &contentpipelinepb.ProcessAssetRequest{

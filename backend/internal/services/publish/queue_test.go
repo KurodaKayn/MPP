@@ -11,13 +11,14 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
-	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/publisher"
-	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 )
 
 type queueTestPublisher struct{}
@@ -394,7 +395,7 @@ func TestEnqueuePublishProjectReplaysOriginalJobEventsAfterPublicationChanges(t 
 		PublishURL:     "https://example.com/original",
 		CreatedAt:      succeededAt,
 	}).Error)
-	require.NoError(t, db.Model(&publication).Updates(map[string]interface{}{
+	require.NoError(t, db.Model(&publication).Updates(map[string]any{
 		"enabled":       false,
 		"error_message": "publication was later cancelled",
 		"publish_url":   "https://example.com/changed",
@@ -487,7 +488,7 @@ func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing
 
 	_, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-2"})
 
-	require.True(t, errors.Is(err, ErrPublicationAlreadyPublishing))
+	require.ErrorIs(t, err, ErrPublicationAlreadyPublishing)
 }
 
 func TestEnqueuePublishProjectRequiresPrepublishSyncForSyncingPublication(t *testing.T) {
@@ -718,7 +719,7 @@ func TestProcessPublishJobReturnsErrorForFailedPublication(t *testing.T) {
 func TestRedisPublishQueueEnqueuesAsynqTask(t *testing.T) {
 	redisServer := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	queue := NewRedisPublishQueue(client)
 	job := PublishJob{

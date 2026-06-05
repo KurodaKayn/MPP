@@ -5,7 +5,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // OAuth 1.0a signing requires HMAC-SHA1.
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -98,7 +98,7 @@ func (c *Client) CreateTweet(ctx context.Context, text string) (Tweet, error) {
 	return out.Data, nil
 }
 
-func (c *Client) doJSON(ctx context.Context, method, path string, query url.Values, body interface{}, out interface{}) error {
+func (c *Client) doJSON(ctx context.Context, method, path string, query url.Values, body any, out any) error {
 	if err := c.creds.Validate(); err != nil {
 		return err
 	}
@@ -134,7 +134,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, query url.Valu
 	if err != nil {
 		return fmt.Errorf("x api request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {

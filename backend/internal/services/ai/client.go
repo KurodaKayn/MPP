@@ -100,7 +100,7 @@ func (c *AIServiceClient) StreamEditPrepublish(ctx context.Context, req dto.AIEd
 	return c.postStream(ctx, "/prepublish/edit/stream", req)
 }
 
-func (c *AIServiceClient) postJSON(ctx context.Context, path string, payload interface{}, out interface{}) error {
+func (c *AIServiceClient) postJSON(ctx context.Context, path string, payload any, out any) error {
 	if c == nil || c.baseURL == "" {
 		return ErrAIServiceUnavailable
 	}
@@ -119,21 +119,21 @@ func (c *AIServiceClient) postJSON(ctx context.Context, path string, payload int
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrAIServiceUnavailable, err)
+		return fmt.Errorf("%w: %w", ErrAIServiceUnavailable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return aiServiceStatusError(resp)
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("%w: invalid response: %v", ErrAIServiceUnavailable, err)
+		return fmt.Errorf("%w: invalid response: %w", ErrAIServiceUnavailable, err)
 	}
 	return nil
 }
 
-func (c *AIServiceClient) postStream(ctx context.Context, path string, payload interface{}) (*AIServiceStream, error) {
+func (c *AIServiceClient) postStream(ctx context.Context, path string, payload any) (*AIServiceStream, error) {
 	if c == nil || c.baseURL == "" {
 		return nil, ErrAIServiceUnavailable
 	}
@@ -152,11 +152,11 @@ func (c *AIServiceClient) postStream(ctx context.Context, path string, payload i
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrAIServiceUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", ErrAIServiceUnavailable, err)
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return nil, aiServiceStatusError(resp)
 	}
 
@@ -184,8 +184,8 @@ func readAIServiceErrorMessage(body io.Reader) string {
 	}
 
 	var parsed struct {
-		Detail  interface{} `json:"detail"`
-		Message string      `json:"message"`
+		Detail  any    `json:"detail"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return string(raw)

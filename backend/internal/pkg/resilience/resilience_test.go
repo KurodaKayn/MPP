@@ -39,7 +39,7 @@ func TestResilientRoundTripperRetriesRetryableStatus(t *testing.T) {
 
 	resp, err := client.Get(server.URL)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, 2, attempts)
 }
@@ -97,7 +97,7 @@ func TestResilientRoundTripperDoesNotRetryUnsafeMethodsByDefault(t *testing.T) {
 
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
 	require.Equal(t, 1, attempts)
 }
@@ -120,14 +120,17 @@ func TestResilientRoundTripperCountsUnretriedServerErrorsAsFailures(t *testing.T
 		}),
 	}
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		resp, err := client.Post(server.URL, "text/plain", bytes.NewBufferString("payload"))
 		require.NoError(t, err)
 		require.Equal(t, http.StatusBadGateway, resp.StatusCode)
 		require.NoError(t, resp.Body.Close())
 	}
 
-	_, err := client.Post(server.URL, "text/plain", bytes.NewBufferString("payload"))
+	resp, err := client.Post(server.URL, "text/plain", bytes.NewBufferString("payload"))
+	if resp != nil {
+		require.NoError(t, resp.Body.Close())
+	}
 	require.ErrorIs(t, err, ErrCircuitOpen)
 	require.Equal(t, 2, attempts)
 }
@@ -152,7 +155,10 @@ func TestResilientRoundTripperRejectsUnreplayableRetryBodyWhenUnsafeOptedIn(t *t
 	req, err := http.NewRequest(http.MethodPost, server.URL, io.NopCloser(strings.NewReader("payload")))
 	require.NoError(t, err)
 
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
+	if resp != nil {
+		require.NoError(t, resp.Body.Close())
+	}
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "cannot be replayed")
 }
@@ -204,7 +210,7 @@ func TestRunDoesNotOpenCircuitForNonRetryableOperationErrors(t *testing.T) {
 		Sleep:            func(ctx context.Context, delay time.Duration) error { return nil },
 	}
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		err := Run(t.Context(), policy, func(ctx context.Context) error {
 			attempts++
 			return errors.New("invalid credentials")
@@ -226,7 +232,7 @@ func TestRunOpensCircuitForRetryableOperationErrors(t *testing.T) {
 		Sleep:            func(ctx context.Context, delay time.Duration) error { return nil },
 	}
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		err := Run(t.Context(), policy, func(ctx context.Context) error {
 			attempts++
 			return errors.New("gateway timeout")

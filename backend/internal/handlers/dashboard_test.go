@@ -14,6 +14,10 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/contracts"
 	dbobs "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
@@ -22,9 +26,6 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/observability"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
 	"github.com/kurodakayn/mpp-backend/internal/services"
-	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 type noopProjectDocumentInitializer struct{}
@@ -966,10 +967,10 @@ func TestUserDashboardHandlerWorkspaceProjects(t *testing.T) {
 	var projects dto.PaginationResponse
 	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &projects))
 	require.Equal(t, int64(1), projects.Total)
-	items, ok := projects.Items.([]interface{})
+	items, ok := projects.Items.([]any)
 	require.True(t, ok)
 	require.Len(t, items, 1)
-	item, ok := items[0].(map[string]interface{})
+	item, ok := items[0].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "Team Project", item["title"])
 	require.Equal(t, models.ProjectRoleEditor, item["role"])
@@ -1395,7 +1396,7 @@ func TestUserDashboardHandlerEditContentWithAIEnforcesUserConcurrency(t *testing
 		Resource: "content",
 	})
 	require.NoError(t, err)
-	defer lease.Release(context.Background())
+	defer func() { _ = lease.Release(context.Background()) }()
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -1479,7 +1480,7 @@ func TestUserDashboardHandlerEditPrepublishWithAI(t *testing.T) {
 		prepublishResp: &dto.AIEditPrepublishResponse{
 			Channel:  "prepublish",
 			Platform: "wechat",
-			AdaptedContent: map[string]interface{}{
+			AdaptedContent: map[string]any{
 				"format": "html",
 				"html":   "<p>Concise draft</p>",
 			},
@@ -1616,7 +1617,7 @@ func TestUserDashboardHandlerCreatesXManualPublishIntent(t *testing.T) {
 	require.NoError(t, handler.PublishProject(c))
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, "manual_required", resp["status"])
 

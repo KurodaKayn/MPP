@@ -334,10 +334,7 @@ func checkRateLimitBuckets(ctx context.Context, client *redis.Client, prefix str
 			return rateLimitResult{}, err
 		}
 
-		remaining := bucket.Limit - current
-		if remaining < 0 {
-			remaining = 0
-		}
+		remaining := max(bucket.Limit-current, 0)
 
 		result := rateLimitResult{
 			Bucket:     bucket,
@@ -362,7 +359,7 @@ func incrementRateLimitBucket(ctx context.Context, client *redis.Client, key str
 		return 0, 0, err
 	}
 
-	values, ok := raw.([]interface{})
+	values, ok := raw.([]any)
 	if !ok || len(values) != 2 {
 		return 0, 0, fmt.Errorf("unexpected redis rate limit response")
 	}
@@ -382,7 +379,7 @@ func incrementRateLimitBucket(ctx context.Context, client *redis.Client, key str
 	return current, time.Duration(ttlMillis) * time.Millisecond, nil
 }
 
-func redisInt64(value interface{}) (int64, bool) {
+func redisInt64(value any) (int64, bool) {
 	switch typed := value.(type) {
 	case int64:
 		return typed, true

@@ -5,16 +5,17 @@ import (
 	"encoding/base64"
 	"fmt"
 	"image"
-	_ "image/gif"
+	_ "image/gif" // register GIF decoder for image.Decode
 	"image/jpeg"
-	_ "image/png"
+	_ "image/png" // register PNG decoder for image.Decode
 	"io"
 	neturl "net/url"
 	"strings"
 	"time"
 
-	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 	"golang.org/x/image/draw"
+
+	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 )
 
 const MaxWechatSize = 2 * 1024 * 1024 // 2MB
@@ -97,7 +98,7 @@ func loadImageBytes(sourceURL string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to download image: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -108,13 +109,13 @@ func loadImageBytes(sourceURL string) ([]byte, error) {
 }
 
 func decodeDataURL(value string) ([]byte, error) {
-	commaIndex := strings.Index(value, ",")
-	if commaIndex < 0 {
+	before, after, ok := strings.Cut(value, ",")
+	if !ok {
 		return nil, fmt.Errorf("invalid data URL")
 	}
 
-	metadata := value[:commaIndex]
-	payload := value[commaIndex+1:]
+	metadata := before
+	payload := after
 	if strings.Contains(metadata, ";base64") {
 		data, err := base64.StdEncoding.DecodeString(payload)
 		if err != nil {

@@ -2,7 +2,6 @@ package email
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -79,7 +78,7 @@ func TestSendCodeEmailSkipsRetryForUnknownKind(t *testing.T) {
 		Code: "123456",
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, asynq.SkipRetry))
+	assert.ErrorIs(t, err, asynq.SkipRetry)
 }
 
 func TestAsyncEmailServiceEnqueuesCodeEmail(t *testing.T) {

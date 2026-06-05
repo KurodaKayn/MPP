@@ -135,7 +135,7 @@ func TestRateLimitConfigFromEnvHonorsDeploymentSwitches(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, config.Enabled)
 	require.Equal(t, "custom:limits", config.KeyPrefix)
-	require.EqualValues(t, DefaultRateLimitConfig(nil).AIUserPerMinute, config.AIUserPerMinute)
+	require.Equal(t, DefaultRateLimitConfig(nil).AIUserPerMinute, config.AIUserPerMinute)
 }
 
 func setupRateLimitRedis(t *testing.T) *redis.Client {

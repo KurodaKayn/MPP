@@ -1,11 +1,14 @@
 package stats_test
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestGetStats(t *testing.T) {
@@ -27,7 +30,7 @@ func TestGetStats(t *testing.T) {
 
 	// Test Admin scope (nil scopeUserID)
 	stats, err := s.GetStats(nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, int64(2), stats.TotalUsers)
 	assert.Equal(t, int64(2), stats.TotalProjects)
 	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
@@ -35,7 +38,7 @@ func TestGetStats(t *testing.T) {
 
 	// Test Personal scope (u1)
 	statsScoped, errScoped := s.GetStats(&u1.ID)
-	assert.NoError(t, errScoped)
+	require.NoError(t, errScoped)
 	assert.Equal(t, int64(1), statsScoped.TotalUsers)
 	assert.Equal(t, int64(1), statsScoped.TotalProjects)
 	assert.Equal(t, int64(1), statsScoped.TotalPublishedPublications)

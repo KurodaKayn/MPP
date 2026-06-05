@@ -181,7 +181,7 @@ func (rt *ResilientRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 			break
 		}
 		if resp != nil && resp.Body != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 		if err := rt.policy.Sleep(req.Context(), backoff); err != nil {
 			rt.breaker.Record(false)
