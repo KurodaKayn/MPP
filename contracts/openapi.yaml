@@ -190,6 +190,21 @@ components:
         - WorkspaceStatusActive
         - WorkspaceStatusArchived
 
+    WorkspaceActivityType:
+      type: string
+      enum:
+        - workspace_created
+        - workspace_updated
+        - member_added
+        - member_role_changed
+        - member_removed
+      x-enum-varnames:
+        - WorkspaceActivityTypeWorkspaceCreated
+        - WorkspaceActivityTypeWorkspaceUpdated
+        - WorkspaceActivityTypeMemberAdded
+        - WorkspaceActivityTypeMemberRoleChanged
+        - WorkspaceActivityTypeMemberRemoved
+
     PublicationStatus:
       type: string
       enum:
@@ -1086,6 +1101,61 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceMember"
+
+    WorkspaceActivity:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspace_id
+        - actor_user_id
+        - actor_username
+        - actor_email
+        - event_type
+        - metadata
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        actor_user_id:
+          type: string
+          format: uuid
+        actor_username:
+          type: string
+        actor_email:
+          type: string
+          format: email
+        target_user_id:
+          type: string
+          format: uuid
+        target_username:
+          type: string
+        target_email:
+          type: string
+          format: email
+        event_type:
+          $ref: "#/components/schemas/WorkspaceActivityType"
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    WorkspaceActivitiesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceActivity"
 
     PaginationProjects:
       type: object
