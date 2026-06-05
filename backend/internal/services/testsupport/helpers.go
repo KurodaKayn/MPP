@@ -35,13 +35,24 @@ type FakeProjectDraftCompiler struct {
 }
 
 type FakeProjectDocumentInitializer struct {
-	Err         error
-	DocumentIDs []uuid.UUID
+	Err                          error
+	SyncErr                      error
+	DocumentIDs                  []uuid.UUID
+	SourceContentDocumentIDs     []uuid.UUID
+	SyncProjectSourceContentFunc func(context.Context, uuid.UUID) error
 }
 
 func (f *FakeProjectDocumentInitializer) InitializeProjectDocument(ctx context.Context, documentID uuid.UUID) error {
 	f.DocumentIDs = append(f.DocumentIDs, documentID)
 	return f.Err
+}
+
+func (f *FakeProjectDocumentInitializer) SyncProjectSourceContent(ctx context.Context, documentID uuid.UUID) error {
+	f.SourceContentDocumentIDs = append(f.SourceContentDocumentIDs, documentID)
+	if f.SyncProjectSourceContentFunc != nil {
+		return f.SyncProjectSourceContentFunc(ctx, documentID)
+	}
+	return f.SyncErr
 }
 
 func (f *FakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
@@ -167,6 +178,27 @@ func SetupTestDB() *gorm.DB {
 		created_at DATETIME NOT NULL,
 		updated_at DATETIME NOT NULL,
 		deleted_at DATETIME
+	)`)
+
+	db.Exec(`CREATE TABLE collab_document_states (
+		document_id TEXT PRIMARY KEY,
+		y_doc_state BLOB NOT NULL,
+		state_vector BLOB,
+		compacted_until_seq INTEGER NOT NULL DEFAULT 0,
+		state_size_bytes INTEGER NOT NULL DEFAULT 0,
+		updated_at DATETIME NOT NULL
+	)`)
+
+	db.Exec(`CREATE TABLE collab_document_update_batches (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		document_id TEXT NOT NULL,
+		from_seq INTEGER NOT NULL,
+		to_seq INTEGER NOT NULL,
+		update_payload BLOB NOT NULL,
+		update_count INTEGER NOT NULL,
+		payload_size_bytes INTEGER NOT NULL,
+		actor_user_id TEXT,
+		created_at DATETIME NOT NULL
 	)`)
 
 	db.Exec(`CREATE TABLE project_collaborators (

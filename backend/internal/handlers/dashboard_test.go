@@ -32,6 +32,10 @@ func (noopProjectDocumentInitializer) InitializeProjectDocument(context.Context,
 	return nil
 }
 
+func (noopProjectDocumentInitializer) SyncProjectSourceContent(context.Context, uuid.UUID) error {
+	return nil
+}
+
 func setupHandlerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 

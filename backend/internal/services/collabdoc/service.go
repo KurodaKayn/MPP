@@ -201,6 +201,13 @@ func (s *Service) InitializeProjectDocument(ctx context.Context, documentID uuid
 	return s.projectDocumentInitializer.InitializeProjectDocument(ctx, documentID)
 }
 
+func (s *Service) SyncProjectSourceContent(ctx context.Context, documentID uuid.UUID) error {
+	if documentID == uuid.Nil || s.projectDocumentInitializer == nil {
+		return ErrProjectSourceContentSync
+	}
+	return s.projectDocumentInitializer.SyncProjectSourceContent(ctx, documentID)
+}
+
 // CreateAuthorizedSession issues a session after the caller has resolved access.
 func (s *Service) CreateAuthorizedSession(ctx context.Context, userID uuid.UUID, documentID uuid.UUID, role string) (*Session, error) {
 	if userID == uuid.Nil || documentID == uuid.Nil {
