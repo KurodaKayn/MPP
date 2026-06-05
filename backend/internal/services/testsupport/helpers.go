@@ -1,4 +1,4 @@
-package dashboard_test
+package testsupport
 
 import (
 	"context"
@@ -15,40 +15,40 @@ import (
 	"time"
 )
 
-type fakeXOAuth2Provider struct {
-	authConfig       pkgx.OAuth2Config
-	authState        string
-	authChallenge    string
-	exchangeCode     string
-	exchangeVerifier string
-	refreshConfig    pkgx.OAuth2Config
-	refreshToken     string
-	token            pkgx.OAuth2Token
-	user             pkgx.User
+type FakeXOAuth2Provider struct {
+	AuthConfig       pkgx.OAuth2Config
+	AuthState        string
+	AuthChallenge    string
+	ExchangeCode     string
+	ExchangeVerifier string
+	RefreshConfig    pkgx.OAuth2Config
+	RefreshToken     string
+	Token            pkgx.OAuth2Token
+	User             pkgx.User
 }
 
-type fakeProjectDraftCompiler struct {
-	err           error
-	beforeReturn  func()
-	lastProject   *models.Project
-	lastPlatforms []string
+type FakeProjectDraftCompiler struct {
+	Err           error
+	BeforeReturn  func()
+	LastProject   *models.Project
+	LastPlatforms []string
 }
 
-type fakeProjectDocumentInitializer struct {
-	err         error
-	documentIDs []uuid.UUID
+type FakeProjectDocumentInitializer struct {
+	Err         error
+	DocumentIDs []uuid.UUID
 }
 
-func (f *fakeProjectDocumentInitializer) InitializeProjectDocument(ctx context.Context, documentID uuid.UUID) error {
-	f.documentIDs = append(f.documentIDs, documentID)
-	return f.err
+func (f *FakeProjectDocumentInitializer) InitializeProjectDocument(ctx context.Context, documentID uuid.UUID) error {
+	f.DocumentIDs = append(f.DocumentIDs, documentID)
+	return f.Err
 }
 
-func (f *fakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
-	f.lastProject = project
-	f.lastPlatforms = append([]string(nil), platforms...)
-	if f.err != nil {
-		return nil, f.err
+func (f *FakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
+	f.LastProject = project
+	f.LastPlatforms = append([]string(nil), platforms...)
+	if f.Err != nil {
+		return nil, f.Err
 	}
 
 	drafts := make(map[string][]byte, len(platforms))
@@ -66,16 +66,16 @@ func (f *fakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, pro
 			drafts[platform] = []byte(`{"format":"text","text":"Hello draft"}`)
 		}
 	}
-	if f.beforeReturn != nil {
-		f.beforeReturn()
+	if f.BeforeReturn != nil {
+		f.BeforeReturn()
 	}
 	return drafts, nil
 }
 
-func (f *fakeXOAuth2Provider) AuthorizationURL(config pkgx.OAuth2Config, state, codeChallenge string) (string, error) {
-	f.authConfig = config
-	f.authState = state
-	f.authChallenge = codeChallenge
+func (f *FakeXOAuth2Provider) AuthorizationURL(config pkgx.OAuth2Config, state, codeChallenge string) (string, error) {
+	f.AuthConfig = config
+	f.AuthState = state
+	f.AuthChallenge = codeChallenge
 
 	endpoint := url.URL{
 		Scheme: "https",
@@ -89,23 +89,23 @@ func (f *fakeXOAuth2Provider) AuthorizationURL(config pkgx.OAuth2Config, state, 
 	return endpoint.String(), nil
 }
 
-func (f *fakeXOAuth2Provider) Exchange(ctx context.Context, config pkgx.OAuth2Config, code, codeVerifier string) (pkgx.OAuth2Token, error) {
-	f.exchangeCode = code
-	f.exchangeVerifier = codeVerifier
-	return f.token, nil
+func (f *FakeXOAuth2Provider) Exchange(ctx context.Context, config pkgx.OAuth2Config, code, codeVerifier string) (pkgx.OAuth2Token, error) {
+	f.ExchangeCode = code
+	f.ExchangeVerifier = codeVerifier
+	return f.Token, nil
 }
 
-func (f *fakeXOAuth2Provider) Refresh(ctx context.Context, config pkgx.OAuth2Config, refreshToken string) (pkgx.OAuth2Token, error) {
-	f.refreshConfig = config
-	f.refreshToken = refreshToken
-	return f.token, nil
+func (f *FakeXOAuth2Provider) Refresh(ctx context.Context, config pkgx.OAuth2Config, refreshToken string) (pkgx.OAuth2Token, error) {
+	f.RefreshConfig = config
+	f.RefreshToken = refreshToken
+	return f.Token, nil
 }
 
-func (f *fakeXOAuth2Provider) Me(ctx context.Context, accessToken string) (pkgx.User, error) {
-	return f.user, nil
+func (f *FakeXOAuth2Provider) Me(ctx context.Context, accessToken string) (pkgx.User, error) {
+	return f.User, nil
 }
 
-func setupTestDB() *gorm.DB {
+func SetupTestDB() *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		panic("failed to connect database")
@@ -263,39 +263,39 @@ func setupTestDB() *gorm.DB {
 	return db
 }
 
-type fakeWechatTester struct {
-	result dto.WechatConnectionTestResponse
-	appID  string
-	secret string
+type FakeWechatTester struct {
+	Result dto.WechatConnectionTestResponse
+	AppID  string
+	Secret string
 }
 
-func (f *fakeWechatTester) Test(appID, appSecret string) dto.WechatConnectionTestResponse {
-	f.appID = appID
-	f.secret = appSecret
-	return f.result
+func (f *FakeWechatTester) Test(appID, appSecret string) dto.WechatConnectionTestResponse {
+	f.AppID = appID
+	f.Secret = appSecret
+	return f.Result
 }
 
-type fakePlatformPublisher struct {
-	config         datatypes.JSON
-	accountCookies datatypes.JSON
-	remoteURL      string
+type FakePlatformPublisher struct {
+	Config         datatypes.JSON
+	AccountCookies datatypes.JSON
+	RemoteURL      string
 }
 
-func (f *fakePlatformPublisher) ValidateConfig(config []byte) error {
+func (f *FakePlatformPublisher) ValidateConfig(config []byte) error {
 	return nil
 }
 
-func (f *fakePlatformPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
-	f.config = append(datatypes.JSON(nil), pub.Config...)
+func (f *FakePlatformPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
+	f.Config = append(datatypes.JSON(nil), pub.Config...)
 	if account != nil {
-		f.accountCookies = append(datatypes.JSON(nil), account.Cookies...)
+		f.AccountCookies = append(datatypes.JSON(nil), account.Cookies...)
 	}
 	if remoteURL, ok := ctx.Value(publisher.ContextKeyRemoteURL).(string); ok {
-		f.remoteURL = remoteURL
+		f.RemoteURL = remoteURL
 	}
 	return "remote-id", "https://example.com/published", nil
 }
 
-func ptrTime(value time.Time) *time.Time {
+func PtrTime(value time.Time) *time.Time {
 	return &value
 }

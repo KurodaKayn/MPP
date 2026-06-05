@@ -14,6 +14,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/datatypes"
@@ -28,9 +29,11 @@ var ErrManualPublishUnsupported = errors.New("manual publish is only supported f
 var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
 
 type Service struct {
-	db       *gorm.DB
-	accounts *platformaccount.Service
-	queue    PublishQueue
+	db                    *gorm.DB
+	accounts              *platformaccount.Service
+	queue                 PublishQueue
+	browserWorkerClient   publisher.BrowserWorkerClient
+	browserSessionService *browsersession.BrowserSessionService
 }
 
 func NewService(db *gorm.DB, accounts *platformaccount.Service) *Service {
@@ -52,11 +55,22 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 	if s.accounts != nil {
 		scoped.accounts = s.accounts.WithContext(ctx)
 	}
+	if s.browserSessionService != nil {
+		scoped.browserSessionService = s.browserSessionService.WithContext(ctx)
+	}
 	return &scoped
 }
 
 func (s *Service) SetQueue(queue PublishQueue) {
 	s.queue = queue
+}
+
+func (s *Service) SetBrowserWorkerClient(client publisher.BrowserWorkerClient) {
+	s.browserWorkerClient = client
+}
+
+func (s *Service) SetBrowserSessionService(service *browsersession.BrowserSessionService) {
+	s.browserSessionService = service
 }
 
 func (s *Service) UseRedis(client *redis.Client) {

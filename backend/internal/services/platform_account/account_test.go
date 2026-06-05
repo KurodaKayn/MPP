@@ -1,4 +1,4 @@
-package dashboard_test
+package platformaccount_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
@@ -16,7 +17,7 @@ import (
 )
 
 func TestWechatAccountSettingsSaveMasksSecret(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	user := models.User{Username: "owner"}
@@ -39,9 +40,9 @@ func TestWechatAccountSettingsSaveMasksSecret(t *testing.T) {
 }
 
 func TestWechatAccountTestUsesSavedSecretAndUpdatesStatus(t *testing.T) {
-	db := setupTestDB()
-	tester := &fakeWechatTester{
-		result: dto.WechatConnectionTestResponse{
+	db := testsupport.SetupTestDB()
+	tester := &testsupport.FakeWechatTester{
+		Result: dto.WechatConnectionTestResponse{
 			Connected: true,
 			Status:    models.PlatformAccountStatusConnected,
 			Message:   "ok",
@@ -64,8 +65,8 @@ func TestWechatAccountTestUsesSavedSecretAndUpdatesStatus(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.True(t, result.Connected)
-	assert.Equal(t, "wx-app", tester.appID)
-	assert.Equal(t, "wx-secret", tester.secret)
+	assert.Equal(t, "wx-app", tester.AppID)
+	assert.Equal(t, "wx-secret", tester.Secret)
 
 	saved, err := s.GetWechatAccount(user.ID)
 	assert.NoError(t, err)
@@ -74,10 +75,10 @@ func TestWechatAccountTestUsesSavedSecretAndUpdatesStatus(t *testing.T) {
 }
 
 func TestWechatAccountTestDoesNotPersistUnsavedCredentialsStatus(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	testedAt := time.Now()
-	tester := &fakeWechatTester{
-		result: dto.WechatConnectionTestResponse{
+	tester := &testsupport.FakeWechatTester{
+		Result: dto.WechatConnectionTestResponse{
 			Connected: false,
 			Status:    models.PlatformAccountStatusFailed,
 			Message:   "failed",
@@ -101,8 +102,8 @@ func TestWechatAccountTestDoesNotPersistUnsavedCredentialsStatus(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.False(t, result.Connected)
-	assert.Equal(t, "wx-draft", tester.appID)
-	assert.Equal(t, "draft-secret", tester.secret)
+	assert.Equal(t, "wx-draft", tester.AppID)
+	assert.Equal(t, "draft-secret", tester.Secret)
 
 	saved, err := s.GetWechatAccount(user.ID)
 	assert.NoError(t, err)
@@ -112,7 +113,7 @@ func TestWechatAccountTestDoesNotPersistUnsavedCredentialsStatus(t *testing.T) {
 }
 
 func TestXAccountSettingsClearsUsernameAndMetadataWhenCredentialsChange(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	user := models.User{Username: "owner"}
@@ -159,16 +160,16 @@ func TestXOAuth2FlowStoresConnectedAccount(t *testing.T) {
 	t.Setenv("X_OAUTH2_CLIENT_ID", "client-id")
 	t.Setenv("X_OAUTH2_CLIENT_SECRET", "client-secret")
 
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	expiresAt := time.Date(2026, 5, 30, 10, 0, 0, 0, time.UTC)
-	provider := &fakeXOAuth2Provider{
-		token: pkgx.OAuth2Token{
+	provider := &testsupport.FakeXOAuth2Provider{
+		Token: pkgx.OAuth2Token{
 			AccessToken:  "oauth2-access",
 			RefreshToken: "oauth2-refresh",
 			Scope:        "tweet.read tweet.write users.read offline.access",
 			ExpiresAt:    expiresAt,
 		},
-		user: pkgx.User{
+		User: pkgx.User{
 			ID:       "x-user-id",
 			Name:     "Creator",
 			Username: "creator",
@@ -181,10 +182,10 @@ func TestXOAuth2FlowStoresConnectedAccount(t *testing.T) {
 
 	authURL, err := s.StartXOAuth2(user.ID, "https://app.example.com/api/user/dashboard/settings/x/oauth2/callback")
 	require.NoError(t, err)
-	require.NotEmpty(t, provider.authState)
-	require.NotEmpty(t, provider.authChallenge)
-	assert.Equal(t, "client-id", provider.authConfig.ClientID)
-	assert.Equal(t, "client-secret", provider.authConfig.ClientSecret)
+	require.NotEmpty(t, provider.AuthState)
+	require.NotEmpty(t, provider.AuthChallenge)
+	assert.Equal(t, "client-id", provider.AuthConfig.ClientID)
+	assert.Equal(t, "client-secret", provider.AuthConfig.ClientSecret)
 
 	parsedAuthURL, err := url.Parse(authURL)
 	require.NoError(t, err)
@@ -194,8 +195,8 @@ func TestXOAuth2FlowStoresConnectedAccount(t *testing.T) {
 	resp, err := s.CompleteXOAuth2(context.Background(), state, "auth-code")
 	require.NoError(t, err)
 
-	assert.Equal(t, "auth-code", provider.exchangeCode)
-	assert.NotEmpty(t, provider.exchangeVerifier)
+	assert.Equal(t, "auth-code", provider.ExchangeCode)
+	assert.NotEmpty(t, provider.ExchangeVerifier)
 	assert.Equal(t, "oauth2", resp.AuthType)
 	assert.Equal(t, "creator", resp.Username)
 	assert.True(t, resp.HasOAuth2Refresh)
@@ -219,7 +220,7 @@ func TestXOAuth2FlowStoresConnectedAccount(t *testing.T) {
 }
 
 func TestGetDouyinAccount(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 	user := models.User{Username: "owner"}
 	require.NoError(t, db.Create(&user).Error)

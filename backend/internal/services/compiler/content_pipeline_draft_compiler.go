@@ -1,4 +1,4 @@
-package dashboard
+package compiler
 
 import (
 	"context"
@@ -29,7 +29,7 @@ type contentPipelineDraftCompiler struct {
 	newClient contentPipelineDraftCompilerClientFactory
 }
 
-func newContentPipelineDraftCompiler() ProjectDraftCompiler {
+func NewContentPipelineDraftCompiler() ProjectDraftCompiler {
 	return &contentPipelineDraftCompiler{
 		newClient: dialContentPipelineDraftCompilerClient,
 	}
