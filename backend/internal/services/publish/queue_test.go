@@ -41,9 +41,10 @@ func (p failingQueueTestPublisher) Publish(ctx context.Context, pub *models.Proj
 }
 
 type testPublishQueue struct {
-	jobs      []PublishJob
-	locks     map[string]string
-	refreshes int
+	jobs       []PublishJob
+	locks      map[string]string
+	refreshes  int
+	enqueueErr error
 }
 
 func newTestPublishQueue() *testPublishQueue {
@@ -51,6 +52,9 @@ func newTestPublishQueue() *testPublishQueue {
 }
 
 func (q *testPublishQueue) Enqueue(ctx context.Context, job PublishJob) error {
+	if q.enqueueErr != nil {
+		return q.enqueueErr
+	}
 	q.jobs = append(q.jobs, job)
 	return nil
 }
@@ -219,6 +223,51 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 	duplicate, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-1"})
 	require.NoError(t, err)
 	require.Equal(t, resp["job_id"], duplicate["job_id"])
+}
+
+func TestEnqueuePublishProjectDoesNotReplayFailedEnqueueAsQueued(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	queue.enqueueErr = errors.New("redis unavailable")
+	service.queue = queue
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	_, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-3"})
+	require.Error(t, err)
+	require.Empty(t, queue.jobs)
+
+	var queuedEvents int64
+	require.NoError(t, db.Model(&models.PublishEvent{}).
+		Where("idempotency_key = ? AND event_type = ?", "click-3", "queued").
+		Count(&queuedEvents).Error)
+	require.Zero(t, queuedEvents)
+
+	queue.enqueueErr = nil
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-3"})
+	require.NoError(t, err)
+	require.Equal(t, models.PublicationStatusQueued, resp["status"])
+	require.Len(t, queue.jobs, 1)
 }
 
 func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing.T) {
