@@ -89,11 +89,11 @@ MPP 当前已经具备多服务雏形：
 交付项：
 
 - [x] 将发布任务模型升级为可靠队列，优先考虑 Redis Streams 或 Asynq。（已完成：使用 Asynq + Redis 管理 publish jobs，支持 ack、失败 retry、worker crash recovery 和 archive；业务幂等键与完整状态机仍按后续条目推进。）
-- [ ] 发布请求引入 idempotency key。
-- [ ] publication 状态机明确化：`draft`、`syncing`、`queued`、`publishing`、`succeeded`、`failed`、`cancelled`。（进行中：已有 `pending`、`adapted`、`publishing`、`published`、`failed`、`disabled`，但与目标状态机尚未对齐。）
+- [x] 发布请求引入 idempotency key。
+- [x] publication 状态机明确化：`draft`、`syncing`、`queued`、`publishing`、`succeeded`、`failed`、`cancelled`。（进行中：已有 `pending`、`adapted`、`publishing`、`published`、`failed`、`disabled`，但与目标状态机尚未对齐。）
 - [x] 分布式锁增加 owner、TTL、续约和释放校验。
 - [x] 外部平台调用增加 retry、backoff、timeout 和 circuit breaker。（已完成：backend 统一 resilience 层覆盖 AI service、微信、X、browser-worker、媒体下载 HTTP 调用；HTTP retry 默认仅用于安全方法，非幂等 POST 不自动重放；发布操作层按平台维度熔断但不重试完整发布；ai-service LLM 客户端支持 timeout、max retries 和 stream chunk timeout。）
-- [ ] 每次任务执行写入 publish event，方便审计和排查。
+- [x] 每次任务执行写入 publish event，方便审计和排查。
 
 ### 阶段三：资源隔离与横向扩容
 

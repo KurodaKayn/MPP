@@ -31,21 +31,27 @@ settings, publishing permissions, and team ownership.
 | Frontend collab API client | Done | `frontend/src/lib/dashboard/api/collab.ts` wraps document and session APIs. |
 | Frontend standalone collab editor | Done | `frontend/src/features/collab-editor/` supports list/create/open/rename, TipTap/Yjs editing, toolbar, status, presence/cursors, and read-only role handling. |
 | Auth expiry handling | Done | Dashboard API client clears expired sessions and returns users to login instead of leaving stale JWT errors in-page. |
+| Project collaboration editor wiring | Done | Project editor uses project-scoped collab sessions, role-aware editing, shared status styling, and Yjs snapshot synchronization. |
+| Workspace API foundation | Done | Workspace create/list/detail/member/project APIs and workspace-aware project access are present in backend and frontend API clients. |
+| Workspace dashboard flow | Done | Dashboard users can switch/create workspaces, scope project list/create flows, manage members, and review workspace activity. |
+| Publishing permission boundary | Done | Publish entry points share a centralized owner-only project publish policy while editor/viewer collaboration roles remain non-publishers. |
 
 ### 2.2 Current Product Limitation
 
-The current UI asks users to create a separate collaborative document. This is
-technically useful, but product-wise it is disconnected from MPP's main unit of
-work: a Project.
+The standalone collaborative document UI still exists. It is technically
+useful, but product-wise it is disconnected from MPP's main unit of work: a
+Project.
 
-Problems with the current model:
+Remaining gaps in the current model:
 
-- It does not let a user share an existing Project.
-- It does not create a team/workspace boundary.
-- It does not answer "who owns this Project?" once multiple people can edit it.
-- It has no workspace member list, invite flow, or role management.
-- It cannot yet control publishing permissions separately from editing
-  permissions.
+- `/dashboard/collab` remains a lab-style surface beside the Project editor.
+- Project and Workspace access now exist, but the URL model is still using
+  compatibility dashboard routes instead of first-class workspace routes.
+- Workspace member management exists, but the next accountability gap is Project
+  activity, comments, and version recovery.
+- It does not fully answer "who changed what in this Project?" once multiple
+  people can edit it.
+- It has an owner-only publishing boundary, but not explicit publisher roles.
 - It risks becoming a second content system beside Projects instead of a
   collaboration layer over Projects.
 
@@ -202,6 +208,27 @@ CREATE TABLE workspace_members (
   PRIMARY KEY (workspace_id, user_id)
 );
 
+CREATE TABLE workspace_activities (
+  id uuid PRIMARY KEY,
+  workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  actor_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  target_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  event_type text NOT NULL CHECK (
+    event_type IN (
+      'workspace_created',
+      'workspace_updated',
+      'member_added',
+      'member_role_changed',
+      'member_removed'
+    )
+  ),
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_workspace_activities_workspace_created_at
+  ON workspace_activities(workspace_id, created_at DESC);
+
 ALTER TABLE projects
   ADD COLUMN workspace_id uuid REFERENCES workspaces(id);
 
@@ -265,6 +292,7 @@ also accidentally gives them publishing authority.
 | `POST /api/workspaces/{id}/members` | Invite/add workspace member. |
 | `PATCH /api/workspaces/{id}/members/{userId}` | Change member role. |
 | `DELETE /api/workspaces/{id}/members/{userId}` | Remove member. |
+| `GET /api/workspaces/{id}/activity` | List manager-only workspace audit events. |
 | `GET /api/workspaces/{id}/projects` | List workspace projects. |
 | `POST /api/workspaces/{id}/projects` | Create project inside workspace. |
 
@@ -409,7 +437,7 @@ Remaining hardening:
 - [ ] Add operational metrics dashboards and alerts.
 - [ ] Validate multi-user editing under realistic load.
 
-### Phase 1: Project Sharing MVP - Mostly Done
+### Phase 1: Project Sharing MVP - Done
 
 Deliverables:
 
@@ -423,47 +451,50 @@ Deliverables:
 Acceptance:
 
 - [x] Owner shares a Project with another user.
-- [ ] Editor opens the same Project and edits content collaboratively from the
+- [x] Editor opens the same Project and edits content collaboratively from the
   Project editor.
 - [x] Viewer opens the Project in read-only mode.
 - [x] Non-collaborator cannot access the Project.
 - [x] Publishing controls are hidden/disabled for roles without publish
   permission.
 
-### Phase 2: Project-Collab State Integration - Partial
+### Phase 2: Project-Collab State Integration - Done
 
 Deliverables:
 
 - [x] `projects.collab_document_id`.
 - [x] Lazy creation of Project collab document.
 - [x] Migration path from existing `source_content` to Yjs state.
-- [ ] Controlled snapshot sync from Yjs back to Project source content.
-- [ ] Prepublish sync reads from latest safe Project content.
+- [x] Controlled snapshot sync from Yjs back to Project source content.
+- [x] Prepublish sync reads from latest safe Project content.
 
 Acceptance:
 
-- [ ] Existing Projects can enter realtime editing from the Project editor
+- [x] Existing Projects can enter realtime editing from the Project editor
   without creating a separate doc.
-- [ ] Refresh/restart preserves Project editor realtime state.
-- [ ] Prepublish generation uses collaborative content, not stale owner-local
+- [x] Refresh/restart preserves Project editor realtime state.
+- [x] Prepublish generation uses collaborative content, not stale owner-local
   state.
 
-### Phase 3: Workspace and Team MVP - Partial
+### Phase 3: Workspace and Team MVP - Done
 
 Deliverables:
 
 - [x] `workspaces` and `workspace_members`.
 - [x] Personal workspace backfill for existing users.
-- [ ] Workspace switcher.
+- [x] Workspace switcher.
 - [x] Workspace-scoped Project list and create APIs.
-- [ ] Workspace-scoped Project list and create UI flow.
-- [ ] Member management screen.
+- [x] Workspace-scoped Project list and create UI flow.
+- [x] Member management screen.
+- [x] Workspace activity/audit feed for management events.
 - [x] Workspace-aware access checks in Project APIs.
 
 Acceptance:
 
-- [ ] A user creates a workspace and invites a member through the dashboard UI.
+- [x] A user creates a workspace and invites a member through the dashboard UI.
 - [x] Workspace members can access Projects in that workspace by role.
+- [x] Workspace managers can inspect recent member and workspace management
+  changes.
 - [x] Project owner/collaborator overrides still work.
 - [x] Existing personal Projects remain accessible after migration.
 
@@ -472,7 +503,7 @@ Acceptance:
 Deliverables:
 
 - [ ] Comments/review mode.
-- [ ] Activity feed for Project changes and member actions.
+- [ ] Project activity feed for content, publishing, and collaborator changes.
 - [ ] Version history from collab snapshots/update batches.
 - [ ] Better conflict/offline messaging.
 - [ ] Optional share links.
@@ -506,50 +537,49 @@ Acceptance:
 | Standalone collaborative editor | Done | Keep as temporary/lab surface. |
 | Backend collab document APIs | Done | Reuse for Project collab session flow. |
 | Collab service token auth | Done | Keep short-lived project-scoped tokens. |
-| Yjs PostgreSQL persistence | Done | Add migration confirmation and ops dashboards. |
+| Yjs PostgreSQL persistence | Done | Add ops dashboards and realistic multi-user load validation. |
 | Presence/cursor UI | Done | Reuse inside Project editor. |
-| Project sharing | Mostly Done | Wire realtime editing into the Project editor. |
-| Project-collab linking | Partial | Add Yjs-to-Project snapshot sync and Project editor realtime wiring. |
-| Workspace/team model | Partial | Add workspace switcher and member management UI. |
+| Project sharing | Done | Harden edge cases and keep standalone collab as lab-only surface. |
+| Project-collab linking | Done | Monitor snapshot sync reliability under multi-user editing. |
+| Workspace/team model | Done | Harden edge cases and move toward first-class workspace URLs. |
 | Workspace-scoped project access | Done | Continue hardening route/query policy coverage. |
-| Publishing permission split | Partial | Formalize publish capability beyond owner-only gating. |
-| Comments/activity/version UX | Not Started | Build after Project/workspace access is stable. |
+| Publishing permission split | Partial | Extend the centralized owner-only policy when explicit publisher roles are introduced. |
+| Comments/activity/version UX | Partial | Workspace activity is available; Project activity, comments, and version recovery remain next. |
 | Distributed collab-service | Not Started | Validate Redis pub/sub and multi-instance routing. |
 
 ## 13. Open Decisions
 
-1. Should Project sharing ship before Workspace, or should Workspace be created
-   first and all sharing happen through Workspace membership?
-2. Should personal accounts automatically get a default personal workspace?
-3. Should Project collaborators support external guests before workspace members
+1. Should Project collaborators support external guests before workspace members
    exist?
-4. Should publishing permission be a separate boolean/capability or a role such
+2. Should publishing permission be a separate boolean/capability or a role such
    as `publisher`?
-5. Should standalone `/dashboard/collab` remain visible after Project sharing
+3. Should standalone `/dashboard/collab` remain visible after Project sharing
    lands, or become an internal/debug route?
 
 ## 14. Recommended Next Slice
 
-Build Project sharing first.
+Build Project accountability UX.
 
 Reason:
 
-- It fixes the current product mismatch fastest.
-- It uses existing Projects as the user's mental model.
-- It reuses the completed collab infrastructure.
-- It creates the access policy concepts needed by Workspace later.
+- Workspace navigation, scoped project creation, member management, and
+  workspace audit events are now in place.
+- The remaining collaboration gap is at the Project level: users need to inspect
+  content, collaborator, and publishing changes in the surface where editing
+  happens.
+- Project-level activity creates the foundation for comments/review mode and
+  version recovery from collab snapshots.
 
-Smallest useful slice:
+Next useful slice:
 
-1. [x] Add `project_collaborators`.
-2. [x] Let Project owner share with another existing user by user ID/email.
-3. [x] Include role in Project detail responses.
-4. [x] Allow shared users to open the Project editor.
-5. [x] Gate source editing and publishing controls by role.
-6. [x] Add Project collab session endpoint that maps Project access to collab
-   document access.
+1. Add a `project_activities` model and record collaborator, publish, and
+   content sync events.
+2. Expose a manager/editor-readable Project activity API with bounded pagination.
+3. Add an activity panel to the Project editor beside sharing/status controls.
+4. Keep workspace activity focused on membership and workspace administration.
+5. Add focused service, handler, API client, and frontend rendering tests.
 
-Then add Workspace/team as the next structural layer.
+Then add comments and version recovery once Project activity is stable.
 
 ## 15. References
 

@@ -182,3 +182,7 @@ export type WorkspacesResponse = ContractSchema<"WorkspacesResponse">;
 export type WorkspaceMember = ContractSchema<"WorkspaceMember">;
 export type WorkspaceMembersResponse =
   ContractSchema<"WorkspaceMembersResponse">;
+export type WorkspaceActivity = ContractSchema<"WorkspaceActivity">;
+export type WorkspaceActivityType = ContractSchema<"WorkspaceActivityType">;
+export type WorkspaceActivitiesResponse =
+  ContractSchema<"WorkspaceActivitiesResponse">;

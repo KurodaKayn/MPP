@@ -164,6 +164,7 @@ func migrate(database *gorm.DB) error {
 			&models.User{},
 			&models.Workspace{},
 			&models.WorkspaceMember{},
+			&models.WorkspaceActivity{},
 			&models.PlatformAccount{},
 			&models.Project{},
 			&models.ProjectCollaborator{},

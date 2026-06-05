@@ -128,6 +128,84 @@ func TestWorkspaceManagement(t *testing.T) {
 	require.ErrorIs(t, err, services.ErrInvalidWorkspaceMember)
 }
 
+func TestWorkspaceActivitiesRecordManagementChanges(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "activity-owner", Email: "activity-owner@example.com"}
+	member := models.User{Username: "activity-member", Email: "activity-member@example.com"}
+	stranger := models.User{Username: "activity-stranger", Email: "activity-stranger@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&member).Error)
+	require.NoError(t, db.Create(&stranger).Error)
+
+	workspace, err := s.CreateWorkspace(owner.ID, dto.CreateWorkspaceRequest{
+		Name: "Activity Workspace",
+		Slug: "activity-workspace",
+	})
+	require.NoError(t, err)
+	_, err = s.UpdateWorkspace(workspace.ID, owner.ID, dto.UpdateWorkspaceRequest{
+		Name: "Renamed Activity",
+		Slug: "renamed-activity",
+	})
+	require.NoError(t, err)
+	_, err = s.UpdateWorkspace(workspace.ID, owner.ID, dto.UpdateWorkspaceRequest{
+		Name: " Renamed Activity ",
+		Slug: " renamed-activity ",
+	})
+	require.NoError(t, err)
+	_, err = s.AddWorkspaceMember(workspace.ID, owner.ID, dto.AddWorkspaceMemberRequest{
+		UserID: member.ID,
+		Role:   models.WorkspaceRoleMember,
+	})
+	require.NoError(t, err)
+	duplicateMember, err := s.AddWorkspaceMember(workspace.ID, owner.ID, dto.AddWorkspaceMemberRequest{
+		UserID: member.ID,
+		Role:   models.WorkspaceRoleMember,
+	})
+	require.NoError(t, err)
+	require.Equal(t, member.ID, duplicateMember.UserID)
+	require.Equal(t, models.WorkspaceRoleMember, duplicateMember.Role)
+	_, err = s.UpdateWorkspaceMember(workspace.ID, owner.ID, member.ID, dto.UpdateWorkspaceMemberRequest{
+		Role: models.WorkspaceRoleViewer,
+	})
+	require.NoError(t, err)
+	require.NoError(t, s.RemoveWorkspaceMember(workspace.ID, owner.ID, member.ID))
+
+	activities, err := s.ListWorkspaceActivities(workspace.ID, owner.ID, 10)
+	require.NoError(t, err)
+	require.Len(t, activities.Items, 5)
+
+	eventCounts := map[string]int{}
+	for _, activity := range activities.Items {
+		eventCounts[activity.EventType]++
+		require.Equal(t, workspace.ID, activity.WorkspaceID)
+		require.Equal(t, owner.ID, activity.ActorUserID)
+		require.Equal(t, owner.Username, activity.ActorUsername)
+	}
+	require.Equal(t, 1, eventCounts[models.WorkspaceActivityWorkspaceCreated])
+	require.Equal(t, 1, eventCounts[models.WorkspaceActivityWorkspaceUpdated])
+	require.Equal(t, 1, eventCounts[models.WorkspaceActivityMemberAdded])
+	require.Equal(t, 1, eventCounts[models.WorkspaceActivityMemberRoleChanged])
+	require.Equal(t, 1, eventCounts[models.WorkspaceActivityMemberRemoved])
+
+	var removed dto.WorkspaceActivity
+	for _, activity := range activities.Items {
+		if activity.EventType == models.WorkspaceActivityMemberRemoved {
+			removed = activity
+			break
+		}
+	}
+	require.Equal(t, models.WorkspaceActivityMemberRemoved, removed.EventType)
+	require.NotNil(t, removed.TargetUserID)
+	require.Equal(t, member.ID, *removed.TargetUserID)
+	require.Equal(t, member.Username, removed.TargetUsername)
+	require.Equal(t, models.WorkspaceRoleViewer, removed.Metadata["previous_role"])
+
+	_, err = s.ListWorkspaceActivities(workspace.ID, stranger.ID, 10)
+	require.ErrorIs(t, err, services.ErrForbidden)
+}
+
 func TestWorkspaceProjectFlow(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)

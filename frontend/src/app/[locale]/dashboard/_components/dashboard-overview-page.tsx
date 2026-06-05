@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   getDashboardProjects,
   getDashboardStats,
+  getWorkspaceProjects,
   type DashboardStats,
   type ProjectListItem,
 } from "@/lib/dashboard/api";
@@ -32,6 +33,8 @@ import { DashboardErrorCard } from "./dashboard-error-card";
 import { DashboardStatCard } from "./dashboard-stat-card";
 import { ProjectStatusBadge } from "./project-status-badge";
 import { PublicationBadgeList } from "./publication-platforms";
+import { WorkspaceSwitcher } from "./workspace-switcher";
+import { useDashboardWorkspaceSelection } from "../_hooks/use-dashboard-workspace-selection";
 import { formatDashboardDate, formatDashboardNumber } from "../_lib/formatters";
 import {
   getEnabledPlatformCount,
@@ -56,6 +59,7 @@ function RecentProjectsCard({
   t,
   tCommon,
   totalProjects,
+  workspaceName,
 }: {
   loading: boolean;
   locale: string;
@@ -64,6 +68,7 @@ function RecentProjectsCard({
   t: any;
   tCommon: any;
   totalProjects: number;
+  workspaceName?: string;
 }) {
   return (
     <Card>
@@ -75,6 +80,11 @@ function RecentProjectsCard({
               total: formatDashboardNumber(totalProjects, locale),
             })}
           </CardDescription>
+          {workspaceName ? (
+            <CardDescription>
+              {t("overview.recent.workspace", { workspace: workspaceName })}
+            </CardDescription>
+          ) : null}
         </div>
         <div className="flex gap-2">
           <Button
@@ -177,6 +187,7 @@ export function DashboardOverviewPage() {
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "dashboard");
   const { t: tCommon } = useTranslation(locale, "common");
+  const workspaceSelection = useDashboardWorkspaceSelection();
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
@@ -185,13 +196,16 @@ export function DashboardOverviewPage() {
   const [error, setError] = useState("");
 
   const loadDashboard = async () => {
+    const workspaceId = workspaceSelection.selectedWorkspaceId;
     setLoading(true);
     setError("");
 
     try {
       const [statsResponse, projectsResponse] = await Promise.all([
         getDashboardStats(),
-        getDashboardProjects(),
+        workspaceId
+          ? getWorkspaceProjects(workspaceId, { limit: 8 })
+          : getDashboardProjects(),
       ]);
 
       setStats(statsResponse);
@@ -209,8 +223,12 @@ export function DashboardOverviewPage() {
   };
 
   useEffect(() => {
+    if (workspaceSelection.isLoading) {
+      return;
+    }
+
     void loadDashboard();
-  }, []);
+  }, [workspaceSelection.isLoading, workspaceSelection.selectedWorkspaceId]);
 
   const enabledChannelCount = useMemo(
     () => getEnabledPlatformCount(projects),
@@ -226,6 +244,34 @@ export function DashboardOverviewPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">
+            {t("overview.title")}
+          </h2>
+          <p className="text-muted-foreground">{t("overview.description")}</p>
+        </div>
+        <WorkspaceSwitcher
+          disabled={loading}
+          isCreatingWorkspace={workspaceSelection.isCreatingWorkspace}
+          isLoading={workspaceSelection.isLoading}
+          selectedWorkspace={workspaceSelection.selectedWorkspace}
+          workspaces={workspaceSelection.workspaces}
+          onWorkspaceChange={workspaceSelection.selectWorkspace}
+          onWorkspaceCreate={workspaceSelection.createWorkspace}
+        />
+      </div>
+
+      {workspaceSelection.error ? (
+        <DashboardErrorCard
+          compact
+          title={t("workspace.error.title")}
+          message={workspaceSelection.error}
+          retryLabel={t("workspace.error.retry")}
+          onRetry={() => void workspaceSelection.reloadWorkspaces()}
+        />
+      ) : null}
+
       {error ? (
         <DashboardErrorCard
           title={t("overview.error.title")}
@@ -276,6 +322,7 @@ export function DashboardOverviewPage() {
         t={t}
         tCommon={tCommon}
         totalProjects={totalProjects}
+        workspaceName={workspaceSelection.selectedWorkspace?.name}
       />
     </div>
   );

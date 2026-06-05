@@ -168,6 +168,15 @@ const (
 	Wechat WechatAccountPlatform = "wechat"
 )
 
+// Defines values for WorkspaceActivityType.
+const (
+	WorkspaceActivityTypeMemberAdded       WorkspaceActivityType = "member_added"
+	WorkspaceActivityTypeMemberRemoved     WorkspaceActivityType = "member_removed"
+	WorkspaceActivityTypeMemberRoleChanged WorkspaceActivityType = "member_role_changed"
+	WorkspaceActivityTypeWorkspaceCreated  WorkspaceActivityType = "workspace_created"
+	WorkspaceActivityTypeWorkspaceUpdated  WorkspaceActivityType = "workspace_updated"
+)
+
 // Defines values for WorkspaceMemberRequestRole.
 const (
 	WorkspaceMemberRequestRoleAdmin  WorkspaceMemberRequestRole = "admin"
@@ -747,6 +756,29 @@ type Workspace struct {
 	Status      WorkspaceStatus    `json:"status"`
 	UpdatedAt   time.Time          `json:"updated_at"`
 }
+
+// WorkspaceActivitiesResponse defines model for WorkspaceActivitiesResponse.
+type WorkspaceActivitiesResponse struct {
+	Items []WorkspaceActivity `json:"items"`
+}
+
+// WorkspaceActivity defines model for WorkspaceActivity.
+type WorkspaceActivity struct {
+	ActorEmail     openapi_types.Email    `json:"actor_email"`
+	ActorUserId    openapi_types.UUID     `json:"actor_user_id"`
+	ActorUsername  string                 `json:"actor_username"`
+	CreatedAt      time.Time              `json:"created_at"`
+	EventType      WorkspaceActivityType  `json:"event_type"`
+	Id             openapi_types.UUID     `json:"id"`
+	Metadata       map[string]interface{} `json:"metadata"`
+	TargetEmail    *openapi_types.Email   `json:"target_email,omitempty"`
+	TargetUserId   *openapi_types.UUID    `json:"target_user_id,omitempty"`
+	TargetUsername *string                `json:"target_username,omitempty"`
+	WorkspaceId    openapi_types.UUID     `json:"workspace_id"`
+}
+
+// WorkspaceActivityType defines model for WorkspaceActivityType.
+type WorkspaceActivityType string
 
 // WorkspaceMember defines model for WorkspaceMember.
 type WorkspaceMember struct {

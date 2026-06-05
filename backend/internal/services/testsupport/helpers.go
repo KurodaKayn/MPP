@@ -166,6 +166,16 @@ func SetupTestDB() *gorm.DB {
 		PRIMARY KEY (workspace_id, user_id)
 	)`)
 
+	db.Exec(`CREATE TABLE workspace_activities (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		actor_user_id TEXT NOT NULL,
+		target_user_id TEXT,
+		event_type TEXT NOT NULL,
+		metadata TEXT NOT NULL DEFAULT '{}',
+		created_at DATETIME NOT NULL
+	)`)
+
 	db.Exec(`CREATE TABLE collab_documents (
 		id TEXT PRIMARY KEY,
 		owner_user_id TEXT NOT NULL,

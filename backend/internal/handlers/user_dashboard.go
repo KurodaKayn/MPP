@@ -702,6 +702,25 @@ func (h *UserDashboardHandler) ListWorkspaceMembers(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+func (h *UserDashboardHandler) ListWorkspaceActivities(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	resp, err := h.serviceFor(c).ListWorkspaceActivities(workspaceID, userID, limit)
+	if err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
 func (h *UserDashboardHandler) AddWorkspaceMember(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {

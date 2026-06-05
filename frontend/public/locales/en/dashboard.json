@@ -1,6 +1,7 @@
 {
   "overview": {
     "title": "Dashboard",
+    "description": "Track the selected workspace and continue recent publishing work.",
     "stats": {
       "totalProjects": "Total Content",
       "totalProjectsDesc": "Number of projects in the system",
@@ -14,6 +15,7 @@
     "recent": {
       "title": "Recent Content",
       "description": "Total {{total}} items, showing the latest 8.",
+      "workspace": "Workspace: {{workspace}}",
       "viewPosts": "View Posts",
       "refresh": "Refresh",
       "empty": "No content data available"
@@ -66,7 +68,20 @@
   "workspace": {
     "switcher": {
       "label": "Workspace",
-      "empty": "No workspace"
+      "empty": "No workspace",
+      "create": "Create workspace",
+      "createTitle": "Create workspace",
+      "createDescription": "Add a workspace for a team, client, or publishing stream.",
+      "nameLabel": "Workspace name",
+      "namePlaceholder": "Team workspace",
+      "slugLabel": "Slug",
+      "slugPlaceholder": "team-workspace",
+      "slugHelp": "Optional. Leave blank to let MPP generate one.",
+      "cancel": "Cancel",
+      "createSubmit": "Create workspace",
+      "createSuccess": "Workspace created",
+      "createFailed": "Unable to create workspace",
+      "retryLater": "Please try again later."
     },
     "role": {
       "owner": "Owner",
@@ -129,6 +144,42 @@
         "admin": "Can manage members and projects.",
         "member": "Can create and edit workspace projects.",
         "viewer": "Can view workspace projects only."
+      }
+    },
+    "workspaceActivity": {
+      "title": "Workspace Activity",
+      "description": "Recent member and workspace changes for the selected workspace.",
+      "refresh": "Refresh",
+      "loadFailed": "Unable to load workspace activity",
+      "retryLater": "Please try again later.",
+      "empty": "No workspace activity has been recorded yet.",
+      "noWorkspace": "Select a workspace to review activity.",
+      "noPermission": "Only workspace owners and admins can review activity.",
+      "unknownActor": "Unknown user",
+      "unknownTarget": "Unknown member",
+      "unknownRole": "Unknown role",
+      "unknownWorkspace": "this workspace",
+      "event": {
+        "workspace_created": "Workspace created",
+        "workspace_updated": "Workspace updated",
+        "member_added": "Member added",
+        "member_role_changed": "Member role changed",
+        "member_removed": "Member removed"
+      },
+      "detail": {
+        "workspace_created": "{{actor}} created {{workspace}}.",
+        "workspace_updated": "{{actor}} updated workspace details.",
+        "workspace_updatedRenamed": "{{actor}} renamed {{previousName}} to {{name}}.",
+        "member_added": "{{actor}} added {{target}} as {{role}}.",
+        "member_role_changed": "{{actor}} changed {{target}} from {{previousRole}} to {{role}}.",
+        "member_removed": "{{actor}} removed {{target}} from {{previousRole}}."
+      },
+      "badge": {
+        "role": "Role: {{role}}",
+        "formerRole": "Former: {{role}}",
+        "roleChange": "{{from}} -> {{to}}",
+        "slug": "Slug: {{slug}}",
+        "slugChange": "{{from}} -> {{to}}"
       }
     }
   },
