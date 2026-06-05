@@ -89,6 +89,10 @@ export interface components {
     /** @enum {string} */
     ProjectCollaboratorRole: "editor" | "viewer";
     /** @enum {string} */
+    WorkspaceRole: "owner" | "admin" | "member" | "viewer";
+    /** @enum {string} */
+    WorkspaceStatus: "active" | "archived";
+    /** @enum {string} */
     PublicationStatus:
       | "pending"
       | "adapted"
@@ -368,6 +372,60 @@ export interface components {
     };
     ProjectCollaboratorsResponse: {
       items: components["schemas"]["ProjectCollaborator"][];
+    };
+    CreateWorkspaceRequest: {
+      name: string;
+      slug?: string;
+    };
+    UpdateWorkspaceRequest: {
+      name: string;
+      slug?: string;
+    };
+    AddWorkspaceMemberRequest: {
+      /** Format: uuid */
+      user_id?: string;
+      /** Format: email */
+      email?: string;
+      role: components["schemas"]["WorkspaceRole"];
+    };
+    UpdateWorkspaceMemberRequest: {
+      role: components["schemas"]["WorkspaceRole"];
+    };
+    Workspace: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      owner_user_id: string;
+      name: string;
+      slug?: string;
+      status: components["schemas"]["WorkspaceStatus"];
+      role: components["schemas"]["WorkspaceRole"];
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    WorkspacesResponse: {
+      items: components["schemas"]["Workspace"][];
+    };
+    WorkspaceMember: {
+      /** Format: uuid */
+      workspace_id: string;
+      /** Format: uuid */
+      user_id: string;
+      username: string;
+      /** Format: email */
+      email: string;
+      role: components["schemas"]["WorkspaceRole"];
+      /** Format: uuid */
+      invited_by?: string;
+      /** Format: date-time */
+      joined_at?: string;
+      /** Format: date-time */
+      created_at: string;
+    };
+    WorkspaceMembersResponse: {
+      items: components["schemas"]["WorkspaceMember"][];
     };
     PaginationProjects: {
       items: components["schemas"]["ProjectListItem"][];

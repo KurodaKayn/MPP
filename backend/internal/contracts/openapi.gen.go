@@ -161,6 +161,20 @@ const (
 	Wechat WechatAccountPlatform = "wechat"
 )
 
+// Defines values for WorkspaceRole.
+const (
+	WorkspaceRoleAdmin  WorkspaceRole = "admin"
+	WorkspaceRoleMember WorkspaceRole = "member"
+	WorkspaceRoleOwner  WorkspaceRole = "owner"
+	WorkspaceRoleViewer WorkspaceRole = "viewer"
+)
+
+// Defines values for WorkspaceStatus.
+const (
+	WorkspaceStatusActive   WorkspaceStatus = "active"
+	WorkspaceStatusArchived WorkspaceStatus = "archived"
+)
+
 // Defines values for XAccountAuthType.
 const (
 	Oauth1 XAccountAuthType = "oauth1"
@@ -253,6 +267,13 @@ type AddProjectCollaboratorRequest struct {
 	Email  *openapi_types.Email    `json:"email,omitempty"`
 	Role   ProjectCollaboratorRole `json:"role"`
 	UserId *openapi_types.UUID     `json:"user_id,omitempty"`
+}
+
+// AddWorkspaceMemberRequest defines model for AddWorkspaceMemberRequest.
+type AddWorkspaceMemberRequest struct {
+	Email  *openapi_types.Email `json:"email,omitempty"`
+	Role   WorkspaceRole        `json:"role"`
+	UserId *openapi_types.UUID  `json:"user_id,omitempty"`
 }
 
 // BrowserSession defines model for BrowserSession.
@@ -426,6 +447,12 @@ type ConnectionTestStatus string
 // CreateCollabDocumentRequest defines model for CreateCollabDocumentRequest.
 type CreateCollabDocumentRequest struct {
 	Title string `json:"title"`
+}
+
+// CreateWorkspaceRequest defines model for CreateWorkspaceRequest.
+type CreateWorkspaceRequest struct {
+	Name string  `json:"name"`
+	Slug *string `json:"slug,omitempty"`
 }
 
 // DashboardStats defines model for DashboardStats.
@@ -648,6 +675,17 @@ type UpdateProjectCollaboratorRequest struct {
 	Role ProjectCollaboratorRole `json:"role"`
 }
 
+// UpdateWorkspaceMemberRequest defines model for UpdateWorkspaceMemberRequest.
+type UpdateWorkspaceMemberRequest struct {
+	Role WorkspaceRole `json:"role"`
+}
+
+// UpdateWorkspaceRequest defines model for UpdateWorkspaceRequest.
+type UpdateWorkspaceRequest struct {
+	Name string  `json:"name"`
+	Slug *string `json:"slug,omitempty"`
+}
+
 // WechatAccount defines model for WechatAccount.
 type WechatAccount struct {
 	AccountAuth   RequirementStatus     `json:"account_auth"`
@@ -674,6 +712,46 @@ type WechatConnectionTestResult struct {
 	Message     string               `json:"message"`
 	Status      ConnectionTestStatus `json:"status"`
 	TestedAt    time.Time            `json:"tested_at"`
+}
+
+// Workspace defines model for Workspace.
+type Workspace struct {
+	CreatedAt   time.Time          `json:"created_at"`
+	Id          openapi_types.UUID `json:"id"`
+	Name        string             `json:"name"`
+	OwnerUserId openapi_types.UUID `json:"owner_user_id"`
+	Role        WorkspaceRole      `json:"role"`
+	Slug        *string            `json:"slug,omitempty"`
+	Status      WorkspaceStatus    `json:"status"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+// WorkspaceMember defines model for WorkspaceMember.
+type WorkspaceMember struct {
+	CreatedAt   time.Time           `json:"created_at"`
+	Email       openapi_types.Email `json:"email"`
+	InvitedBy   *openapi_types.UUID `json:"invited_by,omitempty"`
+	JoinedAt    *time.Time          `json:"joined_at,omitempty"`
+	Role        WorkspaceRole       `json:"role"`
+	UserId      openapi_types.UUID  `json:"user_id"`
+	Username    string              `json:"username"`
+	WorkspaceId openapi_types.UUID  `json:"workspace_id"`
+}
+
+// WorkspaceMembersResponse defines model for WorkspaceMembersResponse.
+type WorkspaceMembersResponse struct {
+	Items []WorkspaceMember `json:"items"`
+}
+
+// WorkspaceRole defines model for WorkspaceRole.
+type WorkspaceRole string
+
+// WorkspaceStatus defines model for WorkspaceStatus.
+type WorkspaceStatus string
+
+// WorkspacesResponse defines model for WorkspacesResponse.
+type WorkspacesResponse struct {
+	Items []Workspace `json:"items"`
 }
 
 // XAccount defines model for XAccount.
