@@ -190,7 +190,7 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 
 type handlerFakeProjectDraftCompiler struct{}
 
-func (handlerFakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
+func (handlerFakeProjectDraftCompiler) CompileProjectDrafts(_ context.Context, _ *models.Project, _ []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
 	drafts := make(map[string][]byte, len(platforms))
 	for _, platform := range platforms {
 		switch platform {
@@ -238,7 +238,7 @@ func (r *recordingTraceObserver) ObserveQuery(ctx context.Context, _ dbobs.Query
 	r.traceIDs = append(r.traceIDs, observability.TraceIDFromContext(ctx))
 }
 
-func (f *fakeAIContentEditor) EditContent(ctx context.Context, req dto.AIEditContentRequest) (*dto.AIEditContentResponse, error) {
+func (f *fakeAIContentEditor) EditContent(_ context.Context, req dto.AIEditContentRequest) (*dto.AIEditContentResponse, error) {
 	f.contentReq = req
 	if f.err != nil {
 		return nil, f.err
@@ -246,7 +246,7 @@ func (f *fakeAIContentEditor) EditContent(ctx context.Context, req dto.AIEditCon
 	return f.contentResp, nil
 }
 
-func (f *fakeAIContentEditor) StreamEditContent(ctx context.Context, req dto.AIEditContentRequest) (*services.AIServiceStream, error) {
+func (f *fakeAIContentEditor) StreamEditContent(_ context.Context, req dto.AIEditContentRequest) (*services.AIServiceStream, error) {
 	f.contentReq = req
 	if f.err != nil {
 		return nil, f.err
@@ -254,7 +254,7 @@ func (f *fakeAIContentEditor) StreamEditContent(ctx context.Context, req dto.AIE
 	return f.contentStream, nil
 }
 
-func (f *fakeAIContentEditor) EditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*dto.AIEditPrepublishResponse, error) {
+func (f *fakeAIContentEditor) EditPrepublish(_ context.Context, req dto.AIEditPrepublishRequest) (*dto.AIEditPrepublishResponse, error) {
 	f.prepublishReq = req
 	if f.err != nil {
 		return nil, f.err
@@ -262,7 +262,7 @@ func (f *fakeAIContentEditor) EditPrepublish(ctx context.Context, req dto.AIEdit
 	return f.prepublishResp, nil
 }
 
-func (f *fakeAIContentEditor) StreamEditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*services.AIServiceStream, error) {
+func (f *fakeAIContentEditor) StreamEditPrepublish(_ context.Context, req dto.AIEditPrepublishRequest) (*services.AIServiceStream, error) {
 	f.prepublishReq = req
 	if f.err != nil {
 		return nil, f.err

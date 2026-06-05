@@ -43,7 +43,7 @@ type FakeProjectDocumentInitializer struct {
 	SyncProjectSourceContentFunc func(context.Context, uuid.UUID) error
 }
 
-func (f *FakeProjectDocumentInitializer) InitializeProjectDocument(ctx context.Context, documentID uuid.UUID) error {
+func (f *FakeProjectDocumentInitializer) InitializeProjectDocument(_ context.Context, documentID uuid.UUID) error {
 	f.DocumentIDs = append(f.DocumentIDs, documentID)
 	return f.Err
 }
@@ -56,7 +56,7 @@ func (f *FakeProjectDocumentInitializer) SyncProjectSourceContent(ctx context.Co
 	return f.SyncErr
 }
 
-func (f *FakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
+func (f *FakeProjectDraftCompiler) CompileProjectDrafts(_ context.Context, project *models.Project, _ []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
 	f.LastProject = project
 	f.LastPlatforms = append([]string(nil), platforms...)
 	if f.Err != nil {
@@ -101,19 +101,19 @@ func (f *FakeXOAuth2Provider) AuthorizationURL(config pkgx.OAuth2Config, state, 
 	return endpoint.String(), nil
 }
 
-func (f *FakeXOAuth2Provider) Exchange(ctx context.Context, config pkgx.OAuth2Config, code, codeVerifier string) (pkgx.OAuth2Token, error) {
+func (f *FakeXOAuth2Provider) Exchange(_ context.Context, _ pkgx.OAuth2Config, code, codeVerifier string) (pkgx.OAuth2Token, error) {
 	f.ExchangeCode = code
 	f.ExchangeVerifier = codeVerifier
 	return f.Token, nil
 }
 
-func (f *FakeXOAuth2Provider) Refresh(ctx context.Context, config pkgx.OAuth2Config, refreshToken string) (pkgx.OAuth2Token, error) {
+func (f *FakeXOAuth2Provider) Refresh(_ context.Context, config pkgx.OAuth2Config, refreshToken string) (pkgx.OAuth2Token, error) {
 	f.RefreshConfig = config
 	f.RefreshToken = refreshToken
 	return f.Token, nil
 }
 
-func (f *FakeXOAuth2Provider) Me(ctx context.Context, accessToken string) (pkgx.User, error) {
+func (f *FakeXOAuth2Provider) Me(_ context.Context, _ string) (pkgx.User, error) {
 	return f.User, nil
 }
 
@@ -324,7 +324,7 @@ type FakePlatformPublisher struct {
 	RemoteURL      string
 }
 
-func (f *FakePlatformPublisher) ValidateConfig(config []byte) error {
+func (f *FakePlatformPublisher) ValidateConfig(_ []byte) error {
 	return nil
 }
 

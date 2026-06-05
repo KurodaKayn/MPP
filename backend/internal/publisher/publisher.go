@@ -14,7 +14,7 @@ type AdaptedContent = core.AdaptedContent
 type GeneratedBy = core.GeneratedBy
 type AdaptedAsset = core.AdaptedAsset
 
-type BrowserAction = browser.BrowserAction
+type Action = browser.Action
 type BrowserWorkerClient = browser.BrowserWorkerClient
 type CaptureWorkerSessionResponse = browser.CaptureWorkerSessionResponse
 type Cookie = browser.Cookie

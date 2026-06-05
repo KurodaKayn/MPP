@@ -44,7 +44,7 @@ func TestHTTPProjectDocumentInitializerRequestsProjectSourceContentSync(t *testi
 }
 
 func TestHTTPProjectDocumentInitializerRejectsFailedStateInitialization(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
@@ -57,7 +57,7 @@ func TestHTTPProjectDocumentInitializerRejectsFailedStateInitialization(t *testi
 }
 
 func TestHTTPProjectDocumentInitializerRejectsFailedSourceContentSync(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer server.Close()

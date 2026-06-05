@@ -19,7 +19,7 @@ type fakeContentPipelineMediaClient struct {
 	err      error
 }
 
-func (f *fakeContentPipelineMediaClient) ProcessAsset(_ context.Context, request *contentpipelinepb.ProcessAssetRequest, opts ...grpc.CallOption) (*contentpipelinepb.ProcessAssetResponse, error) {
+func (f *fakeContentPipelineMediaClient) ProcessAsset(_ context.Context, request *contentpipelinepb.ProcessAssetRequest, _ ...grpc.CallOption) (*contentpipelinepb.ProcessAssetResponse, error) {
 	f.request = request
 	return f.response, f.err
 }

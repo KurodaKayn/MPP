@@ -238,7 +238,7 @@ func TestCreateSessionReturnsSignedOwnerSession(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(time.Minute), session.ExpiresAt, 3*time.Second)
 
 	claims := jwt.MapClaims{}
-	parsed, err := jwt.ParseWithClaims(session.Token, claims, func(token *jwt.Token) (any, error) {
+	parsed, err := jwt.ParseWithClaims(session.Token, claims, func(_ *jwt.Token) (any, error) {
 		return secret, nil
 	})
 	require.NoError(t, err)
@@ -287,7 +287,7 @@ func TestCreateAuthorizedSessionUsesCallerResolvedRole(t *testing.T) {
 	require.Equal(t, models.CollabDocumentRoleViewer, session.Role)
 
 	claims := jwt.MapClaims{}
-	parsed, err := jwt.ParseWithClaims(session.Token, claims, func(token *jwt.Token) (any, error) {
+	parsed, err := jwt.ParseWithClaims(session.Token, claims, func(_ *jwt.Token) (any, error) {
 		return secret, nil
 	})
 	require.NoError(t, err)

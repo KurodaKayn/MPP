@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProxyWebSocket(t *testing.T) {
+func TestWebSocket(t *testing.T) {
 	// 1. Setup a real WebSocket server to act as the target (e.g., the worker/container)
 	upgrader := websocket.Upgrader{}
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -41,10 +41,10 @@ func TestProxyWebSocket(t *testing.T) {
 
 	targetURL, _ := url.Parse(targetServer.URL)
 
-	// 2. Setup Echo server with our ProxyWebSocket handler
+	// 2. Setup Echo server with our WebSocket handler
 	e := echo.New()
 	e.GET("/ws", func(c echo.Context) error {
-		return ProxyWebSocket(c, targetURL)
+		return WebSocket(c, targetURL)
 	})
 
 	proxyServer := httptest.NewServer(e)
