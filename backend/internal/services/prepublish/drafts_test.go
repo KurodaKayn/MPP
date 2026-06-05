@@ -1,4 +1,4 @@
-package dashboard_test
+package prepublish_test
 
 import (
 	"encoding/json"
@@ -9,15 +9,16 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 )
 
 func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
-	compiler := &fakeProjectDraftCompiler{}
+	compiler := &testsupport.FakeProjectDraftCompiler{}
 	s.SetDraftCompiler(compiler)
 
 	owner := models.User{Username: "owner"}
@@ -67,7 +68,7 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, project.ID, resp.ProjectID)
 	assert.Len(t, resp.Items, 4)
-	assert.Equal(t, []string{"wechat", "zhihu", "x", "douyin"}, compiler.lastPlatforms)
+	assert.Equal(t, []string{"wechat", "zhihu", "x", "douyin"}, compiler.LastPlatforms)
 
 	var wechatPub models.ProjectPlatformPublication
 	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
@@ -109,9 +110,9 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 }
 
 func TestSyncProjectPrepublishMarksFailedWhenContentPipelineCompilerFails(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
-	s.SetDraftCompiler(&fakeProjectDraftCompiler{err: fmt.Errorf("content pipeline unavailable")})
+	s.SetDraftCompiler(&testsupport.FakeProjectDraftCompiler{Err: fmt.Errorf("content pipeline unavailable")})
 
 	owner := models.User{Username: "owner"}
 	require.NoError(t, db.Create(&owner).Error)
@@ -148,9 +149,9 @@ func TestSyncProjectPrepublishMarksFailedWhenContentPipelineCompilerFails(t *tes
 }
 
 func TestSyncProjectPrepublishRejectsActivePublishWithoutMarkingSyncing(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
-	compiler := &fakeProjectDraftCompiler{}
+	compiler := &testsupport.FakeProjectDraftCompiler{}
 	s.SetDraftCompiler(compiler)
 
 	owner := models.User{Username: "owner"}
@@ -191,7 +192,7 @@ func TestSyncProjectPrepublishRejectsActivePublishWithoutMarkingSyncing(t *testi
 
 	require.ErrorIs(t, err, services.ErrPublicationAlreadyPublishing)
 	require.Nil(t, resp)
-	require.Empty(t, compiler.lastPlatforms)
+	require.Empty(t, compiler.LastPlatforms)
 
 	var activePublication models.ProjectPlatformPublication
 	require.NoError(t, db.First(&activePublication, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
@@ -207,7 +208,7 @@ func TestSyncProjectPrepublishRejectsActivePublishWithoutMarkingSyncing(t *testi
 }
 
 func TestSyncProjectPrepublishDoesNotApplyDraftWhenPublicationBecomesPublishing(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	owner := models.User{Username: "owner"}
@@ -232,8 +233,8 @@ func TestSyncProjectPrepublishDoesNotApplyDraftWhenPublicationBecomesPublishing(
 	}
 	require.NoError(t, db.Create(&publication).Error)
 
-	compiler := &fakeProjectDraftCompiler{
-		beforeReturn: func() {
+	compiler := &testsupport.FakeProjectDraftCompiler{
+		BeforeReturn: func() {
 			require.NoError(t, db.Model(&models.ProjectPlatformPublication{}).
 				Where("id = ?", publication.ID).
 				Updates(map[string]interface{}{

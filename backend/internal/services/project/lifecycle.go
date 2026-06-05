@@ -1,4 +1,4 @@
-package dashboard
+package project
 
 import (
 	"encoding/json"
@@ -11,15 +11,15 @@ import (
 	"strings"
 )
 
-func (s *DashboardService) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
+func (s *Service) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
 	workspaceID := models.PersonalWorkspaceID(userID)
-	return s.createProjectWithWorkspace(userID, &workspaceID, req)
+	return s.CreateProjectWithWorkspace(userID, &workspaceID, req)
 }
 
-func (s *DashboardService) createProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
+func (s *Service) CreateProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
 	title := strings.TrimSpace(req.Title)
 	sourceContent := strings.TrimSpace(req.SourceContent)
-	platforms, err := normalizeProjectPlatforms(req.Platforms)
+	platforms, err := NormalizeProjectPlatforms(req.Platforms)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (s *DashboardService) createProjectWithWorkspace(userID uuid.UUID, workspac
 		}
 
 		for _, platform := range platforms {
-			config, adaptedContent, status, err := buildPendingPublicationPayload(title, req.Summary, req.CoverImageURL)
+			config, adaptedContent, status, err := BuildPendingPublicationPayload(title, req.Summary, req.CoverImageURL)
 			if err != nil {
 				return err
 			}
@@ -93,7 +93,7 @@ func (s *DashboardService) createProjectWithWorkspace(userID uuid.UUID, workspac
 	}, nil
 }
 
-func (s *DashboardService) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUID) (*dto.ProjectDetail, error) {
+func (s *Service) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUID) (*dto.ProjectDetail, error) {
 	var project models.Project
 	if err := s.db.
 		Preload("Publications", func(db *gorm.DB) *gorm.DB {
@@ -106,7 +106,7 @@ func (s *DashboardService) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUI
 	role := models.ProjectRoleOwner
 	accessSource := models.ProjectAccessSourceOwner
 	if scopeUserID != nil {
-		accessRole, source, err := s.projectAccessRoleAndSource(project, *scopeUserID)
+		accessRole, source, err := s.ProjectAccessRoleAndSource(project, *scopeUserID)
 		if err != nil {
 			return nil, err
 		}
@@ -117,10 +117,10 @@ func (s *DashboardService) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUI
 	return projectDetailFromModel(project, role, accessSource), nil
 }
 
-func (s *DashboardService) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.UpdateProjectRequest) (*dto.ProjectDetail, error) {
+func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.UpdateProjectRequest) (*dto.ProjectDetail, error) {
 	title := strings.TrimSpace(req.Title)
 	sourceContent := strings.TrimSpace(req.SourceContent)
-	platforms, err := normalizeProjectPlatforms(req.Platforms)
+	platforms, err := NormalizeProjectPlatforms(req.Platforms)
 	if err != nil {
 		return nil, err
 	}
@@ -133,11 +133,11 @@ func (s *DashboardService) UpdateProject(projectID uuid.UUID, userID uuid.UUID, 
 		if err := tx.First(&project, "id = ?", projectID).Error; err != nil {
 			return err
 		}
-		role, err := projectAccessRoleWithDB(tx, project, userID)
+		role, err := ProjectAccessRoleWithDB(tx, project, userID)
 		if err != nil {
 			return err
 		}
-		if !canEditProjectRole(role) {
+		if !CanEditProjectRole(role) {
 			return ErrForbidden
 		}
 
@@ -195,7 +195,7 @@ func (s *DashboardService) UpdateProject(projectID uuid.UUID, userID uuid.UUID, 
 				continue
 			}
 
-			config, adaptedContent, status, err := buildPendingPublicationPayload(title, req.Summary, req.CoverImageURL)
+			config, adaptedContent, status, err := BuildPendingPublicationPayload(title, req.Summary, req.CoverImageURL)
 			if err != nil {
 				return err
 			}
@@ -220,7 +220,7 @@ func (s *DashboardService) UpdateProject(projectID uuid.UUID, userID uuid.UUID, 
 	return s.GetProject(projectID, &userID)
 }
 
-func (s *DashboardService) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req dto.SaveProjectContentRequest) (*dto.ProjectDetail, error) {
+func (s *Service) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req dto.SaveProjectContentRequest) (*dto.ProjectDetail, error) {
 	title := strings.TrimSpace(req.Title)
 	sourceContent := strings.TrimSpace(req.SourceContent)
 	if title == "" || sourceContent == "" {
@@ -231,11 +231,11 @@ func (s *DashboardService) SaveProjectContent(projectID uuid.UUID, userID uuid.U
 	if err := s.db.First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
 	}
-	role, err := s.projectAccessRole(project, userID)
+	role, err := s.ProjectAccessRole(project, userID)
 	if err != nil {
 		return nil, err
 	}
-	if !canEditProjectRole(role) {
+	if !CanEditProjectRole(role) {
 		return nil, ErrForbidden
 	}
 
@@ -250,8 +250,8 @@ func (s *DashboardService) SaveProjectContent(projectID uuid.UUID, userID uuid.U
 	return s.GetProject(projectID, &userID)
 }
 
-func (s *DashboardService) SaveProjectPlatforms(projectID uuid.UUID, userID uuid.UUID, req dto.SaveProjectPlatformsRequest) (*dto.ProjectDetail, error) {
-	platforms, err := normalizeProjectPlatforms(req.Platforms)
+func (s *Service) SaveProjectPlatforms(projectID uuid.UUID, userID uuid.UUID, req dto.SaveProjectPlatformsRequest) (*dto.ProjectDetail, error) {
+	platforms, err := NormalizeProjectPlatforms(req.Platforms)
 	if err != nil || len(platforms) == 0 {
 		return nil, ErrInvalidProject
 	}
@@ -261,11 +261,11 @@ func (s *DashboardService) SaveProjectPlatforms(projectID uuid.UUID, userID uuid
 		if err := tx.First(&project, "id = ?", projectID).Error; err != nil {
 			return err
 		}
-		role, err := projectAccessRoleWithDB(tx, project, userID)
+		role, err := ProjectAccessRoleWithDB(tx, project, userID)
 		if err != nil {
 			return err
 		}
-		if !canEditProjectRole(role) {
+		if !CanEditProjectRole(role) {
 			return ErrForbidden
 		}
 
@@ -307,7 +307,7 @@ func (s *DashboardService) SaveProjectPlatforms(projectID uuid.UUID, userID uuid
 				continue
 			}
 
-			config, adaptedContent, status, err := buildPendingPublicationPayload(project.Title, "", "")
+			config, adaptedContent, status, err := BuildPendingPublicationPayload(project.Title, "", "")
 			if err != nil {
 				return err
 			}
@@ -332,7 +332,7 @@ func (s *DashboardService) SaveProjectPlatforms(projectID uuid.UUID, userID uuid
 	return s.GetProject(projectID, &userID)
 }
 
-func buildPendingPublicationPayload(title, summary, coverImageURL string) (datatypes.JSON, datatypes.JSON, string, error) {
+func BuildPendingPublicationPayload(title, summary, coverImageURL string) (datatypes.JSON, datatypes.JSON, string, error) {
 	config, err := defaultPublicationConfig(title, summary, coverImageURL)
 	if err != nil {
 		return nil, nil, "", err
@@ -402,7 +402,7 @@ func projectListItemFromModel(project models.Project, access projectAccessResolu
 	}
 }
 
-func normalizeProjectPlatforms(input []string) ([]string, error) {
+func NormalizeProjectPlatforms(input []string) ([]string, error) {
 	seen := map[string]struct{}{}
 	platforms := make([]string, 0, len(input))
 
@@ -430,7 +430,7 @@ func defaultPublicationConfig(title, summary, coverImageURL string) (datatypes.J
 		digest = title
 	}
 	config := map[string]interface{}{
-		"digest": truncateRunes(digest, 120),
+		"digest": TruncateRunes(digest, 120),
 		"title":  title,
 	}
 	if coverImageURL := strings.TrimSpace(coverImageURL); coverImageURL != "" {
@@ -443,7 +443,7 @@ func defaultPublicationConfig(title, summary, coverImageURL string) (datatypes.J
 	return datatypes.JSON(payload), nil
 }
 
-func truncateRunes(value string, limit int) string {
+func TruncateRunes(value string, limit int) string {
 	runes := []rune(value)
 	if len(runes) <= limit {
 		return value
@@ -451,12 +451,12 @@ func truncateRunes(value string, limit int) string {
 	return string(runes[:limit])
 }
 
-func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
+func (s *Service) ListProjects(page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
 	query := s.db.Model(&models.Project{})
 
 	// Apply scope (User dashboard enforces scopeUserID, overriding any filterUserID)
 	if scopeUserID != nil {
-		query = s.scopeAccessibleProjects(query, *scopeUserID)
+		query = s.ScopeAccessibleProjects(query, *scopeUserID)
 	} else if filterUserID != "" {
 		// Admin dashboard can filter by specific user
 		if uid, err := uuid.Parse(filterUserID); err == nil {
@@ -474,10 +474,10 @@ func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, p
 			Group("projects.id")
 	}
 
-	return s.listProjectPage(query, page, limit, scopeUserID)
+	return s.ListProjectPage(query, page, limit, scopeUserID)
 }
 
-func (s *DashboardService) listProjectPage(query *gorm.DB, page, limit int, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
+func (s *Service) ListProjectPage(query *gorm.DB, page, limit int, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
 	var projects []models.Project
 	var total int64
 

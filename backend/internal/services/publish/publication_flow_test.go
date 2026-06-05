@@ -1,4 +1,4 @@
-package dashboard_test
+package publish_test
 
 import (
 	"context"
@@ -13,13 +13,14 @@ import (
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 )
 
 func TestBatchPublishProject(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	u := models.User{Username: "tester"}
@@ -55,9 +56,9 @@ func TestBatchPublishProject(t *testing.T) {
 }
 
 func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
-	fakePublisher := &fakePlatformPublisher{}
+	fakePublisher := &testsupport.FakePlatformPublisher{}
 	publisher.Factory.Register("wechat", fakePublisher)
 	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
 
@@ -89,16 +90,16 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
 
 	var config map[string]string
-	assert.NoError(t, json.Unmarshal(fakePublisher.config, &config))
+	assert.NoError(t, json.Unmarshal(fakePublisher.Config, &config))
 	assert.Equal(t, "wx-saved", config["app_id"])
 	assert.Equal(t, "saved-secret", config["app_secret"])
 	assert.Equal(t, "Title", config["title"])
 }
 
 func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
-	fakePublisher := &fakePlatformPublisher{}
+	fakePublisher := &testsupport.FakePlatformPublisher{}
 	publisher.Factory.Register("douyin", fakePublisher)
 	defer publisher.Factory.Register("douyin", &publisher.DouyinPublisher{})
 	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
@@ -135,18 +136,18 @@ func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
-	assert.Contains(t, string(fakePublisher.accountCookies), "secret-value")
-	assert.NotContains(t, string(fakePublisher.accountCookies), "ciphertext")
+	assert.Contains(t, string(fakePublisher.AccountCookies), "secret-value")
+	assert.NotContains(t, string(fakePublisher.AccountCookies), "ciphertext")
 
 	var passedCookies []publisher.Cookie
-	require.NoError(t, json.Unmarshal(fakePublisher.accountCookies, &passedCookies))
+	require.NoError(t, json.Unmarshal(fakePublisher.AccountCookies, &passedCookies))
 	assert.Equal(t, cookies, passedCookies)
 }
 
 func TestPublishProjectIgnoresBrowserSessionIDForAsyncPublishing(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
-	fakePublisher := &fakePlatformPublisher{}
+	fakePublisher := &testsupport.FakePlatformPublisher{}
 	publisher.Factory.Register("wechat", fakePublisher)
 	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
 
@@ -182,13 +183,13 @@ func TestPublishProjectIgnoresBrowserSessionIDForAsyncPublishing(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
-	assert.Empty(t, fakePublisher.remoteURL)
+	assert.Empty(t, fakePublisher.RemoteURL)
 }
 
 func TestPublishProjectRequiresSavedCookiesForBrowserCookiePlatforms(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
-	fakePublisher := &fakePlatformPublisher{}
+	fakePublisher := &testsupport.FakePlatformPublisher{}
 	publisher.Factory.Register("douyin", fakePublisher)
 	defer publisher.Factory.Register("douyin", &publisher.DouyinPublisher{})
 
@@ -215,13 +216,13 @@ func TestPublishProjectRequiresSavedCookiesForBrowserCookiePlatforms(t *testing.
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, services.ErrInvalidPlatformAccount)
-	assert.Empty(t, fakePublisher.accountCookies)
+	assert.Empty(t, fakePublisher.AccountCookies)
 }
 
 func TestPublishProjectRequiresPrepublishSyncForPendingPublication(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
-	fakePublisher := &fakePlatformPublisher{}
+	fakePublisher := &testsupport.FakePlatformPublisher{}
 	publisher.Factory.Register("wechat", fakePublisher)
 	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
 
@@ -256,9 +257,9 @@ func TestPublishProjectRequiresPrepublishSyncForPendingPublication(t *testing.T)
 }
 
 func TestPublishProjectRequiresPrepublishSyncForSyncingPublication(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
-	fakePublisher := &fakePlatformPublisher{}
+	fakePublisher := &testsupport.FakePlatformPublisher{}
 	publisher.Factory.Register("wechat", fakePublisher)
 	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
 
@@ -285,7 +286,7 @@ func TestPublishProjectRequiresPrepublishSyncForSyncingPublication(t *testing.T)
 
 	require.ErrorIs(t, err, services.ErrPublicationRequiresSync)
 	require.Nil(t, result)
-	assert.Empty(t, fakePublisher.config)
+	assert.Empty(t, fakePublisher.Config)
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
@@ -294,9 +295,9 @@ func TestPublishProjectRequiresPrepublishSyncForSyncingPublication(t *testing.T)
 }
 
 func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
-	fakePublisher := &fakePlatformPublisher{}
+	fakePublisher := &testsupport.FakePlatformPublisher{}
 	publisher.Factory.Register("x", fakePublisher)
 	defer publisher.Factory.Register("x", &publisher.XPublisher{})
 
@@ -336,7 +337,7 @@ func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
 
 	var config map[string]interface{}
-	require.NoError(t, json.Unmarshal(fakePublisher.config, &config))
+	require.NoError(t, json.Unmarshal(fakePublisher.Config, &config))
 	assert.Equal(t, "oauth2", config["auth_type"])
 	assert.Equal(t, "oauth2-access", config["oauth2_access_token"])
 	assert.Equal(t, "oauth2-refresh", config["oauth2_refresh_token"])
@@ -352,10 +353,10 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 	t.Setenv("X_OAUTH2_CLIENT_ID", "client-id")
 	t.Setenv("X_OAUTH2_CLIENT_SECRET", "client-secret")
 
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	refreshedExpiresAt := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
-	provider := &fakeXOAuth2Provider{
-		token: pkgx.OAuth2Token{
+	provider := &testsupport.FakeXOAuth2Provider{
+		Token: pkgx.OAuth2Token{
 			AccessToken:  "new-oauth2-access",
 			RefreshToken: "new-oauth2-refresh",
 			Scope:        "tweet.read tweet.write users.read offline.access",
@@ -363,7 +364,7 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 		},
 	}
 	s := services.NewDashboardServiceWithXOAuth2Provider(db, provider)
-	fakePublisher := &fakePlatformPublisher{}
+	fakePublisher := &testsupport.FakePlatformPublisher{}
 	publisher.Factory.Register("x", fakePublisher)
 	defer publisher.Factory.Register("x", &publisher.XPublisher{})
 
@@ -406,13 +407,13 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 	result, err := s.PublishProject(project.ID, "x", &user.ID, uuid.Nil)
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
-	assert.Equal(t, "oauth2-refresh", provider.refreshToken)
-	assert.Equal(t, "client-id", provider.refreshConfig.ClientID)
-	assert.Equal(t, "client-secret", provider.refreshConfig.ClientSecret)
-	assert.Empty(t, provider.refreshConfig.RedirectURI)
+	assert.Equal(t, "oauth2-refresh", provider.RefreshToken)
+	assert.Equal(t, "client-id", provider.RefreshConfig.ClientID)
+	assert.Equal(t, "client-secret", provider.RefreshConfig.ClientSecret)
+	assert.Empty(t, provider.RefreshConfig.RedirectURI)
 
 	var config map[string]interface{}
-	require.NoError(t, json.Unmarshal(fakePublisher.config, &config))
+	require.NoError(t, json.Unmarshal(fakePublisher.Config, &config))
 	assert.Equal(t, "oauth2", config["auth_type"])
 	assert.Equal(t, "new-oauth2-access", config["oauth2_access_token"])
 	assert.Equal(t, "new-oauth2-refresh", config["oauth2_refresh_token"])
@@ -428,7 +429,7 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 }
 
 func TestCreateXPostIntentReturnsManualPublishURL(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	user := models.User{Username: "owner"}
@@ -472,7 +473,7 @@ func TestCreateXPostIntentReturnsManualPublishURL(t *testing.T) {
 }
 
 func TestCreateXPostIntentRequiresPrepublishSyncForPendingPublication(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	user := models.User{Username: "owner"}
@@ -506,7 +507,7 @@ func TestCreateXPostIntentRequiresPrepublishSyncForPendingPublication(t *testing
 }
 
 func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	user := models.User{Username: "owner"}
