@@ -3,10 +3,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addProjectCollaborator,
+  addWorkspaceMember,
   cancelBrowserSession,
   completeBrowserSession,
   createDashboardProject,
   createProjectCollabSession,
+  createWorkspace,
   getBrowserSession,
   getDashboardProject,
   getDashboardProjects,
@@ -14,10 +16,14 @@ import {
   getDouyinAccount,
   getProjectCollaborators,
   getProjectPublications,
+  getWorkspace,
+  getWorkspaceMembers,
+  getWorkspaces,
   getXAccount,
   getWechatAccount,
   publishProject,
   removeProjectCollaborator,
+  removeWorkspaceMember,
   saveDashboardProjectContent,
   saveDashboardProjectPlatforms,
   saveXAccount,
@@ -32,6 +38,8 @@ import {
   updateDashboardProject,
   updateProjectCollaborator,
   updateProjectPrepublishDraft,
+  updateWorkspace,
+  updateWorkspaceMember,
 } from "./api";
 import type { ProjectPublications } from "./api";
 
@@ -746,6 +754,199 @@ describe("dashboard api client", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/user/dashboard/projects/project-1/collaborators/user-2",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "DELETE",
+      }),
+    );
+  });
+
+  it("lists workspaces", async () => {
+    const workspaces = {
+      items: [
+        {
+          created_at: "2026-06-05T12:00:00Z",
+          id: "workspace-1",
+          name: "Team Workspace",
+          owner_user_id: "owner-1",
+          role: "owner",
+          slug: "team-workspace",
+          status: "active",
+          updated_at: "2026-06-05T12:00:00Z",
+        },
+      ],
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(workspaces));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getWorkspaces()).resolves.toEqual(workspaces);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/workspaces",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+  });
+
+  it("creates a workspace", async () => {
+    const workspace = {
+      created_at: "2026-06-05T12:00:00Z",
+      id: "workspace-1",
+      name: "Team Workspace",
+      owner_user_id: "owner-1",
+      role: "owner",
+      slug: "team-workspace",
+      status: "active",
+      updated_at: "2026-06-05T12:00:00Z",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(workspace));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createWorkspace({ name: "Team Workspace", slug: "team-workspace" }),
+    ).resolves.toEqual(workspace);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/workspaces",
+      expect.objectContaining({
+        body: JSON.stringify({
+          name: "Team Workspace",
+          slug: "team-workspace",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
+      }),
+    );
+  });
+
+  it("gets and updates a workspace", async () => {
+    const workspace = {
+      created_at: "2026-06-05T12:00:00Z",
+      id: "workspace-1",
+      name: "Renamed Workspace",
+      owner_user_id: "owner-1",
+      role: "admin",
+      slug: "renamed-workspace",
+      status: "active",
+      updated_at: "2026-06-05T12:00:00Z",
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(workspace));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getWorkspace("workspace-1")).resolves.toEqual(workspace);
+    await expect(
+      updateWorkspace("workspace-1", {
+        name: "Renamed Workspace",
+        slug: "renamed-workspace",
+      }),
+    ).resolves.toEqual(workspace);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/workspaces/workspace-1",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/workspaces/workspace-1",
+      expect.objectContaining({
+        body: JSON.stringify({
+          name: "Renamed Workspace",
+          slug: "renamed-workspace",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "PATCH",
+      }),
+    );
+  });
+
+  it("manages workspace members", async () => {
+    const members = {
+      items: [
+        {
+          created_at: "2026-06-05T12:00:00Z",
+          email: "member@example.com",
+          role: "member",
+          user_id: "user-2",
+          username: "member",
+          workspace_id: "workspace-1",
+        },
+      ],
+    };
+    const member = {
+      created_at: "2026-06-05T12:00:00Z",
+      email: "member@example.com",
+      invited_by: "owner-1",
+      joined_at: "2026-06-05T12:00:00Z",
+      role: "viewer",
+      user_id: "user-2",
+      username: "member",
+      workspace_id: "workspace-1",
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(members))
+      .mockResolvedValueOnce(jsonResponse(member))
+      .mockResolvedValueOnce(jsonResponse(member))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getWorkspaceMembers("workspace-1")).resolves.toEqual(members);
+    await expect(
+      addWorkspaceMember("workspace-1", {
+        email: "member@example.com",
+        role: "member",
+      }),
+    ).resolves.toEqual(member);
+    await expect(
+      updateWorkspaceMember("workspace-1", "user-2", { role: "viewer" }),
+    ).resolves.toEqual(member);
+    await expect(
+      removeWorkspaceMember("workspace-1", "user-2"),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/workspaces/workspace-1/members",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/workspaces/workspace-1/members",
+      expect.objectContaining({
+        body: JSON.stringify({
+          email: "member@example.com",
+          role: "member",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/workspaces/workspace-1/members/user-2",
+      expect.objectContaining({
+        body: JSON.stringify({ role: "viewer" }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "PATCH",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/workspaces/workspace-1/members/user-2",
       expect.objectContaining({
         credentials: "same-origin",
         headers: expect.any(Headers),
