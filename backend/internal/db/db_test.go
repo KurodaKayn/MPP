@@ -10,6 +10,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type recordingQueryObserver struct {
@@ -21,7 +22,9 @@ func (r *recordingQueryObserver) ObserveQuery(_ context.Context, observation Que
 }
 
 func TestMigrateKeepsActiveBrowserSessionUniquenessFallback(t *testing.T) {
-	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	require.NoError(t, err)
 	require.NoError(t, migrate(database))
 

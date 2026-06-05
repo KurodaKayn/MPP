@@ -152,12 +152,17 @@ func finishQueryObservation(observer QueryObserver, operation string) func(*gorm
 			ctx = context.Background()
 		}
 
+		duration := time.Since(startedAt)
+		if duration <= 0 {
+			duration = time.Nanosecond
+		}
+
 		observer.ObserveQuery(ctx, QueryObservation{
 			Operation:    operation,
 			Table:        normalizedTable(tx.Statement.Table),
 			SQL:          sql,
 			QueryHash:    hashSQL(sql),
-			Duration:     time.Since(startedAt),
+			Duration:     duration,
 			RowsAffected: tx.RowsAffected,
 			Err:          tx.Error,
 		})
