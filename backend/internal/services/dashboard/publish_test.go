@@ -255,6 +255,44 @@ func TestPublishProjectRequiresPrepublishSyncForPendingPublication(t *testing.T)
 	assert.Empty(t, saved.ErrorMessage)
 }
 
+func TestPublishProjectRequiresPrepublishSyncForSyncingPublication(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &fakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "<p>source</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusSyncing,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
+
+	require.ErrorIs(t, err, services.ErrPublicationRequiresSync)
+	require.Nil(t, result)
+	assert.Empty(t, fakePublisher.config)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
+	assert.Equal(t, models.PublicationStatusSyncing, saved.Status)
+	assert.Nil(t, saved.LastAttemptAt)
+}
+
 func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
 	db := setupTestDB()
 	s := services.NewDashboardService(db)
