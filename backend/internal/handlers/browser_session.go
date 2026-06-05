@@ -26,6 +26,8 @@ const (
 	defaultBrowserStreamGatewayTimeout = 15 * time.Second
 )
 
+var browserStreamTransport = newBrowserStreamTransportFromEnv()
+
 type BrowserSessionHandler struct {
 	service       *browsersession.BrowserSessionService
 	streamLimiter *streamgate.Limiter
@@ -164,7 +166,7 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	}
 
 	reverseProxy := httputil.NewSingleHostReverseProxy(target)
-	reverseProxy.Transport = browserStreamTransportFromEnv()
+	reverseProxy.Transport = browserStreamTransport
 	reverseProxy.Director = func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
@@ -193,7 +195,7 @@ func shouldAcquireBrowserStreamLease(c echo.Context, isWebSocket bool, proxyPath
 	return strings.Contains(path, "websockify") || strings.Contains(queryPath, "websockify")
 }
 
-func browserStreamTransportFromEnv() http.RoundTripper {
+func newBrowserStreamTransportFromEnv() http.RoundTripper {
 	timeout := envutil.Duration(browserStreamGatewayTimeoutEnv, defaultBrowserStreamGatewayTimeout)
 	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
