@@ -5,9 +5,21 @@ use content_pipeline_proto::mpp::contentpipeline::v1::{
 };
 use tonic::{Request, Response, Status};
 
-#[derive(Debug, Default)]
+use crate::metrics::{ContentPipelineMetrics, draft_error_class};
+
+#[derive(Debug)]
 pub(crate) struct PlatformDraftCompilerService {
     compiler: DraftCompiler,
+    metrics: ContentPipelineMetrics,
+}
+
+impl PlatformDraftCompilerService {
+    pub(crate) fn new(metrics: ContentPipelineMetrics) -> Self {
+        Self {
+            compiler: DraftCompiler::new(),
+            metrics,
+        }
+    }
 }
 
 #[tonic::async_trait]
@@ -16,10 +28,16 @@ impl PlatformDraftCompiler for PlatformDraftCompilerService {
         &self,
         request: Request<CompileDraftsRequest>,
     ) -> Result<Response<CompileDraftsResponse>, Status> {
+        let request_started_at = std::time::Instant::now();
         let request = request.into_inner();
-        let project = request
-            .project
-            .ok_or_else(|| Status::invalid_argument("source project is required"))?;
+        let project = request.project.ok_or_else(|| {
+            self.metrics.record_compile_drafts_error(
+                "unknown",
+                "invalid_input",
+                request_started_at.elapsed(),
+            );
+            Status::invalid_argument("source project is required")
+        })?;
         let project = SourceProject {
             id: project.id,
             title: project.title,
@@ -29,15 +47,29 @@ impl PlatformDraftCompiler for PlatformDraftCompilerService {
 
         let mut drafts = Vec::with_capacity(request.targets.len());
         for target in request.targets {
+            let started_at = std::time::Instant::now();
             let target = DraftTarget {
                 platform: target.platform,
                 profile: target.profile,
                 config_json: target.config_json,
             };
-            let output = self
-                .compiler
-                .compile(&project, &target)
-                .map_err(draft_error_to_status)?;
+            let output = match self.compiler.compile(&project, &target) {
+                Ok(output) => output,
+                Err(err) => {
+                    self.metrics.record_compile_drafts_error(
+                        &target.platform,
+                        draft_error_class(&err),
+                        started_at.elapsed(),
+                    );
+                    return Err(draft_error_to_status(err));
+                }
+            };
+            self.metrics.record_compile_drafts_success(
+                &output.platform,
+                &output.profile,
+                output.warnings.len(),
+                started_at.elapsed(),
+            );
             drafts.push(CompiledDraft {
                 platform: output.platform,
                 profile: output.profile,
