@@ -488,11 +488,22 @@ func publicationPublishingStale(pub models.ProjectPlatformPublication) bool {
 }
 
 func (s *Service) markPublicationQueued(pub *models.ProjectPlatformPublication, queuedAt time.Time) error {
-	return s.db.Model(pub).Updates(map[string]interface{}{
-		"status":          models.PublicationStatusQueued,
-		"error_message":   "",
-		"last_attempt_at": &queuedAt,
-	}).Error
+	result := s.db.Model(&models.ProjectPlatformPublication{}).
+		Where("id = ? AND status = ?", pub.ID, pub.Status).
+		Updates(map[string]interface{}{
+			"status":          models.PublicationStatusQueued,
+			"error_message":   "",
+			"last_attempt_at": &queuedAt,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return s.publicationStateChangedError(pub.ID)
+	}
+	pub.Status = models.PublicationStatusQueued
+	pub.LastAttemptAt = &queuedAt
+	return nil
 }
 
 func (s *Service) markPublicationFailed(projectID uuid.UUID, platform, message string) error {
