@@ -1,8 +1,11 @@
 import { Document } from "@hocuspocus/server";
-import { yDocToProsemirrorJSON } from "@tiptap/y-tiptap";
 import { describe, expect, it } from "vitest";
 import { applyUpdate, encodeStateAsUpdate, encodeStateVector } from "yjs";
 
+import {
+  createProjectYDoc,
+  projectYDocToProseMirrorJSON,
+} from "../collab/project-document.js";
 import { PostgresDocumentPersistence } from "./document-persistence.js";
 
 interface QueryCall {
@@ -163,7 +166,7 @@ describe("PostgresDocumentPersistence", () => {
 
     const restored = new Document("restored");
     applyUpdate(restored, new Uint8Array(insertCall?.values?.[1] as Buffer));
-    expect(yDocToProsemirrorJSON(restored, "content")).toMatchObject({
+    expect(projectYDocToProseMirrorJSON(restored)).toMatchObject({
       type: "doc",
       content: [
         {
@@ -214,6 +217,62 @@ describe("PostgresDocumentPersistence", () => {
 
     expect(initialized).toBe(false);
     expect(database.calls).toHaveLength(1);
+  });
+
+  it("syncs linked project source content from the current Yjs state", async () => {
+    const documentId = "11111111-1111-4111-8111-111111111111";
+    const source = createProjectYDoc(
+      "<h2>Synced heading</h2><p>Hello <strong>team</strong></p>",
+    );
+    const database = new FakeDatabase();
+    database.results = [
+      [
+        {
+          source_content: "<p>Stale project content</p>",
+          current_seq: 4,
+          has_state: true,
+          has_updates: false,
+        },
+      ],
+      [
+        {
+          y_doc_state: Buffer.from(encodeStateAsUpdate(source)),
+          compacted_until_seq: 4,
+        },
+      ],
+      [],
+    ];
+    const persistence = new PostgresDocumentPersistence(database);
+
+    const synced = await persistence.syncProjectSourceContent(documentId);
+
+    expect(synced).toBe(true);
+    const updateCall = database.calls.find((call) =>
+      call.text.includes("UPDATE projects"),
+    );
+    expect(updateCall?.values).toEqual([
+      documentId,
+      "<h2>Synced heading</h2><p>Hello <strong>team</strong></p>",
+    ]);
+    expect(database.calls.map((call) => call.text.trim())).toContain("COMMIT");
+
+    source.destroy();
+  });
+
+  it("does not sync source content for unlinked collaboration documents", async () => {
+    const database = new FakeDatabase();
+    database.results = [[]];
+    const persistence = new PostgresDocumentPersistence(database);
+
+    const synced = await persistence.syncProjectSourceContent(
+      "11111111-1111-4111-8111-111111111111",
+    );
+
+    expect(synced).toBe(false);
+    expect(database.calls).toHaveLength(1);
+    expect(
+      database.calls.some((call) => call.text.includes("UPDATE projects")),
+    ).toBe(false);
   });
 
   it("flushes pending Yjs updates as a sequenced batch", async () => {

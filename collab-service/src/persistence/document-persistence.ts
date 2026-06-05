@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { Document } from "@hocuspocus/server";
 import {
   applyUpdate,
   encodeStateAsUpdate,
@@ -6,9 +7,11 @@ import {
   mergeUpdates,
 } from "yjs";
 
-import { createProjectYDoc } from "../collab/project-document.js";
+import {
+  createProjectYDoc,
+  projectYDocToHtml,
+} from "../collab/project-document.js";
 
-import type { Document } from "@hocuspocus/server";
 import type { PoolConfig, QueryResult } from "pg";
 import type { CollabConfig } from "../config.js";
 
@@ -42,6 +45,7 @@ interface ProjectDocumentRow extends Record<string, unknown> {
 export interface DocumentPersistence {
   load(documentId: string, document: Document): Promise<void>;
   initializeProjectDocument(documentId: string): Promise<boolean>;
+  syncProjectSourceContent(documentId: string): Promise<boolean>;
   appendUpdate(
     documentId: string,
     update: Uint8Array,
@@ -168,6 +172,42 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
         `,
         [documentId, state, stateVector, currentSeq, state.length],
       );
+    } finally {
+      document.destroy();
+    }
+
+    return true;
+  }
+
+  async syncProjectSourceContent(documentId: string): Promise<boolean> {
+    const initialized = await this.initializeProjectDocument(documentId);
+    if (!initialized) {
+      return false;
+    }
+
+    await this.flushDocument(documentId);
+
+    const document = new Document(documentId);
+    try {
+      await this.load(documentId, document);
+      const sourceContent = projectYDocToHtml(document);
+
+      await this.database.query("BEGIN");
+      try {
+        await this.database.query(
+          `
+            UPDATE projects
+            SET source_content = $2,
+                updated_at = NOW()
+            WHERE collab_document_id = $1
+          `,
+          [documentId, sourceContent],
+        );
+        await this.database.query("COMMIT");
+      } catch (error) {
+        await this.database.query("ROLLBACK");
+        throw error;
+      }
     } finally {
       document.destroy();
     }
