@@ -40,6 +40,7 @@ services:
       COLLAB_INTERNAL_URL: ${COLLAB_INTERNAL_URL:-http://collab-service:8090}
       COLLAB_WEBSOCKET_URL_BASE: ${COLLAB_WEBSOCKET_URL_BASE:-ws://localhost:8090}
       CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-true}
+      CONTENT_PIPELINE_DRAFTS_ENABLED: ${CONTENT_PIPELINE_DRAFTS_ENABLED:-true}
     healthcheck:
       start_period: 120s
     volumes:
@@ -62,6 +63,7 @@ services:
       BACKEND_REQUIRE_REDIS: "true"
       ENABLE_DEV_SEED: "false"
       CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-true}
+      CONTENT_PIPELINE_DRAFTS_ENABLED: ${CONTENT_PIPELINE_DRAFTS_ENABLED:-true}
     volumes:
       - ../backend:/app
       - backend_go_cache:/go/pkg/mod
