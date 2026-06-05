@@ -93,15 +93,16 @@ func TestResolveMediaAssetsPresignsReadyAssets(t *testing.T) {
 		Usage:     models.MediaAssetUsageEditorImage,
 	})
 	require.NoError(t, err)
-	key := mediaAssetObjectKey(t, db, upload.AssetID)
-	storage.StoreObject(key, []byte("image-bytes"), objectstorage.ObjectInfo{
-		Key:         key,
+	stagingKey := mediaAssetObjectKey(t, db, upload.AssetID)
+	storage.StoreObject(stagingKey, []byte("image-bytes"), objectstorage.ObjectInfo{
+		Key:         stagingKey,
 		ContentType: "image/png",
 		Size:        11,
 		ETag:        "etag-value",
 	})
 	_, err = service.CompleteMediaUpload(upload.AssetID, owner.ID)
 	require.NoError(t, err)
+	finalKey := mediaAssetObjectKey(t, db, upload.AssetID)
 
 	resp, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
 		AssetIDs: []uuid.UUID{upload.AssetID},
@@ -110,8 +111,50 @@ func TestResolveMediaAssetsPresignsReadyAssets(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Items, 1)
 	require.Equal(t, upload.AssetID, resp.Items[0].AssetID)
-	require.Equal(t, "fake://get/mpp-media/"+key, resp.Items[0].URL)
+	require.Equal(t, "fake://get/mpp-media/"+finalKey, resp.Items[0].URL)
 	require.WithinDuration(t, time.Now().Add(5*time.Minute), resp.Items[0].ExpiresAt, 2*time.Second)
+}
+
+func TestCompleteMediaUploadPromotesStagingObjectToFinalKey(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	owner, project := createMediaAssetProject(t, db)
+	upload, err := service.CreateProjectMediaUpload(project.ID, owner.ID, dto.CreateMediaUploadRequest{
+		Filename:  "hero.png",
+		MimeType:  "image/png",
+		SizeBytes: 11,
+		Usage:     models.MediaAssetUsageEditorImage,
+	})
+	require.NoError(t, err)
+	stagingKey := mediaAssetObjectKey(t, db, upload.AssetID)
+	storage.StoreObject(stagingKey, []byte("image-bytes"), objectstorage.ObjectInfo{
+		Key:         stagingKey,
+		ContentType: "image/png",
+		Size:        11,
+		ETag:        "original-etag",
+	})
+
+	_, err = service.CompleteMediaUpload(upload.AssetID, owner.ID)
+	require.NoError(t, err)
+	finalKey := mediaAssetObjectKey(t, db, upload.AssetID)
+	require.NotEqual(t, stagingKey, finalKey)
+
+	storage.StoreObject(stagingKey, []byte("mutated-image-bytes"), objectstorage.ObjectInfo{
+		Key:         stagingKey,
+		ContentType: "image/png",
+		Size:        19,
+		ETag:        "mutated-etag",
+	})
+
+	finalInfo, err := storage.HeadObject(context.Background(), finalKey)
+	require.NoError(t, err)
+	require.Equal(t, "original-etag", finalInfo.ETag)
+	require.EqualValues(t, 11, finalInfo.Size)
+
+	resp, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "fake://get/mpp-media/"+finalKey, resp.Items[0].URL)
 }
 
 func TestViewerCannotCreateMediaUpload(t *testing.T) {
