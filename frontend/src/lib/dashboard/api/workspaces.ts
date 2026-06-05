@@ -1,7 +1,11 @@
 import { fetchDashboard, fetchDashboardNoContent } from "./client";
 import type {
   AddWorkspaceMemberInput,
+  CreateProjectInput,
   CreateWorkspaceInput,
+  ListWorkspaceProjectsOptions,
+  PaginatedProjects,
+  ProjectListItem,
   UpdateWorkspaceInput,
   UpdateWorkspaceMemberInput,
   Workspace,
@@ -19,6 +23,43 @@ export function createWorkspace(input: CreateWorkspaceInput) {
     body: JSON.stringify(input),
     method: "POST",
   });
+}
+
+export function getWorkspaceProjects(
+  workspaceId: string,
+  options: ListWorkspaceProjectsOptions = {},
+) {
+  const params = new URLSearchParams();
+  if (options.page !== undefined) {
+    params.set("page", String(options.page));
+  }
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  if (options.status) {
+    params.set("status", options.status);
+  }
+  if (options.platform) {
+    params.set("platform", options.platform);
+  }
+
+  const query = params.toString();
+  return fetchDashboard<PaginatedProjects>(
+    `/api/workspaces/${workspaceId}/projects${query ? `?${query}` : ""}`,
+  );
+}
+
+export function createWorkspaceProject(
+  workspaceId: string,
+  input: CreateProjectInput,
+) {
+  return fetchDashboard<ProjectListItem>(
+    `/api/workspaces/${workspaceId}/projects`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
 }
 
 export function getWorkspace(workspaceId: string) {

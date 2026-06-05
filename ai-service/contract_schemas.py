@@ -416,6 +416,7 @@ class ProjectListItem(BaseModel):
     )
     id: UUID
     user_id: UUID
+    workspace_id: UUID | None = None
     collab_document_id: UUID | None = None
     title: str
     status: ProjectStatus
