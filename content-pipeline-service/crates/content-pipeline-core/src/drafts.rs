@@ -1,7 +1,9 @@
 mod html;
+mod profiles;
 mod text;
 
 use html::{html_to_markdown, html_to_text};
+pub use profiles::{DraftFormat, DraftProfile, supported_draft_profiles};
 use serde::Serialize;
 use text::{
     SHORT_TEXT_MAX_WEIGHT, SHORT_TEXT_WEIGHT_RULES, join_title_and_body_text, text_with_fallback,
@@ -71,15 +73,14 @@ impl DraftCompiler {
         }
 
         let platform = normalize_token(&target.platform);
-        validate_platform(&platform)?;
         let profile = resolve_profile(&platform, &target.profile)?;
 
         let text = html_to_text(&project.source_content);
         let source_summary = summarize(&text);
         let (adapted_content_json, summary, warnings) = match platform.as_str() {
             "wechat" => encode(AdaptedContent {
-                schema_version: 1,
-                format: "html",
+                schema_version: profile.schema_version,
+                format: profile.format.as_str(),
                 html: Some(project.source_content.as_str()),
                 markdown: None,
                 text: None,
@@ -89,8 +90,8 @@ impl DraftCompiler {
             "zhihu" => {
                 let markdown = html_to_markdown(&project.source_content);
                 encode(AdaptedContent {
-                    schema_version: 1,
-                    format: "markdown",
+                    schema_version: profile.schema_version,
+                    format: profile.format.as_str(),
                     html: None,
                     markdown: Some(markdown.as_str()),
                     text: None,
@@ -109,12 +110,13 @@ impl DraftCompiler {
                 let mut warnings = Vec::new();
                 if truncated_text != text {
                     warnings.push(format!(
-                        "text truncated to satisfy {profile} weighted length limit"
+                        "text truncated to satisfy {} weighted length limit",
+                        profile.profile
                     ));
                 }
                 let adapted_content_json = encode(AdaptedContent {
-                    schema_version: 1,
-                    format: "text",
+                    schema_version: profile.schema_version,
+                    format: profile.format.as_str(),
                     html: None,
                     markdown: None,
                     text: Some(truncated_text.as_str()),
@@ -126,8 +128,8 @@ impl DraftCompiler {
                 let text = text_with_fallback(&text, &project.title, &project.source_content);
                 let summary = summarize(text);
                 let adapted_content_json = encode(AdaptedContent {
-                    schema_version: 1,
-                    format: "text",
+                    schema_version: profile.schema_version,
+                    format: profile.format.as_str(),
                     html: None,
                     markdown: None,
                     text: Some(text),
@@ -140,7 +142,7 @@ impl DraftCompiler {
 
         Ok(DraftOutput {
             platform,
-            profile,
+            profile: profile.profile.to_string(),
             status: "compiled".to_string(),
             adapted_content_json,
             summary,
@@ -176,20 +178,24 @@ fn normalize_token(value: &str) -> String {
     value.trim().to_ascii_lowercase()
 }
 
-fn validate_platform(platform: &str) -> Result<(), DraftCompileError> {
-    match platform {
-        "wechat" | "zhihu" | "x" | "douyin" => Ok(()),
-        _ => Err(DraftCompileError::UnsupportedPlatform(platform.to_string())),
-    }
-}
-
-fn resolve_profile(platform: &str, requested: &str) -> Result<String, DraftCompileError> {
-    let default_profile = format!("{platform}@v1");
+fn resolve_profile(
+    platform: &str,
+    requested: &str,
+) -> Result<&'static DraftProfile, DraftCompileError> {
     let profile = normalize_token(requested);
-    if profile.is_empty() || profile == default_profile {
-        return Ok(default_profile);
+    if let Some(resolved) = profiles::resolve_draft_profile(platform, &profile) {
+        return Ok(resolved);
     }
 
+    if !profiles::supports_platform(platform) {
+        return Err(DraftCompileError::UnsupportedPlatform(platform.to_string()));
+    }
+
+    let profile = if profile.is_empty() {
+        profiles::default_profile_name(platform).unwrap_or_default()
+    } else {
+        profile
+    };
     Err(DraftCompileError::UnsupportedProfile {
         platform: platform.to_string(),
         profile,
