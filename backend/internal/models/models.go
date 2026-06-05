@@ -85,6 +85,38 @@ type Project struct {
 }
 
 const (
+	MediaAssetStatusPending = "pending"
+	MediaAssetStatusReady   = "ready"
+	MediaAssetStatusFailed  = "failed"
+	MediaAssetStatusDeleted = "deleted"
+
+	MediaAssetUsageEditorImage = "editor_image"
+	MediaAssetUsageCoverImage  = "cover_image"
+)
+
+type MediaAsset struct {
+	ID               uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	UserID           uuid.UUID      `gorm:"type:uuid;not null;index"`
+	WorkspaceID      *uuid.UUID     `gorm:"type:uuid;index"`
+	ProjectID        *uuid.UUID     `gorm:"type:uuid;index"`
+	Bucket           string         `gorm:"not null"`
+	ObjectKey        string         `gorm:"not null;uniqueIndex"`
+	OriginalFilename string         `gorm:"not null"`
+	MimeType         string         `gorm:"not null;index"`
+	SizeBytes        int64          `gorm:"not null"`
+	Usage            string         `gorm:"not null;index"`
+	Status           string         `gorm:"not null;index"`
+	ETag             string         `gorm:"not null;default:''"`
+	ErrorMessage     string         `gorm:"not null;default:''"`
+	CreatedAt        time.Time      `gorm:"not null"`
+	UpdatedAt        time.Time      `gorm:"not null"`
+	DeletedAt        gorm.DeletedAt `gorm:"index"`
+	User             User           `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	Workspace        *Workspace     `gorm:"foreignKey:WorkspaceID;references:ID;constraint:OnDelete:SET NULL"`
+	Project          *Project       `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:SET NULL"`
+}
+
+const (
 	ProjectRoleOwner  = "owner"
 	ProjectRoleEditor = "editor"
 	ProjectRoleViewer = "viewer"
@@ -265,6 +297,16 @@ func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
 func (p *Project) BeforeCreate(tx *gorm.DB) (err error) {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
+	}
+	return
+}
+
+func (m *MediaAsset) BeforeCreate(tx *gorm.DB) (err error) {
+	if m.ID == uuid.Nil {
+		m.ID = uuid.New()
+	}
+	if m.Status == "" {
+		m.Status = MediaAssetStatusPending
 	}
 	return
 }

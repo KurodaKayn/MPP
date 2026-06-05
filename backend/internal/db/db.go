@@ -167,6 +167,7 @@ func migrate(database *gorm.DB) error {
 			&models.PlatformAccount{},
 			&models.Project{},
 			&models.ProjectCollaborator{},
+			&models.MediaAsset{},
 			&models.ProjectPlatformPublication{},
 			&models.RemoteBrowserSession{},
 			&models.PublishEvent{},

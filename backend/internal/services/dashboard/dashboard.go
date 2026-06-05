@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"errors"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
@@ -23,6 +24,10 @@ var ErrPublicationRequiresSync = publishsvc.ErrPublicationRequiresSync
 var ErrManualPublishUnsupported = publishsvc.ErrManualPublishUnsupported
 var ErrExtensionCallbackTokenInvalid = errors.New("invalid extension callback token")
 var ErrExtensionCallbackTokenExpired = errors.New("expired extension callback token")
+var ErrMediaStorageUnavailable = errors.New("media storage unavailable")
+var ErrInvalidMediaAsset = errors.New("invalid media asset")
+var ErrMediaAssetUploadIncomplete = errors.New("media asset upload incomplete")
+var ErrMediaAssetNotReady = errors.New("media asset not ready")
 
 var allowedProjectPlatforms = map[string]struct{}{
 	"douyin": {},
@@ -39,6 +44,8 @@ type DashboardService struct {
 	browserSessionService *browsersession.BrowserSessionService
 	collabDocuments       *collabdoc.Service
 	draftCompiler         ProjectDraftCompiler
+	objectStorage         objectstorage.Client
+	objectStorageConfig   objectstorage.Config
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
@@ -80,6 +87,11 @@ func (s *DashboardService) SetCollabDocumentService(svc *collabdoc.Service) {
 
 func (s *DashboardService) SetDraftCompiler(compiler ProjectDraftCompiler) {
 	s.draftCompiler = compiler
+}
+
+func (s *DashboardService) UseObjectStorage(client objectstorage.Client, config objectstorage.Config) {
+	s.objectStorage = client
+	s.objectStorageConfig = config
 }
 
 func NewDashboardServiceWithWechatTester(db *gorm.DB, tester platformaccount.WechatConnectionTester) *DashboardService {

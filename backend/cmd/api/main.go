@@ -16,6 +16,8 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
+	objectstorager2 "github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage/r2"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/redisclient"
@@ -49,6 +51,17 @@ func main() {
 
 	// Initialize Services and Handlers
 	dashboardService := services.NewDashboardService(db.DB)
+	objectStorageConfig, err := objectstorage.ConfigFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if objectStorageConfig.Enabled {
+		objectStorageClient, err := objectstorager2.NewClient(objectStorageConfig)
+		if err != nil {
+			log.Fatal(err)
+		}
+		dashboardService.UseObjectStorage(objectStorageClient, objectStorageConfig)
+	}
 	collabDocumentService := services.NewCollabDocumentService(db.DB)
 	collabSecret := []byte(collabTokenSecret(jwtSecret))
 	collabDocumentService.UseSessionConfig(services.CollabDocumentSessionConfig{
