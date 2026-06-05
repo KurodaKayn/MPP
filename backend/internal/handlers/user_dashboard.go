@@ -955,9 +955,10 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	}
 
 	type PublishRequest struct {
-		Platform  string   `json:"platform"`
-		Platforms []string `json:"platforms"`
-		Mode      string   `json:"mode"`
+		Platform       string   `json:"platform"`
+		Platforms      []string `json:"platforms"`
+		Mode           string   `json:"mode"`
+		IdempotencyKey string   `json:"idempotency_key"`
 	}
 	req := new(PublishRequest)
 	if err := c.Bind(req); err != nil {
@@ -985,8 +986,17 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 		return c.JSON(http.StatusOK, resp)
 	}
 
+	idempotencyKey := strings.TrimSpace(req.IdempotencyKey)
+	if idempotencyKey == "" {
+		idempotencyKey = strings.TrimSpace(c.Request().Header.Get("Idempotency-Key"))
+	}
+	if idempotencyKey == "" {
+		idempotencyKey = uuid.New().String()
+	}
+	publishReq := services.PublishRequest{IdempotencyKey: idempotencyKey}
+
 	if len(req.Platforms) > 0 {
-		resp, err := h.serviceFor(c).BatchEnqueuePublishProject(c.Request().Context(), projectID, req.Platforms, &userID)
+		resp, err := h.serviceFor(c).BatchEnqueuePublishProject(c.Request().Context(), projectID, req.Platforms, &userID, publishReq)
 		if err != nil {
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		}
@@ -994,7 +1004,7 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	}
 
 	// Single platform fallback
-	resp, err := h.serviceFor(c).EnqueuePublishProject(c.Request().Context(), projectID, req.Platform, &userID)
+	resp, err := h.serviceFor(c).EnqueuePublishProject(c.Request().Context(), projectID, req.Platform, &userID, publishReq)
 	if err != nil {
 		if errors.Is(err, services.ErrPublicationDisabled) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
