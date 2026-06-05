@@ -128,3 +128,17 @@ export type ProjectCollaborator = ContractSchema<"ProjectCollaborator">;
 export type ProjectCollaboratorsResponse =
   ContractSchema<"ProjectCollaboratorsResponse">;
 export type PaginatedProjects = ContractSchema<"PaginationProjects">;
+
+export type WorkspaceRole = ContractSchema<"WorkspaceRole">;
+export type WorkspaceStatus = ContractSchema<"WorkspaceStatus">;
+export type CreateWorkspaceInput = ContractSchema<"CreateWorkspaceRequest">;
+export type UpdateWorkspaceInput = ContractSchema<"UpdateWorkspaceRequest">;
+export type AddWorkspaceMemberInput =
+  ContractSchema<"AddWorkspaceMemberRequest">;
+export type UpdateWorkspaceMemberInput =
+  ContractSchema<"UpdateWorkspaceMemberRequest">;
+export type Workspace = ContractSchema<"Workspace">;
+export type WorkspacesResponse = ContractSchema<"WorkspacesResponse">;
+export type WorkspaceMember = ContractSchema<"WorkspaceMember">;
+export type WorkspaceMembersResponse =
+  ContractSchema<"WorkspaceMembersResponse">;
