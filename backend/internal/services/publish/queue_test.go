@@ -41,9 +41,10 @@ func (p failingQueueTestPublisher) Publish(ctx context.Context, pub *models.Proj
 }
 
 type testPublishQueue struct {
-	jobs      []PublishJob
-	locks     map[string]string
-	refreshes int
+	jobs                  []PublishJob
+	locks                 map[string]string
+	refreshes             int
+	beforeAcquireConflict func()
 }
 
 func newTestPublishQueue() *testPublishQueue {
@@ -65,6 +66,9 @@ func (q *testPublishQueue) Start(ctx context.Context, handler PublishJobHandler)
 
 func (q *testPublishQueue) AcquireLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
 	if _, exists := q.locks[key]; exists {
+		if q.beforeAcquireConflict != nil {
+			q.beforeAcquireConflict()
+		}
 		return false, nil
 	}
 	q.locks[key] = value
@@ -219,6 +223,61 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 	duplicate, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-1"})
 	require.NoError(t, err)
 	require.Equal(t, resp["job_id"], duplicate["job_id"])
+}
+
+func TestEnqueuePublishProjectReturnsIdempotentResponseAfterLockRace(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	jobID := uuid.New()
+	lockKey := publishLockKey(project.ID, "wechat")
+	queue.locks[lockKey] = jobID.String()
+	queue.beforeAcquireConflict = func() {
+		require.NoError(t, db.Model(&pub).Updates(map[string]interface{}{
+			"status": models.PublicationStatusQueued,
+		}).Error)
+		require.NoError(t, service.recordPublishEvent(models.PublishEvent{
+			PublicationID:  pub.ID,
+			ProjectID:      project.ID,
+			UserID:         user.ID,
+			Platform:       "wechat",
+			JobID:          jobID,
+			IdempotencyKey: "click-race",
+			EventType:      "queued",
+			Status:         models.PublicationStatusQueued,
+		}))
+	}
+
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-race"})
+
+	require.NoError(t, err)
+	require.Equal(t, models.PublicationStatusQueued, resp["status"])
+	require.Equal(t, jobID.String(), resp["job_id"])
+	require.Empty(t, queue.jobs)
 }
 
 func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing.T) {
