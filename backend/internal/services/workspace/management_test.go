@@ -149,6 +149,11 @@ func TestWorkspaceActivitiesRecordManagementChanges(t *testing.T) {
 		Slug: "renamed-activity",
 	})
 	require.NoError(t, err)
+	_, err = s.UpdateWorkspace(workspace.ID, owner.ID, dto.UpdateWorkspaceRequest{
+		Name: " Renamed Activity ",
+		Slug: " renamed-activity ",
+	})
+	require.NoError(t, err)
 	_, err = s.AddWorkspaceMember(workspace.ID, owner.ID, dto.AddWorkspaceMemberRequest{
 		UserID: member.ID,
 		Role:   models.WorkspaceRoleMember,
