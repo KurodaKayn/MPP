@@ -270,12 +270,18 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 	}
 
 	event := queued
+	var events []models.PublishEvent
 	err = s.db.
 		Where("project_id = ? AND platform = ? AND user_id = ? AND job_id = ?", projectID, platform, userID, queued.JobID).
-		Order("created_at DESC").
-		First(&event).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		Order("created_at ASC").
+		Find(&events).Error
+	if err != nil {
 		return nil, false, err
+	}
+	for _, candidate := range events {
+		if publishEventNewerForReplay(candidate, event) {
+			event = candidate
+		}
 	}
 
 	resp := map[string]interface{}{
@@ -289,6 +295,31 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 		"error_message":   event.ErrorMessage,
 	}
 	return resp, true, nil
+}
+
+func publishEventNewerForReplay(candidate, current models.PublishEvent) bool {
+	if candidate.CreatedAt.After(current.CreatedAt) {
+		return true
+	}
+	if current.CreatedAt.After(candidate.CreatedAt) {
+		return false
+	}
+	return publishEventReplayRank(candidate.EventType) > publishEventReplayRank(current.EventType)
+}
+
+func publishEventReplayRank(eventType string) int {
+	switch eventType {
+	case "succeeded", "failed":
+		return 4
+	case "started":
+		return 3
+	case "queued":
+		return 2
+	case "requested":
+		return 1
+	default:
+		return 0
+	}
 }
 
 func (s *Service) waitForIdempotentPublishResponse(ctx context.Context, projectID uuid.UUID, platform string, userID uuid.UUID, key string) (map[string]interface{}, bool, error) {
