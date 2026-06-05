@@ -233,6 +233,11 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
 		return nil, err
 	}
+	if err := s.queue.Enqueue(ctx, job); err != nil {
+		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
+		_ = s.markPublicationFailed(project.ID, platform, "failed to enqueue publish job: "+err.Error())
+		return nil, err
+	}
 	if err := s.recordPublishEvent(models.PublishEvent{
 		PublicationID:  pub.ID,
 		ProjectID:      project.ID,
@@ -243,13 +248,7 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		EventType:      "queued",
 		Status:         models.PublicationStatusQueued,
 	}); err != nil {
-		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
-		return nil, err
-	}
-	if err := s.queue.Enqueue(ctx, job); err != nil {
-		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
-		_ = s.markPublicationFailed(project.ID, platform, "failed to enqueue publish job: "+err.Error())
-		return nil, err
+		log.Printf("failed to record publish job %s queued event: %v", job.JobID, err)
 	}
 
 	return map[string]interface{}{
