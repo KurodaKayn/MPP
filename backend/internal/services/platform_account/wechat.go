@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/wechat"
-	"gorm.io/datatypes"
-	"gorm.io/gorm"
 )
 
 const wechatPlatform = "wechat"
@@ -96,7 +97,7 @@ func (s *Service) UpsertWechatAccount(userID uuid.UUID, req dto.UpsertWechatAcco
 		}
 		err = s.db.Create(&account).Error
 	} else {
-		err = s.db.Model(&account).Updates(map[string]interface{}{
+		err = s.db.Model(&account).Updates(map[string]any{
 			"username":        "微信公众号",
 			"credentials":     credentials,
 			"status":          models.PlatformAccountStatusUntested,
@@ -159,7 +160,7 @@ func (s *Service) TestWechatAccount(userID uuid.UUID, req dto.TestWechatAccountR
 			errMessage = ""
 		}
 
-		if err := s.db.Model(&account).Updates(map[string]interface{}{
+		if err := s.db.Model(&account).Updates(map[string]any{
 			"status":          status,
 			"last_tested_at":  result.TestedAt,
 			"last_test_error": errMessage,
@@ -193,14 +194,14 @@ func (s *Service) applySavedWechatCredentialsToPublication(userID uuid.UUID, pub
 		return nil
 	}
 
-	config := map[string]interface{}{}
+	config := map[string]any{}
 	if len(pub.Config) > 0 {
 		if err := json.Unmarshal(pub.Config, &config); err != nil {
 			return fmt.Errorf("failed to parse wechat publication config: %w", err)
 		}
 	}
 	if config == nil {
-		config = map[string]interface{}{}
+		config = map[string]any{}
 	}
 	if credentials.AppID != "" {
 		config["app_id"] = credentials.AppID
@@ -258,7 +259,7 @@ func parseWechatCredentials(raw datatypes.JSON) (wechatCredentials, error) {
 	return credentials, nil
 }
 
-func marshalJSON(value interface{}) (datatypes.JSON, error) {
+func marshalJSON(value any) (datatypes.JSON, error) {
 	body, err := json.Marshal(value)
 	if err != nil {
 		return nil, err

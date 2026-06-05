@@ -14,9 +14,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 var (
@@ -89,7 +90,7 @@ func (s *CookieStore) Save(ctx context.Context, userID uuid.UUID, platform strin
 	// Update PlatformAccount
 	result := s.db.WithContext(ctx).Model(&models.PlatformAccount{}).
 		Where("user_id = ? AND platform = ?", userID, platform).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"cookies":    datatypes.JSON(envelopeJSON),
 			"username":   profile.Username,
 			"avatar_url": profile.AvatarURL,
@@ -175,7 +176,7 @@ func (s *CookieStore) Delete(ctx context.Context, userID uuid.UUID, platform str
 	return s.db.WithContext(ctx).Model(&models.PlatformAccount{}).
 		Where("user_id = ? AND platform = ?", userID, platform).
 		Select("cookies", "status", "username", "avatar_url", "metadata", "last_tested_at", "last_test_error").
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"cookies":         datatypes.JSON([]byte("[]")),
 			"status":          models.PlatformAccountStatusUntested,
 			"username":        "",

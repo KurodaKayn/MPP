@@ -30,7 +30,7 @@ func NewMockBrowserWorkerClient() *MockBrowserWorkerClient {
 	return m
 }
 
-func (m *MockBrowserWorkerClient) CreateSession(ctx context.Context, req StartWorkerSessionRequest) (*StartWorkerSessionResponse, error) {
+func (m *MockBrowserWorkerClient) CreateSession(_ context.Context, req StartWorkerSessionRequest) (*StartWorkerSessionResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -52,7 +52,7 @@ func (m *MockBrowserWorkerClient) CreateSession(ctx context.Context, req StartWo
 	return resp, nil
 }
 
-func (m *MockBrowserWorkerClient) GetSession(ctx context.Context, ref string) (*GetWorkerSessionResponse, error) {
+func (m *MockBrowserWorkerClient) GetSession(_ context.Context, ref string) (*GetWorkerSessionResponse, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -69,7 +69,7 @@ func (m *MockBrowserWorkerClient) GetSession(ctx context.Context, ref string) (*
 	}, nil
 }
 
-func (m *MockBrowserWorkerClient) CaptureSession(ctx context.Context, ref string) (*CaptureWorkerSessionResponse, error) {
+func (m *MockBrowserWorkerClient) CaptureSession(_ context.Context, ref string) (*CaptureWorkerSessionResponse, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -91,7 +91,7 @@ func (m *MockBrowserWorkerClient) CaptureSession(ctx context.Context, ref string
 	}, nil
 }
 
-func (m *MockBrowserWorkerClient) StartDouyinPublish(ctx context.Context, ref string, req StartDouyinPublishRequest) error {
+func (m *MockBrowserWorkerClient) StartDouyinPublish(_ context.Context, ref string, req StartDouyinPublishRequest) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -102,7 +102,7 @@ func (m *MockBrowserWorkerClient) StartDouyinPublish(ctx context.Context, ref st
 	return nil
 }
 
-func (m *MockBrowserWorkerClient) StopSession(ctx context.Context, ref string) error {
+func (m *MockBrowserWorkerClient) StopSession(_ context.Context, ref string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -125,7 +125,10 @@ func (m *MockBrowserWorkerClient) startStreamServer() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", mockStreamHandler)
-	m.streamServer = &http.Server{Handler: mux}
+	m.streamServer = &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 	m.streamListener = listener
 	m.streamBaseURL = "http://" + listener.Addr().String()
 	go func() {
@@ -133,7 +136,7 @@ func (m *MockBrowserWorkerClient) startStreamServer() {
 	}()
 }
 
-func mockStreamHandler(w http.ResponseWriter, r *http.Request) {
+func mockStreamHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(`<!doctype html>
 <html lang="en">

@@ -7,11 +7,12 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 func TestCookieStore(t *testing.T) {
@@ -29,13 +30,13 @@ func TestCookieStore(t *testing.T) {
 	t.Run("Missing Encryption Key", func(t *testing.T) {
 		t.Setenv("COOKIE_ENCRYPTION_KEY", "")
 		err := store.Save(context.Background(), userID, platform, []Cookie{}, RemoteAccountProfile{})
-		assert.ErrorIs(t, err, ErrCookieEncryptionKeyMissing)
+		require.ErrorIs(t, err, ErrCookieEncryptionKeyMissing)
 	})
 
 	t.Run("Invalid Encryption Key Length", func(t *testing.T) {
 		t.Setenv("COOKIE_ENCRYPTION_KEY", "too-short")
 		err := store.Save(context.Background(), userID, platform, []Cookie{}, RemoteAccountProfile{})
-		assert.ErrorIs(t, err, ErrCookieEncryptionKeyInvalid)
+		require.ErrorIs(t, err, ErrCookieEncryptionKeyInvalid)
 	})
 
 	t.Run("Full Cycle", func(t *testing.T) {
@@ -59,12 +60,12 @@ func TestCookieStore(t *testing.T) {
 
 		// Test Save
 		err = store.Save(context.Background(), userID, platform, cookies, profile)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify encryption in DB
 		var account models.PlatformAccount
 		err = db.Where("user_id = ? AND platform = ?", userID, platform).First(&account).Error
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotContains(t, string(account.Cookies), "secret-value") // Should be encrypted
 		assert.Contains(t, string(account.Cookies), "ciphertext")
 		assert.Equal(t, "testuser", account.Username)
@@ -72,11 +73,11 @@ func TestCookieStore(t *testing.T) {
 
 		// Test Load
 		loadedCookies, err := store.Load(context.Background(), userID, platform)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, expectedCookies, loadedCookies)
 
 		testedAt := time.Now()
-		require.NoError(t, db.Model(&account).Updates(map[string]interface{}{
+		require.NoError(t, db.Model(&account).Updates(map[string]any{
 			"last_tested_at":  testedAt,
 			"last_test_error": "previous validation failed",
 			"metadata":        datatypes.JSON([]byte(`{"profile":"cached"}`)),
@@ -84,19 +85,19 @@ func TestCookieStore(t *testing.T) {
 
 		// Test Delete
 		err = store.Delete(context.Background(), userID, platform)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		_, err = store.Load(context.Background(), userID, platform)
-		assert.ErrorIs(t, err, ErrCookieNotFound)
+		require.ErrorIs(t, err, ErrCookieNotFound)
 
 		var deletedAccount models.PlatformAccount
 		err = db.Where("user_id = ? AND platform = ?", userID, platform).First(&deletedAccount).Error
 		require.NoError(t, err)
 		assert.Equal(t, models.PlatformAccountStatusUntested, deletedAccount.Status)
-		assert.Equal(t, "", deletedAccount.Username)
-		assert.Equal(t, "", deletedAccount.AvatarURL)
+		assert.Empty(t, deletedAccount.Username)
+		assert.Empty(t, deletedAccount.AvatarURL)
 		assert.Nil(t, deletedAccount.LastTestedAt)
-		assert.Equal(t, "", deletedAccount.LastTestError)
+		assert.Empty(t, deletedAccount.LastTestError)
 		assert.JSONEq(t, `{}`, string(deletedAccount.Metadata))
 	})
 
@@ -109,12 +110,12 @@ func TestCookieStore(t *testing.T) {
 			{Name: "passport_csrf_token", Value: "csrf-value", Domain: ".douyin.com", Path: "/"},
 		}
 		err := store.Save(context.Background(), wrongKeyUserID, "douyin", cookies, RemoteAccountProfile{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Change key
 		t.Setenv("COOKIE_ENCRYPTION_KEY", "another-32-byte-key-012345678901")
 		_, err = store.Load(context.Background(), wrongKeyUserID, "douyin")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to decrypt cookies")
 	})
 
@@ -123,6 +124,6 @@ func TestCookieStore(t *testing.T) {
 		err := store.Save(context.Background(), userID, "douyin", []Cookie{
 			{Name: "sessionid", Value: "secret-value", Domain: ".douyin.com", Path: "/"},
 		}, RemoteAccountProfile{})
-		assert.ErrorIs(t, err, ErrCookieValidationFailed)
+		require.ErrorIs(t, err, ErrCookieValidationFailed)
 	})
 }

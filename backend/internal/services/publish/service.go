@@ -11,14 +11,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/datatypes"
-	"gorm.io/gorm"
 )
 
 var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
@@ -84,8 +85,8 @@ func SanitizeUserFacingErrorMessage(message string) string {
 	return sensitiveErrorQueryParamPattern.ReplaceAllString(message, "$1=<redacted>")
 }
 
-func (s *Service) BatchPublishProject(projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID) (map[string]map[string]interface{}, error) {
-	results := make(map[string]map[string]interface{})
+func (s *Service) BatchPublishProject(projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID) (map[string]map[string]any, error) {
+	results := make(map[string]map[string]any)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
@@ -96,7 +97,7 @@ func (s *Service) BatchPublishProject(projectID uuid.UUID, platforms []string, s
 			resp, err := s.PublishProject(projectID, p, scopeUserID, uuid.Nil)
 			mu.Lock()
 			if err != nil {
-				results[p] = map[string]interface{}{"status": "error", "message": err.Error()}
+				results[p] = map[string]any{"status": "error", "message": err.Error()}
 			} else {
 				results[p] = resp
 			}
@@ -108,15 +109,15 @@ func (s *Service) BatchPublishProject(projectID uuid.UUID, platforms []string, s
 	return results, nil
 }
 
-func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, browserSessionID uuid.UUID) (map[string]interface{}, error) {
+func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, _ uuid.UUID) (map[string]any, error) {
 	// Remote browser sessions are only for account connection and cookie capture.
 	// Publish jobs must be durable across Redis workers, so they load saved credentials instead.
-	browserSessionID = uuid.Nil
+	ctx := context.Background()
 
 	if scopeUserID == nil {
 		return nil, ErrForbidden
 	}
-	proj, err := s.projectForPublish(nil, projectID, *scopeUserID)
+	proj, err := s.projectForPublish(ctx, projectID, *scopeUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +151,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 		if errors.Is(accountErr, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("%w: %s account is not connected", platformaccount.ErrInvalidPlatformAccount, platform)
 		}
-		if err := s.applySavedBrowserCookies(context.Background(), proj.UserID, platform, &account); err != nil {
+		if err := s.applySavedBrowserCookies(ctx, proj.UserID, platform, &account); err != nil {
 			return nil, err
 		}
 	}
@@ -165,7 +166,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	publishPolicy := resilience.DefaultOperationPolicy("publish-" + platform)
 	publishPolicy.MaxAttempts = 1
 	err = resilience.Run(
-		context.Background(),
+		ctx,
 		publishPolicy,
 		func(ctx context.Context) error {
 			var publishErr error
@@ -181,14 +182,14 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 		errMsg = SanitizeUserFacingErrorMessage(err.Error())
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"status":             status,
 		"remote_id":          remoteID,
 		"publish_url":        publishURL,
 		"error_message":      errMsg,
-		"browser_session_id": browserSessionID,
+		"browser_session_id": uuid.Nil,
 	}
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"status":        status,
 		"remote_id":     remoteID,
 		"publish_url":   publishURL,
@@ -210,7 +211,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 func (s *Service) markPublicationPublishing(pub *models.ProjectPlatformPublication, startedAt time.Time) error {
 	result := s.db.Model(&models.ProjectPlatformPublication{}).
 		Where("id = ? AND status = ?", pub.ID, pub.Status).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"status":          models.PublicationStatusPublishing,
 			"error_message":   "",
 			"last_attempt_at": &startedAt,
@@ -226,11 +227,11 @@ func (s *Service) markPublicationPublishing(pub *models.ProjectPlatformPublicati
 	return nil
 }
 
-func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
+func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID) (map[string]any, error) {
 	if scopeUserID == nil {
 		return nil, ErrForbidden
 	}
-	if _, err := s.projectForPublish(nil, projectID, *scopeUserID); err != nil {
+	if _, err := s.projectForPublish(context.Background(), projectID, *scopeUserID); err != nil {
 		return nil, err
 	}
 
@@ -250,14 +251,14 @@ func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID)
 		return nil, err
 	}
 
-	if err := s.db.Model(&pub).Updates(map[string]interface{}{
+	if err := s.db.Model(&pub).Updates(map[string]any{
 		"publish_url":   publishURL,
 		"error_message": "",
 	}).Error; err != nil {
 		return nil, err
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"status":      "manual_required",
 		"platform":    "x",
 		"publish_url": publishURL,
@@ -297,7 +298,7 @@ func (s *Service) recordPublishEvent(event models.PublishEvent) error {
 	return s.db.Create(&event).Error
 }
 
-func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform string, userID uuid.UUID, key string) (map[string]interface{}, bool, error) {
+func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform string, userID uuid.UUID, key string) (map[string]any, bool, error) {
 	if strings.TrimSpace(key) == "" {
 		return nil, false, nil
 	}
@@ -329,7 +330,7 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 		}
 	}
 
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"status":          event.Status,
 		"job_id":          queued.JobID.String(),
 		"idempotency_key": key,
@@ -367,7 +368,7 @@ func publishEventReplayRank(eventType string) int {
 	}
 }
 
-func (s *Service) waitForIdempotentPublishResponse(ctx context.Context, projectID uuid.UUID, platform string, userID uuid.UUID, key string) (map[string]interface{}, bool, error) {
+func (s *Service) waitForIdempotentPublishResponse(ctx context.Context, projectID uuid.UUID, platform string, userID uuid.UUID, key string) (map[string]any, bool, error) {
 	deadline := time.NewTimer(publishReplayWait)
 	defer deadline.Stop()
 
@@ -397,7 +398,7 @@ func (s *Service) applySavedBrowserCookies(ctx context.Context, userID uuid.UUID
 
 	cookies, err := publisher.NewCookieStore(s.db).Load(ctx, userID, platform)
 	if err != nil {
-		return fmt.Errorf("%w: %s cookies are unavailable: %v", platformaccount.ErrInvalidPlatformAccount, platform, err)
+		return fmt.Errorf("%w: %s cookies are unavailable: %w", platformaccount.ErrInvalidPlatformAccount, platform, err)
 	}
 
 	cookiesJSON, err := json.Marshal(cookies)

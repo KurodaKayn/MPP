@@ -46,16 +46,16 @@ func TestOAuth2AuthorizationURLIncludesPKCEParams(t *testing.T) {
 
 func TestOAuth2ExchangePostsAuthorizationCodeGrant(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
-		require.NoError(t, r.ParseForm())
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
+		assert.NoError(t, r.ParseForm())
 		assert.Equal(t, "authorization_code", r.Form.Get("grant_type"))
 		assert.Equal(t, "auth-code", r.Form.Get("code"))
 		assert.Equal(t, "code-verifier", r.Form.Get("code_verifier"))
 		assert.Equal(t, "https://app.example.com/callback", r.Form.Get("redirect_uri"))
 		assert.Equal(t, "client-id", r.Form.Get("client_id"))
 
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token":  "access-token",
 			"refresh_token": "refresh-token",
 			"token_type":    "bearer",
@@ -81,14 +81,14 @@ func TestOAuth2ExchangePostsAuthorizationCodeGrant(t *testing.T) {
 
 func TestOAuth2RefreshUsesClientSecretBasicAuth(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.NoError(t, r.ParseForm())
+		assert.NoError(t, r.ParseForm())
 		expected := "Basic " + base64.StdEncoding.EncodeToString([]byte("client-id:client-secret"))
 		assert.Equal(t, expected, r.Header.Get("Authorization"))
 		assert.Equal(t, "refresh_token", r.Form.Get("grant_type"))
 		assert.Equal(t, "refresh-token", r.Form.Get("refresh_token"))
 		assert.Empty(t, r.Form.Get("client_id"))
 
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token":  "new-access-token",
 			"refresh_token": "new-refresh-token",
 			"expires_in":    7200,
@@ -112,7 +112,7 @@ func TestOAuth2ClientUsesBearerAuthorization(t *testing.T) {
 		assert.Equal(t, "Bearer access-token", r.Header.Get("Authorization"))
 		assert.Equal(t, "/2/tweets", r.URL.Path)
 
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": map[string]string{
 				"id":   "tweet-1",
 				"text": "hello",

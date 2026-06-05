@@ -6,6 +6,7 @@ import (
 
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+
 	pubbrowser "github.com/kurodakayn/mpp-backend/internal/publisher/browser"
 )
 

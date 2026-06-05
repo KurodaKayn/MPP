@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
@@ -15,8 +18,6 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/services/mediaasset"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
-	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 func TestCreateMediaUploadCreatesPendingAssetAndPresignsPut(t *testing.T) {

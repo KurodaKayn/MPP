@@ -2,13 +2,15 @@ package project
 
 import (
 	"encoding/json"
-	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/dto"
-	"github.com/kurodakayn/mpp-backend/internal/models"
-	"gorm.io/datatypes"
-	"gorm.io/gorm"
 	"math"
 	"strings"
+
+	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 func (s *Service) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
@@ -167,7 +169,7 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 
 		for _, publication := range existing {
 			if _, ok := selected[publication.Platform]; !ok {
-				if err := tx.Model(&publication).Updates(map[string]interface{}{
+				if err := tx.Model(&publication).Updates(map[string]any{
 					"enabled":       false,
 					"error_message": "",
 					"status":        models.PublicationStatusDisabled,
@@ -181,7 +183,7 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 			if err != nil {
 				return err
 			}
-			if err := tx.Model(&publication).Updates(map[string]interface{}{
+			if err := tx.Model(&publication).Updates(map[string]any{
 				"config":          config,
 				"enabled":         true,
 				"error_message":   "",
@@ -251,7 +253,7 @@ func (s *Service) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req 
 		return nil, err
 	}
 
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"status": models.ProjectStatusReady,
 		"title":  title,
 	}
@@ -297,7 +299,7 @@ func (s *Service) SaveProjectPlatforms(projectID uuid.UUID, userID uuid.UUID, re
 
 		for _, publication := range existing {
 			if _, ok := selected[publication.Platform]; !ok {
-				if err := tx.Model(&publication).Updates(map[string]interface{}{
+				if err := tx.Model(&publication).Updates(map[string]any{
 					"enabled":       false,
 					"error_message": "",
 					"status":        models.PublicationStatusDisabled,
@@ -308,7 +310,7 @@ func (s *Service) SaveProjectPlatforms(projectID uuid.UUID, userID uuid.UUID, re
 			}
 
 			if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
-				if err := tx.Model(&publication).Updates(map[string]interface{}{
+				if err := tx.Model(&publication).Updates(map[string]any{
 					"enabled": true,
 					"status":  models.PublicationStatusPending,
 				}).Error; err != nil {
@@ -445,7 +447,7 @@ func defaultPublicationConfig(title, summary, coverImageURL string) (datatypes.J
 	if digest == "" {
 		digest = title
 	}
-	config := map[string]interface{}{
+	config := map[string]any{
 		"digest": TruncateRunes(digest, 120),
 		"title":  title,
 	}

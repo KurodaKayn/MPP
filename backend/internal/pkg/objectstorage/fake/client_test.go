@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 )
 
 func TestClientPresignsObjectURLs(t *testing.T) {
@@ -50,7 +51,7 @@ func TestClientStoresAndDeletesObjects(t *testing.T) {
 
 	body, objectInfo, err := client.GetObject(context.Background(), "projects/asset.png")
 	require.NoError(t, err)
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 	data, err := io.ReadAll(body)
 	require.NoError(t, err)
 	require.Equal(t, []byte("image-bytes"), data)
@@ -68,7 +69,7 @@ func TestClientStoresAndDeletesObjects(t *testing.T) {
 
 	body, _, err = client.GetObject(context.Background(), "projects/final-asset.png")
 	require.NoError(t, err)
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 	data, err = io.ReadAll(body)
 	require.NoError(t, err)
 	require.Equal(t, []byte("image-bytes"), data)

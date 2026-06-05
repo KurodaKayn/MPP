@@ -6,9 +6,10 @@ import (
 	"net/url"
 	"testing"
 
+	"gorm.io/datatypes"
+
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
-	"gorm.io/datatypes"
 )
 
 type fakeXTweetClient struct {

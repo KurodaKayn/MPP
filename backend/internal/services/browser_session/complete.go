@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
@@ -43,7 +44,7 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 	// 2. Ask worker to capture
 	captureResp, err := s.workerClient.CaptureSession(ctx, session.WorkerSessionRef)
 	if err != nil {
-		s.db.Model(&session).Updates(map[string]interface{}{
+		s.db.Model(&session).Updates(map[string]any{
 			"status":        models.BrowserSessionStatusReady,
 			"error_message": err.Error(),
 		})
@@ -111,13 +112,13 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 
 	// 4. Finalize session
 	now := time.Now()
-	s.db.Model(&session).Updates(map[string]interface{}{
+	s.db.Model(&session).Updates(map[string]any{
 		"status":       models.BrowserSessionStatusConnected,
 		"completed_at": &now,
 	})
 
 	// 5. Stop worker
-	s.workerClient.StopSession(ctx, session.WorkerSessionRef)
+	_ = s.workerClient.StopSession(ctx, session.WorkerSessionRef)
 	_ = s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID, session.WorkerSessionRef)
 
 	return &dto.CompleteBrowserSessionResponse{
@@ -142,11 +143,11 @@ func (s *BrowserSessionService) CancelSession(ctx context.Context, userID uuid.U
 	}
 
 	if session.WorkerSessionRef != "" {
-		s.workerClient.StopSession(ctx, session.WorkerSessionRef)
+		_ = s.workerClient.StopSession(ctx, session.WorkerSessionRef)
 	}
 	_ = s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID, session.WorkerSessionRef)
 
-	return s.db.Model(&session).Updates(map[string]interface{}{
+	return s.db.Model(&session).Updates(map[string]any{
 		"status":             models.BrowserSessionStatusExpired,
 		"connect_token_hash": "",
 	}).Error

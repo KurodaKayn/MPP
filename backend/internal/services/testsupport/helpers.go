@@ -3,16 +3,17 @@ package testsupport
 import (
 	"context"
 	"fmt"
+	"net/url"
+
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
-	"gorm.io/datatypes"
-	"gorm.io/gorm"
-	"net/url"
-	"time"
 )
 
 type FakeXOAuth2Provider struct {
@@ -66,11 +67,11 @@ func (f *FakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, pro
 	for _, platform := range platforms {
 		switch platform {
 		case "wechat":
-			drafts[platform] = []byte(fmt.Sprintf(`{"format":"html","html":%q}`, project.SourceContent))
+			drafts[platform] = fmt.Appendf(nil, `{"format":"html","html":%q}`, project.SourceContent)
 		case "zhihu":
 			drafts[platform] = []byte(`{"format":"markdown","markdown":"## Heading\n\nHello **draft**"}`)
 		case "x":
-			drafts[platform] = []byte(fmt.Sprintf(`{"format":"text","text":%q}`, project.Title+"\n\nHello draft"))
+			drafts[platform] = fmt.Appendf(nil, `{"format":"text","text":%q}`, project.Title+"\n\nHello draft")
 		case "douyin":
 			drafts[platform] = []byte(`{"format":"text","text":"Hello draft"}`)
 		default:
@@ -336,8 +337,4 @@ func (f *FakePlatformPublisher) Publish(ctx context.Context, pub *models.Project
 		f.RemoteURL = remoteURL
 	}
 	return "remote-id", "https://example.com/published", nil
-}
-
-func PtrTime(value time.Time) *time.Time {
-	return &value
 }

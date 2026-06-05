@@ -2,7 +2,9 @@ package project
 
 import (
 	"encoding/json"
+
 	"github.com/google/uuid"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 )
@@ -28,12 +30,12 @@ func (s *Service) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.
 	var items []dto.PublicationDetail
 	for _, pub := range publications {
 		// Safe parse config
-		var rawConfig map[string]interface{}
+		var rawConfig map[string]any
 		_ = json.Unmarshal(pub.Config, &rawConfig)
 		safeConfig := filterConfig(rawConfig)
 
 		// Safe parse adapted content
-		var rawContent map[string]interface{}
+		var rawContent map[string]any
 		_ = json.Unmarshal(pub.AdaptedContent, &rawContent)
 		safeContent := rawContent
 		if !includeContent {
@@ -70,8 +72,8 @@ func (s *Service) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.
 
 // Helper functions to filter sensitive data from JSONB fields
 
-func filterConfig(raw map[string]interface{}) map[string]interface{} {
-	safe := make(map[string]interface{})
+func filterConfig(raw map[string]any) map[string]any {
+	safe := make(map[string]any)
 	allowedKeys := []string{"title", "tags", "cover_image", "topics", "category", "original_declaration", "username"}
 	for _, key := range allowedKeys {
 		if val, ok := raw[key]; ok {
@@ -81,8 +83,8 @@ func filterConfig(raw map[string]interface{}) map[string]interface{} {
 	return safe
 }
 
-func summarizeAdaptedContent(raw map[string]interface{}) map[string]interface{} {
-	safe := make(map[string]interface{})
+func summarizeAdaptedContent(raw map[string]any) map[string]any {
+	safe := make(map[string]any)
 	if summary, ok := raw["summary"]; ok {
 		safe["summary"] = summary
 	} else {
