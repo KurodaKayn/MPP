@@ -171,8 +171,8 @@ func TestMigrateBackfillsPersonalWorkspaces(t *testing.T) {
 
 	require.NoError(t, migrate(database))
 
-	ownerWorkspaceID := personalWorkspaceID(ownerID)
-	emptyUserWorkspaceID := personalWorkspaceID(emptyUserID)
+	ownerWorkspaceID := models.PersonalWorkspaceID(ownerID)
+	emptyUserWorkspaceID := models.PersonalWorkspaceID(emptyUserID)
 
 	var workspaceCount int64
 	require.NoError(t, database.Model(&models.Workspace{}).Count(&workspaceCount).Error)
@@ -181,8 +181,8 @@ func TestMigrateBackfillsPersonalWorkspaces(t *testing.T) {
 	var ownerWorkspace models.Workspace
 	require.NoError(t, database.First(&ownerWorkspace, "id = ?", ownerWorkspaceID).Error)
 	require.Equal(t, ownerID, ownerWorkspace.OwnerUserID)
-	require.Equal(t, personalWorkspaceName, ownerWorkspace.Name)
-	require.Equal(t, personalWorkspaceSlug(ownerID), ownerWorkspace.Slug)
+	require.Equal(t, models.PersonalWorkspaceName, ownerWorkspace.Name)
+	require.Equal(t, models.PersonalWorkspaceSlug(ownerID), ownerWorkspace.Slug)
 	require.Equal(t, models.WorkspaceStatusActive, ownerWorkspace.Status)
 
 	var emptyUserWorkspace models.Workspace
