@@ -67,6 +67,55 @@ func TestMigrateAddsProjectCollabDocumentLink(t *testing.T) {
 	require.True(t, database.Migrator().HasIndex(&models.Project{}, "ux_projects_collab_document"))
 }
 
+func TestMigrateAddsWorkspaceTeamModel(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, migrate(database))
+
+	require.True(t, database.Migrator().HasTable(&models.Workspace{}))
+	require.True(t, database.Migrator().HasTable(&models.WorkspaceMember{}))
+	require.True(t, database.Migrator().HasColumn(&models.Project{}, "workspace_id"))
+	require.True(t, database.Migrator().HasIndex(&models.Project{}, "idx_projects_workspace_status_created_at"))
+	require.True(t, database.Migrator().HasIndex(&models.WorkspaceMember{}, "idx_workspace_members_user_role"))
+
+	owner := models.User{Username: "workspace-owner", Email: "owner@example.com"}
+	member := models.User{Username: "workspace-member", Email: "member@example.com"}
+	require.NoError(t, database.Create(&owner).Error)
+	require.NoError(t, database.Create(&member).Error)
+
+	workspace := models.Workspace{
+		OwnerUserID: owner.ID,
+		Name:        "Team workspace",
+		Slug:        "team-workspace",
+	}
+	require.NoError(t, database.Create(&workspace).Error)
+	require.NotEqual(t, uuid.Nil, workspace.ID)
+	require.Equal(t, models.WorkspaceStatusActive, workspace.Status)
+
+	workspaceMember := models.WorkspaceMember{
+		WorkspaceID: workspace.ID,
+		UserID:      member.ID,
+		Role:        models.WorkspaceRoleMember,
+		InvitedBy:   &owner.ID,
+	}
+	require.NoError(t, database.Create(&workspaceMember).Error)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		WorkspaceID:   &workspace.ID,
+		Title:         "Workspace project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusDraft,
+	}
+	require.NoError(t, database.Create(&project).Error)
+
+	var loadedProject models.Project
+	require.NoError(t, database.Preload("Workspace").First(&loadedProject, "id = ?", project.ID).Error)
+	require.NotNil(t, loadedProject.WorkspaceID)
+	require.Equal(t, workspace.ID, *loadedProject.WorkspaceID)
+	require.Equal(t, workspace.Name, loadedProject.Workspace.Name)
+}
+
 func TestConnectionPoolConfigFromEnvUsesDefaults(t *testing.T) {
 	clearConnectionPoolEnv(t)
 

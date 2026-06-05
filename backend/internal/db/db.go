@@ -161,6 +161,8 @@ func migrate(database *gorm.DB) error {
 		}
 		if err := migrationDB.AutoMigrate(
 			&models.User{},
+			&models.Workspace{},
+			&models.WorkspaceMember{},
 			&models.PlatformAccount{},
 			&models.Project{},
 			&models.ProjectCollaborator{},

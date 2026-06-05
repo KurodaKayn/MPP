@@ -63,15 +63,17 @@ type User struct {
 type Project struct {
 	ID               uuid.UUID  `gorm:"type:uuid;primaryKey"`
 	UserID           uuid.UUID  `gorm:"type:uuid;not null;index:idx_projects_user_status_created_at"`
+	WorkspaceID      *uuid.UUID `gorm:"type:uuid;index:idx_projects_workspace_status_created_at"`
 	CollabDocumentID *uuid.UUID `gorm:"type:uuid;uniqueIndex:ux_projects_collab_document"`
 	Title            string     `gorm:"not null"`
 	SourceContent    string     `gorm:"type:text;not null"`
-	Status           string     `gorm:"not null;index:idx_projects_user_status_created_at;index:idx_projects_status_created_at"`
-	CreatedAt        time.Time  `gorm:"index:idx_projects_user_status_created_at;index:idx_projects_status_created_at"`
+	Status           string     `gorm:"not null;index:idx_projects_user_status_created_at;index:idx_projects_status_created_at;index:idx_projects_workspace_status_created_at"`
+	CreatedAt        time.Time  `gorm:"index:idx_projects_user_status_created_at;index:idx_projects_status_created_at;index:idx_projects_workspace_status_created_at"`
 	UpdatedAt        time.Time
 	Publications     []ProjectPlatformPublication `gorm:"foreignKey:ProjectID"`
 	Collaborators    []ProjectCollaborator        `gorm:"foreignKey:ProjectID"`
 	CollabDocument   *CollabDocument              `gorm:"foreignKey:CollabDocumentID;references:ID;constraint:OnDelete:SET NULL"`
+	Workspace        *Workspace                   `gorm:"foreignKey:WorkspaceID;references:ID;constraint:OnDelete:SET NULL"`
 }
 
 const (
@@ -89,6 +91,42 @@ type ProjectCollaborator struct {
 	Project   Project `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
 	User      User    `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	Creator   User    `gorm:"foreignKey:CreatedBy"`
+}
+
+const (
+	WorkspaceStatusActive   = "active"
+	WorkspaceStatusArchived = "archived"
+
+	WorkspaceRoleOwner  = "owner"
+	WorkspaceRoleAdmin  = "admin"
+	WorkspaceRoleMember = "member"
+	WorkspaceRoleViewer = "viewer"
+)
+
+type Workspace struct {
+	ID          uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	OwnerUserID uuid.UUID      `gorm:"type:uuid;not null;index"`
+	Name        string         `gorm:"not null"`
+	Slug        string         `gorm:"index"`
+	Status      string         `gorm:"not null;default:'active';index"`
+	CreatedAt   time.Time      `gorm:"not null"`
+	UpdatedAt   time.Time      `gorm:"not null"`
+	DeletedAt   gorm.DeletedAt `gorm:"index"`
+	Owner       User           `gorm:"foreignKey:OwnerUserID;constraint:OnDelete:CASCADE"`
+	Members     []WorkspaceMember
+	Projects    []Project
+}
+
+type WorkspaceMember struct {
+	WorkspaceID uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	UserID      uuid.UUID  `gorm:"type:uuid;primaryKey;index:idx_workspace_members_user_role"`
+	Role        string     `gorm:"not null;index:idx_workspace_members_user_role"`
+	InvitedBy   *uuid.UUID `gorm:"type:uuid;index"`
+	JoinedAt    *time.Time
+	CreatedAt   time.Time `gorm:"not null"`
+	Workspace   Workspace `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
+	User        User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	Inviter     *User     `gorm:"foreignKey:InvitedBy"`
 }
 
 type ProjectPlatformPublication struct {
@@ -190,6 +228,16 @@ func (p *Project) BeforeCreate(tx *gorm.DB) (err error) {
 func (p *ProjectPlatformPublication) BeforeCreate(tx *gorm.DB) (err error) {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
+	}
+	return
+}
+
+func (w *Workspace) BeforeCreate(tx *gorm.DB) (err error) {
+	if w.ID == uuid.Nil {
+		w.ID = uuid.New()
+	}
+	if w.Status == "" {
+		w.Status = WorkspaceStatusActive
 	}
 	return
 }
