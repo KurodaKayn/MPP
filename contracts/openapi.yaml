@@ -193,22 +193,22 @@ components:
     PublicationStatus:
       type: string
       enum:
-        - pending
-        - adapted
+        - draft
+        - syncing
+        - queued
         - publishing
-        - published
+        - succeeded
         - failed
-        - disabled
+        - cancelled
 
     PublishResultStatus:
       type: string
       enum:
-        - adapted
         - error
         - failed
         - manual_required
-        - pending
-        - published
+        - queued
+        - succeeded
         - publishing
 
     PlatformAccountStatus:
@@ -807,6 +807,8 @@ components:
         job_id:
           type: string
           format: uuid
+        idempotency_key:
+          type: string
         platform:
           $ref: "#/components/schemas/PublishPlatform"
         queued_at:

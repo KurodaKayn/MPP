@@ -20,12 +20,20 @@ const (
 
 // Publication Status Constants
 const (
-	PublicationStatusPending    = string(contracts.PublicationStatusPending)
-	PublicationStatusAdapted    = string(contracts.PublicationStatusAdapted)
+	PublicationStatusDraft      = string(contracts.PublicationStatusDraft)
+	PublicationStatusSyncing    = string(contracts.PublicationStatusSyncing)
+	PublicationStatusQueued     = string(contracts.PublicationStatusQueued)
 	PublicationStatusPublishing = string(contracts.PublicationStatusPublishing)
-	PublicationStatusPublished  = string(contracts.PublicationStatusPublished)
+	PublicationStatusSucceeded  = string(contracts.PublicationStatusSucceeded)
 	PublicationStatusFailed     = string(contracts.PublicationStatusFailed)
-	PublicationStatusDisabled   = string(contracts.PublicationStatusDisabled)
+	PublicationStatusCancelled  = string(contracts.PublicationStatusCancelled)
+
+	// Deprecated compatibility aliases. New code should use draft/syncing/queued/
+	// publishing/succeeded/failed/cancelled names.
+	PublicationStatusPending   = PublicationStatusDraft
+	PublicationStatusAdapted   = PublicationStatusDraft
+	PublicationStatusPublished = PublicationStatusSucceeded
+	PublicationStatusDisabled  = PublicationStatusCancelled
 )
 
 // Platform account status constants
@@ -165,6 +173,24 @@ type ProjectPlatformPublication struct {
 	UpdatedAt      time.Time
 }
 
+type PublishEvent struct {
+	ID             uuid.UUID `gorm:"type:uuid;primaryKey"`
+	PublicationID  uuid.UUID `gorm:"type:uuid;not null;index"`
+	ProjectID      uuid.UUID `gorm:"type:uuid;not null;index"`
+	UserID         uuid.UUID `gorm:"type:uuid;not null;index:idx_publish_events_user_idempotency"`
+	Platform       string    `gorm:"not null;index"`
+	JobID          uuid.UUID `gorm:"type:uuid;not null;index"`
+	IdempotencyKey string    `gorm:"not null;index:idx_publish_events_user_idempotency"`
+	EventType      string    `gorm:"not null;index"`
+	Status         string    `gorm:"not null;index"`
+	Message        string
+	RemoteID       string
+	PublishURL     string
+	ErrorMessage   string
+	Metadata       datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	CreatedAt      time.Time
+}
+
 type PlatformAccount struct {
 	ID            uuid.UUID      `gorm:"type:uuid;primaryKey"`
 	UserID        uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:idx_platform_accounts_user_platform"`
@@ -246,6 +272,13 @@ func (p *Project) BeforeCreate(tx *gorm.DB) (err error) {
 func (p *ProjectPlatformPublication) BeforeCreate(tx *gorm.DB) (err error) {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
+	}
+	return
+}
+
+func (e *PublishEvent) BeforeCreate(tx *gorm.DB) (err error) {
+	if e.ID == uuid.Nil {
+		e.ID = uuid.New()
 	}
 	return
 }

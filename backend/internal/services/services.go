@@ -20,6 +20,7 @@ type DashboardService = dashboard.DashboardService
 type MemoryXOAuth2StateStore = platformaccount.MemoryXOAuth2StateStore
 type PublishJob = publishsvc.PublishJob
 type PublishQueue = publishsvc.PublishQueue
+type PublishRequest = publishsvc.PublishRequest
 type RedisPublishQueue = publishsvc.RedisPublishQueue
 type RedisXOAuth2StateStore = platformaccount.RedisXOAuth2StateStore
 type WechatAPITester = platformaccount.WechatAPITester
