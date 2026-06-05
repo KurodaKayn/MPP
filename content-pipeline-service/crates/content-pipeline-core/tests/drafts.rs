@@ -1,6 +1,8 @@
 use content_pipeline_core::{
     DraftCompileError, DraftCompiler, DraftOutput, DraftTarget, SourceProject,
 };
+use serde_json::json;
+use std::path::{Path, PathBuf};
 
 #[test]
 fn compiles_text_draft_with_title() {
@@ -138,6 +140,26 @@ fn compiles_html_to_markdown_draft() {
     assert!(markdown.contains("![Image](https://example.com/a.png)"));
 }
 
+#[test]
+fn matches_wechat_representative_snapshot() {
+    assert_representative_snapshot("wechat");
+}
+
+#[test]
+fn matches_zhihu_representative_snapshot() {
+    assert_representative_snapshot("zhihu");
+}
+
+#[test]
+fn matches_x_representative_snapshot() {
+    assert_representative_snapshot("x");
+}
+
+#[test]
+fn matches_douyin_representative_snapshot() {
+    assert_representative_snapshot("douyin");
+}
+
 fn compile_for(
     platform: &str,
     profile: &str,
@@ -174,4 +196,48 @@ fn compile_output(
 
 fn decode_adapted_content(output: &DraftOutput) -> serde_json::Value {
     serde_json::from_str(&output.adapted_content_json).expect("valid adapted content")
+}
+
+fn assert_representative_snapshot(platform: &str) {
+    let source_content = fixture_text("representative_article.html");
+    let output = compile_output(
+        platform,
+        &format!("{platform}@v1"),
+        "Launch Notes",
+        "html",
+        &source_content,
+    )
+    .expect("representative draft should compile");
+
+    let expected = fixture_json(&format!("draft_snapshots/{platform}.json"));
+    assert_eq!(draft_snapshot(&output), expected);
+}
+
+fn draft_snapshot(output: &DraftOutput) -> serde_json::Value {
+    json!({
+        "platform": output.platform,
+        "profile": output.profile,
+        "status": output.status,
+        "adapted_content": decode_adapted_content(output),
+        "summary": output.summary,
+        "warnings": output.warnings,
+    })
+}
+
+fn fixture_text(name: &str) -> String {
+    std::fs::read_to_string(fixture_path(name))
+        .expect("fixture should be readable")
+        .trim_end()
+        .to_string()
+}
+
+fn fixture_json(name: &str) -> serde_json::Value {
+    serde_json::from_str(&fixture_text(name)).expect("fixture should contain valid JSON")
+}
+
+fn fixture_path(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join(name)
 }
