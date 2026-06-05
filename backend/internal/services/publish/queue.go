@@ -28,6 +28,8 @@ const (
 	publishLockTTL          = 30 * time.Minute
 	publishLockRefreshEvery = publishLockTTL / 3
 	publishStaleAfter       = 2 * publishLockTTL
+	publishReplayWait       = 2 * time.Second
+	publishReplayPoll       = 25 * time.Millisecond
 )
 
 var (
@@ -177,10 +179,17 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		return nil, ErrForbidden
 	}
 	req.IdempotencyKey = normalizeIdempotencyKey(req.IdempotencyKey)
+	if req.IdempotencyKey != "" {
+		if resp, ok, err := s.findIdempotentPublishResponse(projectID, platform, *scopeUserID, req.IdempotencyKey); err != nil {
+			return nil, err
+		} else if ok {
+			return resp, nil
+		}
+	}
 
 	project, pub, err := s.preparePublishJob(projectID, platform, *scopeUserID)
 	if err != nil {
-		if errors.Is(err, ErrPublicationAlreadyPublishing) && req.IdempotencyKey != "" {
+		if req.IdempotencyKey != "" {
 			if resp, ok, lookupErr := s.findIdempotentPublishResponse(projectID, platform, *scopeUserID, req.IdempotencyKey); lookupErr != nil {
 				return nil, lookupErr
 			} else if ok {
@@ -188,14 +197,6 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 			}
 		}
 		return nil, err
-	}
-
-	if req.IdempotencyKey != "" {
-		if resp, ok, err := s.findIdempotentPublishResponse(project.ID, platform, *scopeUserID, req.IdempotencyKey); err != nil {
-			return nil, err
-		} else if ok {
-			return resp, nil
-		}
 	}
 
 	job := PublishJob{
@@ -213,6 +214,13 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		return nil, err
 	}
 	if !acquired {
+		if req.IdempotencyKey != "" {
+			if resp, ok, err := s.waitForIdempotentPublishResponse(ctx, project.ID, platform, *scopeUserID, req.IdempotencyKey); err != nil {
+				return nil, err
+			} else if ok {
+				return resp, nil
+			}
+		}
 		return nil, ErrPublicationAlreadyPublishing
 	}
 
