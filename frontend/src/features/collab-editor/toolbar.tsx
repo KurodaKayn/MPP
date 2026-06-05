@@ -24,11 +24,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import type { CollabDocumentRole } from "@/lib/dashboard/api";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
-import { cn } from "@/lib/utils";
 import type {
   CollabConnectionStatus,
   CollabUserProfile,
 } from "./collab-provider";
+import { collabStatusClassName } from "./collab-status";
 
 type CollabEditorToolbarProps = {
   canEdit: boolean;
@@ -160,7 +160,7 @@ export function CollabEditorToolbar({
       </ToolbarButton>
 
       <div className="ml-auto flex flex-wrap items-center gap-2 pl-2">
-        <Badge variant="outline" className={statusClassName(status)}>
+        <Badge variant="outline" className={collabStatusClassName(status)}>
           {t(`collab.status.${status}`)}
         </Badge>
         {role ? (
@@ -177,16 +177,5 @@ export function CollabEditorToolbar({
         </Badge>
       </div>
     </div>
-  );
-}
-
-function statusClassName(status: CollabConnectionStatus) {
-  return cn(
-    status === "synced" &&
-      "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    status === "connected" &&
-      "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-    (status === "offline" || status === "error" || status === "unauthorized") &&
-      "border-destructive/30 bg-destructive/10 text-destructive",
   );
 }

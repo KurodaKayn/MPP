@@ -14,6 +14,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/datatypes"
@@ -28,9 +29,11 @@ var ErrManualPublishUnsupported = errors.New("manual publish is only supported f
 var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
 
 type Service struct {
-	db       *gorm.DB
-	accounts *platformaccount.Service
-	queue    PublishQueue
+	db                    *gorm.DB
+	accounts              *platformaccount.Service
+	queue                 PublishQueue
+	browserWorkerClient   publisher.BrowserWorkerClient
+	browserSessionService *browsersession.BrowserSessionService
 }
 
 func NewService(db *gorm.DB, accounts *platformaccount.Service) *Service {
@@ -52,11 +55,22 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 	if s.accounts != nil {
 		scoped.accounts = s.accounts.WithContext(ctx)
 	}
+	if s.browserSessionService != nil {
+		scoped.browserSessionService = s.browserSessionService.WithContext(ctx)
+	}
 	return &scoped
 }
 
 func (s *Service) SetQueue(queue PublishQueue) {
 	s.queue = queue
+}
+
+func (s *Service) SetBrowserWorkerClient(client publisher.BrowserWorkerClient) {
+	s.browserWorkerClient = client
+}
+
+func (s *Service) SetBrowserSessionService(service *browsersession.BrowserSessionService) {
+	s.browserSessionService = service
 }
 
 func (s *Service) UseRedis(client *redis.Client) {
@@ -116,7 +130,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	if err != nil {
 		return nil, err
 	}
-	if !publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusQueued && pub.Status != models.PublicationStatusPublishing {
+	if pub.Status == models.PublicationStatusSyncing || (!publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusQueued && pub.Status != models.PublicationStatusPublishing) {
 		return nil, ErrPublicationRequiresSync
 	}
 
@@ -139,11 +153,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	}
 
 	startedAt := time.Now().UTC()
-	if err := s.db.Model(&pub).Updates(map[string]interface{}{
-		"status":          models.PublicationStatusPublishing,
-		"error_message":   "",
-		"last_attempt_at": &startedAt,
-	}).Error; err != nil {
+	if err := s.markPublicationPublishing(&pub, startedAt); err != nil {
 		return nil, err
 	}
 
@@ -194,6 +204,25 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	return response, nil
 }
 
+func (s *Service) markPublicationPublishing(pub *models.ProjectPlatformPublication, startedAt time.Time) error {
+	result := s.db.Model(&models.ProjectPlatformPublication{}).
+		Where("id = ? AND status = ?", pub.ID, pub.Status).
+		Updates(map[string]interface{}{
+			"status":          models.PublicationStatusPublishing,
+			"error_message":   "",
+			"last_attempt_at": &startedAt,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return s.publicationStateChangedError(pub.ID)
+	}
+	pub.Status = models.PublicationStatusPublishing
+	pub.LastAttemptAt = &startedAt
+	return nil
+}
+
 func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
 	var proj models.Project
 	if err := s.db.Where("id = ? AND user_id = ?", projectID, *scopeUserID).First(&proj).Error; err != nil {
@@ -232,6 +261,17 @@ func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID)
 
 func normalizeIdempotencyKey(key string) string {
 	return strings.TrimSpace(key)
+}
+
+func (s *Service) publicationStateChangedError(publicationID uuid.UUID) error {
+	var pub models.ProjectPlatformPublication
+	if err := s.db.Select("status", "last_attempt_at").First(&pub, "id = ?", publicationID).Error; err != nil {
+		return err
+	}
+	if pub.Status == models.PublicationStatusQueued || pub.Status == models.PublicationStatusPublishing {
+		return ErrPublicationAlreadyPublishing
+	}
+	return ErrPublicationRequiresSync
 }
 
 func publicationHasSyncedDraft(pub models.ProjectPlatformPublication) bool {

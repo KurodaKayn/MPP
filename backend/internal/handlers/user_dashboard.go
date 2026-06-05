@@ -833,6 +833,9 @@ func (h *UserDashboardHandler) SyncProjectPrepublish(c echo.Context) error {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
 		}
+		if errors.Is(err, services.ErrPublicationAlreadyPublishing) {
+			return sendError(c, http.StatusConflict, "publish_in_progress", "publication is already publishing")
+		}
 		if errors.Is(err, services.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}

@@ -1,4 +1,4 @@
-package dashboard
+package project
 
 import (
 	"errors"
@@ -20,7 +20,7 @@ func projectCollabDocumentRole(role string) (string, error) {
 	}
 }
 
-func (s *DashboardService) CreateProjectCollabSession(projectID uuid.UUID, userID uuid.UUID) (*collabdoc.Session, error) {
+func (s *Service) CreateProjectCollabSession(projectID uuid.UUID, userID uuid.UUID) (*collabdoc.Session, error) {
 	if projectID == uuid.Nil || userID == uuid.Nil {
 		return nil, ErrInvalidProject
 	}
@@ -40,7 +40,7 @@ func (s *DashboardService) CreateProjectCollabSession(projectID uuid.UUID, userI
 	return s.collabDocuments.CreateAuthorizedSession(s.requestContext(), userID, documentID, documentRole)
 }
 
-func (s *DashboardService) ensureProjectCollabDocument(projectID uuid.UUID, userID uuid.UUID) (uuid.UUID, string, error) {
+func (s *Service) ensureProjectCollabDocument(projectID uuid.UUID, userID uuid.UUID) (uuid.UUID, string, error) {
 	var documentID uuid.UUID
 	var documentRole string
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -49,7 +49,7 @@ func (s *DashboardService) ensureProjectCollabDocument(projectID uuid.UUID, user
 			return err
 		}
 
-		role, err := projectAccessRoleWithDB(tx, project, userID)
+		role, err := ProjectAccessRoleWithDB(tx, project, userID)
 		if err != nil {
 			return err
 		}

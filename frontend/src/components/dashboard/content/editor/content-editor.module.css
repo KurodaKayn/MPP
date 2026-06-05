@@ -141,3 +141,25 @@
   opacity: 0.75;
   pointer-events: none;
 }
+
+.prose :global(.collab-cursor) {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 1.15em;
+  border-left: 2px solid;
+  transform: translateY(0.2em);
+}
+
+.prose :global(.collab-cursor-label) {
+  position: absolute;
+  top: -1.4rem;
+  left: -1px;
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  color: white;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}

@@ -1,15 +1,16 @@
-package dashboard_test
+package workspace_test
 
 import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
 
 func TestWorkspaceManagement(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	owner := models.User{Username: "workspace-owner", Email: "workspace-owner@example.com"}
@@ -128,7 +129,7 @@ func TestWorkspaceManagement(t *testing.T) {
 }
 
 func TestWorkspaceProjectFlow(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	owner := models.User{Username: "team-owner", Email: "team-owner@example.com"}
