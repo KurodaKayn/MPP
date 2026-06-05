@@ -33,6 +33,12 @@ linters:
       require-explanation: true
       require-specific: true
       allow-unused: false
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
   exclusions:
     generated: strict
 
