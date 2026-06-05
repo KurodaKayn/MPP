@@ -183,8 +183,17 @@ type AIEditContentRequest struct {
 }
 
 type AIEditContentResponse struct {
-	Channel string `json:"channel"`
-	Content string `json:"content"`
+	Channel string   `json:"channel"`
+	Content string   `json:"content"`
+	Usage   *AIUsage `json:"usage,omitempty"`
+}
+
+type AIUsage struct {
+	InputTokens  int64   `json:"input_tokens"`
+	OutputTokens int64   `json:"output_tokens"`
+	TotalTokens  int64   `json:"total_tokens"`
+	Cost         float64 `json:"cost"`
+	Currency     string  `json:"currency"`
 }
 
 type AIEditPrepublishRequest struct {
@@ -200,6 +209,7 @@ type AIEditPrepublishResponse struct {
 	Platform       string                 `json:"platform"`
 	AdaptedContent map[string]interface{} `json:"adapted_content"`
 	Content        string                 `json:"content"`
+	Usage          *AIUsage               `json:"usage,omitempty"`
 }
 
 type PublicationSummary struct {

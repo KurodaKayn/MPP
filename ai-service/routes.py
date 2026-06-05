@@ -9,8 +9,10 @@ from llm_client import (
     adapted_content_dict,
     build_llm,
     response_text,
+    response_usage,
     selected_adapted_text,
 )
+from observability import record_ai_usage
 from prompts import (
     build_calibrate_messages,
     build_edit_content_messages,
@@ -86,8 +88,12 @@ async def edit_content(request: EditContentRequest):
         edited_content = response_text(response.content)
         if not edited_content:
             raise HTTPException(status_code=502, detail="LLM returned empty content")
+        usage = response_usage(response)
+        record_ai_usage("/content/edit", usage)
 
-        return EditContentResponse(channel="content", content=edited_content)
+        return EditContentResponse(
+            channel="content", content=edited_content, usage=usage
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -125,6 +131,8 @@ async def edit_prepublish(request: EditPrepublishRequest):
         edited_text = response_text(response.content)
         if not edited_text:
             raise HTTPException(status_code=502, detail="LLM returned empty content")
+        usage = response_usage(response)
+        record_ai_usage("/prepublish/edit", usage)
 
         adapted_content = adapted_content_dict(request.adapted_content)
         adapted_content[content_key] = edited_text
@@ -136,6 +144,7 @@ async def edit_prepublish(request: EditPrepublishRequest):
             platform=request.platform,
             adapted_content=AdaptedContent.model_validate(adapted_content),
             content=edited_text,
+            usage=usage,
         )
     except HTTPException:
         raise

@@ -4,19 +4,29 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/envutil"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/proxy"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/labstack/echo/v4"
 )
+
+const (
+	browserStreamGatewayTimeoutEnv     = "BROWSER_STREAM_GATEWAY_TIMEOUT"
+	defaultBrowserStreamGatewayTimeout = 15 * time.Second
+)
+
+var browserStreamTransport = newBrowserStreamTransportFromEnv()
 
 type BrowserSessionHandler struct {
 	service       *browsersession.BrowserSessionService
@@ -112,7 +122,7 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 	var lease *streamgate.Lease
-	if isWebSocket {
+	if shouldAcquireBrowserStreamLease(c, isWebSocket, proxyPath) {
 		lease, err = h.acquireBrowserStreamLease(c, userID, tenantID, id)
 		if err != nil {
 			if handled := streamgate.SendLimitError(c, err); handled != nil {
@@ -156,6 +166,7 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	}
 
 	reverseProxy := httputil.NewSingleHostReverseProxy(target)
+	reverseProxy.Transport = browserStreamTransport
 	reverseProxy.Director = func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
@@ -166,8 +177,45 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 		req.URL.RawQuery = rawQuery
 		req.Host = target.Host
 	}
+	reverseProxy.ErrorHandler = browserStreamProxyErrorHandler
+	c.Response().Header().Set("X-MPP-Stream-Reconnect", "true")
+	if lease != nil && lease.ID != "" {
+		c.Response().Header().Set("X-MPP-Stream-ID", lease.ID)
+	}
 	reverseProxy.ServeHTTP(c.Response(), c.Request())
 	return nil
+}
+
+func shouldAcquireBrowserStreamLease(c echo.Context, isWebSocket bool, proxyPath string) bool {
+	if isWebSocket {
+		return true
+	}
+	path := strings.ToLower(proxyPath)
+	queryPath := strings.ToLower(c.QueryParam("path"))
+	return strings.Contains(path, "websockify") || strings.Contains(queryPath, "websockify")
+}
+
+func newBrowserStreamTransportFromEnv() http.RoundTripper {
+	timeout := envutil.Duration(browserStreamGatewayTimeoutEnv, defaultBrowserStreamGatewayTimeout)
+	return &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   timeout,
+		ResponseHeaderTimeout: timeout,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+}
+
+func browserStreamProxyErrorHandler(rw http.ResponseWriter, _ *http.Request, err error) {
+	status := http.StatusBadGateway
+	var netErr net.Error
+	if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &netErr) && netErr.Timeout() {
+		status = http.StatusGatewayTimeout
+	}
+	http.Error(rw, http.StatusText(status), status)
 }
 
 func (h *BrowserSessionHandler) acquireBrowserStreamLease(c echo.Context, userID uuid.UUID, tenantID string, sessionID uuid.UUID) (*streamgate.Lease, error) {
