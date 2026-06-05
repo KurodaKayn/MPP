@@ -1,4 +1,4 @@
-package dashboard
+package project
 
 import (
 	"github.com/google/uuid"
@@ -19,7 +19,7 @@ func normalizeProjectCollaboratorRole(role string) (string, error) {
 	}
 }
 
-func (s *DashboardService) ListProjectCollaborators(projectID uuid.UUID, actorUserID uuid.UUID) (*dto.ProjectCollaboratorsResponse, error) {
+func (s *Service) ListProjectCollaborators(projectID uuid.UUID, actorUserID uuid.UUID) (*dto.ProjectCollaboratorsResponse, error) {
 	if _, err := s.requireProjectOwner(projectID, actorUserID); err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func (s *DashboardService) ListProjectCollaborators(projectID uuid.UUID, actorUs
 	return &dto.ProjectCollaboratorsResponse{Items: items}, nil
 }
 
-func (s *DashboardService) AddProjectCollaborator(projectID uuid.UUID, actorUserID uuid.UUID, req dto.AddProjectCollaboratorRequest) (*dto.ProjectCollaborator, error) {
+func (s *Service) AddProjectCollaborator(projectID uuid.UUID, actorUserID uuid.UUID, req dto.AddProjectCollaboratorRequest) (*dto.ProjectCollaborator, error) {
 	project, err := s.requireProjectOwner(projectID, actorUserID)
 	if err != nil {
 		return nil, err
@@ -83,7 +83,7 @@ func (s *DashboardService) AddProjectCollaborator(projectID uuid.UUID, actorUser
 	return s.getProjectCollaborator(projectID, user.ID)
 }
 
-func (s *DashboardService) UpdateProjectCollaborator(projectID uuid.UUID, actorUserID uuid.UUID, targetUserID uuid.UUID, req dto.UpdateProjectCollaboratorRequest) (*dto.ProjectCollaborator, error) {
+func (s *Service) UpdateProjectCollaborator(projectID uuid.UUID, actorUserID uuid.UUID, targetUserID uuid.UUID, req dto.UpdateProjectCollaboratorRequest) (*dto.ProjectCollaborator, error) {
 	project, err := s.requireProjectOwner(projectID, actorUserID)
 	if err != nil {
 		return nil, err
@@ -108,7 +108,7 @@ func (s *DashboardService) UpdateProjectCollaborator(projectID uuid.UUID, actorU
 	return s.getProjectCollaborator(projectID, targetUserID)
 }
 
-func (s *DashboardService) RemoveProjectCollaborator(projectID uuid.UUID, actorUserID uuid.UUID, targetUserID uuid.UUID) error {
+func (s *Service) RemoveProjectCollaborator(projectID uuid.UUID, actorUserID uuid.UUID, targetUserID uuid.UUID) error {
 	project, err := s.requireProjectOwner(projectID, actorUserID)
 	if err != nil {
 		return err
@@ -127,7 +127,7 @@ func (s *DashboardService) RemoveProjectCollaborator(projectID uuid.UUID, actorU
 	return nil
 }
 
-func (s *DashboardService) resolveProjectCollaboratorUser(req dto.AddProjectCollaboratorRequest) (*models.User, error) {
+func (s *Service) resolveProjectCollaboratorUser(req dto.AddProjectCollaboratorRequest) (*models.User, error) {
 	var user models.User
 	if req.UserID != uuid.Nil {
 		if err := s.db.Select("id", "username", "email").First(&user, "id = ?", req.UserID).Error; err != nil {
@@ -149,7 +149,7 @@ func (s *DashboardService) resolveProjectCollaboratorUser(req dto.AddProjectColl
 	return &user, nil
 }
 
-func (s *DashboardService) getProjectCollaborator(projectID uuid.UUID, userID uuid.UUID) (*dto.ProjectCollaborator, error) {
+func (s *Service) getProjectCollaborator(projectID uuid.UUID, userID uuid.UUID) (*dto.ProjectCollaborator, error) {
 	var collaborator models.ProjectCollaborator
 	if err := s.db.
 		Preload("User", func(db *gorm.DB) *gorm.DB {

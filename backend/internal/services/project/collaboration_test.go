@@ -1,21 +1,22 @@
-package dashboard_test
+package project_test
 
 import (
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
 
 func TestCreateProjectCollabSessionLazilyLinksDocumentAndMapsRoles(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	collabService := services.NewCollabDocumentService(db)
 	collabService.UseSessionConfig(services.CollabDocumentSessionConfig{
 		TokenSecret:      []byte("collab-secret"),
 		WebsocketURLBase: "ws://collab.test",
 	})
-	initializer := &fakeProjectDocumentInitializer{}
+	initializer := &testsupport.FakeProjectDocumentInitializer{}
 	collabService.UseProjectDocumentInitializer(initializer)
 	s := services.NewDashboardService(db)
 	s.SetCollabDocumentService(collabService)
@@ -65,7 +66,7 @@ func TestCreateProjectCollabSessionLazilyLinksDocumentAndMapsRoles(t *testing.T)
 		ownerSession.DocumentID,
 		ownerSession.DocumentID,
 		ownerSession.DocumentID,
-	}, initializer.documentIDs)
+	}, initializer.DocumentIDs)
 
 	var savedProject models.Project
 	require.NoError(t, db.First(&savedProject, "id = ?", project.ID).Error)
@@ -88,10 +89,10 @@ func TestCreateProjectCollabSessionLazilyLinksDocumentAndMapsRoles(t *testing.T)
 }
 
 func TestCreateProjectCollabSessionRejectsNonCollaboratorWithoutCreatingDocument(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	collabService := services.NewCollabDocumentService(db)
 	collabService.UseSessionConfig(services.CollabDocumentSessionConfig{TokenSecret: []byte("collab-secret")})
-	initializer := &fakeProjectDocumentInitializer{}
+	initializer := &testsupport.FakeProjectDocumentInitializer{}
 	collabService.UseProjectDocumentInitializer(initializer)
 	s := services.NewDashboardService(db)
 	s.SetCollabDocumentService(collabService)
@@ -115,5 +116,5 @@ func TestCreateProjectCollabSessionRejectsNonCollaboratorWithoutCreatingDocument
 	var documentCount int64
 	require.NoError(t, db.Model(&models.CollabDocument{}).Count(&documentCount).Error)
 	require.Zero(t, documentCount)
-	require.Empty(t, initializer.documentIDs)
+	require.Empty(t, initializer.DocumentIDs)
 }

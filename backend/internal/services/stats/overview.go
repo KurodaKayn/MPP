@@ -1,4 +1,4 @@
-package dashboard
+package stats
 
 import (
 	"github.com/google/uuid"
@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
+func (s *Service) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
 	var stats dto.DashboardStatsResponse
 
 	// Users count (Only admin should see total users)
@@ -22,7 +22,7 @@ func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStats
 	// Projects count
 	projQuery := s.db.Model(&models.Project{})
 	if scopeUserID != nil {
-		projQuery = s.scopeAccessibleProjects(projQuery, *scopeUserID)
+		projQuery = s.projects.ScopeAccessibleProjects(projQuery, *scopeUserID)
 	}
 	if err := projQuery.Count(&stats.TotalProjects).Error; err != nil {
 		return nil, err
@@ -33,7 +33,7 @@ func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStats
 	if scopeUserID != nil {
 		pubPubQuery = pubPubQuery.Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
 			Scopes(func(db *gorm.DB) *gorm.DB {
-				return s.scopeAccessibleProjects(db, *scopeUserID)
+				return s.projects.ScopeAccessibleProjects(db, *scopeUserID)
 			})
 	}
 	if err := pubPubQuery.Count(&stats.TotalPublishedPublications).Error; err != nil {
@@ -45,7 +45,7 @@ func (s *DashboardService) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStats
 	if scopeUserID != nil {
 		failPubQuery = failPubQuery.Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
 			Scopes(func(db *gorm.DB) *gorm.DB {
-				return s.scopeAccessibleProjects(db, *scopeUserID)
+				return s.projects.ScopeAccessibleProjects(db, *scopeUserID)
 			})
 	}
 	if err := failPubQuery.Count(&stats.TotalFailedPublications).Error; err != nil {
