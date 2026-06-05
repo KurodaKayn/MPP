@@ -1,4 +1,6 @@
-use content_pipeline_core::{DraftCompiler, DraftTarget, SourceProject};
+use content_pipeline_core::{
+    DraftCompileError, DraftCompiler, DraftOutput, DraftTarget, SourceProject,
+};
 
 #[test]
 fn compiles_text_draft_with_title() {
@@ -35,6 +37,59 @@ fn truncates_weighted_text_with_ellipsis() {
     let text = output["text"].as_str().expect("text output");
 
     assert!(text.ends_with("..."));
+}
+
+#[test]
+fn reports_truncation_warning_and_matching_summary() {
+    let output = compile_output(
+        "x",
+        "x@v1",
+        "",
+        "html",
+        &format!("<p>{}</p>", "中".repeat(200)),
+    )
+    .expect("x draft should compile");
+    let adapted_content = decode_adapted_content(&output);
+
+    assert_eq!(
+        output.warnings,
+        vec!["text truncated to satisfy x@v1 weighted length limit"]
+    );
+    assert_eq!(output.summary, adapted_content["summary"]);
+}
+
+#[test]
+fn rejects_unsupported_source_format() {
+    let err = compile_output("x", "x@v1", "Hello", "markdown", "# Hello")
+        .expect_err("markdown input is not supported yet");
+
+    assert!(matches!(
+        err,
+        DraftCompileError::UnsupportedSourceFormat(format) if format == "markdown"
+    ));
+}
+
+#[test]
+fn rejects_unsupported_platform() {
+    let err = compile_output("mastodon", "mastodon@v1", "", "html", "<p>Hello</p>")
+        .expect_err("unknown platform should not compile");
+
+    assert!(matches!(
+        err,
+        DraftCompileError::UnsupportedPlatform(platform) if platform == "mastodon"
+    ));
+}
+
+#[test]
+fn rejects_unsupported_profile_version() {
+    let err = compile_output("x", "x@v2", "", "html", "<p>Hello</p>")
+        .expect_err("unsupported profile should not compile");
+
+    assert!(matches!(
+        err,
+        DraftCompileError::UnsupportedProfile { platform, profile }
+            if platform == "x" && profile == "x@v2"
+    ));
 }
 
 #[test]
@@ -89,21 +144,34 @@ fn compile_for(
     title: &str,
     source_content: &str,
 ) -> serde_json::Value {
-    let output = DraftCompiler::new()
-        .compile(
-            &SourceProject {
-                id: "project-1".to_string(),
-                title: title.to_string(),
-                source_format: "html".to_string(),
-                source_content: source_content.to_string(),
-            },
-            &DraftTarget {
-                platform: platform.to_string(),
-                profile: profile.to_string(),
-                config_json: "{}".to_string(),
-            },
-        )
+    let output = compile_output(platform, profile, title, "html", source_content)
         .expect("draft should compile");
 
+    decode_adapted_content(&output)
+}
+
+fn compile_output(
+    platform: &str,
+    profile: &str,
+    title: &str,
+    source_format: &str,
+    source_content: &str,
+) -> Result<DraftOutput, DraftCompileError> {
+    DraftCompiler::new().compile(
+        &SourceProject {
+            id: "project-1".to_string(),
+            title: title.to_string(),
+            source_format: source_format.to_string(),
+            source_content: source_content.to_string(),
+        },
+        &DraftTarget {
+            platform: platform.to_string(),
+            profile: profile.to_string(),
+            config_json: "{}".to_string(),
+        },
+    )
+}
+
+fn decode_adapted_content(output: &DraftOutput) -> serde_json::Value {
     serde_json::from_str(&output.adapted_content_json).expect("valid adapted content")
 }
