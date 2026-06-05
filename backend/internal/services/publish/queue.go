@@ -187,7 +187,7 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		}
 	}
 
-	project, pub, err := s.preparePublishJob(projectID, platform, *scopeUserID)
+	project, pub, err := s.preparePublishJob(ctx, projectID, platform, *scopeUserID)
 	if err != nil {
 		if req.IdempotencyKey != "" {
 			if resp, ok, lookupErr := s.findIdempotentPublishResponse(projectID, platform, *scopeUserID, req.IdempotencyKey); lookupErr != nil {
@@ -443,9 +443,9 @@ func (s *Service) startPublishLockRefresh(ctx context.Context, lockKey, lockValu
 	}
 }
 
-func (s *Service) preparePublishJob(projectID uuid.UUID, platform string, userID uuid.UUID) (models.Project, models.ProjectPlatformPublication, error) {
-	var project models.Project
-	if err := s.db.Where("id = ? AND user_id = ?", projectID, userID).First(&project).Error; err != nil {
+func (s *Service) preparePublishJob(ctx context.Context, projectID uuid.UUID, platform string, userID uuid.UUID) (models.Project, models.ProjectPlatformPublication, error) {
+	project, err := s.projectForPublish(ctx, projectID, userID)
+	if err != nil {
 		return models.Project{}, models.ProjectPlatformPublication{}, ErrForbidden
 	}
 
