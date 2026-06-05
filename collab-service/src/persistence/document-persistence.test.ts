@@ -250,6 +250,7 @@ describe("PostgresDocumentPersistence", () => {
     const updateCall = database.calls.find((call) =>
       call.text.includes("UPDATE projects"),
     );
+    expect(updateCall?.text).toContain("source_content IS DISTINCT FROM $2");
     expect(updateCall?.values).toEqual([
       documentId,
       "<h2>Synced heading</h2><p>Hello <strong>team</strong></p>",
