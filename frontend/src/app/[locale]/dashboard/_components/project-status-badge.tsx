@@ -11,7 +11,11 @@ const statusVariants: Record<string, ComponentProps<typeof Badge>["variant"]> =
     pending: "outline",
     published: "default",
     publishing: "secondary",
+    queued: "secondary",
     ready: "secondary",
+    succeeded: "default",
+    syncing: "secondary",
+    cancelled: "outline",
   };
 
 type ProjectStatusBadgeProps = {

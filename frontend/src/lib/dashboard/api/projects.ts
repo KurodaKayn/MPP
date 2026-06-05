@@ -155,7 +155,7 @@ function defaultSleep(ms: number) {
 }
 
 function isPublishingStatus(status: string) {
-  return status === "publishing";
+  return status === "queued" || status === "publishing";
 }
 
 export async function waitForProjectPublications(
@@ -230,7 +230,13 @@ export function publishProject(
   platform: string,
   options?: PublishProjectOptions,
 ) {
-  const body = options?.mode ? { mode: options.mode, platform } : { platform };
+  const idempotencyKey =
+    options?.idempotencyKey ??
+    globalThis.crypto?.randomUUID?.() ??
+    `${projectId}:${platform}:${Date.now()}`;
+  const body = options?.mode
+    ? { idempotency_key: idempotencyKey, mode: options.mode, platform }
+    : { idempotency_key: idempotencyKey, platform };
 
   return fetchDashboard<PublishResult>(
     `/api/user/dashboard/projects/${projectId}/publish`,
