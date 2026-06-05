@@ -238,7 +238,7 @@ func (r *fallbackMarkdownRenderer) renderElement(node *html.Node) {
 		r.ensureBlankLine()
 	case "blockquote":
 		r.ensureBlankLine()
-		for _, line := range strings.Split(fallbackNodeText(node), "\n") {
+		for line := range strings.SplitSeq(fallbackNodeText(node), "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" {
 				continue
