@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/sidebar";
 
 import { useTranslation } from "@/lib/i18n";
+import { DashboardWorkspaceProvider } from "./_hooks/use-dashboard-workspace-selection";
 
 export async function generateMetadata({
   params,
@@ -35,21 +36,23 @@ export default function DashboardLayout({
 }) {
   return (
     <AuthGuard>
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
-            <div className="flex items-center gap-2 px-4">
-              <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-2 h-4" />
-              <DashboardBreadcrumb />
-            </div>
-          </header>
-          <main className="flex flex-1 flex-col gap-4 p-4 pt-0">
-            {children}
-          </main>
-        </SidebarInset>
-      </SidebarProvider>
+      <DashboardWorkspaceProvider>
+        <SidebarProvider>
+          <AppSidebar />
+          <SidebarInset>
+            <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+              <div className="flex items-center gap-2 px-4">
+                <SidebarTrigger className="-ml-1" />
+                <Separator orientation="vertical" className="mr-2 h-4" />
+                <DashboardBreadcrumb />
+              </div>
+            </header>
+            <main className="flex flex-1 flex-col gap-4 p-4 pt-0">
+              {children}
+            </main>
+          </SidebarInset>
+        </SidebarProvider>
+      </DashboardWorkspaceProvider>
     </AuthGuard>
   );
 }

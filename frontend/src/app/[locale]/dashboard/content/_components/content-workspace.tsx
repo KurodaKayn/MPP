@@ -85,6 +85,8 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
               selectedWorkspace={selectedWorkspace}
               workspaces={workspaceSelection.workspaces}
               onWorkspaceChange={workspaceSelection.selectWorkspace}
+              onWorkspaceCreate={workspaceSelection.createWorkspace}
+              isCreatingWorkspace={workspaceSelection.isCreatingWorkspace}
             />
           ) : undefined
         }
