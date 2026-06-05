@@ -436,6 +436,46 @@ func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing
 	require.True(t, errors.Is(err, ErrPublicationAlreadyPublishing))
 }
 
+func TestEnqueuePublishProjectRequiresPrepublishSyncForSyncingPublication(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	publication := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusSyncing,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}
+	require.NoError(t, db.Create(&publication).Error)
+
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-syncing"})
+
+	require.ErrorIs(t, err, ErrPublicationRequiresSync)
+	require.Nil(t, resp)
+	require.Empty(t, queue.jobs)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", publication.ID).Error)
+	require.Equal(t, models.PublicationStatusSyncing, saved.Status)
+	require.Nil(t, saved.LastAttemptAt)
+}
+
 func TestProcessPublishJobPublishesAndReleasesLock(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
 	service := newPublishTestService(db)
