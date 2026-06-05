@@ -25,6 +25,8 @@ import (
 var ErrForbidden = publishsvc.ErrForbidden
 var ErrInvalidProject = errors.New("invalid project")
 var ErrInvalidProjectCollaborator = errors.New("invalid project collaborator")
+var ErrInvalidWorkspace = errors.New("invalid workspace")
+var ErrInvalidWorkspaceMember = errors.New("invalid workspace member")
 var ErrProjectCollabUnavailable = errors.New("project collaboration unavailable")
 var ErrPublicationDisabled = publishsvc.ErrPublicationDisabled
 var ErrPublicationRequiresSync = publishsvc.ErrPublicationRequiresSync
