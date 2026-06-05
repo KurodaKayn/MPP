@@ -4,9 +4,10 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
-	"gorm.io/gorm"
 )
 
 const douyinPlatform = "douyin"

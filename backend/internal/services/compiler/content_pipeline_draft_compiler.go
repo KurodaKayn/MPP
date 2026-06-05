@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/kurodakayn/mpp-backend/internal/contracts/contentpipelinepb"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/contentpipeline"
@@ -50,7 +51,7 @@ func (c *contentPipelineDraftCompiler) CompileProjectDrafts(ctx context.Context,
 		return nil, fmt.Errorf("connect content pipeline draft compiler: %w", err)
 	}
 	if closer != nil {
-		defer closer.Close()
+		defer func() { _ = closer.Close() }()
 	}
 
 	response, err := client.CompileDrafts(ctx, &contentpipelinepb.CompileDraftsRequest{

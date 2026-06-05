@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 )
 
 func TestClientPresignsR2ObjectURLs(t *testing.T) {

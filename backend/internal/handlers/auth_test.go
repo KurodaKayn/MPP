@@ -10,14 +10,15 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/services/email"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services/email"
 )
 
 func createTestUser(t *testing.T, db *gorm.DB, username, email, password string) models.User {
@@ -36,6 +37,8 @@ func createTestUser(t *testing.T, db *gorm.DB, username, email, password string)
 }
 
 func setupMiniRedis(t *testing.T) *redis.Client {
+	t.Helper()
+
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
 	t.Cleanup(mr.Close)
@@ -180,7 +183,7 @@ func TestResetPassword(t *testing.T) {
 		code := "111111"
 		storeVerificationCode(t, rdb, "forgot_password", userEmail, code)
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			req := httptest.NewRequest(http.MethodPost, "/api/auth/reset-password", strings.NewReader(`{"email":"user@example.com", "code":"000000", "password":"LockedPassword1234"}`))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			rec := httptest.NewRecorder()

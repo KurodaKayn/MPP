@@ -86,7 +86,7 @@ func (s *AsyncEmailService) StartWorker(ctx context.Context, sender EmailService
 
 	if err := server.Run(mux); err != nil {
 		if ctx.Err() != nil {
-			return nil
+			return ctx.Err()
 		}
 		log.Printf("email worker stopped with error: %v", err)
 		return err

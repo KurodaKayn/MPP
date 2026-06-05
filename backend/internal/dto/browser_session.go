@@ -19,7 +19,7 @@ type BrowserSessionResponse struct {
 	Platform             string    `json:"platform"`
 	Status               string    `json:"status"`
 	StreamURL            string    `json:"stream_url,omitempty"`
-	StreamTokenExpiresAt time.Time `json:"stream_token_expires_at,omitempty"`
+	StreamTokenExpiresAt time.Time `json:"stream_token_expires_at,omitzero"`
 	ExpiresAt            time.Time `json:"expires_at"`
 	Message              string    `json:"message"`
 }

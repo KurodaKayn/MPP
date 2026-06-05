@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
+
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 )
 
@@ -31,17 +32,9 @@ func NewClient(config objectstorage.Config) (*Client, error) {
 	}
 
 	awsConfig := aws.Config{
-		Region:      config.Region,
-		Credentials: credentials.NewStaticCredentialsProvider(config.AccessKeyID, config.SecretAccessKey, ""),
-		EndpointResolverWithOptions: aws.EndpointResolverWithOptionsFunc(func(service string, region string, options ...interface{}) (aws.Endpoint, error) {
-			if service != s3.ServiceID {
-				return aws.Endpoint{}, &aws.EndpointNotFoundError{}
-			}
-			return aws.Endpoint{
-				URL:           strings.TrimRight(config.Endpoint, "/"),
-				SigningRegion: config.Region,
-			}, nil
-		}),
+		Region:       config.Region,
+		Credentials:  credentials.NewStaticCredentialsProvider(config.AccessKeyID, config.SecretAccessKey, ""),
+		BaseEndpoint: aws.String(strings.TrimRight(config.Endpoint, "/")),
 	}
 	client := s3.NewFromConfig(awsConfig, func(options *s3.Options) {
 		options.UsePathStyle = true

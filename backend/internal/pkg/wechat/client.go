@@ -82,7 +82,7 @@ func (c *Client) GetToken() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var tr TokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
@@ -113,10 +113,12 @@ func (c *Client) UploadImage(imageBytes []byte, filename string) (*MediaResponse
 	if _, err := part.Write(imageBytes); err != nil {
 		return nil, err
 	}
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
 
 	u := fmt.Sprintf("%s/material/add_material?access_token=%s&type=image", BaseURL, token)
-	req, err := http.NewRequest("POST", u, body)
+	req, err := http.NewRequest(http.MethodPost, u, body)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +128,7 @@ func (c *Client) UploadImage(imageBytes []byte, filename string) (*MediaResponse
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var mr MediaResponse
 	if err := json.NewDecoder(resp.Body).Decode(&mr); err != nil {
@@ -157,7 +159,7 @@ func (c *Client) CreateDraft(articles []Article) (string, error) {
 		return "", err
 	}
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"articles": articles,
 	}
 	body, _ := json.Marshal(payload)
@@ -167,7 +169,7 @@ func (c *Client) CreateDraft(articles []Article) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var dr DraftResponse
 	if err := json.NewDecoder(resp.Body).Decode(&dr); err != nil {
@@ -195,7 +197,7 @@ func (c *Client) Publish(mediaID string) (string, int, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var pr PublishResponse
 	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {

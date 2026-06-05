@@ -8,7 +8,7 @@ import (
 
 const (
 	jwtSecretEnv               = "JWT_SECRET"
-	collabTokenSecretEnv       = "COLLAB_TOKEN_SECRET"
+	collabTokenSecretEnv       = "COLLAB_TOKEN_SECRET" //nolint:gosec // This is an environment variable name, not a secret value.
 	collabInternalURLEnv       = "COLLAB_INTERNAL_URL"
 	collabWebsocketURLBaseEnv  = "COLLAB_WEBSOCKET_URL_BASE"
 	appEnvEnv                  = "APP_ENV"

@@ -20,7 +20,7 @@ import (
 
 const (
 	defaultOAuth2AuthorizeURL = "https://x.com/i/oauth2/authorize"
-	defaultOAuth2TokenURL     = "https://api.x.com/2/oauth2/token"
+	defaultOAuth2TokenURL     = "https://api.x.com/2/oauth2/token" //nolint:gosec // This is a public OAuth token endpoint, not a credential.
 )
 
 var (
@@ -223,7 +223,7 @@ func (c OAuth2Config) tokenRequest(ctx context.Context, values url.Values) (OAut
 	if err != nil {
 		return OAuth2Token{}, fmt.Errorf("x oauth2 token request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -253,7 +253,7 @@ func (c OAuth2Config) tokenRequest(ctx context.Context, values url.Values) (OAut
 	return token, nil
 }
 
-func (c *OAuth2Client) doJSON(ctx context.Context, method, path string, query url.Values, body interface{}, out interface{}) error {
+func (c *OAuth2Client) doJSON(ctx context.Context, method, path string, query url.Values, body any, out any) error {
 	if err := c.creds.Validate(); err != nil {
 		return err
 	}
@@ -289,7 +289,7 @@ func (c *OAuth2Client) doJSON(ctx context.Context, method, path string, query ur
 	if err != nil {
 		return fmt.Errorf("x api request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {

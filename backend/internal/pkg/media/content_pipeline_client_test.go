@@ -5,11 +5,12 @@ import (
 	"io"
 	"testing"
 
-	"github.com/kurodakayn/mpp-backend/internal/contracts/contentpipelinepb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/kurodakayn/mpp-backend/internal/contracts/contentpipelinepb"
 )
 
 type fakeContentPipelineMediaClient struct {
@@ -18,7 +19,7 @@ type fakeContentPipelineMediaClient struct {
 	err      error
 }
 
-func (f *fakeContentPipelineMediaClient) ProcessAsset(ctx context.Context, request *contentpipelinepb.ProcessAssetRequest, opts ...grpc.CallOption) (*contentpipelinepb.ProcessAssetResponse, error) {
+func (f *fakeContentPipelineMediaClient) ProcessAsset(_ context.Context, request *contentpipelinepb.ProcessAssetRequest, _ ...grpc.CallOption) (*contentpipelinepb.ProcessAssetResponse, error) {
 	f.request = request
 	return f.response, f.err
 }

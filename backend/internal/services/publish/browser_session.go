@@ -11,13 +11,14 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/media"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	publishercontent "github.com/kurodakayn/mpp-backend/internal/publisher/content"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
-	"gorm.io/gorm"
 )
 
 func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.UUID, userID uuid.UUID) (*dto.StartBrowserSessionResponse, error) {
@@ -164,7 +165,7 @@ func douyinWorkerCoverImage(rawConfig []byte) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // Path is selected from fixed bundled asset candidates.
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to read douyin cover image: %w", err)
 	}

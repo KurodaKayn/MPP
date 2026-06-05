@@ -11,18 +11,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
-	"gorm.io/datatypes"
-	"gorm.io/gorm"
 )
 
 const (
 	xOAuth2ClientIDEnv     = "X_OAUTH2_CLIENT_ID"
-	xOAuth2ClientSecretEnv = "X_OAUTH2_CLIENT_SECRET"
+	xOAuth2ClientSecretEnv = "X_OAUTH2_CLIENT_SECRET" //nolint:gosec // This is an environment variable name, not a secret value.
 	xOAuth2AuthorizeURLEnv = "X_OAUTH2_AUTHORIZE_URL"
-	xOAuth2TokenURLEnv     = "X_OAUTH2_TOKEN_URL"
+	xOAuth2TokenURLEnv     = "X_OAUTH2_TOKEN_URL" //nolint:gosec // This is an environment variable name, not a token value.
 	xOAuth2RefreshSkew     = 5 * time.Minute
 	xOAuth2StateTTL        = 10 * time.Minute
 )
@@ -178,7 +179,7 @@ func (s *Service) saveXOAuth2Account(userID uuid.UUID, token pkgx.OAuth2Token, u
 		}
 		err = s.db.Create(&account).Error
 	} else {
-		err = s.db.Model(&account).Updates(map[string]interface{}{
+		err = s.db.Model(&account).Updates(map[string]any{
 			"username":        "X",
 			"credentials":     rawCredentials,
 			"metadata":        datatypes.JSON(metadata),

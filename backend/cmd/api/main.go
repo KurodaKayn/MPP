@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+
 	"github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
@@ -73,7 +75,9 @@ func main() {
 	)
 	dashboardService.SetCollabDocumentService(collabDocumentService)
 	redisClient, err := redisclient.NewFromEnv(context.Background())
-	if err != nil {
+	if errors.Is(err, redisclient.ErrNotConfigured) {
+		redisClient = nil
+	} else if err != nil {
 		log.Fatal(err)
 	}
 	if runtimeConfig.requireRedis && redisClient == nil {
@@ -84,7 +88,7 @@ func main() {
 	var workerClient publisher.BrowserWorkerClient
 	workerURL := os.Getenv("BROWSER_WORKER_URL")
 	if workerURL != "" {
-		workerClient = publisher.NewHttpBrowserWorkerClient(workerURL)
+		workerClient = publisher.NewHTTPBrowserWorkerClient(workerURL)
 	} else {
 		workerClient = publisher.NewMockBrowserWorkerClient()
 	}
@@ -107,7 +111,7 @@ func main() {
 		if rawPort := strings.TrimSpace(os.Getenv("SMTP_PORT")); rawPort != "" {
 			parsedPort, err := strconv.Atoi(rawPort)
 			if err != nil || parsedPort <= 0 {
-				log.Fatalf("invalid SMTP_PORT: %s", rawPort)
+				log.Fatal("invalid SMTP_PORT: must be a positive integer")
 			}
 			smtpPort = parsedPort
 		}
@@ -133,9 +137,7 @@ func main() {
 		asyncEmailService := email.NewAsyncEmailService(redisClient)
 		emailService = asyncEmailService
 		if runtimeConfig.runsWorkers() {
-			workerWG.Add(1)
-			go func() {
-				defer workerWG.Done()
+			workerWG.Go(func() {
 				if err := asyncEmailService.StartWorker(rootCtx, baseEmailService); err != nil {
 					select {
 					case workerErrors <- err:
@@ -143,7 +145,7 @@ func main() {
 						log.Printf("email worker stopped with error: %v", err)
 					}
 				}
-			}()
+			})
 		}
 	}
 
@@ -199,7 +201,7 @@ func main() {
 
 	select {
 	case err := <-serverErrors:
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal(err)
 		}
 	case err := <-workerErrors:

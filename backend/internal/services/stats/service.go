@@ -1,8 +1,9 @@
 package stats
 
 import (
-	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	"gorm.io/gorm"
+
+	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 )
 
 type Service struct {
