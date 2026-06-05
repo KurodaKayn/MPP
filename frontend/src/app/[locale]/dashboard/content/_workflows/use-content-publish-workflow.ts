@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   getPlatformDefaultLabel,
@@ -22,7 +22,11 @@ import {
   type ProjectListItem,
   type ProjectPublications,
 } from "@/lib/dashboard/api";
-import { type PublishPlatform } from "../_lib/publish-content";
+import {
+  createPlatformPublishIdempotencyKey,
+  createPublishAttemptKey,
+  type PublishPlatform,
+} from "../_lib/publish-content";
 import { type PrepublishDraft } from "../_stores/content-page-store";
 
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
@@ -56,6 +60,18 @@ type ContentPublishWorkflowOptions = {
   t: TranslationFn;
   title: string;
 };
+
+type PublishAttemptState = {
+  key: string;
+  signature: string;
+};
+
+class PublishStatusError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PublishStatusError";
+  }
+}
 
 function isPublishPlatform(platform: string): platform is PublishPlatform {
   return PLATFORM_TABS.some((item) => item.value === platform);
@@ -158,6 +174,7 @@ export function useContentPublishWorkflow({
   const [isPublishing, setIsPublishing] = useState(false);
   const [douyinBrowserSession, setDouyinBrowserSession] =
     useState<DouyinBrowserSessionState | null>(null);
+  const publishAttemptRef = useRef<PublishAttemptState | null>(null);
 
   const getSelectedPlatformLabels = (platforms: PublishPlatform[]) =>
     platforms.map((platform) => {
@@ -217,6 +234,37 @@ export function useContentPublishWorkflow({
       summary: input.summary,
       title: input.title,
     };
+  };
+
+  const buildPublishAttemptSignature = () =>
+    JSON.stringify({
+      content: buildProjectContentInput(),
+      drafts: automaticPublishPlatforms.map((platform) => ({
+        draft: prepublishDrafts[platform],
+        platform,
+      })),
+      platforms: automaticPublishPlatforms,
+      projectId,
+    });
+
+  const getPublishAttemptKey = () => {
+    if (!projectId) {
+      return "";
+    }
+
+    const signature = buildPublishAttemptSignature();
+    if (publishAttemptRef.current?.signature !== signature) {
+      publishAttemptRef.current = {
+        key: createPublishAttemptKey(projectId, automaticPublishPlatforms),
+        signature,
+      };
+    }
+
+    return publishAttemptRef.current.key;
+  };
+
+  const clearPublishAttempt = () => {
+    publishAttemptRef.current = null;
   };
 
   const saveOrCreateProjectForManualPlatform = async (
@@ -314,11 +362,17 @@ export function useContentPublishWorkflow({
       platforms: automaticPublishPlatforms,
     });
 
+    const publishAttemptKey = getPublishAttemptKey();
     const results = await Promise.allSettled(
       automaticPublishPlatforms.map(async (platform) => {
-        const result = await publishProject(projectId, platform);
+        const result = await publishProject(projectId, platform, {
+          idempotencyKey: createPlatformPublishIdempotencyKey(
+            publishAttemptKey,
+            platform,
+          ),
+        });
         if (result.status === "failed" || result.status === "error") {
-          throw new Error(
+          throw new PublishStatusError(
             result.error_message ||
               `${getPlatformDefaultLabel(platform)} ${t("publish.failed")}`,
           );
@@ -333,6 +387,7 @@ export function useContentPublishWorkflow({
     const succeeded: PublishPlatform[] = [];
     const failed: { message: string; platform: PublishPlatform }[] = [];
     const pendingPlatforms: PublishPlatform[] = [];
+    let retryable = false;
 
     results.forEach((result, index) => {
       const platform = automaticPublishPlatforms[index];
@@ -348,6 +403,9 @@ export function useContentPublishWorkflow({
         return;
       }
 
+      if (!(result.reason instanceof PublishStatusError)) {
+        retryable = true;
+      }
       failed.push({
         message:
           result.reason instanceof Error
@@ -395,7 +453,7 @@ export function useContentPublishWorkflow({
       });
     }
 
-    return { failed, succeeded };
+    return { failed, retryable, succeeded };
   };
 
   const openXPostIntent = async () => {
@@ -541,6 +599,10 @@ export function useContentPublishWorkflow({
 
       if (!result) {
         return;
+      }
+
+      if (!result.retryable) {
+        clearPublishAttempt();
       }
 
       if (result.failed.length > 0) {
