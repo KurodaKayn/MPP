@@ -20,6 +20,8 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -27,6 +29,8 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import { dashboardRoutes } from "@/lib/dashboard/navigation";
+import { WorkspaceSwitcher } from "@/app/[locale]/dashboard/_components/workspace-switcher";
+import { useDashboardWorkspaceSelection } from "@/app/[locale]/dashboard/_hooks/use-dashboard-workspace-selection";
 
 const data = {
   navMain: [
@@ -55,6 +59,7 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { session } = useAuth();
+  const workspaceSelection = useDashboardWorkspaceSelection();
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
   const username = session?.username ?? t("nav.creator");
@@ -88,6 +93,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             />
           </SidebarMenuItem>
         </SidebarMenu>
+        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+          <SidebarGroupContent>
+            <WorkspaceSwitcher
+              className="h-10 border-sidebar-border bg-sidebar-accent/40 text-sidebar-foreground hover:bg-sidebar-accent sm:w-full"
+              disabled={false}
+              isCreatingWorkspace={workspaceSelection.isCreatingWorkspace}
+              isLoading={workspaceSelection.isLoading}
+              selectedWorkspace={workspaceSelection.selectedWorkspace}
+              workspaces={workspaceSelection.workspaces}
+              onWorkspaceChange={workspaceSelection.selectWorkspace}
+              onWorkspaceCreate={workspaceSelection.createWorkspace}
+            />
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarHeader>
       <SidebarContent>
         <SidebarMenu>
