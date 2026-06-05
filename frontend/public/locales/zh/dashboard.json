@@ -1,6 +1,7 @@
 {
   "overview": {
     "title": "控制台",
+    "description": "查看当前工作空间状态，并继续最近的发布工作。",
     "stats": {
       "totalProjects": "内容总数",
       "totalProjectsDesc": "当前系统内的项目数量",
@@ -14,6 +15,7 @@
     "recent": {
       "title": "最近内容",
       "description": "共 {{total}} 篇内容，显示最近 8 篇。",
+      "workspace": "工作空间：{{workspace}}",
       "viewPosts": "查看发布",
       "refresh": "刷新",
       "empty": "暂无内容数据"
@@ -66,7 +68,20 @@
   "workspace": {
     "switcher": {
       "label": "工作空间",
-      "empty": "暂无工作空间"
+      "empty": "暂无工作空间",
+      "create": "创建工作空间",
+      "createTitle": "创建工作空间",
+      "createDescription": "为团队、客户或发布流创建一个协作空间。",
+      "nameLabel": "工作空间名称",
+      "namePlaceholder": "团队工作空间",
+      "slugLabel": "Slug",
+      "slugPlaceholder": "team-workspace",
+      "slugHelp": "可选。留空时 MPP 会自动生成。",
+      "cancel": "取消",
+      "createSubmit": "创建工作空间",
+      "createSuccess": "工作空间已创建",
+      "createFailed": "无法创建工作空间",
+      "retryLater": "请稍后重试。"
     },
     "role": {
       "owner": "所有者",
@@ -129,6 +144,42 @@
         "admin": "可以管理成员和项目。",
         "member": "可以创建和编辑工作空间项目。",
         "viewer": "只能查看工作空间项目。"
+      }
+    },
+    "workspaceActivity": {
+      "title": "工作空间活动",
+      "description": "当前工作空间最近的成员和设置变更。",
+      "refresh": "刷新",
+      "loadFailed": "无法加载工作空间活动",
+      "retryLater": "请稍后重试。",
+      "empty": "此工作空间还没有记录活动。",
+      "noWorkspace": "请选择一个工作空间查看活动。",
+      "noPermission": "只有工作空间所有者和管理员可以查看活动。",
+      "unknownActor": "未知用户",
+      "unknownTarget": "未知成员",
+      "unknownRole": "未知角色",
+      "unknownWorkspace": "此工作空间",
+      "event": {
+        "workspace_created": "创建工作空间",
+        "workspace_updated": "更新工作空间",
+        "member_added": "添加成员",
+        "member_role_changed": "调整成员角色",
+        "member_removed": "移除成员"
+      },
+      "detail": {
+        "workspace_created": "{{actor}} 创建了 {{workspace}}。",
+        "workspace_updated": "{{actor}} 更新了工作空间信息。",
+        "workspace_updatedRenamed": "{{actor}} 将 {{previousName}} 重命名为 {{name}}。",
+        "member_added": "{{actor}} 将 {{target}} 添加为 {{role}}。",
+        "member_role_changed": "{{actor}} 将 {{target}} 从 {{previousRole}} 调整为 {{role}}。",
+        "member_removed": "{{actor}} 将 {{target}}（原{{previousRole}}）移除。"
+      },
+      "badge": {
+        "role": "角色：{{role}}",
+        "formerRole": "原角色：{{role}}",
+        "roleChange": "{{from}} -> {{to}}",
+        "slug": "Slug：{{slug}}",
+        "slugChange": "{{from}} -> {{to}}"
       }
     }
   },

@@ -348,6 +348,24 @@ type WorkspaceMembersResponse struct {
 	Items []WorkspaceMember `json:"items"`
 }
 
+type WorkspaceActivity struct {
+	ID             uuid.UUID              `json:"id"`
+	WorkspaceID    uuid.UUID              `json:"workspace_id"`
+	ActorUserID    uuid.UUID              `json:"actor_user_id"`
+	ActorUsername  string                 `json:"actor_username"`
+	ActorEmail     string                 `json:"actor_email"`
+	TargetUserID   *uuid.UUID             `json:"target_user_id,omitempty"`
+	TargetUsername string                 `json:"target_username,omitempty"`
+	TargetEmail    string                 `json:"target_email,omitempty"`
+	EventType      string                 `json:"event_type"`
+	Metadata       map[string]interface{} `json:"metadata"`
+	CreatedAt      time.Time              `json:"created_at"`
+}
+
+type WorkspaceActivitiesResponse struct {
+	Items []WorkspaceActivity `json:"items"`
+}
+
 type PublicationDetail struct {
 	ID             uuid.UUID              `json:"id"`
 	Platform       string                 `json:"platform"`

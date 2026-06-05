@@ -295,6 +295,8 @@ export function CollaborationHubPage() {
             selectedWorkspace={workspaceSelection.selectedWorkspace}
             workspaces={workspaceSelection.workspaces}
             onWorkspaceChange={workspaceSelection.selectWorkspace}
+            onWorkspaceCreate={workspaceSelection.createWorkspace}
+            isCreatingWorkspace={workspaceSelection.isCreatingWorkspace}
           />
           <Button
             type="button"

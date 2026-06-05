@@ -24,11 +24,8 @@ func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.
 	if s.browserSessionService == nil {
 		return nil, browsersession.ErrPlatformNotSupported
 	}
-	var project models.Project
-	if err := s.db.WithContext(ctx).Where("id = ? AND user_id = ?", projectID, userID).First(&project).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrForbidden
-		}
+	project, err := s.projectForPublish(ctx, projectID, userID)
+	if err != nil {
 		return nil, err
 	}
 	var pub models.ProjectPlatformPublication
