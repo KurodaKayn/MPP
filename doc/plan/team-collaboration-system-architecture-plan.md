@@ -113,7 +113,7 @@ flowchart LR
 
   BE --> PG[("PostgreSQL")]
   CS --> PG
-  CS --> Redis[("Redis / future pubsub")]
+  CS --> Redis[("Redis pub/sub")]
 
   Workspace["Workspace / Team"] --> Project["MPP Project"]
   Project --> CollabDoc["Collaborative Editing State"]
@@ -513,22 +513,22 @@ Acceptance:
 - [x] Teams can review, edit, and publish Projects with clear accountability.
 - [x] Users can inspect recent changes and recover prior content.
 
-### Phase 5: Distributed Readiness
+### Phase 5: Distributed Readiness - Done
 
 Deliverables:
 
-- [ ] Redis pub/sub or Hocuspocus Redis extension.
-- [ ] Traefik `/collab` WebSocket routing validation.
-- [ ] Multi-instance collab-service test.
-- [ ] Prometheus/Grafana dashboards.
-- [ ] Load test scripts.
+- [x] Redis pub/sub between active collab-service documents.
+- [x] Traefik `/collab` WebSocket routing validation script.
+- [x] Multi-instance collab-service synchronization test.
+- [x] Prometheus scrape config and Grafana dashboard panels.
+- [x] Load test scripts for two collab-service endpoints.
 
 Acceptance:
 
-- [ ] Two collab-service instances can synchronize active documents.
-- [ ] Metrics show connection count, active documents, update flush latency, and auth
+- [x] Two collab-service instances can synchronize active documents.
+- [x] Metrics show connection count, active documents, update flush latency, and auth
   denials.
-- [ ] No data loss under restart tests.
+- [x] No data loss under restart tests.
 
 ## 12. Completion Tracking
 
@@ -545,7 +545,7 @@ Acceptance:
 | Workspace-scoped project access | Done | Continue hardening route/query policy coverage. |
 | Publishing permission split | Partial | Extend the centralized owner-only policy when explicit publisher roles are introduced. |
 | Comments/activity/version UX | Done | Project comments, activity, version recovery, offline messaging, and optional share-link management are available in the Project editor. |
-| Distributed collab-service | Not Started | Validate Redis pub/sub and multi-instance routing. |
+| Distributed collab-service | Done | Redis pub/sub, routing validation, metrics dashboard, load scripts, and restart-safe flush coverage are in place. |
 
 ## 13. Open Decisions
 
@@ -558,29 +558,28 @@ Acceptance:
 
 ## 14. Recommended Next Slice
 
-Build distributed collaboration readiness.
+Harden distributed collaboration under production-like load.
 
 Reason:
 
 - Project-level accountability, review comments, version recovery, share-link
   management, and clearer offline messaging are now in the Project editor.
-- The next risk is operational: multiple realtime collaboration instances must
-  preserve awareness, updates, and persistence under scale-out and restart.
-- Redis pub/sub, routing validation, and observability should land before adding
-  broader guest access or publisher roles.
+- Redis pub/sub, routing validation, and observability now cover the first
+  scale-out readiness slice.
+- The next risk is higher-volume production behavior: longer sessions, noisy
+  reconnects, restart windows, and database pressure.
 
 Next useful slice:
 
-1. Add Redis pub/sub or the Hocuspocus Redis extension for multi-instance
-   document synchronization.
-2. Validate Traefik `/collab` WebSocket routing with multiple collab-service
-   instances.
-3. Add a multi-instance collab-service test that edits the same Project from
-   two server instances.
-4. Add Prometheus/Grafana panels for active documents, connection count, update
-   flush latency, and auth denials.
-5. Add restart/load scripts that prove no Yjs update loss during worker
-   replacement.
+1. Run the distributed load script against a real two-instance deployment and
+   record baseline connection, active document, flush latency, and auth denial
+   ranges.
+2. Add alert thresholds for sustained auth denials, stalled flush latency, and
+   zero active document metrics during expected traffic.
+3. Exercise rolling restart windows under sustained edit load and capture any
+   database lock or reconnect pressure.
+4. Decide whether awareness state needs Redis fan-out in addition to durable
+   Yjs update synchronization.
 
 ## 15. References
 
