@@ -10,9 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var DB *gorm.DB
@@ -24,6 +26,9 @@ var seedDataSQL string
 const migrationAdvisoryLockKey = 776770001
 const devFallbackPasswordHash = "$2a$10$JuGX0AMl3DS3eGm/yRvY2OZLm4QuTuoIgRT4ucmVs/BCwoPYARN4C"
 const disabledPasswordHash = "legacy-password-reset-required"
+const personalWorkspaceName = "Personal"
+
+var personalWorkspaceNamespace = uuid.MustParse("03d32585-3f8c-48a8-bf40-53aa3f1698c1")
 
 const (
 	dbMaxOpenConnsEnv    = "DB_MAX_OPEN_CONNS"
@@ -178,6 +183,10 @@ func migrate(database *gorm.DB) error {
 			return err
 		}
 
+		if err := backfillPersonalWorkspaces(migrationDB); err != nil {
+			return err
+		}
+
 		// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
 		return migrationDB.Exec(`
 		CREATE UNIQUE INDEX IF NOT EXISTS ux_remote_browser_sessions_active_user_platform
@@ -185,6 +194,57 @@ func migrate(database *gorm.DB) error {
 		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
 	`).Error
 	})
+}
+
+func personalWorkspaceID(userID uuid.UUID) uuid.UUID {
+	return uuid.NewSHA1(personalWorkspaceNamespace, []byte(userID.String()))
+}
+
+func personalWorkspaceSlug(userID uuid.UUID) string {
+	return "personal-" + userID.String()
+}
+
+func backfillPersonalWorkspaces(database *gorm.DB) error {
+	var users []models.User
+	return database.FindInBatches(&users, 100, func(tx *gorm.DB, _ int) error {
+		for _, user := range users {
+			workspaceID := personalWorkspaceID(user.ID)
+			workspace := models.Workspace{
+				ID:          workspaceID,
+				OwnerUserID: user.ID,
+				Name:        personalWorkspaceName,
+				Slug:        personalWorkspaceSlug(user.ID),
+				Status:      models.WorkspaceStatusActive,
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "id"}},
+				DoNothing: true,
+			}).Create(&workspace).Error; err != nil {
+				return err
+			}
+
+			now := time.Now()
+			member := models.WorkspaceMember{
+				WorkspaceID: workspaceID,
+				UserID:      user.ID,
+				Role:        models.WorkspaceRoleOwner,
+				JoinedAt:    &now,
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "workspace_id"}, {Name: "user_id"}},
+				DoNothing: true,
+			}).Create(&member).Error; err != nil {
+				return err
+			}
+
+			if err := tx.Model(&models.Project{}).
+				Where("user_id = ? AND workspace_id IS NULL", user.ID).
+				Update("workspace_id", workspaceID).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}).Error
 }
 
 func prepareUserEmailMigration(database *gorm.DB) error {
