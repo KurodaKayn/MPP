@@ -3,13 +3,15 @@ package dashboard_test
 import (
 	"encoding/json"
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
-	"testing"
 )
 
 func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
@@ -143,4 +145,63 @@ func TestSyncProjectPrepublishMarksFailedWhenContentPipelineCompilerFails(t *tes
 	require.NoError(t, db.First(&publication, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
 	require.Equal(t, models.PublicationStatusFailed, publication.Status)
 	require.JSONEq(t, `{}`, string(publication.AdaptedContent))
+}
+
+func TestSyncProjectPrepublishRejectsActivePublishWithoutMarkingSyncing(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+	compiler := &fakeProjectDraftCompiler{}
+	s.SetDraftCompiler(compiler)
+
+	owner := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&owner).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Platform title",
+		SourceContent: `<p>Hello draft</p>`,
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+
+	lastAttemptAt := time.Now().UTC().Add(-time.Minute)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusPublishing,
+		Config:         datatypes.JSON(`{"title":"Platform title"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+		RemoteID:       "active-remote",
+		PublishURL:     "https://example.com/active",
+		LastAttemptAt:  &lastAttemptAt,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "zhihu",
+		Enabled:        true,
+		Status:         models.PublicationStatusPending,
+		Config:         datatypes.JSON(`{"title":"Platform title"}`),
+		AdaptedContent: datatypes.JSON(`{}`),
+	}).Error)
+
+	resp, err := s.SyncProjectPrepublish(project.ID, owner.ID, dto.SyncPrepublishRequest{
+		Platforms: []string{"wechat", "zhihu"},
+		Actor:     dto.SyncActor{Type: "system"},
+	})
+
+	require.ErrorIs(t, err, services.ErrPublicationAlreadyPublishing)
+	require.Nil(t, resp)
+	require.Empty(t, compiler.lastPlatforms)
+
+	var activePublication models.ProjectPlatformPublication
+	require.NoError(t, db.First(&activePublication, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	require.Equal(t, models.PublicationStatusPublishing, activePublication.Status)
+	require.Equal(t, "active-remote", activePublication.RemoteID)
+	require.Equal(t, "https://example.com/active", activePublication.PublishURL)
+	require.NotNil(t, activePublication.LastAttemptAt)
+	require.True(t, activePublication.LastAttemptAt.Equal(lastAttemptAt))
+
+	var pendingPublication models.ProjectPlatformPublication
+	require.NoError(t, db.First(&pendingPublication, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	require.Equal(t, models.PublicationStatusPending, pendingPublication.Status)
 }
