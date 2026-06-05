@@ -69,6 +69,7 @@ export function WorkspaceActivityCard() {
       }
 
       setIsLoadingActivities(true);
+      setActivities([]);
       try {
         const response = await getWorkspaceActivities(
           selectedWorkspaceId,
