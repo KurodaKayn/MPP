@@ -86,6 +86,7 @@ func (s *DashboardService) createProjectWithWorkspace(userID uuid.UUID, workspac
 		Title:            project.Title,
 		Status:           project.Status,
 		Role:             models.ProjectRoleOwner,
+		AccessSource:     models.ProjectAccessSourceOwner,
 		CreatedAt:        project.CreatedAt,
 		UpdatedAt:        project.UpdatedAt,
 		Publications:     publications,
@@ -103,15 +104,17 @@ func (s *DashboardService) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUI
 	}
 
 	role := models.ProjectRoleOwner
+	accessSource := models.ProjectAccessSourceOwner
 	if scopeUserID != nil {
-		accessRole, err := s.projectAccessRole(project, *scopeUserID)
+		accessRole, source, err := s.projectAccessRoleAndSource(project, *scopeUserID)
 		if err != nil {
 			return nil, err
 		}
 		role = accessRole
+		accessSource = source
 	}
 
-	return projectDetailFromModel(project, role), nil
+	return projectDetailFromModel(project, role, accessSource), nil
 }
 
 func (s *DashboardService) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.UpdateProjectRequest) (*dto.ProjectDetail, error) {
@@ -338,7 +341,7 @@ func buildPendingPublicationPayload(title, summary, coverImageURL string) (datat
 	return config, datatypes.JSON([]byte(`{}`)), models.PublicationStatusPending, nil
 }
 
-func projectDetailFromModel(project models.Project, role string) *dto.ProjectDetail {
+func projectDetailFromModel(project models.Project, role string, accessSource string) *dto.ProjectDetail {
 	publications := make([]dto.PublicationSummary, 0, len(project.Publications))
 	for _, pub := range project.Publications {
 		publications = append(publications, dto.PublicationSummary{
@@ -362,13 +365,14 @@ func projectDetailFromModel(project models.Project, role string) *dto.ProjectDet
 		SourceContent:    project.SourceContent,
 		Status:           project.Status,
 		Role:             role,
+		AccessSource:     accessSource,
 		CreatedAt:        project.CreatedAt,
 		UpdatedAt:        project.UpdatedAt,
 		Publications:     publications,
 	}
 }
 
-func projectListItemFromModel(project models.Project, role string) dto.ProjectListItem {
+func projectListItemFromModel(project models.Project, access projectAccessResolution) dto.ProjectListItem {
 	publications := make([]dto.PublicationSummary, 0, len(project.Publications))
 	for _, pub := range project.Publications {
 		publications = append(publications, dto.PublicationSummary{
@@ -390,7 +394,8 @@ func projectListItemFromModel(project models.Project, role string) dto.ProjectLi
 		CollabDocumentID: project.CollabDocumentID,
 		Title:            project.Title,
 		Status:           project.Status,
-		Role:             role,
+		Role:             access.role,
+		AccessSource:     access.source,
 		CreatedAt:        project.CreatedAt,
 		UpdatedAt:        project.UpdatedAt,
 		Publications:     publications,
@@ -496,23 +501,26 @@ func (s *DashboardService) listProjectPage(query *gorm.DB, page, limit int, scop
 		return nil, err
 	}
 
-	roles := make(map[uuid.UUID]string, len(projects))
+	accessByProjectID := make(map[uuid.UUID]projectAccessResolution, len(projects))
 	if scopeUserID != nil {
-		var roleErr error
-		roles, roleErr = s.projectRolesForUser(projects, *scopeUserID)
-		if roleErr != nil {
-			return nil, roleErr
+		var accessErr error
+		accessByProjectID, accessErr = s.projectAccessForUser(projects, *scopeUserID)
+		if accessErr != nil {
+			return nil, accessErr
 		}
 	} else {
 		for _, project := range projects {
-			roles[project.ID] = models.ProjectRoleOwner
+			accessByProjectID[project.ID] = projectAccessResolution{
+				role:   models.ProjectRoleOwner,
+				source: models.ProjectAccessSourceOwner,
+			}
 		}
 	}
 
 	// Map to DTO
 	items := make([]dto.ProjectListItem, 0, len(projects))
 	for _, p := range projects {
-		items = append(items, projectListItemFromModel(p, roles[p.ID]))
+		items = append(items, projectListItemFromModel(p, accessByProjectID[p.ID]))
 	}
 
 	return &dto.PaginationResponse{

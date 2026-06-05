@@ -101,7 +101,7 @@ function PostProjectCard({
 }) {
   const enabledPublications = getEnabledPublications(project);
   const publishedPublications = enabledPublications.filter(
-    (publication) => publication.status === "published",
+    (publication) => publication.status === "succeeded",
   );
   const failedPublications = enabledPublications.filter(
     (publication) => publication.status === "failed",

@@ -87,6 +87,8 @@ export interface components {
     /** @enum {string} */
     ProjectRole: "owner" | "editor" | "viewer";
     /** @enum {string} */
+    ProjectAccessSource: "owner" | "direct_share" | "workspace";
+    /** @enum {string} */
     ProjectCollaboratorRole: "editor" | "viewer";
     /** @enum {string} */
     WorkspaceRole: "owner" | "admin" | "member" | "viewer";
@@ -96,21 +98,21 @@ export interface components {
     WorkspaceStatus: "active" | "archived";
     /** @enum {string} */
     PublicationStatus:
-      | "pending"
-      | "adapted"
+      | "draft"
+      | "syncing"
+      | "queued"
       | "publishing"
-      | "published"
+      | "succeeded"
       | "failed"
-      | "disabled";
+      | "cancelled";
     /** @enum {string} */
     PublishResultStatus:
-      | "adapted"
       | "error"
       | "failed"
       | "manual_required"
-      | "pending"
-      | "published"
-      | "publishing";
+      | "queued"
+      | "publishing"
+      | "succeeded";
     /** @enum {string} */
     PlatformAccountStatus: "unconfigured" | "untested" | "connected" | "failed";
     /** @enum {string} */
@@ -319,6 +321,7 @@ export interface components {
       status: components["schemas"]["PublishResultStatus"];
       /** Format: uuid */
       job_id?: string;
+      idempotency_key?: string;
       platform?: components["schemas"]["PublishPlatform"];
       /** Format: date-time */
       queued_at?: string;
@@ -341,6 +344,7 @@ export interface components {
       title: string;
       status: components["schemas"]["ProjectStatus"];
       role: components["schemas"]["ProjectRole"];
+      access_source?: components["schemas"]["ProjectAccessSource"];
       /** Format: date-time */
       created_at: string;
       /** Format: date-time */
