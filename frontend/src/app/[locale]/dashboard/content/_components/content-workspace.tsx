@@ -3,6 +3,12 @@
 import { ContentEditor } from "@/components/dashboard/content/content-editor";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DashboardErrorCard } from "../../_components/dashboard-error-card";
+import { WorkspaceSwitcher } from "../../_components/workspace-switcher";
+import {
+  canCreateWorkspaceProject,
+  useDashboardWorkspaceSelection,
+} from "../../_hooks/use-dashboard-workspace-selection";
 import { cn } from "@/lib/utils";
 import { ContentPageHeader } from "./content-page-header";
 import { ContentPrepublishPanel } from "./content-prepublish-panel";
@@ -21,11 +27,23 @@ type ContentWorkspaceProps = {
 };
 
 export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
-  const contentPage = useContentPageController(projectId);
+  const workspaceSelection = useDashboardWorkspaceSelection({
+    enabled: !projectId,
+  });
+  const contentPage = useContentPageController(projectId, {
+    requiresWorkspace: !projectId,
+    selectedWorkspace: workspaceSelection.selectedWorkspace,
+  });
   const { editor, header, prepublish, publishing } = contentPage;
   const { contentView, setContentView } = useContentPageStore();
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
+  const { t: tDashboard } = useTranslation(locale, "dashboard");
+  const selectedWorkspace = workspaceSelection.selectedWorkspace;
+  const workspaceCanCreate = Boolean(
+    projectId ||
+    (selectedWorkspace && canCreateWorkspaceProject(selectedWorkspace.role)),
+  );
 
   if (contentPage.isLoading) {
     return (
@@ -52,7 +70,34 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         onSave={header.onSave}
         projectId={header.projectId}
         projectRole={header.projectRole}
+        workspaceControl={
+          !projectId ? (
+            <WorkspaceSwitcher
+              disabled={contentPage.isLoading}
+              isLoading={workspaceSelection.isLoading}
+              selectedWorkspace={selectedWorkspace}
+              workspaces={workspaceSelection.workspaces}
+              onWorkspaceChange={workspaceSelection.selectWorkspace}
+            />
+          ) : undefined
+        }
       />
+
+      {workspaceSelection.error ? (
+        <DashboardErrorCard
+          compact
+          title={tDashboard("workspace.error.title")}
+          message={workspaceSelection.error}
+          retryLabel={tDashboard("workspace.error.retry")}
+          onRetry={() => void workspaceSelection.reloadWorkspaces()}
+        />
+      ) : null}
+
+      {!projectId && !workspaceSelection.isLoading && !workspaceCanCreate ? (
+        <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+          {tDashboard("workspace.createProjectDisabled")}
+        </div>
+      ) : null}
 
       {contentView === "editor" ? (
         <div>

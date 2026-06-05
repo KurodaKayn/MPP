@@ -63,6 +63,24 @@
       "none": "暂无"
     }
   },
+  "workspace": {
+    "switcher": {
+      "label": "工作空间",
+      "empty": "暂无工作空间"
+    },
+    "role": {
+      "owner": "所有者",
+      "admin": "管理员",
+      "member": "成员",
+      "viewer": "查看者"
+    },
+    "error": {
+      "title": "工作空间加载失败",
+      "retry": "重试"
+    },
+    "empty": "暂无可用工作空间",
+    "createProjectDisabled": "请选择一个允许创建项目的工作空间，再同步或发布内容。"
+  },
   "settings": {
     "title": "设置",
     "description": "管理您的偏好设置和账号安全。",

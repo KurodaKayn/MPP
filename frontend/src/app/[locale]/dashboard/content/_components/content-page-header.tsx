@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ProjectRole } from "@/lib/dashboard/api";
@@ -15,6 +16,7 @@ type ContentPageHeaderProps = {
   onSave?: () => void;
   projectId?: string;
   projectRole?: ProjectRole | null;
+  workspaceControl?: ReactNode;
 };
 
 export function ContentPageHeader({
@@ -25,6 +27,7 @@ export function ContentPageHeader({
   onSave,
   projectId,
   projectRole,
+  workspaceControl,
 }: ContentPageHeaderProps) {
   const isEditing = mode === "edit";
   const locale = useAppLocale();
@@ -52,7 +55,8 @@ export function ContentPageHeader({
             : t("content.header.descCreate")}
         </p>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+        {workspaceControl}
         {canShare && projectId ? (
           <ProjectShareSheet projectId={projectId} />
         ) : null}
