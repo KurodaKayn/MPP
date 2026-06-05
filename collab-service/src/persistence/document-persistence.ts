@@ -200,6 +200,7 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
             SET source_content = $2,
                 updated_at = NOW()
             WHERE collab_document_id = $1
+              AND source_content IS DISTINCT FROM $2
           `,
           [documentId, sourceContent],
         );
