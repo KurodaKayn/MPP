@@ -319,6 +319,8 @@ func (s *Service) ListWorkspaceMembers(workspaceID uuid.UUID, actorUserID uuid.U
 		}).
 		Where("workspace_id = ?", workspaceID).
 		Order("created_at ASC").
+		Order("CASE role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'member' THEN 2 ELSE 3 END ASC").
+		Order("user_id ASC").
 		Find(&members).Error; err != nil {
 		return nil, err
 	}
