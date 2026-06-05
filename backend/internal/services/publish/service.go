@@ -257,11 +257,11 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 		return nil, false, nil
 	}
 
-	var event models.PublishEvent
+	var queued models.PublishEvent
 	err := s.db.
 		Where("project_id = ? AND platform = ? AND user_id = ? AND idempotency_key = ? AND event_type = ?", projectID, platform, userID, key, "queued").
 		Order("created_at DESC").
-		First(&event).Error
+		First(&queued).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, false, nil
 	}
@@ -269,22 +269,49 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 		return nil, false, err
 	}
 
-	var pub models.ProjectPlatformPublication
-	if err := s.db.Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
+	event := queued
+	err = s.db.
+		Where("project_id = ? AND platform = ? AND user_id = ? AND job_id = ?", projectID, platform, userID, queued.JobID).
+		Order("created_at DESC").
+		First(&event).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, false, err
 	}
 
 	resp := map[string]interface{}{
-		"status":          pub.Status,
-		"job_id":          event.JobID.String(),
+		"status":          event.Status,
+		"job_id":          queued.JobID.String(),
 		"idempotency_key": key,
 		"platform":        platform,
-		"queued_at":       event.CreatedAt,
-		"remote_id":       pub.RemoteID,
-		"publish_url":     pub.PublishURL,
-		"error_message":   pub.ErrorMessage,
+		"queued_at":       queued.CreatedAt,
+		"remote_id":       event.RemoteID,
+		"publish_url":     event.PublishURL,
+		"error_message":   event.ErrorMessage,
 	}
 	return resp, true, nil
+}
+
+func (s *Service) waitForIdempotentPublishResponse(ctx context.Context, projectID uuid.UUID, platform string, userID uuid.UUID, key string) (map[string]interface{}, bool, error) {
+	deadline := time.NewTimer(publishReplayWait)
+	defer deadline.Stop()
+
+	ticker := time.NewTicker(publishReplayPoll)
+	defer ticker.Stop()
+
+	for {
+		resp, ok, err := s.findIdempotentPublishResponse(projectID, platform, userID, key)
+		if err != nil || ok {
+			return resp, ok, err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, false, ctx.Err()
+		case <-deadline.C:
+			return nil, false, nil
+		case <-ticker.C:
+		}
+	}
 }
 
 func (s *Service) applySavedBrowserCookies(ctx context.Context, userID uuid.UUID, platform string, account *models.PlatformAccount) error {
