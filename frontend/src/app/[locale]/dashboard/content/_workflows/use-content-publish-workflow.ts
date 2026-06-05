@@ -337,7 +337,10 @@ export function useContentPublishWorkflow({
     results.forEach((result, index) => {
       const platform = automaticPublishPlatforms[index];
       if (result.status === "fulfilled") {
-        if (result.value.status === "publishing") {
+        if (
+          result.value.status === "queued" ||
+          result.value.status === "publishing"
+        ) {
           pendingPlatforms.push(platform);
           return;
         }
@@ -378,7 +381,7 @@ export function useContentPublishWorkflow({
           return;
         }
 
-        if (publication.status === "published") {
+        if (publication.status === "succeeded") {
           succeeded.push(platform);
           return;
         }

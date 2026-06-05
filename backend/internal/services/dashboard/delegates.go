@@ -17,6 +17,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	publishercontent "github.com/kurodakayn/mpp-backend/internal/publisher/content"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
+	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 	"gorm.io/gorm"
 )
 
@@ -32,12 +33,12 @@ func (s *DashboardService) CreateXPostIntent(projectID uuid.UUID, scopeUserID *u
 	return s.publisher.CreateXPostIntent(projectID, scopeUserID)
 }
 
-func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
-	return s.publisher.EnqueuePublishProject(ctx, projectID, platform, scopeUserID)
+func (s *DashboardService) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, req publishsvc.PublishRequest) (map[string]interface{}, error) {
+	return s.publisher.EnqueuePublishProject(ctx, projectID, platform, scopeUserID, req)
 }
 
-func (s *DashboardService) BatchEnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID) (map[string]map[string]interface{}, error) {
-	return s.publisher.BatchEnqueuePublishProject(ctx, projectID, platforms, scopeUserID)
+func (s *DashboardService) BatchEnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID, req publishsvc.PublishRequest) (map[string]map[string]interface{}, error) {
+	return s.publisher.BatchEnqueuePublishProject(ctx, projectID, platforms, scopeUserID, req)
 }
 
 func (s *DashboardService) StartPublishWorker(ctx context.Context) {

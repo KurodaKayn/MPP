@@ -43,6 +43,9 @@ func (s *DashboardService) SyncProjectPrepublish(projectID uuid.UUID, userID uui
 	if err != nil {
 		return nil, err
 	}
+	if err := s.markPrepublishSyncing(project.ID, platforms); err != nil {
+		return nil, err
+	}
 
 	draftCompiler := s.draftCompiler
 	if draftCompiler == nil {
@@ -61,6 +64,18 @@ func (s *DashboardService) SyncProjectPrepublish(projectID uuid.UUID, userID uui
 	}
 
 	return s.GetProjectPublications(projectID, &userID, true)
+}
+
+func (s *DashboardService) markPrepublishSyncing(projectID uuid.UUID, platforms []string) error {
+	if len(platforms) == 0 {
+		return nil
+	}
+	return s.db.Model(&models.ProjectPlatformPublication{}).
+		Where("project_id = ? AND platform IN ?", projectID, platforms).
+		Updates(map[string]interface{}{
+			"error_message": "",
+			"status":        models.PublicationStatusSyncing,
+		}).Error
 }
 
 func (s *DashboardService) ensurePrepublishPublications(project *models.Project, platforms []string) ([]models.ProjectPlatformPublication, error) {
@@ -92,12 +107,12 @@ func (s *DashboardService) ensurePrepublishPublications(project *models.Project,
 			if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
 				if err := tx.Model(&publication).Updates(map[string]interface{}{
 					"enabled": true,
-					"status":  models.PublicationStatusPending,
+					"status":  models.PublicationStatusDraft,
 				}).Error; err != nil {
 					return err
 				}
 				publication.Enabled = true
-				publication.Status = models.PublicationStatusPending
+				publication.Status = models.PublicationStatusDraft
 			}
 
 			publications = append(publications, publication)
@@ -137,7 +152,7 @@ func (s *DashboardService) applyCompiledPrepublishDrafts(projectID uuid.UUID, pl
 					"publish_url":     "",
 					"remote_id":       "",
 					"retry_count":     0,
-					"status":          models.PublicationStatusAdapted,
+					"status":          models.PublicationStatusDraft,
 				}).Error; err != nil {
 				return err
 			}

@@ -98,21 +98,21 @@ export interface components {
     WorkspaceStatus: "active" | "archived";
     /** @enum {string} */
     PublicationStatus:
-      | "pending"
-      | "adapted"
+      | "draft"
+      | "syncing"
+      | "queued"
       | "publishing"
-      | "published"
+      | "succeeded"
       | "failed"
-      | "disabled";
+      | "cancelled";
     /** @enum {string} */
     PublishResultStatus:
-      | "adapted"
       | "error"
       | "failed"
       | "manual_required"
-      | "pending"
-      | "published"
-      | "publishing";
+      | "queued"
+      | "publishing"
+      | "succeeded";
     /** @enum {string} */
     PlatformAccountStatus: "unconfigured" | "untested" | "connected" | "failed";
     /** @enum {string} */
@@ -321,6 +321,7 @@ export interface components {
       status: components["schemas"]["PublishResultStatus"];
       /** Format: uuid */
       job_id?: string;
+      idempotency_key?: string;
       platform?: components["schemas"]["PublishPlatform"];
       /** Format: date-time */
       queued_at?: string;

@@ -201,7 +201,7 @@ describe("dashboard api client", () => {
           id: "pub-1",
           platform: "wechat",
           retry_count: 0,
-          status: "adapted",
+          status: "draft",
           updated_at: "2026-05-29T12:00:00Z",
         },
       ],
@@ -240,7 +240,7 @@ describe("dashboard api client", () => {
           id: "pub-1",
           platform: "zhihu",
           retry_count: 0,
-          status: "adapted",
+          status: "draft",
           updated_at: "2026-05-29T12:00:00Z",
         },
       ],
@@ -367,7 +367,7 @@ describe("dashboard api client", () => {
           id: "pub-1",
           platform: "zhihu",
           retry_count: 0,
-          status: "adapted",
+          status: "draft",
           updated_at: "2026-05-29T12:00:00Z",
         },
       ],
@@ -429,7 +429,7 @@ describe("dashboard api client", () => {
           platform: "wechat",
           publish_url: "https://example.com/post",
           retry_count: 0,
-          status: "published",
+          status: "succeeded",
           updated_at: "2026-05-29T12:00:00Z",
         },
       ],
@@ -460,7 +460,7 @@ describe("dashboard api client", () => {
           enabled: true,
           id: "pub-1",
           platform: "wechat",
-          status: "adapted",
+          status: "draft",
         },
       ],
       status: "ready",
@@ -507,7 +507,7 @@ describe("dashboard api client", () => {
           enabled: true,
           id: "pub-1",
           platform: "wechat",
-          status: "published",
+          status: "succeeded",
         },
       ],
       source_content: "<p>Body</p>",
@@ -615,7 +615,7 @@ describe("dashboard api client", () => {
           enabled: true,
           id: "pub-1",
           platform: "zhihu",
-          status: "adapted",
+          status: "draft",
         },
       ],
       source_content: "<p>Updated</p>",
@@ -1056,19 +1056,24 @@ describe("dashboard api client", () => {
   it("posts a publish request with the selected platform", async () => {
     const result = {
       publish_url: "https://example.com/post",
-      status: "published",
+      status: "succeeded",
     };
     const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(result));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(publishProject("project-1", "wechat")).resolves.toEqual(
-      result,
-    );
+    await expect(
+      publishProject("project-1", "wechat", {
+        idempotencyKey: "publish-click-1",
+      }),
+    ).resolves.toEqual(result);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/user/dashboard/projects/project-1/publish",
       expect.objectContaining({
-        body: JSON.stringify({ platform: "wechat" }),
+        body: JSON.stringify({
+          idempotency_key: "publish-click-1",
+          platform: "wechat",
+        }),
         credentials: "same-origin",
         headers: expect.any(Headers),
         method: "POST",
@@ -1088,13 +1093,20 @@ describe("dashboard api client", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      publishProject("project-1", "x", { mode: "manual" }),
+      publishProject("project-1", "x", {
+        idempotencyKey: "manual-click-1",
+        mode: "manual",
+      }),
     ).resolves.toEqual(result);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/user/dashboard/projects/project-1/publish",
       expect.objectContaining({
-        body: JSON.stringify({ mode: "manual", platform: "x" }),
+        body: JSON.stringify({
+          idempotency_key: "manual-click-1",
+          mode: "manual",
+          platform: "x",
+        }),
         method: "POST",
       }),
     );
