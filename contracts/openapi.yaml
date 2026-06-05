@@ -832,6 +832,10 @@ components:
         user_id:
           type: string
           format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+          nullable: true
         collab_document_id:
           type: string
           format: uuid

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -26,9 +25,6 @@ var seedDataSQL string
 const migrationAdvisoryLockKey = 776770001
 const devFallbackPasswordHash = "$2a$10$JuGX0AMl3DS3eGm/yRvY2OZLm4QuTuoIgRT4ucmVs/BCwoPYARN4C"
 const disabledPasswordHash = "legacy-password-reset-required"
-const personalWorkspaceName = "Personal"
-
-var personalWorkspaceNamespace = uuid.MustParse("03d32585-3f8c-48a8-bf40-53aa3f1698c1")
 
 const (
 	dbMaxOpenConnsEnv    = "DB_MAX_OPEN_CONNS"
@@ -196,24 +192,16 @@ func migrate(database *gorm.DB) error {
 	})
 }
 
-func personalWorkspaceID(userID uuid.UUID) uuid.UUID {
-	return uuid.NewSHA1(personalWorkspaceNamespace, []byte(userID.String()))
-}
-
-func personalWorkspaceSlug(userID uuid.UUID) string {
-	return "personal-" + userID.String()
-}
-
 func backfillPersonalWorkspaces(database *gorm.DB) error {
 	var users []models.User
 	return database.FindInBatches(&users, 100, func(tx *gorm.DB, _ int) error {
 		for _, user := range users {
-			workspaceID := personalWorkspaceID(user.ID)
+			workspaceID := models.PersonalWorkspaceID(user.ID)
 			workspace := models.Workspace{
 				ID:          workspaceID,
 				OwnerUserID: user.ID,
-				Name:        personalWorkspaceName,
-				Slug:        personalWorkspaceSlug(user.ID),
+				Name:        models.PersonalWorkspaceName,
+				Slug:        models.PersonalWorkspaceSlug(user.ID),
 				Status:      models.WorkspaceStatusActive,
 			}
 			if err := tx.Clauses(clause.OnConflict{
