@@ -18,6 +18,7 @@ import {
   getProjectCollaborators,
   getProjectPublications,
   getWorkspace,
+  getWorkspaceActivities,
   getWorkspaceMembers,
   getWorkspaceProjects,
   getWorkspaces,
@@ -953,6 +954,40 @@ describe("dashboard api client", () => {
         credentials: "same-origin",
         headers: expect.any(Headers),
         method: "DELETE",
+      }),
+    );
+  });
+
+  it("lists workspace activity", async () => {
+    const activities = {
+      items: [
+        {
+          actor_email: "owner@example.com",
+          actor_user_id: "owner-1",
+          actor_username: "owner",
+          created_at: "2026-06-05T12:00:00Z",
+          event_type: "member_added",
+          id: "activity-1",
+          metadata: { role: "member" },
+          target_email: "member@example.com",
+          target_user_id: "user-2",
+          target_username: "member",
+          workspace_id: "workspace-1",
+        },
+      ],
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(activities));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getWorkspaceActivities("workspace-1", 5)).resolves.toEqual(
+      activities,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/workspaces/workspace-1/activity?limit=5",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
       }),
     );
   });
