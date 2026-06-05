@@ -778,7 +778,8 @@ func (h *UserDashboardHandler) UpdateProjectPrepublishDraft(c echo.Context) erro
 }
 
 func (h *UserDashboardHandler) EditContentWithAI(c echo.Context) error {
-	if _, err := middleware.GetUserIDFromContext(c); err != nil {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 	if h.aiContentEditor == nil {
@@ -789,6 +790,15 @@ func (h *UserDashboardHandler) EditContentWithAI(c echo.Context) error {
 	if err := c.Bind(req); err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
+
+	lease, err := h.acquireAILease(c, userID, "content")
+	if err != nil {
+		if handled := streamgate.SendLimitError(c, err); handled != nil {
+			return handled
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	defer lease.Release(context.Background())
 
 	resp, err := h.aiContentEditor.EditContent(c.Request().Context(), *req)
 	if err != nil {
@@ -811,7 +821,7 @@ func (h *UserDashboardHandler) StreamEditContentWithAI(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	lease, err := h.acquireAIStreamLease(c, userID, "content")
+	lease, err := h.acquireAILease(c, userID, "content-stream")
 	if err != nil {
 		if handled := streamgate.SendLimitError(c, err); handled != nil {
 			return handled
@@ -828,7 +838,8 @@ func (h *UserDashboardHandler) StreamEditContentWithAI(c echo.Context) error {
 }
 
 func (h *UserDashboardHandler) EditPrepublishWithAI(c echo.Context) error {
-	if _, err := middleware.GetUserIDFromContext(c); err != nil {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 	if h.aiContentEditor == nil {
@@ -839,6 +850,15 @@ func (h *UserDashboardHandler) EditPrepublishWithAI(c echo.Context) error {
 	if err := c.Bind(req); err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
+
+	lease, err := h.acquireAILease(c, userID, "prepublish")
+	if err != nil {
+		if handled := streamgate.SendLimitError(c, err); handled != nil {
+			return handled
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	defer lease.Release(context.Background())
 
 	resp, err := h.aiContentEditor.EditPrepublish(c.Request().Context(), *req)
 	if err != nil {
@@ -861,7 +881,7 @@ func (h *UserDashboardHandler) StreamEditPrepublishWithAI(c echo.Context) error 
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	lease, err := h.acquireAIStreamLease(c, userID, "prepublish")
+	lease, err := h.acquireAILease(c, userID, "prepublish-stream")
 	if err != nil {
 		if handled := streamgate.SendLimitError(c, err); handled != nil {
 			return handled
@@ -887,7 +907,7 @@ func sendAIEditError(c echo.Context, err error) error {
 	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 }
 
-func (h *UserDashboardHandler) acquireAIStreamLease(c echo.Context, userID uuid.UUID, resource string) (*streamgate.Lease, error) {
+func (h *UserDashboardHandler) acquireAILease(c echo.Context, userID uuid.UUID, resource string) (*streamgate.Lease, error) {
 	if h.streamLimiter == nil {
 		return &streamgate.Lease{}, nil
 	}

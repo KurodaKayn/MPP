@@ -36,7 +36,30 @@ INFO = Gauge(
     "Static information marker for an MPP service.",
     ("service",),
 )
+AI_TOKENS = Counter(
+    "mpp_ai_tokens_total",
+    "Total LLM tokens used by AI requests.",
+    ("service", "route", "direction"),
+)
+AI_COST = Counter(
+    "mpp_ai_cost_total",
+    "Total estimated LLM cost by AI requests.",
+    ("service", "route", "currency"),
+)
 INFO.labels(SERVICE_NAME).set(1)
+
+
+def record_ai_usage(route: str, usage: dict) -> None:
+    input_tokens = _positive_int(usage.get("input_tokens"))
+    output_tokens = _positive_int(usage.get("output_tokens"))
+    total_tokens = _positive_int(usage.get("total_tokens"))
+    cost = _positive_float(usage.get("cost"))
+    currency = str(usage.get("currency") or "USD").upper()
+
+    AI_TOKENS.labels(SERVICE_NAME, route, "input").inc(input_tokens)
+    AI_TOKENS.labels(SERVICE_NAME, route, "output").inc(output_tokens)
+    AI_TOKENS.labels(SERVICE_NAME, route, "total").inc(total_tokens)
+    AI_COST.labels(SERVICE_NAME, route, currency).inc(cost)
 
 
 def configure_observability(app: FastAPI) -> None:
@@ -142,3 +165,19 @@ def _response_size(response) -> int:
         return int(value)
     except ValueError:
         return 0
+
+
+def _positive_int(value) -> int:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return parsed if parsed > 0 else 0
+
+
+def _positive_float(value) -> float:
+    try:
+        parsed = float(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return parsed if parsed > 0 else 0

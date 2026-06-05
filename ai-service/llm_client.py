@@ -15,10 +15,14 @@ LLM_PROVIDER_KEY_ENV = "LLM_PROVIDER_KEY"
 LLM_REQUEST_TIMEOUT_ENV = "LLM_REQUEST_TIMEOUT_SECONDS"
 LLM_MAX_RETRIES_ENV = "LLM_MAX_RETRIES"
 LLM_STREAM_CHUNK_TIMEOUT_ENV = "LLM_STREAM_CHUNK_TIMEOUT_SECONDS"
+LLM_INPUT_COST_PER_1K_TOKENS_ENV = "LLM_INPUT_COST_PER_1K_TOKENS"
+LLM_OUTPUT_COST_PER_1K_TOKENS_ENV = "LLM_OUTPUT_COST_PER_1K_TOKENS"
+LLM_COST_CURRENCY_ENV = "LLM_COST_CURRENCY"
 
 DEFAULT_LLM_REQUEST_TIMEOUT_SECONDS = 90.0
 DEFAULT_LLM_MAX_RETRIES = 2
 DEFAULT_LLM_STREAM_CHUNK_TIMEOUT_SECONDS = 30.0
+DEFAULT_LLM_COST_CURRENCY = "USD"
 
 
 def build_llm() -> ChatOpenAI:
@@ -106,6 +110,47 @@ def response_text(content: Any, *, strip: bool = True) -> str:
                 parts.append(str(item))
         return finish("".join(parts))
     return finish(str(content))
+
+
+def response_usage(response: Any) -> dict[str, Any]:
+    usage = getattr(response, "usage_metadata", None)
+    if isinstance(usage, Mapping):
+        input_tokens = int_value(usage.get("input_tokens"))
+        output_tokens = int_value(usage.get("output_tokens"))
+        total_tokens = int_value(usage.get("total_tokens"))
+    else:
+        metadata = getattr(response, "response_metadata", None)
+        token_usage = metadata.get("token_usage") if isinstance(metadata, Mapping) else {}
+        if not isinstance(token_usage, Mapping):
+            token_usage = {}
+        input_tokens = int_value(token_usage.get("prompt_tokens"))
+        output_tokens = int_value(token_usage.get("completion_tokens"))
+        total_tokens = int_value(token_usage.get("total_tokens"))
+
+    if total_tokens == 0:
+        total_tokens = input_tokens + output_tokens
+
+    input_cost = float_env(LLM_INPUT_COST_PER_1K_TOKENS_ENV, 0) * input_tokens / 1000
+    output_cost = float_env(LLM_OUTPUT_COST_PER_1K_TOKENS_ENV, 0) * output_tokens / 1000
+    currency = os.getenv(LLM_COST_CURRENCY_ENV, DEFAULT_LLM_COST_CURRENCY).strip()
+    if not currency:
+        currency = DEFAULT_LLM_COST_CURRENCY
+
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "cost": round(input_cost + output_cost, 8),
+        "currency": currency.upper(),
+    }
+
+
+def int_value(value: Any) -> int:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return parsed if parsed > 0 else 0
 
 
 def adapted_content_dict(
