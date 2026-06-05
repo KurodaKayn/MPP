@@ -43,6 +43,9 @@ func (s *DashboardService) SyncProjectPrepublish(projectID uuid.UUID, userID uui
 	if err != nil {
 		return nil, err
 	}
+	if prepublishHasActivePublish(publications) {
+		return nil, publishsvc.ErrPublicationAlreadyPublishing
+	}
 	if err := s.markPrepublishSyncing(project.ID, platforms); err != nil {
 		return nil, err
 	}
@@ -66,16 +69,63 @@ func (s *DashboardService) SyncProjectPrepublish(projectID uuid.UUID, userID uui
 	return s.GetProjectPublications(projectID, &userID, true)
 }
 
+func prepublishHasActivePublish(publications []models.ProjectPlatformPublication) bool {
+	for _, publication := range publications {
+		if prepublishPublishStatusActive(publication.Status) {
+			return true
+		}
+	}
+	return false
+}
+
+func prepublishPublishStatusActive(status string) bool {
+	return status == models.PublicationStatusQueued || status == models.PublicationStatusPublishing
+}
+
 func (s *DashboardService) markPrepublishSyncing(projectID uuid.UUID, platforms []string) error {
 	if len(platforms) == 0 {
 		return nil
 	}
-	return s.db.Model(&models.ProjectPlatformPublication{}).
-		Where("project_id = ? AND platform IN ?", projectID, platforms).
-		Updates(map[string]interface{}{
-			"error_message": "",
-			"status":        models.PublicationStatusSyncing,
-		}).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var activeCount int64
+		if err := tx.Model(&models.ProjectPlatformPublication{}).
+			Where("project_id = ? AND platform IN ? AND status IN ?", projectID, platforms, []string{
+				models.PublicationStatusQueued,
+				models.PublicationStatusPublishing,
+			}).
+			Count(&activeCount).Error; err != nil {
+			return err
+		}
+		if activeCount > 0 {
+			return publishsvc.ErrPublicationAlreadyPublishing
+		}
+
+		if err := tx.Model(&models.ProjectPlatformPublication{}).
+			Where("project_id = ? AND platform IN ? AND status NOT IN ?", projectID, platforms, []string{
+				models.PublicationStatusQueued,
+				models.PublicationStatusPublishing,
+			}).
+			Updates(map[string]interface{}{
+				"error_message": "",
+				"status":        models.PublicationStatusSyncing,
+			}).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Model(&models.ProjectPlatformPublication{}).
+			Where("project_id = ? AND platform IN ? AND status IN ?", projectID, platforms, []string{
+				models.PublicationStatusQueued,
+				models.PublicationStatusPublishing,
+			}).
+			Count(&activeCount).Error; err != nil {
+			return err
+		}
+		if activeCount > 0 {
+			return publishsvc.ErrPublicationAlreadyPublishing
+		}
+
+		return nil
+	})
 }
 
 func (s *DashboardService) ensurePrepublishPublications(project *models.Project, platforms []string) ([]models.ProjectPlatformPublication, error) {
@@ -130,30 +180,26 @@ func (s *DashboardService) applyCompiledPrepublishDrafts(projectID uuid.UUID, pl
 		for _, platform := range platforms {
 			adaptedContent, ok := drafts[platform]
 			if !ok {
-				if err := tx.Model(&models.ProjectPlatformPublication{}).
-					Where("project_id = ? AND platform = ?", projectID, platform).
-					Updates(map[string]interface{}{
-						"error_message": "content pipeline did not return a compiled draft",
-						"status":        models.PublicationStatusFailed,
-					}).Error; err != nil {
+				if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]interface{}{
+					"error_message": "content pipeline did not return a compiled draft",
+					"status":        models.PublicationStatusFailed,
+				}); err != nil {
 					return err
 				}
 				continue
 			}
 
-			if err := tx.Model(&models.ProjectPlatformPublication{}).
-				Where("project_id = ? AND platform = ?", projectID, platform).
-				Updates(map[string]interface{}{
-					"adapted_content": datatypes.JSON(adaptedContent),
-					"enabled":         true,
-					"error_message":   "",
-					"last_attempt_at": nil,
-					"published_at":    nil,
-					"publish_url":     "",
-					"remote_id":       "",
-					"retry_count":     0,
-					"status":          models.PublicationStatusDraft,
-				}).Error; err != nil {
+			if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]interface{}{
+				"adapted_content": datatypes.JSON(adaptedContent),
+				"enabled":         true,
+				"error_message":   "",
+				"last_attempt_at": nil,
+				"published_at":    nil,
+				"publish_url":     "",
+				"remote_id":       "",
+				"retry_count":     0,
+				"status":          models.PublicationStatusDraft,
+			}); err != nil {
 				return err
 			}
 		}
@@ -165,12 +211,30 @@ func (s *DashboardService) markPrepublishCompileFailure(projectID uuid.UUID, pla
 	if len(platforms) == 0 {
 		return nil
 	}
-	return s.db.Model(&models.ProjectPlatformPublication{}).
-		Where("project_id = ? AND platform IN ?", projectID, platforms).
-		Updates(map[string]interface{}{
-			"error_message": publishsvc.SanitizeUserFacingErrorMessage(err.Error()),
-			"status":        models.PublicationStatusFailed,
-		}).Error
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for _, platform := range platforms {
+			if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]interface{}{
+				"error_message": publishsvc.SanitizeUserFacingErrorMessage(err.Error()),
+				"status":        models.PublicationStatusFailed,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func updateSyncingPrepublishPublication(tx *gorm.DB, projectID uuid.UUID, platform string, updates map[string]interface{}) error {
+	result := tx.Model(&models.ProjectPlatformPublication{}).
+		Where("project_id = ? AND platform = ? AND status = ?", projectID, platform, models.PublicationStatusSyncing).
+		Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return publishsvc.ErrPublicationAlreadyPublishing
+	}
+	return nil
 }
 
 func (s *DashboardService) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.UUID, platform string, req dto.UpdatePrepublishDraftRequest) (*dto.ProjectPublicationsResponse, error) {

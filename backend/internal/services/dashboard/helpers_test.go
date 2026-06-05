@@ -29,6 +29,7 @@ type fakeXOAuth2Provider struct {
 
 type fakeProjectDraftCompiler struct {
 	err           error
+	beforeReturn  func()
 	lastProject   *models.Project
 	lastPlatforms []string
 }
@@ -64,6 +65,9 @@ func (f *fakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, pro
 		default:
 			drafts[platform] = []byte(`{"format":"text","text":"Hello draft"}`)
 		}
+	}
+	if f.beforeReturn != nil {
+		f.beforeReturn()
 	}
 	return drafts, nil
 }
