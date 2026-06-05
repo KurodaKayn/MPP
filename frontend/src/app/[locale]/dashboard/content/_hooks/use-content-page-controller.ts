@@ -5,12 +5,14 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import { emptyContentValue, type ContentValue } from "@/lib/content/types";
+import { canCreateWorkspaceProject } from "../../_hooks/use-dashboard-workspace-selection";
 import {
   createDashboardProject,
+  createWorkspaceProject,
   getDashboardProject,
   getProjectPublications,
 } from "@/lib/dashboard/api";
-import type { ProjectRole } from "@/lib/dashboard/api";
+import type { ProjectRole, Workspace } from "@/lib/dashboard/api";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import { type PublishPlatform } from "../_lib/publish-content";
 import { useContentPageStore } from "../_stores/content-page-store";
@@ -18,6 +20,11 @@ import {
   draftsFromPublications,
   useContentPublishWorkflow,
 } from "../_workflows/use-content-publish-workflow";
+
+type WorkspaceProjectContext = {
+  requiresWorkspace?: boolean;
+  selectedWorkspace?: Workspace | null;
+};
 
 function isPublishPlatform(platform: string): platform is PublishPlatform {
   return PLATFORM_TABS.some((item) => item.value === platform);
@@ -37,7 +44,12 @@ function contentValueFromSource(sourceContent: string): ContentValue {
   };
 }
 
-export function useContentPageController(projectId?: string) {
+export function useContentPageController(
+  projectId?: string,
+  workspaceContext: WorkspaceProjectContext = {},
+) {
+  const { requiresWorkspace = false, selectedWorkspace = null } =
+    workspaceContext;
   const router = useRouter();
   const {
     content,
@@ -80,6 +92,11 @@ export function useContentPageController(projectId?: string) {
   );
   const canEditProject = !projectId || projectRole !== "viewer";
   const canPublishProject = !projectId || projectRole === "owner";
+  const canCreateInWorkspace = Boolean(
+    projectId ||
+    (!requiresWorkspace && !selectedWorkspace) ||
+    (selectedWorkspace && canCreateWorkspaceProject(selectedWorkspace.role)),
+  );
   const canPublish = Boolean(
     projectId &&
     canPublishProject &&
@@ -87,14 +104,18 @@ export function useContentPageController(projectId?: string) {
     automaticPublishPlatforms.length > 0 &&
     hasSyncedSelectedPlatforms,
   );
-  const canSelectPlatforms = Boolean(canEditProject && hasRequiredContent);
+  const canSelectPlatforms = Boolean(
+    canEditProject && canCreateInWorkspace && hasRequiredContent,
+  );
   const canSave = Boolean(
     projectId &&
     canEditProject &&
     hasRequiredContent &&
     selectedPlatforms.length > 0,
   );
-  const canOpenXPostIntent = Boolean(canPublishProject && hasRequiredContent);
+  const canOpenXPostIntent = Boolean(
+    canPublishProject && canCreateInWorkspace && hasRequiredContent,
+  );
 
   useEffect(() => {
     if (!projectId) {
@@ -175,7 +196,16 @@ export function useContentPageController(projectId?: string) {
     automaticPublishPlatforms,
     canPublish,
     content,
-    createProject: createDashboardProject,
+    createProject: (input) => {
+      if (selectedWorkspace) {
+        return createWorkspaceProject(selectedWorkspace.id, input);
+      }
+      if (requiresWorkspace) {
+        throw new Error(t("project.workspaceRequired"));
+      }
+
+      return createDashboardProject(input);
+    },
     hasBodyContent,
     navigateToProject: (targetProjectId) =>
       router.replace(`/dashboard/content/${targetProjectId}`),
@@ -218,7 +248,7 @@ export function useContentPageController(projectId?: string) {
     isLoading: isPageLoading,
     openPublishPanel,
     prepublish: {
-      canEdit: canEditProject,
+      canEdit: Boolean(canEditProject && canCreateInWorkspace),
       content,
       drafts: prepublishDrafts,
       isSyncing: isSyncingPrepublish,
