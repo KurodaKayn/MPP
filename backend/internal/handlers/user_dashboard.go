@@ -148,6 +148,20 @@ func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 
+	page, limit := projectPaginationFromQuery(c)
+	status := c.QueryParam("status")
+	platform := c.QueryParam("platform")
+
+	// Personal view: enforce scopeUserID, ignore any requested filterUserID
+	resp, err := h.serviceFor(c).ListProjects(page, limit, status, "", platform, &userID)
+	if err != nil {
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+func projectPaginationFromQuery(c echo.Context) (int, int) {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	if page < 1 {
 		page = 1
@@ -160,17 +174,7 @@ func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 	if limit > 100 {
 		limit = 100
 	}
-
-	status := c.QueryParam("status")
-	platform := c.QueryParam("platform")
-
-	// Personal view: enforce scopeUserID, ignore any requested filterUserID
-	resp, err := h.serviceFor(c).ListProjects(page, limit, status, "", platform, &userID)
-	if err != nil {
-		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
-	}
-
-	return c.JSON(http.StatusOK, resp)
+	return page, limit
 }
 
 func (h *UserDashboardHandler) CreateProject(c echo.Context) error {
@@ -485,6 +489,54 @@ func (h *UserDashboardHandler) CreateWorkspace(c echo.Context) error {
 		return sendWorkspaceError(c, err)
 	}
 	return c.JSON(http.StatusCreated, workspace)
+}
+
+func (h *UserDashboardHandler) ListWorkspaceProjects(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	page, limit := projectPaginationFromQuery(c)
+	status := c.QueryParam("status")
+	platform := c.QueryParam("platform")
+
+	resp, err := h.serviceFor(c).ListWorkspaceProjects(workspaceID, userID, page, limit, status, platform)
+	if err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) CreateWorkspaceProject(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	req := new(dto.CreateProjectRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	project, err := h.serviceFor(c).CreateWorkspaceProject(workspaceID, userID, *req)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", "title, source_content and platforms are required")
+		}
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, project)
 }
 
 func (h *UserDashboardHandler) GetWorkspace(c echo.Context) error {

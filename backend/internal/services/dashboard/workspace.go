@@ -38,6 +38,10 @@ func canManageWorkspaceRole(role string) bool {
 	return role == models.WorkspaceRoleOwner || role == models.WorkspaceRoleAdmin
 }
 
+func canCreateWorkspaceProjectRole(role string) bool {
+	return role == models.WorkspaceRoleOwner || role == models.WorkspaceRoleAdmin || role == models.WorkspaceRoleMember
+}
+
 func (s *DashboardService) workspaceAccessRole(workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
 	if workspaceID == uuid.Nil || userID == uuid.Nil {
 		return "", ErrInvalidWorkspace
@@ -104,6 +108,36 @@ func (s *DashboardService) ListWorkspaces(userID uuid.UUID) (*dto.WorkspacesResp
 		items = append(items, workspaceFromModel(workspace, roles[workspace.ID]))
 	}
 	return &dto.WorkspacesResponse{Items: items}, nil
+}
+
+func (s *DashboardService) ListWorkspaceProjects(workspaceID uuid.UUID, actorUserID uuid.UUID, page, limit int, status, platform string) (*dto.PaginationResponse, error) {
+	if _, err := s.workspaceAccessRole(workspaceID, actorUserID); err != nil {
+		return nil, err
+	}
+
+	query := s.db.Model(&models.Project{}).Where("workspace_id = ?", workspaceID)
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if platform != "" {
+		query = query.Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id").
+			Where("ppp.platform = ?", platform).
+			Group("projects.id")
+	}
+
+	return s.listProjectPage(query, page, limit, &actorUserID)
+}
+
+func (s *DashboardService) CreateWorkspaceProject(workspaceID uuid.UUID, actorUserID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
+	role, err := s.workspaceAccessRole(workspaceID, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	if !canCreateWorkspaceProjectRole(role) {
+		return nil, ErrForbidden
+	}
+
+	return s.createProjectWithWorkspace(actorUserID, &workspaceID, req)
 }
 
 func (s *DashboardService) CreateWorkspace(actorUserID uuid.UUID, req dto.CreateWorkspaceRequest) (*dto.Workspace, error) {
@@ -364,6 +398,52 @@ func (s *DashboardService) workspaceRolesForUser(workspaces []models.Workspace, 
 	}
 	for _, member := range members {
 		roles[member.WorkspaceID] = member.Role
+	}
+	return roles, nil
+}
+
+func (s *DashboardService) workspaceProjectRolesForUser(workspaceIDSet map[uuid.UUID]struct{}, userID uuid.UUID) (map[uuid.UUID]string, error) {
+	roles := make(map[uuid.UUID]string, len(workspaceIDSet))
+	if len(workspaceIDSet) == 0 {
+		return roles, nil
+	}
+
+	workspaceIDs := make([]uuid.UUID, 0, len(workspaceIDSet))
+	for workspaceID := range workspaceIDSet {
+		workspaceIDs = append(workspaceIDs, workspaceID)
+	}
+
+	var ownedWorkspaces []models.Workspace
+	if err := s.db.
+		Select("id").
+		Where("owner_user_id = ? AND id IN ?", userID, workspaceIDs).
+		Find(&ownedWorkspaces).Error; err != nil {
+		return nil, err
+	}
+	for _, workspace := range ownedWorkspaces {
+		role, err := projectRoleForWorkspaceRole(models.WorkspaceRoleOwner)
+		if err != nil {
+			return nil, err
+		}
+		roles[workspace.ID] = role
+	}
+
+	var members []models.WorkspaceMember
+	if err := s.db.
+		Select("workspace_id", "role").
+		Where("user_id = ? AND workspace_id IN ?", userID, workspaceIDs).
+		Find(&members).Error; err != nil {
+		return nil, err
+	}
+	for _, member := range members {
+		if _, ok := roles[member.WorkspaceID]; ok {
+			continue
+		}
+		role, err := projectRoleForWorkspaceRole(member.Role)
+		if err != nil {
+			return nil, err
+		}
+		roles[member.WorkspaceID] = role
 	}
 	return roles, nil
 }
