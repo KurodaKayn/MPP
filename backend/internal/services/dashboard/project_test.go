@@ -78,12 +78,16 @@ func TestListProjectsIncludesCollaboratorProjectsWithRoles(t *testing.T) {
 	items := res.Items.([]dto.ProjectListItem)
 	require.Len(t, items, 2)
 	roles := map[uuid.UUID]string{}
+	accessSources := map[uuid.UUID]string{}
 	for _, item := range items {
 		roles[item.ID] = item.Role
+		accessSources[item.ID] = item.AccessSource
 		require.NotEqual(t, hiddenProject.ID, item.ID)
 	}
 	require.Equal(t, models.ProjectRoleOwner, roles[ownedProject.ID])
+	require.Equal(t, models.ProjectAccessSourceOwner, accessSources[ownedProject.ID])
 	require.Equal(t, models.ProjectRoleViewer, roles[sharedProject.ID])
+	require.Equal(t, models.ProjectAccessSourceDirectShare, accessSources[sharedProject.ID])
 }
 
 func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
