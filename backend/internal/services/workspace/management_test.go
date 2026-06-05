@@ -154,6 +154,13 @@ func TestWorkspaceActivitiesRecordManagementChanges(t *testing.T) {
 		Role:   models.WorkspaceRoleMember,
 	})
 	require.NoError(t, err)
+	duplicateMember, err := s.AddWorkspaceMember(workspace.ID, owner.ID, dto.AddWorkspaceMemberRequest{
+		UserID: member.ID,
+		Role:   models.WorkspaceRoleMember,
+	})
+	require.NoError(t, err)
+	require.Equal(t, member.ID, duplicateMember.UserID)
+	require.Equal(t, models.WorkspaceRoleMember, duplicateMember.Role)
 	_, err = s.UpdateWorkspaceMember(workspace.ID, owner.ID, member.ID, dto.UpdateWorkspaceMemberRequest{
 		Role: models.WorkspaceRoleViewer,
 	})
