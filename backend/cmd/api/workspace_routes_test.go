@@ -25,6 +25,8 @@ func TestWorkspaceRoutesIncludeManagementRoutes(t *testing.T) {
 	expectedRoutes := map[string]bool{
 		http.MethodGet + " /api/workspaces":                        false,
 		http.MethodPost + " /api/workspaces":                       false,
+		http.MethodGet + " /api/workspaces/:id/projects":           false,
+		http.MethodPost + " /api/workspaces/:id/projects":          false,
 		http.MethodGet + " /api/workspaces/:id":                    false,
 		http.MethodPatch + " /api/workspaces/:id":                  false,
 		http.MethodGet + " /api/workspaces/:id/members":            false,

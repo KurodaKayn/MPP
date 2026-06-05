@@ -128,6 +128,12 @@ export type ProjectCollaborator = ContractSchema<"ProjectCollaborator">;
 export type ProjectCollaboratorsResponse =
   ContractSchema<"ProjectCollaboratorsResponse">;
 export type PaginatedProjects = ContractSchema<"PaginationProjects">;
+export type ListWorkspaceProjectsOptions = {
+  page?: number;
+  limit?: number;
+  status?: ProjectStatus;
+  platform?: PublishPlatform;
+};
 
 export type WorkspaceRole = ContractSchema<"WorkspaceRole">;
 export type WorkspaceStatus = ContractSchema<"WorkspaceStatus">;

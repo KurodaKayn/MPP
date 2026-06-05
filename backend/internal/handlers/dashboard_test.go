@@ -871,6 +871,90 @@ func TestUserDashboardHandlerWorkspaces(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, removeRec.Code)
 }
 
+func TestUserDashboardHandlerWorkspaceProjects(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	svc := services.NewDashboardService(db)
+	handler := NewUserDashboardHandler(svc)
+
+	owner := models.User{Username: "workspace-project-owner", Email: "workspace-project-owner@example.com"}
+	member := models.User{Username: "workspace-project-member", Email: "workspace-project-member@example.com"}
+	viewer := models.User{Username: "workspace-project-viewer", Email: "workspace-project-viewer@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&member).Error)
+	require.NoError(t, db.Create(&viewer).Error)
+
+	workspace, err := svc.CreateWorkspace(owner.ID, dto.CreateWorkspaceRequest{Name: "Project Workspace"})
+	require.NoError(t, err)
+	_, err = svc.AddWorkspaceMember(workspace.ID, owner.ID, dto.AddWorkspaceMemberRequest{
+		UserID: member.ID,
+		Role:   models.WorkspaceRoleMember,
+	})
+	require.NoError(t, err)
+	_, err = svc.AddWorkspaceMember(workspace.ID, owner.ID, dto.AddWorkspaceMemberRequest{
+		UserID: viewer.ID,
+		Role:   models.WorkspaceRoleViewer,
+	})
+	require.NoError(t, err)
+
+	createReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/workspaces/"+workspace.ID.String()+"/projects",
+		strings.NewReader(`{"title":"Team Project","source_content":"<p>team</p>","platforms":["wechat"]}`),
+	)
+	createReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	createRec := httptest.NewRecorder()
+	createContext := e.NewContext(createReq, createRec)
+	createContext.SetParamNames("id")
+	createContext.SetParamValues(workspace.ID.String())
+	setContextUser(createContext, member.ID)
+
+	require.NoError(t, handler.CreateWorkspaceProject(createContext))
+	require.Equal(t, http.StatusCreated, createRec.Code)
+
+	var created dto.ProjectListItem
+	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &created))
+	require.Equal(t, member.ID, created.UserID)
+	require.NotNil(t, created.WorkspaceID)
+	require.Equal(t, workspace.ID, *created.WorkspaceID)
+	require.Equal(t, models.ProjectRoleOwner, created.Role)
+
+	listContext, listRec := newHandlerTestContext(e, http.MethodGet, "/api/workspaces/"+workspace.ID.String()+"/projects?page=bad&limit=1000")
+	listContext.SetParamNames("id")
+	listContext.SetParamValues(workspace.ID.String())
+	setContextUser(listContext, owner.ID)
+
+	require.NoError(t, handler.ListWorkspaceProjects(listContext))
+	require.Equal(t, http.StatusOK, listRec.Code)
+
+	var projects dto.PaginationResponse
+	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &projects))
+	require.Equal(t, int64(1), projects.Total)
+	items, ok := projects.Items.([]interface{})
+	require.True(t, ok)
+	require.Len(t, items, 1)
+	item, ok := items[0].(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "Team Project", item["title"])
+	require.Equal(t, models.ProjectRoleEditor, item["role"])
+	require.Equal(t, workspace.ID.String(), item["workspace_id"])
+
+	forbiddenReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/workspaces/"+workspace.ID.String()+"/projects",
+		strings.NewReader(`{"title":"Viewer Project","source_content":"<p>viewer</p>","platforms":["wechat"]}`),
+	)
+	forbiddenReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	forbiddenRec := httptest.NewRecorder()
+	forbiddenContext := e.NewContext(forbiddenReq, forbiddenRec)
+	forbiddenContext.SetParamNames("id")
+	forbiddenContext.SetParamValues(workspace.ID.String())
+	setContextUser(forbiddenContext, viewer.ID)
+
+	require.NoError(t, handler.CreateWorkspaceProject(forbiddenContext))
+	require.Equal(t, http.StatusForbidden, forbiddenRec.Code)
+}
+
 func TestUserDashboardHandlerCreateProjectCollabSession(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)

@@ -335,6 +335,8 @@ export interface components {
       /** Format: uuid */
       user_id: string;
       /** Format: uuid */
+      workspace_id?: string | null;
+      /** Format: uuid */
       collab_document_id?: string | null;
       title: string;
       status: components["schemas"]["ProjectStatus"];

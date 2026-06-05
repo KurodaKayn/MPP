@@ -210,6 +210,8 @@ func registerWorkspaceRoutes(e *echo.Echo, config serverConfig, h serverHandlers
 
 	workspaceGroup.GET("", h.userDashboard.ListWorkspaces)
 	workspaceGroup.POST("", h.userDashboard.CreateWorkspace)
+	workspaceGroup.GET("/:id/projects", h.userDashboard.ListWorkspaceProjects)
+	workspaceGroup.POST("/:id/projects", h.userDashboard.CreateWorkspaceProject)
 	workspaceGroup.GET("/:id", h.userDashboard.GetWorkspace)
 	workspaceGroup.PATCH("/:id", h.userDashboard.UpdateWorkspace)
 	workspaceGroup.GET("/:id/members", h.userDashboard.ListWorkspaceMembers)

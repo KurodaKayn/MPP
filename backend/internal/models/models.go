@@ -97,11 +97,23 @@ const (
 	WorkspaceStatusActive   = "active"
 	WorkspaceStatusArchived = "archived"
 
+	PersonalWorkspaceName = "Personal"
+
 	WorkspaceRoleOwner  = "owner"
 	WorkspaceRoleAdmin  = "admin"
 	WorkspaceRoleMember = "member"
 	WorkspaceRoleViewer = "viewer"
 )
+
+var personalWorkspaceNamespace = uuid.MustParse("03d32585-3f8c-48a8-bf40-53aa3f1698c1")
+
+func PersonalWorkspaceID(userID uuid.UUID) uuid.UUID {
+	return uuid.NewSHA1(personalWorkspaceNamespace, []byte(userID.String()))
+}
+
+func PersonalWorkspaceSlug(userID uuid.UUID) string {
+	return "personal-" + userID.String()
+}
 
 type Workspace struct {
 	ID          uuid.UUID      `gorm:"type:uuid;primaryKey"`

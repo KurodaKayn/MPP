@@ -9,6 +9,7 @@ import {
   createDashboardProject,
   createProjectCollabSession,
   createWorkspace,
+  createWorkspaceProject,
   getBrowserSession,
   getDashboardProject,
   getDashboardProjects,
@@ -18,6 +19,7 @@ import {
   getProjectPublications,
   getWorkspace,
   getWorkspaceMembers,
+  getWorkspaceProjects,
   getWorkspaces,
   getXAccount,
   getWechatAccount,
@@ -951,6 +953,73 @@ describe("dashboard api client", () => {
         credentials: "same-origin",
         headers: expect.any(Headers),
         method: "DELETE",
+      }),
+    );
+  });
+
+  it("lists and creates workspace projects", async () => {
+    const projects = {
+      items: [
+        {
+          created_at: "2026-06-05T12:00:00Z",
+          id: "project-1",
+          publications: [],
+          role: "editor",
+          status: "ready",
+          title: "Team Project",
+          updated_at: "2026-06-05T12:00:00Z",
+          user_id: "user-1",
+          workspace_id: "workspace-1",
+        },
+      ],
+      limit: 20,
+      page: 2,
+      total: 1,
+      total_pages: 1,
+    };
+    const project = projects.items[0];
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(projects))
+      .mockResolvedValueOnce(jsonResponse(project));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      getWorkspaceProjects("workspace-1", {
+        limit: 20,
+        page: 2,
+        platform: "wechat",
+        status: "ready",
+      }),
+    ).resolves.toEqual(projects);
+    await expect(
+      createWorkspaceProject("workspace-1", {
+        platforms: ["wechat"],
+        source_content: "<p>team</p>",
+        title: "Team Project",
+      }),
+    ).resolves.toEqual(project);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/workspaces/workspace-1/projects?page=2&limit=20&status=ready&platform=wechat",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/workspaces/workspace-1/projects",
+      expect.objectContaining({
+        body: JSON.stringify({
+          platforms: ["wechat"],
+          source_content: "<p>team</p>",
+          title: "Team Project",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
       }),
     );
   });
