@@ -1,8 +1,10 @@
 "use client";
 
+import { useAuth } from "@/components/auth/auth-provider";
 import { ContentEditor } from "@/components/dashboard/content/content-editor";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useProjectCollabConnection } from "@/features/collab-editor/use-collab-document";
 import { DashboardErrorCard } from "../../_components/dashboard-error-card";
 import { WorkspaceSwitcher } from "../../_components/workspace-switcher";
 import {
@@ -27,6 +29,7 @@ type ContentWorkspaceProps = {
 };
 
 export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
+  const { session } = useAuth();
   const workspaceSelection = useDashboardWorkspaceSelection({
     enabled: !projectId,
   });
@@ -39,6 +42,10 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
   const { t: tDashboard } = useTranslation(locale, "dashboard");
+  const projectCollaboration = useProjectCollabConnection({
+    projectId,
+    userName: session?.username ?? tDashboard("collab.userFallback"),
+  });
   const selectedWorkspace = workspaceSelection.selectedWorkspace;
   const workspaceCanCreate = Boolean(
     projectId ||
@@ -103,6 +110,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         <div>
           <ContentEditor
             canEdit={editor.canEdit}
+            collaboration={projectId ? projectCollaboration : undefined}
             title={editor.title}
             content={editor.content}
             onTitleChange={editor.setTitle}
