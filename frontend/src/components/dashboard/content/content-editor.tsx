@@ -26,7 +26,7 @@ import type {
   CollabConnectionStatus,
   CollabUserProfile,
 } from "@/features/collab-editor/collab-provider";
-import { cn } from "@/lib/utils";
+import { collabStatusClassName } from "@/features/collab-editor/collab-status";
 
 type ContentEditorProps = {
   canEdit?: boolean;
@@ -181,7 +181,7 @@ function ContentCollaborationStatus({
     <>
       <Badge
         variant="outline"
-        className={statusClassName(collaboration.status)}
+        className={collabStatusClassName(collaboration.status)}
       >
         {t(`collab.status.${collaboration.status}`)}
       </Badge>
@@ -204,17 +204,6 @@ function ContentCollaborationStatus({
         })}
       </Badge>
     </>
-  );
-}
-
-function statusClassName(status: CollabConnectionStatus) {
-  return cn(
-    status === "synced" &&
-      "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    status === "connected" &&
-      "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-    (status === "offline" || status === "error" || status === "unauthorized") &&
-      "border-destructive/30 bg-destructive/10 text-destructive",
   );
 }
 
