@@ -45,7 +45,9 @@ describe("publishContentToPlatforms", () => {
       summary: "Body",
       title: "Post title",
     });
-    expect(publishProject).toHaveBeenCalledWith("project-1", "wechat");
+    expect(publishProject).toHaveBeenCalledWith("project-1", "wechat", {
+      idempotencyKey: expect.stringMatching(/^project-1:wechat:.+:wechat$/),
+    });
     expect(result).toEqual({
       failed: [],
       project,
@@ -56,7 +58,13 @@ describe("publishContentToPlatforms", () => {
   it("reports failed platform results without dropping successful publishes", async () => {
     const createProject = vi.fn(async () => project);
     const publishProject = vi.fn(
-      async (projectId: string, platform: string) => {
+      async (
+        projectId: string,
+        platform: string,
+        options?: { idempotencyKey?: string },
+      ) => {
+        void projectId;
+        void options;
         if (platform === "wechat") {
           return { status: "succeeded" as const };
         }
@@ -83,8 +91,19 @@ describe("publishContentToPlatforms", () => {
       },
     );
 
-    expect(publishProject).toHaveBeenCalledWith("project-1", "wechat");
-    expect(publishProject).toHaveBeenCalledWith("project-1", "douyin");
+    expect(publishProject).toHaveBeenCalledWith("project-1", "wechat", {
+      idempotencyKey: expect.stringMatching(
+        /^project-1:wechat,douyin:.+:wechat$/,
+      ),
+    });
+    expect(publishProject).toHaveBeenCalledWith("project-1", "douyin", {
+      idempotencyKey: expect.stringMatching(
+        /^project-1:wechat,douyin:.+:douyin$/,
+      ),
+    });
+    const wechatKey = publishProject.mock.calls[0][2]?.idempotencyKey;
+    const douyinKey = publishProject.mock.calls[1][2]?.idempotencyKey;
+    expect(douyinKey).toBe(wechatKey?.replace(/:wechat$/, ":douyin"));
     expect(result.succeeded).toEqual(["wechat"]);
     expect(result.failed).toEqual([
       {
@@ -136,7 +155,9 @@ describe("publishContentToPlatforms", () => {
       },
     );
 
-    expect(publishProject).toHaveBeenCalledWith("project-1", "wechat");
+    expect(publishProject).toHaveBeenCalledWith("project-1", "wechat", {
+      idempotencyKey: expect.stringMatching(/^project-1:wechat:.+:wechat$/),
+    });
     expect(waitForProjectPublications).toHaveBeenCalledWith("project-1", [
       "wechat",
     ]);

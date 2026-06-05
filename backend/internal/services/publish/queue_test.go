@@ -44,6 +44,7 @@ type testPublishQueue struct {
 	jobs            []PublishJob
 	locks           map[string]string
 	refreshes       int
+	onAcquire       func(key, value string)
 	enqueueErr      error
 	onAcquireLocked func(key, value string)
 }
@@ -76,6 +77,9 @@ func (q *testPublishQueue) AcquireLock(ctx context.Context, key, value string, t
 		return false, nil
 	}
 	q.locks[key] = value
+	if q.onAcquire != nil {
+		q.onAcquire(key, value)
+	}
 	return true, nil
 }
 
@@ -434,6 +438,92 @@ func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing
 	_, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-2"})
 
 	require.True(t, errors.Is(err, ErrPublicationAlreadyPublishing))
+}
+
+func TestEnqueuePublishProjectRequiresPrepublishSyncForSyncingPublication(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	publication := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusSyncing,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}
+	require.NoError(t, db.Create(&publication).Error)
+
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-syncing"})
+
+	require.ErrorIs(t, err, ErrPublicationRequiresSync)
+	require.Nil(t, resp)
+	require.Empty(t, queue.jobs)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", publication.ID).Error)
+	require.Equal(t, models.PublicationStatusSyncing, saved.Status)
+	require.Nil(t, saved.LastAttemptAt)
+}
+
+func TestEnqueuePublishProjectRejectsPublicationChangedToSyncingAfterLock(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	publication := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}
+	require.NoError(t, db.Create(&publication).Error)
+	queue.onAcquire = func(key, value string) {
+		require.NoError(t, db.Model(&models.ProjectPlatformPublication{}).
+			Where("id = ?", publication.ID).
+			Update("status", models.PublicationStatusSyncing).Error)
+	}
+
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-race"})
+
+	require.ErrorIs(t, err, ErrPublicationRequiresSync)
+	require.Nil(t, resp)
+	require.Empty(t, queue.jobs)
+	require.Empty(t, queue.locks)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", publication.ID).Error)
+	require.Equal(t, models.PublicationStatusSyncing, saved.Status)
+	require.Nil(t, saved.LastAttemptAt)
 }
 
 func TestProcessPublishJobPublishesAndReleasesLock(t *testing.T) {
