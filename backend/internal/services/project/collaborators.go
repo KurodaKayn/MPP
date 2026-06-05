@@ -1,12 +1,14 @@
 package project
 
 import (
+	"strings"
+
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/dto"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	"strings"
+
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 func normalizeProjectCollaboratorRole(role string) (string, error) {
@@ -72,7 +74,7 @@ func (s *Service) AddProjectCollaborator(projectID uuid.UUID, actorUserID uuid.U
 			{Name: "project_id"},
 			{Name: "user_id"},
 		},
-		DoUpdates: clause.Assignments(map[string]interface{}{
+		DoUpdates: clause.Assignments(map[string]any{
 			"role":       role,
 			"created_by": actorUserID,
 		}),

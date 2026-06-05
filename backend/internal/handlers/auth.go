@@ -10,13 +10,14 @@ import (
 	"unicode"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/kurodakayn/mpp-backend/internal/middleware"
-	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/services/email"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services/email"
 )
 
 type AuthHandler struct {
@@ -85,19 +86,20 @@ func (h *AuthHandler) SendCode(c echo.Context) error {
 	}
 
 	// Scene-specific checks
-	if req.Scene == "register" {
+	switch req.Scene {
+	case "register":
 		var count int64
 		h.db.Model(&models.User{}).Where("email = ?", req.Email).Count(&count)
 		if count > 0 {
 			return sendError(c, http.StatusConflict, "email_exists", "email already registered")
 		}
-	} else if req.Scene == "forgot_password" {
+	case "forgot_password":
 		var count int64
 		h.db.Model(&models.User{}).Where("email = ?", req.Email).Count(&count)
 		if count == 0 {
 			return sendError(c, http.StatusNotFound, "user_not_found", "no user found with this email")
 		}
-	} else {
+	default:
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid scene")
 	}
 

@@ -5,8 +5,9 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 func (s *Service) projectForPublish(ctx context.Context, projectID uuid.UUID, userID uuid.UUID) (models.Project, error) {

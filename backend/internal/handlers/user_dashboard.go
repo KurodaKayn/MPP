@@ -10,13 +10,14 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
-	"github.com/labstack/echo/v4"
-	"gorm.io/gorm"
 )
 
 const (
@@ -927,7 +928,7 @@ func (h *UserDashboardHandler) EditContentWithAI(c echo.Context) error {
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
-	defer lease.Release(context.Background())
+	defer func() { _ = lease.Release(context.Background()) }()
 
 	resp, err := h.aiContentEditor.EditContent(c.Request().Context(), *req)
 	if err != nil {
@@ -957,7 +958,7 @@ func (h *UserDashboardHandler) StreamEditContentWithAI(c echo.Context) error {
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
-	defer lease.Release(context.Background())
+	defer func() { _ = lease.Release(context.Background()) }()
 
 	stream, err := h.aiContentEditor.StreamEditContent(c.Request().Context(), *req)
 	if err != nil {
@@ -987,7 +988,7 @@ func (h *UserDashboardHandler) EditPrepublishWithAI(c echo.Context) error {
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
-	defer lease.Release(context.Background())
+	defer func() { _ = lease.Release(context.Background()) }()
 
 	resp, err := h.aiContentEditor.EditPrepublish(c.Request().Context(), *req)
 	if err != nil {
@@ -1017,7 +1018,7 @@ func (h *UserDashboardHandler) StreamEditPrepublishWithAI(c echo.Context) error 
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
-	defer lease.Release(context.Background())
+	defer func() { _ = lease.Release(context.Background()) }()
 
 	stream, err := h.aiContentEditor.StreamEditPrepublish(c.Request().Context(), *req)
 	if err != nil {
@@ -1057,7 +1058,7 @@ func writeAIStream(c echo.Context, stream *services.AIServiceStream, lease *stre
 	if stream == nil || stream.Body == nil {
 		return sendError(c, http.StatusBadGateway, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
 	}
-	defer stream.Body.Close()
+	defer func() { _ = stream.Body.Close() }()
 
 	contentType := strings.TrimSpace(stream.ContentType)
 	if contentType == "" {
@@ -1203,7 +1204,7 @@ func (h *UserDashboardHandler) StartDouyinPublishSession(c echo.Context) error {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 
-	return c.JSON(http.StatusCreated, map[string]interface{}{
+	return c.JSON(http.StatusCreated, map[string]any{
 		"project_id":              projectID,
 		"platform":                "douyin",
 		"session_id":              resp.SessionID,

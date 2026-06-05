@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/datatypes"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"gorm.io/datatypes"
 )
 
 func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
@@ -67,46 +68,46 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 		Actor:     dto.SyncActor{Type: "system"},
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, project.ID, resp.ProjectID)
 	assert.Len(t, resp.Items, 4)
 	assert.Equal(t, []string{"wechat", "zhihu", "x", "douyin"}, compiler.LastPlatforms)
 
 	var wechatPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	require.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
 	assert.Equal(t, models.PublicationStatusAdapted, wechatPub.Status)
 
-	var wechatContent map[string]interface{}
-	assert.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &wechatContent))
+	var wechatContent map[string]any
+	require.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &wechatContent))
 	assert.Equal(t, "html", wechatContent["format"])
 	assert.Equal(t, `<h2>Heading</h2><p>Hello <strong>draft</strong></p>`, wechatContent["html"])
 
 	var zhihuPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	require.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
 	assert.Equal(t, models.PublicationStatusAdapted, zhihuPub.Status)
 
-	var zhihuContent map[string]interface{}
-	assert.NoError(t, json.Unmarshal(zhihuPub.AdaptedContent, &zhihuContent))
+	var zhihuContent map[string]any
+	require.NoError(t, json.Unmarshal(zhihuPub.AdaptedContent, &zhihuContent))
 	assert.Equal(t, "markdown", zhihuContent["format"])
 	assert.Contains(t, zhihuContent["markdown"], "## Heading")
 	assert.Contains(t, zhihuContent["markdown"], "**draft**")
 
 	var xPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&xPub, "project_id = ? AND platform = ?", project.ID, "x").Error)
+	require.NoError(t, db.First(&xPub, "project_id = ? AND platform = ?", project.ID, "x").Error)
 	assert.Equal(t, models.PublicationStatusAdapted, xPub.Status)
 
-	var xContent map[string]interface{}
-	assert.NoError(t, json.Unmarshal(xPub.AdaptedContent, &xContent))
+	var xContent map[string]any
+	require.NoError(t, json.Unmarshal(xPub.AdaptedContent, &xContent))
 	assert.Equal(t, "text", xContent["format"])
 	assert.Contains(t, xContent["text"], "Platform title")
 	assert.Contains(t, xContent["text"], "Hello draft")
 
 	var douyinPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", project.ID, "douyin").Error)
+	require.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", project.ID, "douyin").Error)
 	assert.Equal(t, models.PublicationStatusAdapted, douyinPub.Status)
 
-	var douyinContent map[string]interface{}
-	assert.NoError(t, json.Unmarshal(douyinPub.AdaptedContent, &douyinContent))
+	var douyinContent map[string]any
+	require.NoError(t, json.Unmarshal(douyinPub.AdaptedContent, &douyinContent))
 	assert.Equal(t, "text", douyinContent["format"])
 	assert.Contains(t, douyinContent["text"], "Hello draft")
 }
@@ -165,7 +166,7 @@ func TestSyncProjectPrepublishReadsLatestCollabSnapshot(t *testing.T) {
 
 	var wechatPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
-	var wechatContent map[string]interface{}
+	var wechatContent map[string]any
 	require.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &wechatContent))
 	require.Equal(t, "html", wechatContent["format"])
 	require.Equal(t, "<p>Realtime draft</p>", wechatContent["html"])
@@ -299,7 +300,7 @@ func TestSyncProjectPrepublishDoesNotApplyDraftWhenPublicationBecomesPublishing(
 		BeforeReturn: func() {
 			require.NoError(t, db.Model(&models.ProjectPlatformPublication{}).
 				Where("id = ?", publication.ID).
-				Updates(map[string]interface{}{
+				Updates(map[string]any{
 					"last_attempt_at": &lastAttemptAt,
 					"status":          models.PublicationStatusPublishing,
 				}).Error)

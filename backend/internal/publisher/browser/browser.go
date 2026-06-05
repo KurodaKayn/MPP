@@ -12,8 +12,8 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// BrowserAction represents a reusable browser automation step
-type BrowserAction func(ctx context.Context) error
+// Action represents a reusable browser automation step
+type Action func(ctx context.Context) error
 
 var runBrowserActions = chromedp.Run
 
