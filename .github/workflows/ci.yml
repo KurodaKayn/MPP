@@ -180,6 +180,12 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          working-directory: backend
+
       - name: Test
         run: go test ./...
 

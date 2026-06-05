@@ -1,0 +1,48 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - bidichk
+    - bodyclose
+    - errname
+    - errorlint
+    - gosec
+    - intrange
+    - loggercheck
+    - misspell
+    - modernize
+    - nilerr
+    - nilnil
+    - nolintlint
+    - promlinter
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - testableexamples
+    - testifylint
+    - thelper
+    - unqueryvet
+    - usestdlibvars
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+  exclusions:
+    generated: strict
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/kurodakayn/mpp-backend
+  exclusions:
+    generated: strict
