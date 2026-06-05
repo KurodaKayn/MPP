@@ -146,7 +146,21 @@ func (s *DashboardService) scopeAccessibleProjects(query *gorm.DB, userID uuid.U
 		Model(&models.ProjectCollaborator{}).
 		Select("project_id").
 		Where("user_id = ?", userID)
-	return query.Where("projects.user_id = ? OR projects.id IN (?)", userID, collaboratorProjectIDs)
+	memberWorkspaceIDs := s.db.
+		Model(&models.WorkspaceMember{}).
+		Select("workspace_id").
+		Where("user_id = ?", userID)
+	ownedWorkspaceIDs := s.db.
+		Model(&models.Workspace{}).
+		Select("id").
+		Where("owner_user_id = ?", userID)
+	return query.Where(
+		"projects.user_id = ? OR projects.id IN (?) OR projects.workspace_id IN (?) OR projects.workspace_id IN (?)",
+		userID,
+		collaboratorProjectIDs,
+		memberWorkspaceIDs,
+		ownedWorkspaceIDs,
+	)
 }
 
 func (s *DashboardService) projectAccessRole(project models.Project, userID uuid.UUID) (string, error) {
@@ -166,16 +180,54 @@ func projectAccessRoleWithDB(db *gorm.DB, project models.Project, userID uuid.UU
 		Select("project_id", "user_id", "role").
 		Where("project_id = ? AND user_id = ?", project.ID, userID).
 		First(&collaborator).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", err
+		}
+	} else {
+		return collaborator.Role, nil
+	}
+
+	if project.WorkspaceID != nil && *project.WorkspaceID != uuid.Nil {
+		return workspaceProjectAccessRoleWithDB(db, *project.WorkspaceID, userID)
+	}
+	return "", ErrForbidden
+}
+
+func canEditProjectRole(role string) bool {
+	return role == models.ProjectRoleOwner || role == models.ProjectRoleEditor
+}
+
+func projectRoleForWorkspaceRole(role string) (string, error) {
+	switch role {
+	case models.WorkspaceRoleOwner, models.WorkspaceRoleAdmin, models.WorkspaceRoleMember:
+		return models.ProjectRoleEditor, nil
+	case models.WorkspaceRoleViewer:
+		return models.ProjectRoleViewer, nil
+	default:
+		return "", ErrForbidden
+	}
+}
+
+func workspaceProjectAccessRoleWithDB(db *gorm.DB, workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
+	var workspace models.Workspace
+	if err := db.Select("id", "owner_user_id").First(&workspace, "id = ?", workspaceID).Error; err != nil {
+		return "", err
+	}
+	if workspace.OwnerUserID == userID {
+		return projectRoleForWorkspaceRole(models.WorkspaceRoleOwner)
+	}
+
+	var member models.WorkspaceMember
+	if err := db.
+		Select("workspace_id", "user_id", "role").
+		Where("workspace_id = ? AND user_id = ?", workspaceID, userID).
+		First(&member).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", ErrForbidden
 		}
 		return "", err
 	}
-	return collaborator.Role, nil
-}
-
-func canEditProjectRole(role string) bool {
-	return role == models.ProjectRoleOwner || role == models.ProjectRoleEditor
+	return projectRoleForWorkspaceRole(member.Role)
 }
 
 func projectCollabDocumentRole(role string) (string, error) {
@@ -217,26 +269,49 @@ func (s *DashboardService) requireProjectOwner(projectID uuid.UUID, actorUserID 
 func (s *DashboardService) projectRolesForUser(projects []models.Project, userID uuid.UUID) (map[uuid.UUID]string, error) {
 	roles := make(map[uuid.UUID]string, len(projects))
 	sharedProjectIDs := make([]uuid.UUID, 0)
+	workspaceIDs := make(map[uuid.UUID]struct{})
 	for _, project := range projects {
 		if project.UserID == userID {
 			roles[project.ID] = models.ProjectRoleOwner
 			continue
 		}
 		sharedProjectIDs = append(sharedProjectIDs, project.ID)
+		if project.WorkspaceID != nil && *project.WorkspaceID != uuid.Nil {
+			workspaceIDs[*project.WorkspaceID] = struct{}{}
+		}
 	}
-	if len(sharedProjectIDs) == 0 {
+
+	if len(sharedProjectIDs) > 0 {
+		var collaborators []models.ProjectCollaborator
+		if err := s.db.
+			Select("project_id", "role").
+			Where("user_id = ? AND project_id IN ?", userID, sharedProjectIDs).
+			Find(&collaborators).Error; err != nil {
+			return nil, err
+		}
+		for _, collaborator := range collaborators {
+			roles[collaborator.ProjectID] = collaborator.Role
+		}
+	}
+
+	if len(workspaceIDs) == 0 {
 		return roles, nil
 	}
 
-	var collaborators []models.ProjectCollaborator
-	if err := s.db.
-		Select("project_id", "role").
-		Where("user_id = ? AND project_id IN ?", userID, sharedProjectIDs).
-		Find(&collaborators).Error; err != nil {
+	workspaceRoles, err := s.workspaceProjectRolesForUser(workspaceIDs, userID)
+	if err != nil {
 		return nil, err
 	}
-	for _, collaborator := range collaborators {
-		roles[collaborator.ProjectID] = collaborator.Role
+	for _, project := range projects {
+		if _, ok := roles[project.ID]; ok {
+			continue
+		}
+		if project.WorkspaceID == nil {
+			continue
+		}
+		if role, ok := workspaceRoles[*project.WorkspaceID]; ok {
+			roles[project.ID] = role
+		}
 	}
 	return roles, nil
 }
@@ -548,6 +623,10 @@ func extensionHandoffAdaptedContent(raw datatypes.JSON) (map[string]interface{},
 }
 
 func (s *DashboardService) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
+	return s.createProjectWithWorkspace(userID, nil, req)
+}
+
+func (s *DashboardService) createProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
 	title := strings.TrimSpace(req.Title)
 	sourceContent := strings.TrimSpace(req.SourceContent)
 	platforms, err := normalizeProjectPlatforms(req.Platforms)
@@ -560,6 +639,7 @@ func (s *DashboardService) CreateProject(userID uuid.UUID, req dto.CreateProject
 
 	project := models.Project{
 		UserID:        userID,
+		WorkspaceID:   workspaceID,
 		Title:         title,
 		SourceContent: sourceContent,
 		Status:        models.ProjectStatusReady,
@@ -605,6 +685,7 @@ func (s *DashboardService) CreateProject(userID uuid.UUID, req dto.CreateProject
 	return &dto.ProjectListItem{
 		ID:               project.ID,
 		UserID:           project.UserID,
+		WorkspaceID:      project.WorkspaceID,
 		CollabDocumentID: project.CollabDocumentID,
 		Title:            project.Title,
 		Status:           project.Status,
@@ -1097,9 +1178,39 @@ func projectDetailFromModel(project models.Project, role string) *dto.ProjectDet
 	return &dto.ProjectDetail{
 		ID:               project.ID,
 		UserID:           project.UserID,
+		WorkspaceID:      project.WorkspaceID,
 		CollabDocumentID: project.CollabDocumentID,
 		Title:            project.Title,
 		SourceContent:    project.SourceContent,
+		Status:           project.Status,
+		Role:             role,
+		CreatedAt:        project.CreatedAt,
+		UpdatedAt:        project.UpdatedAt,
+		Publications:     publications,
+	}
+}
+
+func projectListItemFromModel(project models.Project, role string) dto.ProjectListItem {
+	publications := make([]dto.PublicationSummary, 0, len(project.Publications))
+	for _, pub := range project.Publications {
+		publications = append(publications, dto.PublicationSummary{
+			ID:         pub.ID,
+			Platform:   pub.Platform,
+			Enabled:    pub.Enabled,
+			Status:     pub.Status,
+			PublishURL: pub.PublishURL,
+		})
+	}
+	if publications == nil {
+		publications = []dto.PublicationSummary{}
+	}
+
+	return dto.ProjectListItem{
+		ID:               project.ID,
+		UserID:           project.UserID,
+		WorkspaceID:      project.WorkspaceID,
+		CollabDocumentID: project.CollabDocumentID,
+		Title:            project.Title,
 		Status:           project.Status,
 		Role:             role,
 		CreatedAt:        project.CreatedAt,
@@ -1158,9 +1269,6 @@ func truncateRunes(value string, limit int) string {
 }
 
 func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
-	var projects []models.Project
-	var total int64
-
 	query := s.db.Model(&models.Project{})
 
 	// Apply scope (User dashboard enforces scopeUserID, overriding any filterUserID)
@@ -1182,6 +1290,13 @@ func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, p
 			Where("ppp.platform = ?", platform).
 			Group("projects.id")
 	}
+
+	return s.listProjectPage(query, page, limit, scopeUserID)
+}
+
+func (s *DashboardService) listProjectPage(query *gorm.DB, page, limit int, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
+	var projects []models.Project
+	var total int64
 
 	// Count total before pagination
 	if err := query.Count(&total).Error; err != nil {
@@ -1217,34 +1332,9 @@ func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, p
 	}
 
 	// Map to DTO
-	var items []dto.ProjectListItem
+	items := make([]dto.ProjectListItem, 0, len(projects))
 	for _, p := range projects {
-		var pubSummaries []dto.PublicationSummary
-		for _, pub := range p.Publications {
-			pubSummaries = append(pubSummaries, dto.PublicationSummary{
-				ID:         pub.ID,
-				Platform:   pub.Platform,
-				Enabled:    pub.Enabled,
-				Status:     pub.Status,
-				PublishURL: pub.PublishURL,
-			})
-		}
-
-		items = append(items, dto.ProjectListItem{
-			ID:               p.ID,
-			UserID:           p.UserID,
-			CollabDocumentID: p.CollabDocumentID,
-			Title:            p.Title,
-			Status:           p.Status,
-			Role:             roles[p.ID],
-			CreatedAt:        p.CreatedAt,
-			UpdatedAt:        p.UpdatedAt,
-			Publications:     pubSummaries,
-		})
-	}
-
-	if items == nil {
-		items = []dto.ProjectListItem{} // ensure empty array instead of null
+		items = append(items, projectListItemFromModel(p, roles[p.ID]))
 	}
 
 	return &dto.PaginationResponse{
@@ -1412,7 +1502,7 @@ func (s *DashboardService) requestContext() context.Context {
 
 func (s *DashboardService) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.UUID, platform string, req dto.UpdatePrepublishDraftRequest) (*dto.ProjectPublicationsResponse, error) {
 	var project models.Project
-	if err := s.db.Select("id, user_id").First(&project, "id = ?", projectID).Error; err != nil {
+	if err := s.db.Select("id", "user_id", "workspace_id").First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
 	}
 	role, err := s.projectAccessRole(project, userID)
@@ -1461,7 +1551,7 @@ func (s *DashboardService) UpdateProjectPrepublishDraft(projectID uuid.UUID, use
 func (s *DashboardService) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.UUID, includeContent bool) (*dto.ProjectPublicationsResponse, error) {
 	// Verify project exists and access
 	var proj models.Project
-	if err := s.db.Select("id, user_id").Where("id = ?", projectID).First(&proj).Error; err != nil {
+	if err := s.db.Select("id", "user_id", "workspace_id").Where("id = ?", projectID).First(&proj).Error; err != nil {
 		return nil, err
 	}
 

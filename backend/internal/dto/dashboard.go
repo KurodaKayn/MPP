@@ -213,6 +213,7 @@ type PublicationSummary struct {
 type ProjectListItem struct {
 	ID               uuid.UUID            `json:"id"`
 	UserID           uuid.UUID            `json:"user_id"`
+	WorkspaceID      *uuid.UUID           `json:"workspace_id,omitempty"`
 	CollabDocumentID *uuid.UUID           `json:"collab_document_id,omitempty"`
 	Title            string               `json:"title"`
 	Status           string               `json:"status"`
@@ -225,6 +226,7 @@ type ProjectListItem struct {
 type ProjectDetail struct {
 	ID               uuid.UUID            `json:"id"`
 	UserID           uuid.UUID            `json:"user_id"`
+	WorkspaceID      *uuid.UUID           `json:"workspace_id,omitempty"`
 	CollabDocumentID *uuid.UUID           `json:"collab_document_id,omitempty"`
 	Title            string               `json:"title"`
 	SourceContent    string               `json:"source_content"`
