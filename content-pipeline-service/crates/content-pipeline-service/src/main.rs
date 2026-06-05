@@ -1,5 +1,6 @@
 mod drafts;
 mod media;
+mod metrics;
 
 use std::net::SocketAddr;
 
@@ -7,6 +8,7 @@ use content_pipeline_proto::mpp::contentpipeline::v1::media_asset_processor_serv
 use content_pipeline_proto::mpp::contentpipeline::v1::platform_draft_compiler_server::PlatformDraftCompilerServer;
 use drafts::PlatformDraftCompilerService;
 use media::MediaAssetProcessorService;
+use metrics::ContentPipelineMetrics;
 use tonic::transport::Server;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -16,8 +18,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
 
     let addr = service_addr()?;
-    let media_service = MediaAssetProcessorServer::new(MediaAssetProcessorService::new()?);
-    let draft_service = PlatformDraftCompilerServer::new(PlatformDraftCompilerService::default());
+    let metrics_addr = metrics_addr()?;
+    let metrics = ContentPipelineMetrics::new()?;
+    let media_service =
+        MediaAssetProcessorServer::new(MediaAssetProcessorService::new(metrics.clone())?);
+    let draft_service =
+        PlatformDraftCompilerServer::new(PlatformDraftCompilerService::new(metrics.clone()));
     let (health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
         .set_serving::<MediaAssetProcessorServer<MediaAssetProcessorService>>()
@@ -31,13 +37,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_v1()?;
 
     info!(%addr, "starting content-pipeline-service");
-    Server::builder()
+    let grpc_server = Server::builder()
         .add_service(health_service)
         .add_service(reflection_service)
         .add_service(media_service)
         .add_service(draft_service)
-        .serve(addr)
-        .await?;
+        .serve(addr);
+    let metrics_server = metrics::serve(metrics, metrics_addr);
+
+    tokio::select! {
+        result = grpc_server => result?,
+        result = metrics_server => result?,
+    }
 
     Ok(())
 }
@@ -51,5 +62,11 @@ fn init_tracing() {
 fn service_addr() -> Result<SocketAddr, std::net::AddrParseError> {
     std::env::var("CONTENT_PIPELINE_ADDR")
         .unwrap_or_else(|_| "0.0.0.0:50051".to_string())
+        .parse()
+}
+
+fn metrics_addr() -> Result<SocketAddr, std::net::AddrParseError> {
+    std::env::var("CONTENT_PIPELINE_METRICS_ADDR")
+        .unwrap_or_else(|_| "0.0.0.0:9090".to_string())
         .parse()
 }
