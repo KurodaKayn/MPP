@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import { emptyContentValue, type ContentValue } from "@/lib/content/types";
 import {
+  createDashboardProject,
   getDashboardProject,
   getProjectPublications,
 } from "@/lib/dashboard/api";
@@ -174,6 +175,7 @@ export function useContentPageController(projectId?: string) {
     automaticPublishPlatforms,
     canPublish,
     content,
+    createProject: createDashboardProject,
     hasBodyContent,
     navigateToProject: (targetProjectId) =>
       router.replace(`/dashboard/content/${targetProjectId}`),
