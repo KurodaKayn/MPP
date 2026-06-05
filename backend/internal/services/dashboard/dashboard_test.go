@@ -137,6 +137,27 @@ func setupTestDB() *gorm.DB {
 		updated_at DATETIME
 	)`)
 
+	db.Exec(`CREATE TABLE workspaces (
+		id TEXT PRIMARY KEY,
+		owner_user_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		slug TEXT,
+		status TEXT NOT NULL DEFAULT 'active',
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		deleted_at DATETIME
+	)`)
+
+	db.Exec(`CREATE TABLE workspace_members (
+		workspace_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		role TEXT NOT NULL,
+		invited_by TEXT,
+		joined_at DATETIME,
+		created_at DATETIME NOT NULL,
+		PRIMARY KEY (workspace_id, user_id)
+	)`)
+
 	db.Exec(`CREATE TABLE collab_documents (
 		id TEXT PRIMARY KEY,
 		owner_user_id TEXT NOT NULL,
@@ -1175,6 +1196,125 @@ func TestProjectCollaboratorManagement(t *testing.T) {
 	list, err = s.ListProjectCollaborators(project.ID, owner.ID)
 	require.NoError(t, err)
 	require.Empty(t, list.Items)
+}
+
+func TestWorkspaceManagement(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "workspace-owner", Email: "workspace-owner@example.com"}
+	admin := models.User{Username: "workspace-admin", Email: "workspace-admin@example.com"}
+	member := models.User{Username: "workspace-member", Email: "workspace-member@example.com"}
+	viewer := models.User{Username: "workspace-viewer", Email: "workspace-viewer@example.com"}
+	stranger := models.User{Username: "workspace-stranger", Email: "workspace-stranger@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&admin).Error)
+	require.NoError(t, db.Create(&member).Error)
+	require.NoError(t, db.Create(&viewer).Error)
+	require.NoError(t, db.Create(&stranger).Error)
+
+	workspace, err := s.CreateWorkspace(owner.ID, dto.CreateWorkspaceRequest{
+		Name: " Team Workspace ",
+		Slug: " team-workspace ",
+	})
+	require.NoError(t, err)
+	require.Equal(t, owner.ID, workspace.OwnerUserID)
+	require.Equal(t, "Team Workspace", workspace.Name)
+	require.Equal(t, "team-workspace", workspace.Slug)
+	require.Equal(t, models.WorkspaceStatusActive, workspace.Status)
+	require.Equal(t, models.WorkspaceRoleOwner, workspace.Role)
+
+	var ownerMembership models.WorkspaceMember
+	require.NoError(t, db.First(&ownerMembership, "workspace_id = ? AND user_id = ?", workspace.ID, owner.ID).Error)
+	require.Equal(t, models.WorkspaceRoleOwner, ownerMembership.Role)
+	require.NotNil(t, ownerMembership.JoinedAt)
+
+	addedAdmin, err := s.AddWorkspaceMember(workspace.ID, owner.ID, dto.AddWorkspaceMemberRequest{
+		Email: "WORKSPACE-ADMIN@example.com",
+		Role:  models.WorkspaceRoleAdmin,
+	})
+	require.NoError(t, err)
+	require.Equal(t, admin.ID, addedAdmin.UserID)
+	require.Equal(t, admin.Email, addedAdmin.Email)
+	require.Equal(t, models.WorkspaceRoleAdmin, addedAdmin.Role)
+	require.NotNil(t, addedAdmin.InvitedBy)
+	require.Equal(t, owner.ID, *addedAdmin.InvitedBy)
+	require.NotNil(t, addedAdmin.JoinedAt)
+
+	addedMember, err := s.AddWorkspaceMember(workspace.ID, admin.ID, dto.AddWorkspaceMemberRequest{
+		UserID: member.ID,
+		Role:   models.WorkspaceRoleMember,
+	})
+	require.NoError(t, err)
+	require.Equal(t, member.ID, addedMember.UserID)
+	require.Equal(t, models.WorkspaceRoleMember, addedMember.Role)
+
+	addedViewer, err := s.AddWorkspaceMember(workspace.ID, admin.ID, dto.AddWorkspaceMemberRequest{
+		UserID: viewer.ID,
+		Role:   models.WorkspaceRoleViewer,
+	})
+	require.NoError(t, err)
+	require.Equal(t, viewer.ID, addedViewer.UserID)
+	require.Equal(t, models.WorkspaceRoleViewer, addedViewer.Role)
+
+	list, err := s.ListWorkspaceMembers(workspace.ID, owner.ID)
+	require.NoError(t, err)
+	require.Len(t, list.Items, 4)
+	require.Equal(t, owner.ID, list.Items[0].UserID)
+	require.Equal(t, models.WorkspaceRoleOwner, list.Items[0].Role)
+
+	updatedWorkspace, err := s.UpdateWorkspace(workspace.ID, admin.ID, dto.UpdateWorkspaceRequest{
+		Name: "Renamed Workspace",
+		Slug: "renamed-workspace",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Renamed Workspace", updatedWorkspace.Name)
+	require.Equal(t, "renamed-workspace", updatedWorkspace.Slug)
+	require.Equal(t, models.WorkspaceRoleAdmin, updatedWorkspace.Role)
+
+	updatedMember, err := s.UpdateWorkspaceMember(workspace.ID, admin.ID, member.ID, dto.UpdateWorkspaceMemberRequest{
+		Role: models.WorkspaceRoleViewer,
+	})
+	require.NoError(t, err)
+	require.Equal(t, models.WorkspaceRoleViewer, updatedMember.Role)
+
+	workspaces, err := s.ListWorkspaces(member.ID)
+	require.NoError(t, err)
+	require.Len(t, workspaces.Items, 1)
+	require.Equal(t, workspace.ID, workspaces.Items[0].ID)
+	require.Equal(t, models.WorkspaceRoleViewer, workspaces.Items[0].Role)
+
+	detail, err := s.GetWorkspace(workspace.ID, viewer.ID)
+	require.NoError(t, err)
+	require.Equal(t, workspace.ID, detail.ID)
+	require.Equal(t, models.WorkspaceRoleViewer, detail.Role)
+
+	_, err = s.AddWorkspaceMember(workspace.ID, viewer.ID, dto.AddWorkspaceMemberRequest{
+		UserID: stranger.ID,
+		Role:   models.WorkspaceRoleMember,
+	})
+	require.ErrorIs(t, err, services.ErrForbidden)
+
+	_, err = s.AddWorkspaceMember(workspace.ID, owner.ID, dto.AddWorkspaceMemberRequest{
+		UserID: owner.ID,
+		Role:   models.WorkspaceRoleAdmin,
+	})
+	require.ErrorIs(t, err, services.ErrInvalidWorkspaceMember)
+
+	_, err = s.UpdateWorkspaceMember(workspace.ID, owner.ID, owner.ID, dto.UpdateWorkspaceMemberRequest{
+		Role: models.WorkspaceRoleViewer,
+	})
+	require.ErrorIs(t, err, services.ErrInvalidWorkspaceMember)
+
+	_, err = s.GetWorkspace(workspace.ID, stranger.ID)
+	require.ErrorIs(t, err, services.ErrForbidden)
+
+	require.NoError(t, s.RemoveWorkspaceMember(workspace.ID, admin.ID, viewer.ID))
+	_, err = s.GetWorkspace(workspace.ID, viewer.ID)
+	require.ErrorIs(t, err, services.ErrForbidden)
+
+	err = s.RemoveWorkspaceMember(workspace.ID, owner.ID, owner.ID)
+	require.ErrorIs(t, err, services.ErrInvalidWorkspaceMember)
 }
 
 func TestCreateProjectCollabSessionLazilyLinksDocumentAndMapsRoles(t *testing.T) {
