@@ -1,0 +1,13 @@
+{
+  "platform": "douyin",
+  "profile": "douyin@v1",
+  "status": "compiled",
+  "adapted_content": {
+    "schema_version": 1,
+    "format": "text",
+    "text": "Launch Notes\nMPP now supports rich drafts across platforms.\nRead the release notes before publishing.\nKeep platform rules deterministic.\nWeChat keeps HTML.\nZhihu gets Markdown.\n中文摘要保持可读。",
+    "summary": "Launch Notes\nMPP now supports rich drafts across platforms.\nRead the release not"
+  },
+  "summary": "Launch Notes\nMPP now supports rich drafts across platforms.\nRead the release not",
+  "warnings": []
+}
