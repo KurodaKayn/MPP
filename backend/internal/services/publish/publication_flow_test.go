@@ -294,6 +294,46 @@ func TestPublishProjectRequiresPrepublishSyncForSyncingPublication(t *testing.T)
 	assert.Nil(t, saved.LastAttemptAt)
 }
 
+func TestPublishProjectRejectsProjectEditor(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &testsupport.FakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	editor := models.User{Username: "editor", Email: "editor@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&editor).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    editor.ID,
+		Role:      models.ProjectRoleEditor,
+		CreatedBy: owner.ID,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &editor.ID, uuid.Nil)
+
+	require.ErrorIs(t, err, services.ErrForbidden)
+	require.Nil(t, result)
+	require.Empty(t, fakePublisher.Config)
+}
+
 func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
@@ -504,6 +544,47 @@ func TestCreateXPostIntentRequiresPrepublishSyncForPendingPublication(t *testing
 	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
 	assert.Equal(t, models.PublicationStatusPending, saved.Status)
 	assert.JSONEq(t, `{}`, string(saved.AdaptedContent))
+}
+
+func TestCreateXPostIntentRejectsProjectEditor(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	editor := models.User{Username: "editor", Email: "editor@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&editor).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "manual x",
+		SourceContent: "<p>source content</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    editor.ID,
+		Role:      models.ProjectRoleEditor,
+		CreatedBy: owner.ID,
+	}).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"text":"hello x"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	result, err := s.CreateXPostIntent(project.ID, &editor.ID)
+
+	require.ErrorIs(t, err, services.ErrForbidden)
+	require.Nil(t, result)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
+	assert.Empty(t, saved.PublishURL)
 }
 
 func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
