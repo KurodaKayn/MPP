@@ -327,6 +327,104 @@ func (h *UserDashboardHandler) SaveProjectPlatforms(c echo.Context) error {
 	return c.JSON(http.StatusOK, project)
 }
 
+func (h *UserDashboardHandler) CreateProjectMediaUpload(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+
+	req := new(dto.CreateMediaUploadRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.serviceFor(c).CreateProjectMediaUpload(projectID, userID, *req)
+	if err != nil {
+		return sendMediaAssetError(c, err)
+	}
+	return c.JSON(http.StatusCreated, resp)
+}
+
+func (h *UserDashboardHandler) CompleteMediaUpload(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	assetID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid media asset UUID")
+	}
+
+	resp, err := h.serviceFor(c).CompleteMediaUpload(assetID, userID)
+	if err != nil {
+		return sendMediaAssetError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) ResolveMediaAssets(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	req := new(dto.ResolveMediaAssetsRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.serviceFor(c).ResolveMediaAssets(userID, *req)
+	if err != nil {
+		return sendMediaAssetError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) DeleteMediaAsset(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	assetID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid media asset UUID")
+	}
+
+	if err := h.serviceFor(c).DeleteMediaAsset(assetID, userID); err != nil {
+		return sendMediaAssetError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func sendMediaAssetError(c echo.Context, err error) error {
+	if errors.Is(err, services.ErrInvalidMediaAsset) || errors.Is(err, services.ErrInvalidProject) {
+		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+	}
+	if errors.Is(err, services.ErrMediaStorageUnavailable) {
+		return sendError(c, http.StatusServiceUnavailable, "media_storage_unavailable", err.Error())
+	}
+	if errors.Is(err, services.ErrMediaAssetUploadIncomplete) {
+		return sendError(c, http.StatusConflict, "upload_incomplete", err.Error())
+	}
+	if errors.Is(err, services.ErrMediaAssetNotReady) {
+		return sendError(c, http.StatusConflict, "media_asset_not_ready", err.Error())
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return sendError(c, http.StatusNotFound, "not_found", "media asset not found")
+	}
+	if errors.Is(err, services.ErrForbidden) {
+		return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+	}
+	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+}
+
 func (h *UserDashboardHandler) CreateProjectCollabSession(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {

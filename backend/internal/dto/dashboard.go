@@ -147,6 +147,41 @@ type SaveProjectPlatformsRequest struct {
 	Platforms []string `json:"platforms"`
 }
 
+type CreateMediaUploadRequest struct {
+	Filename  string `json:"filename"`
+	MimeType  string `json:"mime_type"`
+	SizeBytes int64  `json:"size_bytes"`
+	Usage     string `json:"usage"`
+}
+
+type CreateMediaUploadResponse struct {
+	AssetID   uuid.UUID         `json:"asset_id"`
+	ObjectRef string            `json:"object_ref"`
+	UploadURL string            `json:"upload_url"`
+	Headers   map[string]string `json:"headers"`
+	ExpiresAt time.Time         `json:"expires_at"`
+}
+
+type CompleteMediaUploadResponse struct {
+	AssetID   uuid.UUID `json:"asset_id"`
+	ObjectRef string    `json:"object_ref"`
+	Status    string    `json:"status"`
+}
+
+type ResolveMediaAssetsRequest struct {
+	AssetIDs []uuid.UUID `json:"asset_ids"`
+}
+
+type ResolvedMediaAsset struct {
+	AssetID   uuid.UUID `json:"asset_id"`
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+type ResolveMediaAssetsResponse struct {
+	Items []ResolvedMediaAsset `json:"items"`
+}
+
 type AddProjectCollaboratorRequest struct {
 	UserID uuid.UUID `json:"user_id,omitempty"`
 	Email  string    `json:"email,omitempty"`
