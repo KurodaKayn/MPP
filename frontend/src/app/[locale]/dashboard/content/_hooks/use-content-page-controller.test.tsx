@@ -479,11 +479,14 @@ describe("useContentPageController", () => {
       },
     );
     expect(mocks.updateDashboardProject).not.toHaveBeenCalled();
-    expect(mocks.publishProject).toHaveBeenCalledWith("project-1", "zhihu");
-    expect(mocks.publishProject).not.toHaveBeenCalledWith(
-      "project-1",
-      "douyin",
-    );
+    expect(mocks.publishProject).toHaveBeenCalledWith("project-1", "zhihu", {
+      idempotencyKey: expect.stringMatching(/^project-1:zhihu:.+:zhihu$/),
+    });
+    expect(
+      mocks.publishProject.mock.calls.some(
+        ([, platform]) => platform === "douyin",
+      ),
+    ).toBe(false);
     expect(
       mocks.saveDashboardProjectContent.mock.invocationCallOrder[0],
     ).toBeLessThan(mocks.publishProject.mock.invocationCallOrder[0]);
