@@ -384,12 +384,15 @@ func (s *Service) AddWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUI
 		metadata := map[string]interface{}{
 			"role": role,
 		}
+		shouldRecordActivity := true
 
 		var existing models.WorkspaceMember
 		if err := tx.Select("role").First(&existing, "workspace_id = ? AND user_id = ?", workspaceID, user.ID).Error; err != nil {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
+		} else if existing.Role == role {
+			shouldRecordActivity = false
 		} else {
 			eventType = models.WorkspaceActivityMemberRoleChanged
 			metadata["previous_role"] = existing.Role
@@ -416,6 +419,9 @@ func (s *Service) AddWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUI
 			return err
 		}
 
+		if !shouldRecordActivity {
+			return nil
+		}
 		return s.recordWorkspaceActivity(tx, workspaceID, actorUserID, eventType, &targetUserID, metadata)
 	}); err != nil {
 		return nil, err
