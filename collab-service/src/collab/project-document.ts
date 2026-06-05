@@ -16,10 +16,14 @@ import { Strike } from "@tiptap/extension-strike";
 import { Text } from "@tiptap/extension-text";
 import { TextAlign } from "@tiptap/extension-text-align";
 import { Underline } from "@tiptap/extension-underline";
-import { generateJSON } from "@tiptap/html";
-import { prosemirrorJSONToYDoc } from "@tiptap/y-tiptap";
+import { generateHTML, generateJSON } from "@tiptap/html";
+import {
+  prosemirrorJSONToYDoc,
+  yXmlFragmentToProseMirrorRootNode,
+} from "@tiptap/y-tiptap";
 
 import type { Extensions } from "@tiptap/core";
+import type { Doc as YDoc } from "yjs";
 
 const projectContentExtensions: Extensions = [
   Bold,
@@ -70,4 +74,18 @@ const projectContentSchema = getSchema(projectContentExtensions);
 export function createProjectYDoc(sourceContent: string) {
   const content = generateJSON(sourceContent, projectContentExtensions);
   return prosemirrorJSONToYDoc(projectContentSchema, content, "content");
+}
+
+export function projectYDocToProseMirrorJSON(document: YDoc) {
+  return yXmlFragmentToProseMirrorRootNode(
+    document.getXmlFragment("content"),
+    projectContentSchema,
+  ).toJSON();
+}
+
+export function projectYDocToHtml(document: YDoc) {
+  return generateHTML(
+    projectYDocToProseMirrorJSON(document),
+    projectContentExtensions,
+  );
 }
