@@ -262,6 +262,63 @@ describe("useContentPageController", () => {
     view.unmount();
   });
 
+  it("does not restore syncing publications as publishable drafts", async () => {
+    mocks.createDashboardProject.mockResolvedValue({ id: "project-1" });
+    mocks.syncProjectPrepublish.mockResolvedValue({
+      items: [
+        {
+          adapted_content: {
+            format: "html",
+            html: "<p>Old body</p>",
+            source_revision: "2026-05-30T12:00:00.000Z",
+          },
+          enabled: true,
+          platform: "wechat",
+          status: "syncing",
+          updated_at: "2026-05-30T12:00:00.000Z",
+        },
+        {
+          adapted_content: {
+            format: "markdown",
+            markdown: "Rendered body",
+            source_revision: "2026-05-30T12:00:00.000Z",
+          },
+          enabled: true,
+          platform: "zhihu",
+          status: "draft",
+          updated_at: "2026-05-30T12:00:00.000Z",
+        },
+      ],
+      project_id: "project-1",
+    });
+    const view = renderController();
+
+    act(() => {
+      useContentPageStore.setState({
+        content: {
+          firstImageSrc: "",
+          html: "<p>Rendered body</p>",
+          text: "Rendered body",
+        },
+        selectedPlatforms: ["wechat", "zhihu"],
+        title: "Post title",
+      });
+    });
+
+    await act(async () => {
+      await view.getController().prepublish.onSync();
+    });
+
+    const state = useContentPageStore.getState();
+    expect(state.prepublishDrafts.wechat).toBeUndefined();
+    expect(state.prepublishDrafts.zhihu).toMatchObject({
+      format: "markdown",
+      raw: "Rendered body",
+    });
+
+    view.unmount();
+  });
+
   it("creates prepublish drafts in the selected workspace", async () => {
     const selectedWorkspace: Workspace = {
       created_at: "2026-06-05T12:00:00.000Z",
