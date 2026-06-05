@@ -213,6 +213,13 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		return nil, err
 	}
 	if !acquired {
+		if req.IdempotencyKey != "" {
+			if resp, ok, lookupErr := s.findIdempotentPublishResponse(project.ID, platform, *scopeUserID, req.IdempotencyKey); lookupErr != nil {
+				return nil, lookupErr
+			} else if ok {
+				return resp, nil
+			}
+		}
 		return nil, ErrPublicationAlreadyPublishing
 	}
 
