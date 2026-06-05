@@ -145,6 +145,42 @@
         "member": "Can create and edit workspace projects.",
         "viewer": "Can view workspace projects only."
       }
+    },
+    "workspaceActivity": {
+      "title": "Workspace Activity",
+      "description": "Recent member and workspace changes for the selected workspace.",
+      "refresh": "Refresh",
+      "loadFailed": "Unable to load workspace activity",
+      "retryLater": "Please try again later.",
+      "empty": "No workspace activity has been recorded yet.",
+      "noWorkspace": "Select a workspace to review activity.",
+      "noPermission": "Only workspace owners and admins can review activity.",
+      "unknownActor": "Unknown user",
+      "unknownTarget": "Unknown member",
+      "unknownRole": "Unknown role",
+      "unknownWorkspace": "this workspace",
+      "event": {
+        "workspace_created": "Workspace created",
+        "workspace_updated": "Workspace updated",
+        "member_added": "Member added",
+        "member_role_changed": "Member role changed",
+        "member_removed": "Member removed"
+      },
+      "detail": {
+        "workspace_created": "{{actor}} created {{workspace}}.",
+        "workspace_updated": "{{actor}} updated workspace details.",
+        "workspace_updatedRenamed": "{{actor}} renamed {{previousName}} to {{name}}.",
+        "member_added": "{{actor}} added {{target}} as {{role}}.",
+        "member_role_changed": "{{actor}} changed {{target}} from {{previousRole}} to {{role}}.",
+        "member_removed": "{{actor}} removed {{target}} from {{previousRole}}."
+      },
+      "badge": {
+        "role": "Role: {{role}}",
+        "formerRole": "Former: {{role}}",
+        "roleChange": "{{from}} -> {{to}}",
+        "slug": "Slug: {{slug}}",
+        "slugChange": "{{from}} -> {{to}}"
+      }
     }
   },
   "auth": {

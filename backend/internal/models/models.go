@@ -151,6 +151,14 @@ const (
 	WorkspaceRoleViewer = "viewer"
 )
 
+const (
+	WorkspaceActivityWorkspaceCreated  = "workspace_created"
+	WorkspaceActivityWorkspaceUpdated  = "workspace_updated"
+	WorkspaceActivityMemberAdded       = "member_added"
+	WorkspaceActivityMemberRoleChanged = "member_role_changed"
+	WorkspaceActivityMemberRemoved     = "member_removed"
+)
+
 var personalWorkspaceNamespace = uuid.MustParse("03d32585-3f8c-48a8-bf40-53aa3f1698c1")
 
 func PersonalWorkspaceID(userID uuid.UUID) uuid.UUID {
@@ -185,6 +193,19 @@ type WorkspaceMember struct {
 	Workspace   Workspace `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
 	User        User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	Inviter     *User     `gorm:"foreignKey:InvitedBy"`
+}
+
+type WorkspaceActivity struct {
+	ID           uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	WorkspaceID  uuid.UUID      `gorm:"type:uuid;not null;index:idx_workspace_activities_workspace_created_at,priority:1"`
+	ActorUserID  uuid.UUID      `gorm:"type:uuid;not null;index"`
+	TargetUserID *uuid.UUID     `gorm:"type:uuid;index"`
+	EventType    string         `gorm:"not null;index"`
+	Metadata     datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	CreatedAt    time.Time      `gorm:"not null;index:idx_workspace_activities_workspace_created_at,priority:2"`
+	Workspace    Workspace      `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
+	Actor        User           `gorm:"foreignKey:ActorUserID;constraint:OnDelete:CASCADE"`
+	TargetUser   *User          `gorm:"foreignKey:TargetUserID;constraint:OnDelete:SET NULL"`
 }
 
 type ProjectPlatformPublication struct {
@@ -331,6 +352,13 @@ func (w *Workspace) BeforeCreate(tx *gorm.DB) (err error) {
 	}
 	if w.Status == "" {
 		w.Status = WorkspaceStatusActive
+	}
+	return
+}
+
+func (a *WorkspaceActivity) BeforeCreate(tx *gorm.DB) (err error) {
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
 	}
 	return
 }
