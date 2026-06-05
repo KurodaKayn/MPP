@@ -41,10 +41,11 @@ func (p failingQueueTestPublisher) Publish(ctx context.Context, pub *models.Proj
 }
 
 type testPublishQueue struct {
-	jobs       []PublishJob
-	locks      map[string]string
-	refreshes  int
-	enqueueErr error
+	jobs            []PublishJob
+	locks           map[string]string
+	refreshes       int
+	enqueueErr      error
+	onAcquireLocked func(key, value string)
 }
 
 func newTestPublishQueue() *testPublishQueue {
@@ -69,6 +70,9 @@ func (q *testPublishQueue) Start(ctx context.Context, handler PublishJobHandler)
 
 func (q *testPublishQueue) AcquireLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
 	if _, exists := q.locks[key]; exists {
+		if q.onAcquireLocked != nil {
+			q.onAcquireLocked(key, value)
+		}
 		return false, nil
 	}
 	q.locks[key] = value
