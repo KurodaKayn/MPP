@@ -63,6 +63,14 @@ class FakeLogger {
   }
 }
 
+class FakeMetrics {
+  flushDurations: number[] = [];
+
+  recordUpdateFlush(durationSeconds: number): void {
+    this.flushDurations.push(durationSeconds);
+  }
+}
+
 async function waitForRetryTimer(): Promise<void> {
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 20);
@@ -278,6 +286,7 @@ describe("PostgresDocumentPersistence", () => {
 
   it("flushes pending Yjs updates as a sequenced batch", async () => {
     const database = new FakeDatabase();
+    const metrics = new FakeMetrics();
     database.results = [
       [
         {
@@ -285,7 +294,16 @@ describe("PostgresDocumentPersistence", () => {
         },
       ],
     ];
-    const persistence = new PostgresDocumentPersistence(database, 10_000);
+    const persistence = new PostgresDocumentPersistence(
+      database,
+      10_000,
+      32,
+      30,
+      5,
+      30_000,
+      console,
+      metrics,
+    );
     const first = new Document("first");
     first.getMap("content").set("title", "First");
     const second = new Document("second");
@@ -325,6 +343,8 @@ describe("PostgresDocumentPersistence", () => {
     applyUpdate(restored, new Uint8Array(insertCall?.values?.[3] as Buffer));
     expect(restored.getMap("content").get("title")).toBe("First");
     expect(restored.getMap("content").get("body")).toBe("Second");
+    expect(metrics.flushDurations).toHaveLength(1);
+    expect(metrics.flushDurations[0]).toBeGreaterThanOrEqual(0);
   });
 
   it("flushes immediately when the pending update count reaches the batch limit", async () => {
