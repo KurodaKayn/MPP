@@ -107,6 +107,43 @@ export async function buildApp(
     },
   );
 
+  app.post<{ Params: CollabDocumentParams }>(
+    "/internal/collab/documents/:documentId/project-source-content",
+    async (request, reply) => {
+      if (
+        !isInternalTokenAuthorized(
+          request.headers.authorization,
+          config.COLLAB_TOKEN_SECRET,
+        )
+      ) {
+        return reply.code(401).send({ error: "unauthorized" });
+      }
+
+      const documentId = DocumentIdSchema.safeParse(request.params.documentId);
+      if (!documentId.success) {
+        return reply.code(400).send({ error: "invalid document id" });
+      }
+
+      try {
+        const synced = await persistence.syncProjectSourceContent(
+          documentId.data,
+        );
+        if (!synced) {
+          return reply.code(404).send({ error: "project document not found" });
+        }
+        return reply.code(204).send();
+      } catch (error) {
+        request.log.error(
+          { documentId: documentId.data, error },
+          "failed to sync project source content",
+        );
+        return reply
+          .code(503)
+          .send({ error: "project source content sync failed" });
+      }
+    },
+  );
+
   app.get<{ Params: CollabDocumentParams }>(
     config.COLLAB_WS_PATH,
     { websocket: true },
