@@ -377,7 +377,12 @@
       "placeholder": "Start collaborating here...",
       "ariaLabel": "Collaborative document editor",
       "linkPrompt": "Link Address",
-      "linkError": "Please enter a valid link address"
+      "linkError": "Please enter a valid link address",
+      "offline": "You are offline. Keep this tab open; pending changes will sync when the connection returns.",
+      "unauthorized": "Your collaboration session is no longer authorized. Refresh the page to request a new session.",
+      "connecting": "Connecting to the collaboration service...",
+      "unsynced": "{{count}} local change is waiting to sync.",
+      "unsynced_plural": "{{count}} local changes are waiting to sync."
     },
     "empty": {
       "title": "No document selected",
@@ -463,6 +468,63 @@
       "roleHelp": {
         "editor": "Can edit content and drafts",
         "viewer": "Can open read-only"
+      }
+    },
+    "collaboration": {
+      "title": "Collaboration Experience",
+      "description": "Review comments, project activity, saved versions, and optional viewer links.",
+      "refresh": "Refresh",
+      "comments": "Comments",
+      "activity": "Activity",
+      "versions": "Versions",
+      "shareLinks": "Share links",
+      "loadFailed": "Unable to load collaboration details",
+      "commentPlaceholder": "Leave a review note for this project...",
+      "addComment": "Add comment",
+      "commentFailed": "Unable to add comment",
+      "resolve": "Resolve",
+      "resolveFailed": "Unable to resolve comment",
+      "noComments": "No comments yet.",
+      "noActivity": "No project activity has been recorded yet.",
+      "noVersions": "No saved versions yet. Save changes to create a recovery point.",
+      "noShareLinks": "No share links have been created.",
+      "restore": "Restore",
+      "restoreFailed": "Unable to restore version",
+      "versionRestored": "Version restored",
+      "versionTitle": "Version {{number}}",
+      "createViewerLink": "Create viewer link",
+      "shareLinkCreated": "Viewer link created and copied",
+      "shareLinkFailed": "Unable to create share link",
+      "shareLinkTitle": "Viewer share link",
+      "revokeShareLink": "Revoke",
+      "revokeShareLinkFailed": "Unable to revoke share link",
+      "unknownActor": "Unknown user",
+      "unknownTarget": "Unknown member",
+      "commentStatus": {
+        "open": "Open",
+        "resolved": "Resolved"
+      },
+      "activityEvent": {
+        "content_saved": "Content saved",
+        "comment_created": "Comment added",
+        "comment_resolved": "Comment resolved",
+        "collaborator_added": "Collaborator added",
+        "collaborator_role_changed": "Role changed",
+        "collaborator_removed": "Collaborator removed",
+        "publish_requested": "Publish requested",
+        "publish_queued": "Publish queued",
+        "share_link_created": "Share link created",
+        "share_link_revoked": "Share link revoked",
+        "version_restored": "Version restored"
+      },
+      "activityDetail": {
+        "actor": "{{actor}} updated this project.",
+        "target": "{{actor}} updated access for {{target}}.",
+        "platform": "{{actor}} updated publishing for {{platform}}."
+      },
+      "shareLinkStatus": {
+        "active": "Active",
+        "revoked": "Revoked"
       }
     },
     "prepublish": {

@@ -2,21 +2,31 @@ import { fetchDashboard, fetchDashboardNoContent } from "./client";
 import type {
   AddProjectCollaboratorInput,
   CollabDocumentSession,
+  CreateProjectCommentInput,
   CreateProjectInput,
+  CreateProjectShareLinkInput,
   DashboardStats,
   GetProjectPublicationsOptions,
   PaginatedProjects,
+  ProjectActivitiesResponse,
+  ProjectComment,
+  ProjectCommentsResponse,
   ProjectCollaborator,
   ProjectCollaboratorsResponse,
   ProjectDetail,
   ProjectListItem,
   ProjectPublications,
+  ProjectShareLinksResponse,
+  ProjectShareLinkWithToken,
+  ProjectVersionsResponse,
   PublishProjectOptions,
   PublishResult,
+  RestoreProjectVersionResponse,
   SaveProjectContentInput,
   SaveProjectPlatformsInput,
   SyncPrepublishInput,
   StartPublishBrowserSessionResult,
+  UpdateProjectCommentInput,
   UpdatePrepublishDraftInput,
   UpdateProjectCollaboratorInput,
   UpdateProjectInput,
@@ -134,6 +144,86 @@ export function createProjectCollabSession(projectId: string) {
   return fetchDashboard<CollabDocumentSession>(
     `/api/user/dashboard/projects/${projectId}/collab/session`,
     { method: "POST" },
+  );
+}
+
+export function getProjectActivities(projectId: string, limit = 50) {
+  const params = new URLSearchParams({ limit: String(limit) });
+
+  return fetchDashboard<ProjectActivitiesResponse>(
+    `/api/user/dashboard/projects/${projectId}/activity?${params.toString()}`,
+  );
+}
+
+export function getProjectComments(projectId: string) {
+  return fetchDashboard<ProjectCommentsResponse>(
+    `/api/user/dashboard/projects/${projectId}/comments`,
+  );
+}
+
+export function createProjectComment(
+  projectId: string,
+  input: CreateProjectCommentInput,
+) {
+  return fetchDashboard<ProjectComment>(
+    `/api/user/dashboard/projects/${projectId}/comments`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
+}
+
+export function updateProjectComment(
+  projectId: string,
+  commentId: string,
+  input: UpdateProjectCommentInput,
+) {
+  return fetchDashboard<ProjectComment>(
+    `/api/user/dashboard/projects/${projectId}/comments/${commentId}`,
+    {
+      body: JSON.stringify(input),
+      method: "PATCH",
+    },
+  );
+}
+
+export function getProjectVersions(projectId: string) {
+  return fetchDashboard<ProjectVersionsResponse>(
+    `/api/user/dashboard/projects/${projectId}/versions`,
+  );
+}
+
+export function restoreProjectVersion(projectId: string, versionId: string) {
+  return fetchDashboard<RestoreProjectVersionResponse>(
+    `/api/user/dashboard/projects/${projectId}/versions/${versionId}/restore`,
+    { method: "POST" },
+  );
+}
+
+export function getProjectShareLinks(projectId: string) {
+  return fetchDashboard<ProjectShareLinksResponse>(
+    `/api/user/dashboard/projects/${projectId}/share-links`,
+  );
+}
+
+export function createProjectShareLink(
+  projectId: string,
+  input: CreateProjectShareLinkInput,
+) {
+  return fetchDashboard<ProjectShareLinkWithToken>(
+    `/api/user/dashboard/projects/${projectId}/share-links`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
+}
+
+export function revokeProjectShareLink(projectId: string, linkId: string) {
+  return fetchDashboardNoContent(
+    `/api/user/dashboard/projects/${projectId}/share-links/${linkId}`,
+    { method: "DELETE" },
   );
 }
 
