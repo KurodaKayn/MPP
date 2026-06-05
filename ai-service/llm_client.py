@@ -120,7 +120,9 @@ def response_usage(response: Any) -> dict[str, Any]:
         total_tokens = int_value(usage.get("total_tokens"))
     else:
         metadata = getattr(response, "response_metadata", None)
-        token_usage = metadata.get("token_usage") if isinstance(metadata, Mapping) else {}
+        token_usage = (
+            metadata.get("token_usage") if isinstance(metadata, Mapping) else {}
+        )
         if not isinstance(token_usage, Mapping):
             token_usage = {}
         input_tokens = int_value(token_usage.get("prompt_tokens"))
