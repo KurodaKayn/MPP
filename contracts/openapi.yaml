@@ -137,6 +137,17 @@ components:
         - ProjectRoleEditor
         - ProjectRoleViewer
 
+    ProjectAccessSource:
+      type: string
+      enum:
+        - owner
+        - direct_share
+        - workspace
+      x-enum-varnames:
+        - ProjectAccessSourceOwner
+        - ProjectAccessSourceDirectShare
+        - ProjectAccessSourceWorkspace
+
     ProjectCollaboratorRole:
       type: string
       enum:
@@ -846,6 +857,8 @@ components:
           $ref: "#/components/schemas/ProjectStatus"
         role:
           $ref: "#/components/schemas/ProjectRole"
+        access_source:
+          $ref: "#/components/schemas/ProjectAccessSource"
         created_at:
           type: string
           format: date-time
