@@ -1,6 +1,7 @@
 {
   "overview": {
     "title": "Dashboard",
+    "description": "Track the selected workspace and continue recent publishing work.",
     "stats": {
       "totalProjects": "Total Content",
       "totalProjectsDesc": "Number of projects in the system",
@@ -14,6 +15,7 @@
     "recent": {
       "title": "Recent Content",
       "description": "Total {{total}} items, showing the latest 8.",
+      "workspace": "Workspace: {{workspace}}",
       "viewPosts": "View Posts",
       "refresh": "Refresh",
       "empty": "No content data available"
@@ -66,7 +68,20 @@
   "workspace": {
     "switcher": {
       "label": "Workspace",
-      "empty": "No workspace"
+      "empty": "No workspace",
+      "create": "Create workspace",
+      "createTitle": "Create workspace",
+      "createDescription": "Add a workspace for a team, client, or publishing stream.",
+      "nameLabel": "Workspace name",
+      "namePlaceholder": "Team workspace",
+      "slugLabel": "Slug",
+      "slugPlaceholder": "team-workspace",
+      "slugHelp": "Optional. Leave blank to let MPP generate one.",
+      "cancel": "Cancel",
+      "createSubmit": "Create workspace",
+      "createSuccess": "Workspace created",
+      "createFailed": "Unable to create workspace",
+      "retryLater": "Please try again later."
     },
     "role": {
       "owner": "Owner",

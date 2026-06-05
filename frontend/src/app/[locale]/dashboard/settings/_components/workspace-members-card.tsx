@@ -212,6 +212,8 @@ export function WorkspaceMembersCard() {
             selectedWorkspace={selectedWorkspace}
             workspaces={workspaceSelection.workspaces}
             onWorkspaceChange={workspaceSelection.selectWorkspace}
+            onWorkspaceCreate={workspaceSelection.createWorkspace}
+            isCreatingWorkspace={workspaceSelection.isCreatingWorkspace}
           />
         </CardAction>
       </CardHeader>
