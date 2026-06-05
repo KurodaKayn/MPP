@@ -623,7 +623,8 @@ func extensionHandoffAdaptedContent(raw datatypes.JSON) (map[string]interface{},
 }
 
 func (s *DashboardService) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
-	return s.createProjectWithWorkspace(userID, nil, req)
+	workspaceID := models.PersonalWorkspaceID(userID)
+	return s.createProjectWithWorkspace(userID, &workspaceID, req)
 }
 
 func (s *DashboardService) createProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
@@ -647,6 +648,12 @@ func (s *DashboardService) createProjectWithWorkspace(userID uuid.UUID, workspac
 	publications := make([]dto.PublicationSummary, 0, len(platforms))
 
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if workspaceID != nil && *workspaceID == models.PersonalWorkspaceID(userID) {
+			if err := ensurePersonalWorkspace(tx, userID); err != nil {
+				return err
+			}
+		}
+
 		if err := tx.Create(&project).Error; err != nil {
 			return err
 		}

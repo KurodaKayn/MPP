@@ -42,6 +42,35 @@ func canCreateWorkspaceProjectRole(role string) bool {
 	return role == models.WorkspaceRoleOwner || role == models.WorkspaceRoleAdmin || role == models.WorkspaceRoleMember
 }
 
+func ensurePersonalWorkspace(tx *gorm.DB, ownerUserID uuid.UUID) error {
+	workspaceID := models.PersonalWorkspaceID(ownerUserID)
+	workspace := models.Workspace{
+		ID:          workspaceID,
+		OwnerUserID: ownerUserID,
+		Name:        models.PersonalWorkspaceName,
+		Slug:        models.PersonalWorkspaceSlug(ownerUserID),
+		Status:      models.WorkspaceStatusActive,
+	}
+	if err := tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoNothing: true,
+	}).Create(&workspace).Error; err != nil {
+		return err
+	}
+
+	now := time.Now()
+	member := models.WorkspaceMember{
+		WorkspaceID: workspaceID,
+		UserID:      ownerUserID,
+		Role:        models.WorkspaceRoleOwner,
+		JoinedAt:    &now,
+	}
+	return tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "workspace_id"}, {Name: "user_id"}},
+		DoNothing: true,
+	}).Create(&member).Error
+}
+
 func (s *DashboardService) workspaceAccessRole(workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
 	if workspaceID == uuid.Nil || userID == uuid.Nil {
 		return "", ErrInvalidWorkspace
