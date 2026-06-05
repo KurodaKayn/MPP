@@ -205,3 +205,59 @@ func TestSyncProjectPrepublishRejectsActivePublishWithoutMarkingSyncing(t *testi
 	require.NoError(t, db.First(&pendingPublication, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
 	require.Equal(t, models.PublicationStatusPending, pendingPublication.Status)
 }
+
+func TestSyncProjectPrepublishDoesNotApplyDraftWhenPublicationBecomesPublishing(t *testing.T) {
+	db := setupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&owner).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Platform title",
+		SourceContent: `<p>Updated draft</p>`,
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	lastAttemptAt := time.Now().UTC()
+	publication := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Platform title"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"old draft"}`),
+		RemoteID:       "active-remote",
+		PublishURL:     "https://example.com/active",
+	}
+	require.NoError(t, db.Create(&publication).Error)
+
+	compiler := &fakeProjectDraftCompiler{
+		beforeReturn: func() {
+			require.NoError(t, db.Model(&models.ProjectPlatformPublication{}).
+				Where("id = ?", publication.ID).
+				Updates(map[string]interface{}{
+					"last_attempt_at": &lastAttemptAt,
+					"status":          models.PublicationStatusPublishing,
+				}).Error)
+		},
+	}
+	s.SetDraftCompiler(compiler)
+
+	resp, err := s.SyncProjectPrepublish(project.ID, owner.ID, dto.SyncPrepublishRequest{
+		Platforms: []string{"wechat"},
+		Actor:     dto.SyncActor{Type: "system"},
+	})
+
+	require.ErrorIs(t, err, services.ErrPublicationAlreadyPublishing)
+	require.Nil(t, resp)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", publication.ID).Error)
+	require.Equal(t, models.PublicationStatusPublishing, saved.Status)
+	require.Equal(t, datatypes.JSON(`{"format":"html","html":"old draft"}`), saved.AdaptedContent)
+	require.Equal(t, "active-remote", saved.RemoteID)
+	require.Equal(t, "https://example.com/active", saved.PublishURL)
+	require.NotNil(t, saved.LastAttemptAt)
+	require.True(t, saved.LastAttemptAt.Equal(lastAttemptAt))
+}
