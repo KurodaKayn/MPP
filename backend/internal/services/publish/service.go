@@ -259,7 +259,7 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 
 	var event models.PublishEvent
 	err := s.db.
-		Where("project_id = ? AND platform = ? AND user_id = ? AND idempotency_key = ? AND event_type IN ?", projectID, platform, userID, key, []string{"requested", "queued"}).
+		Where("project_id = ? AND platform = ? AND user_id = ? AND idempotency_key = ? AND event_type = ?", projectID, platform, userID, key, "queued").
 		Order("created_at DESC").
 		First(&event).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
