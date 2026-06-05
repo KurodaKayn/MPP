@@ -63,6 +63,24 @@
       "none": "None"
     }
   },
+  "workspace": {
+    "switcher": {
+      "label": "Workspace",
+      "empty": "No workspace"
+    },
+    "role": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "member": "Member",
+      "viewer": "Viewer"
+    },
+    "error": {
+      "title": "Failed to load workspaces",
+      "retry": "Retry"
+    },
+    "empty": "No workspace available",
+    "createProjectDisabled": "Select a workspace where you can create projects before syncing or publishing."
+  },
   "settings": {
     "title": "Settings",
     "description": "Manage your preferences and account security.",

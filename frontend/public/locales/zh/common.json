@@ -97,7 +97,8 @@
     "saveFailed": "保存失败",
     "syncSuccess": "已同步到预发布",
     "syncDesc": "平台草稿已由后端适配并保存。",
-    "syncFailed": "同步到预发布失败"
+    "syncFailed": "同步到预发布失败",
+    "workspaceRequired": "创建项目之前请选择工作空间。"
   },
   "common": {
     "edit": "编辑",
