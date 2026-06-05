@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/google/uuid"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
@@ -136,7 +137,7 @@ func (s *Service) CompleteMediaUpload(assetID uuid.UUID, userID uuid.UUID) (*dto
 		return nil, fmt.Errorf("delete staged media upload: %w", err)
 	}
 
-	if err := s.db.Model(asset).Updates(map[string]interface{}{
+	if err := s.db.Model(asset).Updates(map[string]any{
 		"e_tag":         finalInfo.ETag,
 		"error_message": "",
 		"object_key":    finalKey,
@@ -275,7 +276,7 @@ func (s *Service) mediaAssetWithProject(assetID uuid.UUID) (*models.MediaAsset, 
 }
 
 func (s *Service) markMediaAssetFailed(asset *models.MediaAsset, message string) error {
-	return s.db.Model(asset).Updates(map[string]interface{}{
+	return s.db.Model(asset).Updates(map[string]any{
 		"error_message": message,
 		"status":        models.MediaAssetStatusFailed,
 	}).Error

@@ -3,14 +3,16 @@ package extension
 import (
 	"encoding/json"
 	"errors"
+	"strings"
+	"time"
+
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
-	"gorm.io/datatypes"
-	"gorm.io/gorm"
-	"strings"
-	"time"
 )
 
 const (
@@ -83,7 +85,7 @@ func extensionPrepublishPlatformFromPublication(publication models.ProjectPlatfo
 }
 
 func extensionPrepublishPreview(raw datatypes.JSON) string {
-	var payload map[string]interface{}
+	var payload map[string]any
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return ""
 	}
@@ -264,8 +266,8 @@ func normalizeExtensionHandoffPlatforms(input []string) ([]string, error) {
 	return platforms, nil
 }
 
-func extensionHandoffAdaptedContent(raw datatypes.JSON) (map[string]interface{}, error) {
-	var payload map[string]interface{}
+func extensionHandoffAdaptedContent(raw datatypes.JSON) (map[string]any, error) {
+	var payload map[string]any
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil, ErrPublicationRequiresSync
 	}
@@ -274,7 +276,7 @@ func extensionHandoffAdaptedContent(raw datatypes.JSON) (map[string]interface{},
 	if !ok || text == "" {
 		return nil, ErrPublicationRequiresSync
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"schema_version": extensionHandoffSchemaVersion,
 		"format":         "text",
 		"text":           text,

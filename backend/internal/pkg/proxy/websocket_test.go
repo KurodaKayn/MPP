@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProxyWebSocket(t *testing.T) {
+func TestWebSocket(t *testing.T) {
 	// 1. Setup a real WebSocket server to act as the target (e.g., the worker/container)
 	upgrader := websocket.Upgrader{}
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -24,7 +25,7 @@ func TestProxyWebSocket(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		for {
 			mt, message, err := conn.ReadMessage()
 			if err != nil {
@@ -40,10 +41,10 @@ func TestProxyWebSocket(t *testing.T) {
 
 	targetURL, _ := url.Parse(targetServer.URL)
 
-	// 2. Setup Echo server with our ProxyWebSocket handler
+	// 2. Setup Echo server with our WebSocket handler
 	e := echo.New()
 	e.GET("/ws", func(c echo.Context) error {
-		return ProxyWebSocket(c, targetURL)
+		return WebSocket(c, targetURL)
 	})
 
 	proxyServer := httptest.NewServer(e)
@@ -55,22 +56,25 @@ func TestProxyWebSocket(t *testing.T) {
 	dialer := websocket.DefaultDialer
 	conn, resp, err := dialer.Dial(proxyWSURL, nil)
 	require.NoError(t, err)
-	defer conn.Close()
+	if resp != nil && resp.Body != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
+	defer func() { _ = conn.Close() }()
 	assert.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
 
 	// 4. Test data transmission
 	message := []byte("hello websocket")
 	err = conn.WriteMessage(websocket.TextMessage, message)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, p, err := conn.ReadMessage()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, message, p)
 
 	// 5. Test timeout/closure
-	conn.SetWriteDeadline(time.Now().Add(time.Second))
+	require.NoError(t, conn.SetWriteDeadline(time.Now().Add(time.Second)))
 	err = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestWebSocketProxyConfigFromEnv(t *testing.T) {
@@ -101,8 +105,8 @@ func TestDeadlineReaderAllowsNilConn(t *testing.T) {
 
 func TestDeadlineReaderSetsReadDeadline(t *testing.T) {
 	client, server := net.Pipe()
-	defer client.Close()
-	defer server.Close()
+	defer func() { _ = client.Close() }()
+	defer func() { _ = server.Close() }()
 
 	reader := deadlineReader{
 		Reader:  client,
@@ -114,7 +118,8 @@ func TestDeadlineReaderSetsReadDeadline(t *testing.T) {
 	_, err := reader.Read(buffer)
 
 	require.Error(t, err)
-	netErr, ok := err.(net.Error)
+	var netErr net.Error
+	ok := errors.As(err, &netErr)
 	require.True(t, ok)
 	require.True(t, netErr.Timeout())
 }

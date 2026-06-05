@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/dto"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 const (
@@ -59,7 +60,7 @@ func normalizeWorkspaceActivityLimit(limit int) int {
 	return limit
 }
 
-func workspaceActivityMetadata(metadata map[string]interface{}) (datatypes.JSON, error) {
+func workspaceActivityMetadata(metadata map[string]any) (datatypes.JSON, error) {
 	if metadata == nil {
 		return datatypes.JSON([]byte(`{}`)), nil
 	}
@@ -70,7 +71,7 @@ func workspaceActivityMetadata(metadata map[string]interface{}) (datatypes.JSON,
 	return datatypes.JSON(payload), nil
 }
 
-func (s *Service) recordWorkspaceActivity(tx *gorm.DB, workspaceID uuid.UUID, actorUserID uuid.UUID, eventType string, targetUserID *uuid.UUID, metadata map[string]interface{}) error {
+func (s *Service) recordWorkspaceActivity(tx *gorm.DB, workspaceID uuid.UUID, actorUserID uuid.UUID, eventType string, targetUserID *uuid.UUID, metadata map[string]any) error {
 	payload, err := workspaceActivityMetadata(metadata)
 	if err != nil {
 		return err
@@ -83,35 +84,6 @@ func (s *Service) recordWorkspaceActivity(tx *gorm.DB, workspaceID uuid.UUID, ac
 		EventType:    eventType,
 		Metadata:     payload,
 	}).Error
-}
-
-func ensurePersonalWorkspace(tx *gorm.DB, ownerUserID uuid.UUID) error {
-	workspaceID := models.PersonalWorkspaceID(ownerUserID)
-	workspace := models.Workspace{
-		ID:          workspaceID,
-		OwnerUserID: ownerUserID,
-		Name:        models.PersonalWorkspaceName,
-		Slug:        models.PersonalWorkspaceSlug(ownerUserID),
-		Status:      models.WorkspaceStatusActive,
-	}
-	if err := tx.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
-		DoNothing: true,
-	}).Create(&workspace).Error; err != nil {
-		return err
-	}
-
-	now := time.Now()
-	member := models.WorkspaceMember{
-		WorkspaceID: workspaceID,
-		UserID:      ownerUserID,
-		Role:        models.WorkspaceRoleOwner,
-		JoinedAt:    &now,
-	}
-	return tx.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "workspace_id"}, {Name: "user_id"}},
-		DoNothing: true,
-	}).Create(&member).Error
 }
 
 func (s *Service) workspaceAccessRole(workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
@@ -243,7 +215,7 @@ func (s *Service) CreateWorkspace(actorUserID uuid.UUID, req dto.CreateWorkspace
 		if err := tx.Create(&member).Error; err != nil {
 			return err
 		}
-		return s.recordWorkspaceActivity(tx, workspace.ID, actorUserID, models.WorkspaceActivityWorkspaceCreated, nil, map[string]interface{}{
+		return s.recordWorkspaceActivity(tx, workspace.ID, actorUserID, models.WorkspaceActivityWorkspaceCreated, nil, map[string]any{
 			"name": workspace.Name,
 			"slug": workspace.Slug,
 		})
@@ -288,14 +260,14 @@ func (s *Service) UpdateWorkspace(workspaceID uuid.UUID, actorUserID uuid.UUID, 
 		if workspace.Name == name && workspace.Slug == nextSlug {
 			return nil
 		}
-		updates := map[string]interface{}{
+		updates := map[string]any{
 			"name": name,
 			"slug": nextSlug,
 		}
 		if err := tx.Model(&workspace).Updates(updates).Error; err != nil {
 			return err
 		}
-		return s.recordWorkspaceActivity(tx, workspaceID, actorUserID, models.WorkspaceActivityWorkspaceUpdated, nil, map[string]interface{}{
+		return s.recordWorkspaceActivity(tx, workspaceID, actorUserID, models.WorkspaceActivityWorkspaceUpdated, nil, map[string]any{
 			"previous_name": workspace.Name,
 			"previous_slug": workspace.Slug,
 			"name":          name,
@@ -384,7 +356,7 @@ func (s *Service) AddWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUI
 	targetUserID := user.ID
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		eventType := models.WorkspaceActivityMemberAdded
-		metadata := map[string]interface{}{
+		metadata := map[string]any{
 			"role": role,
 		}
 		shouldRecordActivity := true
@@ -413,7 +385,7 @@ func (s *Service) AddWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUI
 				{Name: "workspace_id"},
 				{Name: "user_id"},
 			},
-			DoUpdates: clause.Assignments(map[string]interface{}{
+			DoUpdates: clause.Assignments(map[string]any{
 				"role":       role,
 				"invited_by": actorUserID,
 				"joined_at":  now,
@@ -465,7 +437,7 @@ func (s *Service) UpdateWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.
 		if err := tx.Model(&member).Update("role", role).Error; err != nil {
 			return err
 		}
-		return s.recordWorkspaceActivity(tx, workspaceID, actorUserID, models.WorkspaceActivityMemberRoleChanged, &targetUserID, map[string]interface{}{
+		return s.recordWorkspaceActivity(tx, workspaceID, actorUserID, models.WorkspaceActivityMemberRoleChanged, &targetUserID, map[string]any{
 			"previous_role": member.Role,
 			"role":          role,
 		})
@@ -503,7 +475,7 @@ func (s *Service) RemoveWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.
 		if result.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
 		}
-		return s.recordWorkspaceActivity(tx, workspaceID, actorUserID, models.WorkspaceActivityMemberRemoved, &targetUserID, map[string]interface{}{
+		return s.recordWorkspaceActivity(tx, workspaceID, actorUserID, models.WorkspaceActivityMemberRemoved, &targetUserID, map[string]any{
 			"previous_role": member.Role,
 		})
 	})
@@ -599,7 +571,7 @@ func workspaceMemberFromModel(member models.WorkspaceMember) dto.WorkspaceMember
 }
 
 func workspaceActivityFromModel(activity models.WorkspaceActivity) dto.WorkspaceActivity {
-	metadata := map[string]interface{}{}
+	metadata := map[string]any{}
 	if len(activity.Metadata) > 0 {
 		_ = json.Unmarshal(activity.Metadata, &metadata)
 	}

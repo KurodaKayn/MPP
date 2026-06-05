@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
-	"gorm.io/datatypes"
-	"gorm.io/gorm"
 )
 
 const xPlatform = "x"
@@ -112,7 +113,7 @@ func (s *Service) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccountRequest
 		}
 		err = s.db.Create(&account).Error
 	} else {
-		err = s.db.Model(&account).Updates(map[string]interface{}{
+		err = s.db.Model(&account).Updates(map[string]any{
 			"username":        "X",
 			"credentials":     credentials,
 			"metadata":        datatypes.JSON([]byte(`{}`)),
@@ -173,7 +174,7 @@ func (s *Service) TestXAccount(userID uuid.UUID, req dto.TestXAccountRequest) (*
 			}
 		}
 
-		updates := map[string]interface{}{
+		updates := map[string]any{
 			"status":          status,
 			"last_tested_at":  result.TestedAt,
 			"last_test_error": errMessage,
@@ -222,14 +223,14 @@ func (s *Service) applySavedXCredentialsToPublication(userID uuid.UUID, pub *mod
 		return err
 	}
 
-	config := map[string]interface{}{}
+	config := map[string]any{}
 	if len(pub.Config) > 0 {
 		if err := json.Unmarshal(pub.Config, &config); err != nil {
 			return fmt.Errorf("failed to parse x publication config: %w", err)
 		}
 	}
 	if config == nil {
-		config = map[string]interface{}{}
+		config = map[string]any{}
 	}
 
 	switch credentials.authType() {
@@ -254,7 +255,7 @@ func (s *Service) applySavedXCredentialsToPublication(userID uuid.UUID, pub *mod
 		delete(config, "access_token_secret")
 	default:
 		if err := credentials.clientCredentials().Validate(); err != nil {
-			return nil
+			return fmt.Errorf("%w: %w", ErrInvalidPlatformAccount, err)
 		}
 		config["auth_type"] = xAuthTypeOAuth1
 		config["api_key"] = credentials.APIKey

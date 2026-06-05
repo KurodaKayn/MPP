@@ -1,3 +1,4 @@
+//nolint:gosec // Test fixtures use fake OAuth credential strings.
 package publish_test
 
 import (
@@ -8,15 +9,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/datatypes"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"gorm.io/datatypes"
 )
 
 func TestBatchPublishProject(t *testing.T) {
@@ -46,8 +48,8 @@ func TestBatchPublishProject(t *testing.T) {
 	platforms := []string{"wechat", "zhihu"}
 	results, err := s.BatchPublishProject(p.ID, platforms, &u.ID)
 
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(results))
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
 
 	// Check results
 	for _, platform := range platforms {
@@ -83,14 +85,14 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 		AppID:     "wx-saved",
 		AppSecret: "saved-secret",
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
 
 	var config map[string]string
-	assert.NoError(t, json.Unmarshal(fakePublisher.Config, &config))
+	require.NoError(t, json.Unmarshal(fakePublisher.Config, &config))
 	assert.Equal(t, "wx-saved", config["app_id"])
 	assert.Equal(t, "saved-secret", config["app_secret"])
 	assert.Equal(t, "Title", config["title"])
@@ -215,7 +217,7 @@ func TestPublishProjectRequiresSavedCookiesForBrowserCookiePlatforms(t *testing.
 	_, err := s.PublishProject(project.ID, "douyin", &user.ID, uuid.Nil)
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, services.ErrInvalidPlatformAccount)
+	require.ErrorIs(t, err, services.ErrInvalidPlatformAccount)
 	assert.Empty(t, fakePublisher.AccountCookies)
 }
 
@@ -376,7 +378,7 @@ func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
 
-	var config map[string]interface{}
+	var config map[string]any
 	require.NoError(t, json.Unmarshal(fakePublisher.Config, &config))
 	assert.Equal(t, "oauth2", config["auth_type"])
 	assert.Equal(t, "oauth2-access", config["oauth2_access_token"])
@@ -427,7 +429,7 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 	require.NoError(t, db.Create(&pub).Error)
 
 	expiredAt := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
-	credentials, err := json.Marshal(map[string]interface{}{
+	credentials, err := json.Marshal(map[string]any{
 		"auth_type":            "oauth2",
 		"oauth2_access_token":  "old-oauth2-access",
 		"oauth2_refresh_token": "oauth2-refresh",
@@ -452,7 +454,7 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 	assert.Equal(t, "client-secret", provider.RefreshConfig.ClientSecret)
 	assert.Empty(t, provider.RefreshConfig.RedirectURI)
 
-	var config map[string]interface{}
+	var config map[string]any
 	require.NoError(t, json.Unmarshal(fakePublisher.Config, &config))
 	assert.Equal(t, "oauth2", config["auth_type"])
 	assert.Equal(t, "new-oauth2-access", config["oauth2_access_token"])
@@ -461,7 +463,7 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 
 	var account models.PlatformAccount
 	require.NoError(t, db.First(&account, "user_id = ? AND platform = ?", user.ID, "x").Error)
-	var savedCredentials map[string]interface{}
+	var savedCredentials map[string]any
 	require.NoError(t, json.Unmarshal(account.Credentials, &savedCredentials))
 	assert.Equal(t, "new-oauth2-access", savedCredentials["oauth2_access_token"])
 	assert.Equal(t, "new-oauth2-refresh", savedCredentials["oauth2_refresh_token"])
@@ -610,5 +612,5 @@ func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
 	})
 
 	_, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
-	assert.ErrorIs(t, err, services.ErrPublicationDisabled)
+	require.ErrorIs(t, err, services.ErrPublicationDisabled)
 }

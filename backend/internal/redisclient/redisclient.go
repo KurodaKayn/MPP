@@ -3,6 +3,7 @@ package redisclient
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -19,10 +20,12 @@ const (
 	tlsEnv      = "REDIS_TLS"
 )
 
+var ErrNotConfigured = errors.New("redis is not configured")
+
 func NewFromEnv(ctx context.Context) (*redis.Client, error) {
 	addr := strings.TrimSpace(os.Getenv(addrEnv))
 	if addr == "" {
-		return nil, nil
+		return nil, ErrNotConfigured
 	}
 
 	db, err := redisDBFromEnv()
@@ -50,7 +53,7 @@ func NewFromEnv(ctx context.Context) (*redis.Client, error) {
 
 func pingWithRetry(ctx context.Context, client *redis.Client) error {
 	var lastErr error
-	for attempt := 0; attempt < 10; attempt++ {
+	for range 10 {
 		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		lastErr = client.Ping(pingCtx).Err()
 		cancel()

@@ -7,11 +7,11 @@ import (
 )
 
 type PaginationResponse struct {
-	Items      interface{} `json:"items"`
-	Page       int         `json:"page"`
-	Limit      int         `json:"limit"`
-	Total      int64       `json:"total"`
-	TotalPages int         `json:"total_pages"`
+	Items      any   `json:"items"`
+	Page       int   `json:"page"`
+	Limit      int   `json:"limit"`
+	Total      int64 `json:"total"`
+	TotalPages int   `json:"total_pages"`
 }
 
 type ErrorResponse struct {
@@ -89,7 +89,7 @@ type ExtensionHandoffPlatform struct {
 	ContentKind    string                   `json:"content_kind"`
 	AutoPublish    bool                     `json:"auto_publish"`
 	RequiresReview bool                     `json:"requires_review"`
-	AdaptedContent map[string]interface{}   `json:"adapted_content"`
+	AdaptedContent map[string]any           `json:"adapted_content"`
 	Assets         []ExtensionHandoffAsset  `json:"assets"`
 	Callback       ExtensionHandoffCallback `json:"callback"`
 }
@@ -104,15 +104,15 @@ type ExtensionPublishHandoff struct {
 }
 
 type ExtensionEventCallbackRequest struct {
-	Token        string                 `json:"token"`
-	EventID      string                 `json:"event_id"`
-	Platform     string                 `json:"platform"`
-	Status       string                 `json:"status"`
-	Message      string                 `json:"message"`
-	RemoteID     string                 `json:"remote_id"`
-	PublishURL   string                 `json:"publish_url"`
-	ErrorMessage string                 `json:"error_message"`
-	Metadata     map[string]interface{} `json:"metadata"`
+	Token        string         `json:"token"`
+	EventID      string         `json:"event_id"`
+	Platform     string         `json:"platform"`
+	Status       string         `json:"status"`
+	Message      string         `json:"message"`
+	RemoteID     string         `json:"remote_id"`
+	PublishURL   string         `json:"publish_url"`
+	ErrorMessage string         `json:"error_message"`
+	Metadata     map[string]any `json:"metadata"`
 }
 
 type ExtensionEventCallbackResponse struct {
@@ -202,7 +202,7 @@ type SyncPrepublishRequest struct {
 }
 
 type UpdatePrepublishDraftRequest struct {
-	AdaptedContent map[string]interface{} `json:"adapted_content"`
+	AdaptedContent map[string]any `json:"adapted_content"`
 }
 
 type AIChatMessage struct {
@@ -232,19 +232,19 @@ type AIUsage struct {
 }
 
 type AIEditPrepublishRequest struct {
-	Title          string                 `json:"title,omitempty"`
-	Platform       string                 `json:"platform"`
-	AdaptedContent map[string]interface{} `json:"adapted_content"`
-	Message        string                 `json:"message"`
-	Conversation   []AIChatMessage        `json:"conversation,omitempty"`
+	Title          string          `json:"title,omitempty"`
+	Platform       string          `json:"platform"`
+	AdaptedContent map[string]any  `json:"adapted_content"`
+	Message        string          `json:"message"`
+	Conversation   []AIChatMessage `json:"conversation,omitempty"`
 }
 
 type AIEditPrepublishResponse struct {
-	Channel        string                 `json:"channel"`
-	Platform       string                 `json:"platform"`
-	AdaptedContent map[string]interface{} `json:"adapted_content"`
-	Content        string                 `json:"content"`
-	Usage          *AIUsage               `json:"usage,omitempty"`
+	Channel        string         `json:"channel"`
+	Platform       string         `json:"platform"`
+	AdaptedContent map[string]any `json:"adapted_content"`
+	Content        string         `json:"content"`
+	Usage          *AIUsage       `json:"usage,omitempty"`
 }
 
 type PublicationSummary struct {
@@ -349,17 +349,17 @@ type WorkspaceMembersResponse struct {
 }
 
 type WorkspaceActivity struct {
-	ID             uuid.UUID              `json:"id"`
-	WorkspaceID    uuid.UUID              `json:"workspace_id"`
-	ActorUserID    uuid.UUID              `json:"actor_user_id"`
-	ActorUsername  string                 `json:"actor_username"`
-	ActorEmail     string                 `json:"actor_email"`
-	TargetUserID   *uuid.UUID             `json:"target_user_id,omitempty"`
-	TargetUsername string                 `json:"target_username,omitempty"`
-	TargetEmail    string                 `json:"target_email,omitempty"`
-	EventType      string                 `json:"event_type"`
-	Metadata       map[string]interface{} `json:"metadata"`
-	CreatedAt      time.Time              `json:"created_at"`
+	ID             uuid.UUID      `json:"id"`
+	WorkspaceID    uuid.UUID      `json:"workspace_id"`
+	ActorUserID    uuid.UUID      `json:"actor_user_id"`
+	ActorUsername  string         `json:"actor_username"`
+	ActorEmail     string         `json:"actor_email"`
+	TargetUserID   *uuid.UUID     `json:"target_user_id,omitempty"`
+	TargetUsername string         `json:"target_username,omitempty"`
+	TargetEmail    string         `json:"target_email,omitempty"`
+	EventType      string         `json:"event_type"`
+	Metadata       map[string]any `json:"metadata"`
+	CreatedAt      time.Time      `json:"created_at"`
 }
 
 type WorkspaceActivitiesResponse struct {
@@ -367,20 +367,20 @@ type WorkspaceActivitiesResponse struct {
 }
 
 type PublicationDetail struct {
-	ID             uuid.UUID              `json:"id"`
-	Platform       string                 `json:"platform"`
-	Enabled        bool                   `json:"enabled"`
-	Status         string                 `json:"status"`
-	ErrorMessage   string                 `json:"error_message,omitempty"`
-	Config         map[string]interface{} `json:"config"`
-	AdaptedContent map[string]interface{} `json:"adapted_content"`
-	PublishURL     string                 `json:"publish_url,omitempty"`
-	RemoteID       string                 `json:"remote_id,omitempty"`
-	RetryCount     int                    `json:"retry_count"`
-	LastAttemptAt  *time.Time             `json:"last_attempt_at,omitempty"`
-	PublishedAt    *time.Time             `json:"published_at,omitempty"`
-	CreatedAt      time.Time              `json:"created_at"`
-	UpdatedAt      time.Time              `json:"updated_at"`
+	ID             uuid.UUID      `json:"id"`
+	Platform       string         `json:"platform"`
+	Enabled        bool           `json:"enabled"`
+	Status         string         `json:"status"`
+	ErrorMessage   string         `json:"error_message,omitempty"`
+	Config         map[string]any `json:"config"`
+	AdaptedContent map[string]any `json:"adapted_content"`
+	PublishURL     string         `json:"publish_url,omitempty"`
+	RemoteID       string         `json:"remote_id,omitempty"`
+	RetryCount     int            `json:"retry_count"`
+	LastAttemptAt  *time.Time     `json:"last_attempt_at,omitempty"`
+	PublishedAt    *time.Time     `json:"published_at,omitempty"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 type ProjectPublicationsResponse struct {

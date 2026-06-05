@@ -33,7 +33,7 @@ func (w *WechatPublisher) ValidateConfig(config []byte) error {
 	return nil
 }
 
-func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
+func (w *WechatPublisher) Publish(_ context.Context, pub *models.ProjectPlatformPublication, _ *models.PlatformAccount) (string, string, error) {
 	var cfg WechatConfig
 	if err := json.Unmarshal(pub.Config, &cfg); err != nil {
 		return "", "", fmt.Errorf("failed to parse wechat config: %w", err)

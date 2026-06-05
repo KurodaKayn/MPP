@@ -4,9 +4,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/contracts"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/contracts"
 )
 
 // Project Status Constants
@@ -308,21 +309,21 @@ type ExtensionExecutionEvent struct {
 }
 
 // BeforeCreate hook to generate UUID if not set
-func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
+func (u *User) BeforeCreate(_ *gorm.DB) (err error) {
 	if u.ID == uuid.Nil {
 		u.ID = uuid.New()
 	}
 	return
 }
 
-func (p *Project) BeforeCreate(tx *gorm.DB) (err error) {
+func (p *Project) BeforeCreate(_ *gorm.DB) (err error) {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
 	}
 	return
 }
 
-func (m *MediaAsset) BeforeCreate(tx *gorm.DB) (err error) {
+func (m *MediaAsset) BeforeCreate(_ *gorm.DB) (err error) {
 	if m.ID == uuid.Nil {
 		m.ID = uuid.New()
 	}
@@ -332,21 +333,21 @@ func (m *MediaAsset) BeforeCreate(tx *gorm.DB) (err error) {
 	return
 }
 
-func (p *ProjectPlatformPublication) BeforeCreate(tx *gorm.DB) (err error) {
+func (p *ProjectPlatformPublication) BeforeCreate(_ *gorm.DB) (err error) {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
 	}
 	return
 }
 
-func (e *PublishEvent) BeforeCreate(tx *gorm.DB) (err error) {
+func (e *PublishEvent) BeforeCreate(_ *gorm.DB) (err error) {
 	if e.ID == uuid.Nil {
 		e.ID = uuid.New()
 	}
 	return
 }
 
-func (w *Workspace) BeforeCreate(tx *gorm.DB) (err error) {
+func (w *Workspace) BeforeCreate(_ *gorm.DB) (err error) {
 	if w.ID == uuid.Nil {
 		w.ID = uuid.New()
 	}
@@ -356,35 +357,35 @@ func (w *Workspace) BeforeCreate(tx *gorm.DB) (err error) {
 	return
 }
 
-func (a *WorkspaceActivity) BeforeCreate(tx *gorm.DB) (err error) {
+func (a *WorkspaceActivity) BeforeCreate(_ *gorm.DB) (err error) {
 	if a.ID == uuid.Nil {
 		a.ID = uuid.New()
 	}
 	return
 }
 
-func (pa *PlatformAccount) BeforeCreate(tx *gorm.DB) (err error) {
+func (pa *PlatformAccount) BeforeCreate(_ *gorm.DB) (err error) {
 	if pa.ID == uuid.Nil {
 		pa.ID = uuid.New()
 	}
 	return
 }
 
-func (s *RemoteBrowserSession) BeforeCreate(tx *gorm.DB) (err error) {
+func (s *RemoteBrowserSession) BeforeCreate(_ *gorm.DB) (err error) {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()
 	}
 	return
 }
 
-func (t *ExtensionCallbackToken) BeforeCreate(tx *gorm.DB) (err error) {
+func (t *ExtensionCallbackToken) BeforeCreate(_ *gorm.DB) (err error) {
 	if t.ID == uuid.Nil {
 		t.ID = uuid.New()
 	}
 	return
 }
 
-func (e *ExtensionExecutionEvent) BeforeCreate(tx *gorm.DB) (err error) {
+func (e *ExtensionExecutionEvent) BeforeCreate(_ *gorm.DB) (err error) {
 	if e.ID == uuid.Nil {
 		e.ID = uuid.New()
 	}

@@ -12,19 +12,19 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 )
 
-type HttpBrowserWorkerClient struct {
+type HTTPBrowserWorkerClient struct {
 	baseURL    string
 	httpClient *http.Client
 }
 
-func NewHttpBrowserWorkerClient(baseURL string) *HttpBrowserWorkerClient {
-	return &HttpBrowserWorkerClient{
+func NewHTTPBrowserWorkerClient(baseURL string) *HTTPBrowserWorkerClient {
+	return &HTTPBrowserWorkerClient{
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		httpClient: resilience.NewHTTPClient("browser-worker", 30*time.Second),
 	}
 }
 
-func (c *HttpBrowserWorkerClient) CreateSession(ctx context.Context, req StartWorkerSessionRequest) (*StartWorkerSessionResponse, error) {
+func (c *HTTPBrowserWorkerClient) CreateSession(ctx context.Context, req StartWorkerSessionRequest) (*StartWorkerSessionResponse, error) {
 	body, _ := json.Marshal(req)
 	hReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/internal/browser-sessions", bytes.NewReader(body))
 	hReq.Header.Set("Content-Type", "application/json")
@@ -33,13 +33,13 @@ func (c *HttpBrowserWorkerClient) CreateSession(ctx context.Context, req StartWo
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		var errResp struct {
 			Message string `json:"message"`
 		}
-		json.NewDecoder(resp.Body).Decode(&errResp)
+		_ = json.NewDecoder(resp.Body).Decode(&errResp)
 		if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusTooManyRequests {
 			if errResp.Message != "" {
 				return nil, fmt.Errorf("%w: %s", ErrBrowserWorkerPoolExhausted, errResp.Message)
@@ -60,14 +60,14 @@ func (c *HttpBrowserWorkerClient) CreateSession(ctx context.Context, req StartWo
 	return &result, nil
 }
 
-func (c *HttpBrowserWorkerClient) GetSession(ctx context.Context, ref string) (*GetWorkerSessionResponse, error) {
+func (c *HTTPBrowserWorkerClient) GetSession(ctx context.Context, ref string) (*GetWorkerSessionResponse, error) {
 	hReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/internal/browser-sessions/"+ref, nil)
 
 	resp, err := c.httpClient.Do(hReq)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("worker returned status %d", resp.StatusCode)
@@ -80,14 +80,14 @@ func (c *HttpBrowserWorkerClient) GetSession(ctx context.Context, ref string) (*
 	return &result, nil
 }
 
-func (c *HttpBrowserWorkerClient) CaptureSession(ctx context.Context, ref string) (*CaptureWorkerSessionResponse, error) {
+func (c *HTTPBrowserWorkerClient) CaptureSession(ctx context.Context, ref string) (*CaptureWorkerSessionResponse, error) {
 	hReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/internal/browser-sessions/"+ref+"/capture", nil)
 
 	resp, err := c.httpClient.Do(hReq)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("worker returned status %d", resp.StatusCode)
@@ -100,7 +100,7 @@ func (c *HttpBrowserWorkerClient) CaptureSession(ctx context.Context, ref string
 	return &result, nil
 }
 
-func (c *HttpBrowserWorkerClient) StartDouyinPublish(ctx context.Context, ref string, req StartDouyinPublishRequest) error {
+func (c *HTTPBrowserWorkerClient) StartDouyinPublish(ctx context.Context, ref string, req StartDouyinPublishRequest) error {
 	body, _ := json.Marshal(req)
 	hReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/internal/browser-sessions/"+ref+"/publish/douyin", bytes.NewReader(body))
 	hReq.Header.Set("Content-Type", "application/json")
@@ -109,13 +109,13 @@ func (c *HttpBrowserWorkerClient) StartDouyinPublish(ctx context.Context, ref st
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusAccepted {
 		var errResp struct {
 			Message string `json:"message"`
 		}
-		json.NewDecoder(resp.Body).Decode(&errResp)
+		_ = json.NewDecoder(resp.Body).Decode(&errResp)
 		if errResp.Message != "" {
 			return fmt.Errorf("worker error: %s", errResp.Message)
 		}
@@ -124,14 +124,14 @@ func (c *HttpBrowserWorkerClient) StartDouyinPublish(ctx context.Context, ref st
 	return nil
 }
 
-func (c *HttpBrowserWorkerClient) StopSession(ctx context.Context, ref string) error {
+func (c *HTTPBrowserWorkerClient) StopSession(ctx context.Context, ref string) error {
 	hReq, _ := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/internal/browser-sessions/"+ref, nil)
 
 	resp, err := c.httpClient.Do(hReq)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("worker returned status %d", resp.StatusCode)
@@ -139,7 +139,7 @@ func (c *HttpBrowserWorkerClient) StopSession(ctx context.Context, ref string) e
 	return nil
 }
 
-func (c *HttpBrowserWorkerClient) absoluteWorkerURL(ref string) string {
+func (c *HTTPBrowserWorkerClient) absoluteWorkerURL(ref string) string {
 	if ref == "" || strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") || strings.HasPrefix(ref, "ws://") || strings.HasPrefix(ref, "wss://") {
 		return ref
 	}

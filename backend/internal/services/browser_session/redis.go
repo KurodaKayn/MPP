@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 type browserSessionLiveState struct {
@@ -356,7 +357,7 @@ func (s *BrowserSessionService) cleanupRecoveredRedisActiveSession(ctx context.C
 func (s *BrowserSessionService) expireRedisActiveSessionRow(ctx context.Context, sessionID uuid.UUID, message string) error {
 	return s.db.WithContext(ctx).Model(&models.RemoteBrowserSession{}).
 		Where("id = ? AND status IN ?", sessionID, activeBrowserSessionStatuses()).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"status":             models.BrowserSessionStatusExpired,
 			"error_message":      message,
 			"connect_token_hash": "",

@@ -6,13 +6,14 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	openapi_types "github.com/oapi-codegen/runtime/types"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/contracts"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
-	"github.com/labstack/echo/v4"
-	openapi_types "github.com/oapi-codegen/runtime/types"
-	"gorm.io/gorm"
 )
 
 type CollabDocumentHandler struct {

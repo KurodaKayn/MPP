@@ -2,9 +2,11 @@ package project
 
 import (
 	"errors"
+
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 func (s *Service) ScopeAccessibleProjects(query *gorm.DB, userID uuid.UUID) *gorm.DB {

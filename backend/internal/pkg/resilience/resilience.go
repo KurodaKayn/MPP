@@ -181,7 +181,7 @@ func (rt *ResilientRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 			break
 		}
 		if resp != nil && resp.Body != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 		if err := rt.policy.Sleep(req.Context(), backoff); err != nil {
 			rt.breaker.Record(false)
@@ -451,13 +451,13 @@ func RetryableError(err error) bool {
 	return false
 }
 
-func nextBackoff(current, max time.Duration) time.Duration {
+func nextBackoff(current, limit time.Duration) time.Duration {
 	if current <= 0 {
 		return 0
 	}
 	next := current * 2
-	if next > max {
-		return max
+	if next > limit {
+		return limit
 	}
 	return next
 }
