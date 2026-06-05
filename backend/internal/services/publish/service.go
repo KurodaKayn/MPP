@@ -113,9 +113,12 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	// Publish jobs must be durable across Redis workers, so they load saved credentials instead.
 	browserSessionID = uuid.Nil
 
-	var proj models.Project
-	if err := s.db.Where("id = ? AND user_id = ?", projectID, *scopeUserID).First(&proj).Error; err != nil {
+	if scopeUserID == nil {
 		return nil, ErrForbidden
+	}
+	proj, err := s.projectForPublish(context.Background(), projectID, *scopeUserID)
+	if err != nil {
+		return nil, err
 	}
 
 	var pub models.ProjectPlatformPublication
@@ -224,9 +227,11 @@ func (s *Service) markPublicationPublishing(pub *models.ProjectPlatformPublicati
 }
 
 func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
-	var proj models.Project
-	if err := s.db.Where("id = ? AND user_id = ?", projectID, *scopeUserID).First(&proj).Error; err != nil {
+	if scopeUserID == nil {
 		return nil, ErrForbidden
+	}
+	if _, err := s.projectForPublish(context.Background(), projectID, *scopeUserID); err != nil {
+		return nil, err
 	}
 
 	var pub models.ProjectPlatformPublication
