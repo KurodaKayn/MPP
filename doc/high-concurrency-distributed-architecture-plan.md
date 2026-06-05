@@ -53,7 +53,7 @@ MPP 当前已经具备多服务雏形：
 | 9 | 分布式锁强化 | 避免同一 publication 被并发发布 | Redis lock 加 owner、TTL、续约、释放校验 | 5 | 2 | P1 | 完成 | 项目已经有 Redis，成本可控 |
 | 10 | 外部调用熔断、重试、退避 | 防止第三方平台或 LLM 故障拖垮系统 | AI、微信、知乎、X、抖音调用统一 retry/backoff/circuit breaker | 5 | 3 | P1 | 完成 | backend 已新增统一 resilience 层，HTTP retry 默认仅覆盖安全方法，非幂等 POST 只做 timeout/circuit breaker；发布操作层按平台维度熔断但不重试完整发布；ai-service LLM 客户端已配置 timeout、max retries 和 stream chunk timeout |
 | 11 | Browser Worker 资源池与配额 | 控制 Chromium 容器数量，避免宿主机爆掉 | 每用户/租户限制并发 browser session，全局 worker pool | 5 | 3 | P1 | 完成 | 已有用户+平台活跃 session 锁、用户/租户并发配额、全局 worker pool 和容器 CPU/内存限制 |
-| 12 | WebSocket/SSE 长连接治理 | 处理 AI stream 和远程浏览器 stream | 网关 timeout、连接数限制、stream token、断线恢复 | 4 | 3 | P1 | 进行中 | 已有 AI stream 和 browser stream token，尚缺网关 timeout、连接数限制和断线恢复 |
+| 12 | WebSocket/SSE 长连接治理 | 处理 AI stream 和远程浏览器 stream | 网关 timeout、连接数限制、stream token、断线恢复 | 4 | 3 | P1 | 已完成 | AI stream 和远程浏览器长连接已接入连接数限制；远程浏览器 stream 统一校验 token，HTTP gateway timeout 返回 504，token 有效期内支持断线重连 |
 | 13 | 数据库索引、分页与慢查询治理 | 避免列表和 dashboard 查询拖垮数据库 | projects、publications、sessions、accounts 建组合索引 | 5 | 2 | P1 | 完成 | 已有组合索引和列表分页；backend 已接入 GORM 查询指标、结构化慢查询日志、Grafana DB 面板、dashboard 查询计划审计脚本和持续治理文档 |
 | 14 | PostgreSQL 连接池 | 多副本后避免 DB 连接耗尽 | 引入 PgBouncer 或应用层连接池约束 | 4 | 3 | P2 | 完成 | 已接入应用层连接池约束；PgBouncer 可在更大副本规模后再评估 |
 | 15 | 对象存储与签名 URL | 图片和媒体不压在应用容器与数据库上 | S3/R2/OSS 存储媒体，backend 生成 signed URL | 5 | 3 | P2 | 未开始 | 平台媒体上传增长后很重要 |
@@ -103,10 +103,10 @@ MPP 当前已经具备多服务雏形：
 
 - [x] 将 backend 拆成 `backend` API 服务和 `publish-worker` 两个运行进程。
 - [x] browser-worker 增加全局资源池和用户级并发配额。（已完成：backend 使用 Redis 维护用户/租户并发配额，browser-worker 在启动 Chromium 容器前预留全局池槽位，容器仍保留 CPU/内存限制。）
-- [ ] AI 请求增加用户级并发限制和 token/成本统计。（进行中：已有 AI 路由用户/租户限流，尚缺并发控制、token 统计和成本统计。）
+- [x] AI 请求增加用户级并发限制和 token/成本统计。（已完成：普通和流式 AI 请求统一接入 `STREAM_GATE_*`/`AI_STREAM_*` 并发租约；非流式 AI 响应透传 provider token usage 和按 `LLM_INPUT_COST_PER_1K_TOKENS`、`LLM_OUTPUT_COST_PER_1K_TOKENS` 估算的成本，ai-service 暴露 `mpp_ai_tokens_total`、`mpp_ai_cost_total` 指标。流式 AI 仍以连接并发治理为主，不返回逐请求 token 明细。）
 - [x] backend-api 支持多副本运行。（已完成：API 已基本无状态，生产 Compose 默认 `BACKEND_API_REPLICAS=2`，dev override 固定单副本避免端口冲突。）
 - [x] PostgreSQL 连接数治理，必要时引入 PgBouncer。（已完成：backend/publish-worker 进程已支持 `DB_MAX_OPEN_CONNS`、`DB_MAX_IDLE_CONNS`、`DB_CONN_MAX_LIFETIME`、`DB_CONN_MAX_IDLE_TIME`；PgBouncer 留作更大规模扩展。）
-- [ ] 长连接接口统一设置 gateway timeout、连接数限制和 token 校验。（进行中：远程浏览器 stream 已有 token 校验，网关超时、连接数限制和断线恢复仍待补齐。）
+- [x] 长连接接口统一设置 gateway timeout、连接数限制和 token 校验。（已完成：远程浏览器 stream 入口统一校验 session stream token；WebSocket/websockify 长连接接入 `BROWSER_STREAM_*` 连接数限制；HTTP 反代上游首包由 `BROWSER_STREAM_GATEWAY_TIMEOUT` 控制并在超时时返回 504；token 有效期内客户端可断线重连。）
 
 ### 阶段四：SaaS 增长能力
 
