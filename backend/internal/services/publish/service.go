@@ -116,7 +116,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	if scopeUserID == nil {
 		return nil, ErrForbidden
 	}
-	proj, err := s.projectForPublish(context.Background(), projectID, *scopeUserID)
+	proj, err := s.projectForPublish(nil, projectID, *scopeUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +230,7 @@ func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID)
 	if scopeUserID == nil {
 		return nil, ErrForbidden
 	}
-	if _, err := s.projectForPublish(context.Background(), projectID, *scopeUserID); err != nil {
+	if _, err := s.projectForPublish(nil, projectID, *scopeUserID); err != nil {
 		return nil, err
 	}
 

@@ -14,8 +14,13 @@ func (s *Service) projectForPublish(ctx context.Context, projectID uuid.UUID, us
 		return models.Project{}, ErrForbidden
 	}
 
+	db := s.db
+	if ctx != nil {
+		db = db.WithContext(ctx)
+	}
+
 	var project models.Project
-	if err := s.db.WithContext(ctx).First(&project, "id = ?", projectID).Error; err != nil {
+	if err := db.First(&project, "id = ?", projectID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return models.Project{}, ErrForbidden
 		}
