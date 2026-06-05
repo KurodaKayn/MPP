@@ -97,7 +97,8 @@
     "saveFailed": "Save failed",
     "syncSuccess": "Synced to prepublish",
     "syncDesc": "Platform drafts have been adapted and saved.",
-    "syncFailed": "Failed to sync to prepublish"
+    "syncFailed": "Failed to sync to prepublish",
+    "workspaceRequired": "Please select a workspace before creating a project."
   },
   "common": {
     "edit": "Edit",
