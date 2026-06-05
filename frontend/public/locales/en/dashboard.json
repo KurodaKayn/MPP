@@ -100,6 +100,36 @@
       "logoutDesc": "Sign out of the current admin account on this device.",
       "logoutButton": "Sign Out",
       "logoutSuccess": "Signed out successfully"
+    },
+    "workspaceMembers": {
+      "title": "Workspace Members",
+      "description": "Manage who can access the selected workspace and what they can do.",
+      "emailLabel": "Member email",
+      "emailPlaceholder": "teammate@example.com",
+      "add": "Add member",
+      "addSuccess": "Workspace member added",
+      "addFailed": "Unable to add workspace member",
+      "roleUpdated": "Workspace role updated",
+      "roleUpdateFailed": "Unable to update workspace role",
+      "remove": "Remove member",
+      "removeSuccess": "Workspace member removed",
+      "removeFailed": "Unable to remove workspace member",
+      "loadFailed": "Unable to load workspace members",
+      "retryLater": "Please try again later.",
+      "loading": "Loading members",
+      "empty": "No members have been added to this workspace.",
+      "count": "{{count}} member",
+      "count_plural": "{{count}} members",
+      "ownerLocked": "Owner",
+      "noWorkspace": "Select a workspace to manage its members.",
+      "noPermission": "Only workspace owners and admins can manage members.",
+      "people": "People",
+      "peopleDescription": "Owners and admins can update roles or remove members.",
+      "roleHelp": {
+        "admin": "Can manage members and projects.",
+        "member": "Can create and edit workspace projects.",
+        "viewer": "Can view workspace projects only."
+      }
     }
   },
   "auth": {
