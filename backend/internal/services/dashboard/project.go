@@ -1,0 +1,525 @@
+package dashboard
+
+import (
+	"encoding/json"
+	"github.com/google/uuid"
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+	"math"
+	"strings"
+)
+
+func (s *DashboardService) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
+	workspaceID := models.PersonalWorkspaceID(userID)
+	return s.createProjectWithWorkspace(userID, &workspaceID, req)
+}
+
+func (s *DashboardService) createProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
+	title := strings.TrimSpace(req.Title)
+	sourceContent := strings.TrimSpace(req.SourceContent)
+	platforms, err := normalizeProjectPlatforms(req.Platforms)
+	if err != nil {
+		return nil, err
+	}
+	if title == "" || sourceContent == "" || len(platforms) == 0 {
+		return nil, ErrInvalidProject
+	}
+
+	project := models.Project{
+		UserID:        userID,
+		WorkspaceID:   workspaceID,
+		Title:         title,
+		SourceContent: sourceContent,
+		Status:        models.ProjectStatusReady,
+	}
+	publications := make([]dto.PublicationSummary, 0, len(platforms))
+
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if workspaceID != nil && *workspaceID == models.PersonalWorkspaceID(userID) {
+			if err := ensurePersonalWorkspace(tx, userID); err != nil {
+				return err
+			}
+		}
+
+		if err := tx.Create(&project).Error; err != nil {
+			return err
+		}
+
+		for _, platform := range platforms {
+			config, adaptedContent, status, err := buildPendingPublicationPayload(title, req.Summary, req.CoverImageURL)
+			if err != nil {
+				return err
+			}
+
+			publication := models.ProjectPlatformPublication{
+				ProjectID:      project.ID,
+				Platform:       platform,
+				Enabled:        true,
+				Status:         status,
+				Config:         config,
+				AdaptedContent: adaptedContent,
+			}
+			if err := tx.Create(&publication).Error; err != nil {
+				return err
+			}
+
+			publications = append(publications, dto.PublicationSummary{
+				ID:       publication.ID,
+				Platform: platform,
+				Enabled:  publication.Enabled,
+				Status:   publication.Status,
+			})
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return &dto.ProjectListItem{
+		ID:               project.ID,
+		UserID:           project.UserID,
+		WorkspaceID:      project.WorkspaceID,
+		CollabDocumentID: project.CollabDocumentID,
+		Title:            project.Title,
+		Status:           project.Status,
+		Role:             models.ProjectRoleOwner,
+		CreatedAt:        project.CreatedAt,
+		UpdatedAt:        project.UpdatedAt,
+		Publications:     publications,
+	}, nil
+}
+
+func (s *DashboardService) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUID) (*dto.ProjectDetail, error) {
+	var project models.Project
+	if err := s.db.
+		Preload("Publications", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id, project_id, platform, enabled, status, publish_url").Order("platform asc")
+		}).
+		First(&project, "id = ?", projectID).Error; err != nil {
+		return nil, err
+	}
+
+	role := models.ProjectRoleOwner
+	if scopeUserID != nil {
+		accessRole, err := s.projectAccessRole(project, *scopeUserID)
+		if err != nil {
+			return nil, err
+		}
+		role = accessRole
+	}
+
+	return projectDetailFromModel(project, role), nil
+}
+
+func (s *DashboardService) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.UpdateProjectRequest) (*dto.ProjectDetail, error) {
+	title := strings.TrimSpace(req.Title)
+	sourceContent := strings.TrimSpace(req.SourceContent)
+	platforms, err := normalizeProjectPlatforms(req.Platforms)
+	if err != nil {
+		return nil, err
+	}
+	if title == "" || sourceContent == "" || len(platforms) == 0 {
+		return nil, ErrInvalidProject
+	}
+
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		var project models.Project
+		if err := tx.First(&project, "id = ?", projectID).Error; err != nil {
+			return err
+		}
+		role, err := projectAccessRoleWithDB(tx, project, userID)
+		if err != nil {
+			return err
+		}
+		if !canEditProjectRole(role) {
+			return ErrForbidden
+		}
+
+		project.Title = title
+		project.SourceContent = sourceContent
+		project.Status = models.ProjectStatusReady
+		if err := tx.Save(&project).Error; err != nil {
+			return err
+		}
+
+		var existing []models.ProjectPlatformPublication
+		if err := tx.Where("project_id = ?", project.ID).Find(&existing).Error; err != nil {
+			return err
+		}
+
+		selected := make(map[string]struct{}, len(platforms))
+		for _, platform := range platforms {
+			selected[platform] = struct{}{}
+		}
+
+		for _, publication := range existing {
+			if _, ok := selected[publication.Platform]; !ok {
+				if err := tx.Model(&publication).Updates(map[string]interface{}{
+					"enabled":       false,
+					"error_message": "",
+					"status":        models.PublicationStatusDisabled,
+				}).Error; err != nil {
+					return err
+				}
+				continue
+			}
+
+			config, err := defaultPublicationConfig(title, req.Summary, req.CoverImageURL)
+			if err != nil {
+				return err
+			}
+			if err := tx.Model(&publication).Updates(map[string]interface{}{
+				"config":          config,
+				"enabled":         true,
+				"error_message":   "",
+				"last_attempt_at": nil,
+				"published_at":    nil,
+				"publish_url":     "",
+				"remote_id":       "",
+				"retry_count":     0,
+				"status":          models.PublicationStatusPending,
+			}).Error; err != nil {
+				return err
+			}
+			delete(selected, publication.Platform)
+		}
+
+		for _, platform := range platforms {
+			if _, ok := selected[platform]; !ok {
+				continue
+			}
+
+			config, adaptedContent, status, err := buildPendingPublicationPayload(title, req.Summary, req.CoverImageURL)
+			if err != nil {
+				return err
+			}
+			publication := models.ProjectPlatformPublication{
+				ProjectID:      project.ID,
+				Platform:       platform,
+				Enabled:        true,
+				Status:         status,
+				Config:         config,
+				AdaptedContent: adaptedContent,
+			}
+			if err := tx.Create(&publication).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return s.GetProject(projectID, &userID)
+}
+
+func (s *DashboardService) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req dto.SaveProjectContentRequest) (*dto.ProjectDetail, error) {
+	title := strings.TrimSpace(req.Title)
+	sourceContent := strings.TrimSpace(req.SourceContent)
+	if title == "" || sourceContent == "" {
+		return nil, ErrInvalidProject
+	}
+
+	var project models.Project
+	if err := s.db.First(&project, "id = ?", projectID).Error; err != nil {
+		return nil, err
+	}
+	role, err := s.projectAccessRole(project, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !canEditProjectRole(role) {
+		return nil, ErrForbidden
+	}
+
+	if err := s.db.Model(&project).Updates(map[string]interface{}{
+		"source_content": sourceContent,
+		"status":         models.ProjectStatusReady,
+		"title":          title,
+	}).Error; err != nil {
+		return nil, err
+	}
+
+	return s.GetProject(projectID, &userID)
+}
+
+func (s *DashboardService) SaveProjectPlatforms(projectID uuid.UUID, userID uuid.UUID, req dto.SaveProjectPlatformsRequest) (*dto.ProjectDetail, error) {
+	platforms, err := normalizeProjectPlatforms(req.Platforms)
+	if err != nil || len(platforms) == 0 {
+		return nil, ErrInvalidProject
+	}
+
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		var project models.Project
+		if err := tx.First(&project, "id = ?", projectID).Error; err != nil {
+			return err
+		}
+		role, err := projectAccessRoleWithDB(tx, project, userID)
+		if err != nil {
+			return err
+		}
+		if !canEditProjectRole(role) {
+			return ErrForbidden
+		}
+
+		var existing []models.ProjectPlatformPublication
+		if err := tx.Where("project_id = ?", project.ID).Find(&existing).Error; err != nil {
+			return err
+		}
+
+		selected := make(map[string]struct{}, len(platforms))
+		for _, platform := range platforms {
+			selected[platform] = struct{}{}
+		}
+
+		for _, publication := range existing {
+			if _, ok := selected[publication.Platform]; !ok {
+				if err := tx.Model(&publication).Updates(map[string]interface{}{
+					"enabled":       false,
+					"error_message": "",
+					"status":        models.PublicationStatusDisabled,
+				}).Error; err != nil {
+					return err
+				}
+				continue
+			}
+
+			if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
+				if err := tx.Model(&publication).Updates(map[string]interface{}{
+					"enabled": true,
+					"status":  models.PublicationStatusPending,
+				}).Error; err != nil {
+					return err
+				}
+			}
+			delete(selected, publication.Platform)
+		}
+
+		for _, platform := range platforms {
+			if _, ok := selected[platform]; !ok {
+				continue
+			}
+
+			config, adaptedContent, status, err := buildPendingPublicationPayload(project.Title, "", "")
+			if err != nil {
+				return err
+			}
+			publication := models.ProjectPlatformPublication{
+				ProjectID:      project.ID,
+				Platform:       platform,
+				Enabled:        true,
+				Status:         status,
+				Config:         config,
+				AdaptedContent: adaptedContent,
+			}
+			if err := tx.Create(&publication).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return s.GetProject(projectID, &userID)
+}
+
+func buildPendingPublicationPayload(title, summary, coverImageURL string) (datatypes.JSON, datatypes.JSON, string, error) {
+	config, err := defaultPublicationConfig(title, summary, coverImageURL)
+	if err != nil {
+		return nil, nil, "", err
+	}
+
+	return config, datatypes.JSON([]byte(`{}`)), models.PublicationStatusPending, nil
+}
+
+func projectDetailFromModel(project models.Project, role string) *dto.ProjectDetail {
+	publications := make([]dto.PublicationSummary, 0, len(project.Publications))
+	for _, pub := range project.Publications {
+		publications = append(publications, dto.PublicationSummary{
+			ID:         pub.ID,
+			Platform:   pub.Platform,
+			Enabled:    pub.Enabled,
+			Status:     pub.Status,
+			PublishURL: pub.PublishURL,
+		})
+	}
+	if publications == nil {
+		publications = []dto.PublicationSummary{}
+	}
+
+	return &dto.ProjectDetail{
+		ID:               project.ID,
+		UserID:           project.UserID,
+		WorkspaceID:      project.WorkspaceID,
+		CollabDocumentID: project.CollabDocumentID,
+		Title:            project.Title,
+		SourceContent:    project.SourceContent,
+		Status:           project.Status,
+		Role:             role,
+		CreatedAt:        project.CreatedAt,
+		UpdatedAt:        project.UpdatedAt,
+		Publications:     publications,
+	}
+}
+
+func projectListItemFromModel(project models.Project, role string) dto.ProjectListItem {
+	publications := make([]dto.PublicationSummary, 0, len(project.Publications))
+	for _, pub := range project.Publications {
+		publications = append(publications, dto.PublicationSummary{
+			ID:         pub.ID,
+			Platform:   pub.Platform,
+			Enabled:    pub.Enabled,
+			Status:     pub.Status,
+			PublishURL: pub.PublishURL,
+		})
+	}
+	if publications == nil {
+		publications = []dto.PublicationSummary{}
+	}
+
+	return dto.ProjectListItem{
+		ID:               project.ID,
+		UserID:           project.UserID,
+		WorkspaceID:      project.WorkspaceID,
+		CollabDocumentID: project.CollabDocumentID,
+		Title:            project.Title,
+		Status:           project.Status,
+		Role:             role,
+		CreatedAt:        project.CreatedAt,
+		UpdatedAt:        project.UpdatedAt,
+		Publications:     publications,
+	}
+}
+
+func normalizeProjectPlatforms(input []string) ([]string, error) {
+	seen := map[string]struct{}{}
+	platforms := make([]string, 0, len(input))
+
+	for _, raw := range input {
+		platform := strings.TrimSpace(raw)
+		if platform == "" {
+			continue
+		}
+		if _, ok := allowedProjectPlatforms[platform]; !ok {
+			return nil, ErrInvalidProject
+		}
+		if _, ok := seen[platform]; ok {
+			continue
+		}
+		seen[platform] = struct{}{}
+		platforms = append(platforms, platform)
+	}
+
+	return platforms, nil
+}
+
+func defaultPublicationConfig(title, summary, coverImageURL string) (datatypes.JSON, error) {
+	digest := strings.TrimSpace(summary)
+	if digest == "" {
+		digest = title
+	}
+	config := map[string]interface{}{
+		"digest": truncateRunes(digest, 120),
+		"title":  title,
+	}
+	if coverImageURL := strings.TrimSpace(coverImageURL); coverImageURL != "" {
+		config["cover_image_url"] = coverImageURL
+	}
+	payload, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
+	return datatypes.JSON(payload), nil
+}
+
+func truncateRunes(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
+}
+
+func (s *DashboardService) ListProjects(page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
+	query := s.db.Model(&models.Project{})
+
+	// Apply scope (User dashboard enforces scopeUserID, overriding any filterUserID)
+	if scopeUserID != nil {
+		query = s.scopeAccessibleProjects(query, *scopeUserID)
+	} else if filterUserID != "" {
+		// Admin dashboard can filter by specific user
+		if uid, err := uuid.Parse(filterUserID); err == nil {
+			query = query.Where("user_id = ?", uid)
+		}
+	}
+
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	if platform != "" {
+		query = query.Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id").
+			Where("ppp.platform = ?", platform).
+			Group("projects.id")
+	}
+
+	return s.listProjectPage(query, page, limit, scopeUserID)
+}
+
+func (s *DashboardService) listProjectPage(query *gorm.DB, page, limit int, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
+	var projects []models.Project
+	var total int64
+
+	// Count total before pagination
+	if err := query.Count(&total).Error; err != nil {
+		return nil, err
+	}
+
+	// Calculate pagination
+	offset := (page - 1) * limit
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+
+	// Fetch data with specific fields and preload summary publications
+	if err := query.Omit("source_content").
+		Preload("Publications", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id, project_id, platform, enabled, status, publish_url")
+		}).
+		Order("projects.created_at desc").
+		Limit(limit).Offset(offset).
+		Find(&projects).Error; err != nil {
+		return nil, err
+	}
+
+	roles := make(map[uuid.UUID]string, len(projects))
+	if scopeUserID != nil {
+		var roleErr error
+		roles, roleErr = s.projectRolesForUser(projects, *scopeUserID)
+		if roleErr != nil {
+			return nil, roleErr
+		}
+	} else {
+		for _, project := range projects {
+			roles[project.ID] = models.ProjectRoleOwner
+		}
+	}
+
+	// Map to DTO
+	items := make([]dto.ProjectListItem, 0, len(projects))
+	for _, p := range projects {
+		items = append(items, projectListItemFromModel(p, roles[p.ID]))
+	}
+
+	return &dto.PaginationResponse{
+		Items:      items,
+		Page:       page,
+		Limit:      limit,
+		Total:      total,
+		TotalPages: totalPages,
+	}, nil
+}

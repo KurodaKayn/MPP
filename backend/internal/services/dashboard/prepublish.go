@@ -1,0 +1,207 @@
+package dashboard
+
+import (
+	"encoding/json"
+	"errors"
+	"github.com/google/uuid"
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+)
+
+func (s *DashboardService) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, req dto.SyncPrepublishRequest) (*dto.ProjectPublicationsResponse, error) {
+	var project models.Project
+	if err := s.db.Preload("Publications").First(&project, "id = ?", projectID).Error; err != nil {
+		return nil, err
+	}
+	role, err := s.projectAccessRole(project, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !canEditProjectRole(role) {
+		return nil, ErrForbidden
+	}
+
+	platforms, err := normalizeProjectPlatforms(req.Platforms)
+	if err != nil {
+		return nil, err
+	}
+	if len(platforms) == 0 {
+		for _, publication := range project.Publications {
+			if publication.Enabled && publication.Status != models.PublicationStatusDisabled {
+				platforms = append(platforms, publication.Platform)
+			}
+		}
+	}
+	if len(platforms) == 0 {
+		return nil, ErrInvalidProject
+	}
+
+	publications, err := s.ensurePrepublishPublications(&project, platforms)
+	if err != nil {
+		return nil, err
+	}
+
+	draftCompiler := s.draftCompiler
+	if draftCompiler == nil {
+		draftCompiler = newContentPipelineDraftCompiler()
+	}
+	compiledDrafts, err := draftCompiler.CompileProjectDrafts(s.requestContext(), &project, publications, platforms)
+	if err != nil {
+		if markErr := s.markPrepublishCompileFailure(project.ID, platforms, err); markErr != nil {
+			return nil, markErr
+		}
+		return s.GetProjectPublications(projectID, &userID, true)
+	}
+
+	if err := s.applyCompiledPrepublishDrafts(project.ID, platforms, compiledDrafts); err != nil {
+		return nil, err
+	}
+
+	return s.GetProjectPublications(projectID, &userID, true)
+}
+
+func (s *DashboardService) ensurePrepublishPublications(project *models.Project, platforms []string) ([]models.ProjectPlatformPublication, error) {
+	publications := make([]models.ProjectPlatformPublication, 0, len(platforms))
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		for _, platform := range platforms {
+			var publication models.ProjectPlatformPublication
+			err := tx.Where("project_id = ? AND platform = ?", project.ID, platform).First(&publication).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				config, adaptedContent, status, err := buildPendingPublicationPayload(project.Title, "", "")
+				if err != nil {
+					return err
+				}
+				publication = models.ProjectPlatformPublication{
+					ProjectID:      project.ID,
+					Platform:       platform,
+					Enabled:        true,
+					Status:         status,
+					Config:         config,
+					AdaptedContent: adaptedContent,
+				}
+				if err := tx.Create(&publication).Error; err != nil {
+					return err
+				}
+			} else if err != nil {
+				return err
+			}
+
+			if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
+				if err := tx.Model(&publication).Updates(map[string]interface{}{
+					"enabled": true,
+					"status":  models.PublicationStatusPending,
+				}).Error; err != nil {
+					return err
+				}
+				publication.Enabled = true
+				publication.Status = models.PublicationStatusPending
+			}
+
+			publications = append(publications, publication)
+		}
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return publications, nil
+}
+
+func (s *DashboardService) applyCompiledPrepublishDrafts(projectID uuid.UUID, platforms []string, drafts map[string][]byte) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for _, platform := range platforms {
+			adaptedContent, ok := drafts[platform]
+			if !ok {
+				if err := tx.Model(&models.ProjectPlatformPublication{}).
+					Where("project_id = ? AND platform = ?", projectID, platform).
+					Updates(map[string]interface{}{
+						"error_message": "content pipeline did not return a compiled draft",
+						"status":        models.PublicationStatusFailed,
+					}).Error; err != nil {
+					return err
+				}
+				continue
+			}
+
+			if err := tx.Model(&models.ProjectPlatformPublication{}).
+				Where("project_id = ? AND platform = ?", projectID, platform).
+				Updates(map[string]interface{}{
+					"adapted_content": datatypes.JSON(adaptedContent),
+					"enabled":         true,
+					"error_message":   "",
+					"last_attempt_at": nil,
+					"published_at":    nil,
+					"publish_url":     "",
+					"remote_id":       "",
+					"retry_count":     0,
+					"status":          models.PublicationStatusAdapted,
+				}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *DashboardService) markPrepublishCompileFailure(projectID uuid.UUID, platforms []string, err error) error {
+	if len(platforms) == 0 {
+		return nil
+	}
+	return s.db.Model(&models.ProjectPlatformPublication{}).
+		Where("project_id = ? AND platform IN ?", projectID, platforms).
+		Updates(map[string]interface{}{
+			"error_message": publishsvc.SanitizeUserFacingErrorMessage(err.Error()),
+			"status":        models.PublicationStatusFailed,
+		}).Error
+}
+
+func (s *DashboardService) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.UUID, platform string, req dto.UpdatePrepublishDraftRequest) (*dto.ProjectPublicationsResponse, error) {
+	var project models.Project
+	if err := s.db.Select("id", "user_id", "workspace_id").First(&project, "id = ?", projectID).Error; err != nil {
+		return nil, err
+	}
+	role, err := s.projectAccessRole(project, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !canEditProjectRole(role) {
+		return nil, ErrForbidden
+	}
+
+	platforms, err := normalizeProjectPlatforms([]string{platform})
+	if err != nil || len(platforms) != 1 {
+		return nil, ErrInvalidProject
+	}
+	if len(req.AdaptedContent) == 0 {
+		return nil, ErrInvalidProject
+	}
+
+	adaptedContent, err := json.Marshal(req.AdaptedContent)
+	if err != nil {
+		return nil, err
+	}
+
+	var publication models.ProjectPlatformPublication
+	if err := s.db.Where("project_id = ? AND platform = ?", projectID, platforms[0]).First(&publication).Error; err != nil {
+		return nil, err
+	}
+
+	if err := s.db.Model(&publication).Updates(map[string]interface{}{
+		"adapted_content": datatypes.JSON(adaptedContent),
+		"enabled":         true,
+		"error_message":   "",
+		"last_attempt_at": nil,
+		"published_at":    nil,
+		"publish_url":     "",
+		"remote_id":       "",
+		"retry_count":     0,
+		"status":          models.PublicationStatusAdapted,
+	}).Error; err != nil {
+		return nil, err
+	}
+
+	return s.GetProjectPublications(projectID, &userID, true)
+}
