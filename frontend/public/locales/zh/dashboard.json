@@ -100,6 +100,36 @@
       "logoutDesc": "在此设备上退出当前的管理员账号。",
       "logoutButton": "退出登录",
       "logoutSuccess": "已退出登录"
+    },
+    "workspaceMembers": {
+      "title": "工作空间成员",
+      "description": "管理谁可以访问当前工作空间，以及他们能做什么。",
+      "emailLabel": "成员邮箱",
+      "emailPlaceholder": "teammate@example.com",
+      "add": "添加成员",
+      "addSuccess": "已添加工作空间成员",
+      "addFailed": "无法添加工作空间成员",
+      "roleUpdated": "工作空间角色已更新",
+      "roleUpdateFailed": "无法更新工作空间角色",
+      "remove": "移除成员",
+      "removeSuccess": "已移除工作空间成员",
+      "removeFailed": "无法移除工作空间成员",
+      "loadFailed": "无法加载工作空间成员",
+      "retryLater": "请稍后重试。",
+      "loading": "正在加载成员",
+      "empty": "此工作空间还没有添加成员。",
+      "count": "{{count}} 位成员",
+      "count_plural": "{{count}} 位成员",
+      "ownerLocked": "所有者",
+      "noWorkspace": "请选择一个工作空间来管理成员。",
+      "noPermission": "只有工作空间所有者和管理员可以管理成员。",
+      "people": "成员",
+      "peopleDescription": "所有者和管理员可以更新角色或移除成员。",
+      "roleHelp": {
+        "admin": "可以管理成员和项目。",
+        "member": "可以创建和编辑工作空间项目。",
+        "viewer": "只能查看工作空间项目。"
+      }
     }
   },
   "auth": {
@@ -233,6 +263,47 @@
     }
   },
   "collab": {
+    "hub": {
+      "title": "协作中心",
+      "description": "查看你分享出去的项目、别人分享给你的项目，以及团队工作空间里的项目。",
+      "refresh": "刷新",
+      "stats": {
+        "sharedByMe": "我分享出去的",
+        "sharedWithMe": "分享给我的",
+        "workspaceProjects": "团队项目"
+      },
+      "sharedByMe": {
+        "title": "我分享出去的项目",
+        "description": "你拥有且已添加项目级协作者的项目。",
+        "empty": "还没有分享出去的项目。",
+        "collaboratorCount": "{{count}} 位协作者",
+        "collaboratorCount_plural": "{{count}} 位协作者",
+        "access": "共享访问"
+      },
+      "sharedWithMe": {
+        "title": "分享给我的项目",
+        "description": "别人直接分享给你、可编辑或查看的项目。",
+        "empty": "还没有别人分享给你的项目。",
+        "role": "你的角色"
+      },
+      "workspaceProjects": {
+        "title": "团队工作空间项目",
+        "description": "当前选中工作空间拥有的项目。",
+        "empty": "这个工作空间还没有项目。",
+        "role": "工作空间角色"
+      },
+      "project": {
+        "updatedAt": "更新于 {{date}}",
+        "open": "打开项目",
+        "none": "暂无",
+        "workspaceFallback": "工作空间"
+      },
+      "error": {
+        "projectsTitle": "共享项目加载失败",
+        "workspaceTitle": "工作空间项目加载失败",
+        "defaultMessage": "无法加载协作项目"
+      }
+    },
     "header": {
       "badge": "实时文档",
       "title": "协作编辑",

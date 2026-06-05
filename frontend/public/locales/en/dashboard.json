@@ -100,6 +100,36 @@
       "logoutDesc": "Sign out of the current admin account on this device.",
       "logoutButton": "Sign Out",
       "logoutSuccess": "Signed out successfully"
+    },
+    "workspaceMembers": {
+      "title": "Workspace Members",
+      "description": "Manage who can access the selected workspace and what they can do.",
+      "emailLabel": "Member email",
+      "emailPlaceholder": "teammate@example.com",
+      "add": "Add member",
+      "addSuccess": "Workspace member added",
+      "addFailed": "Unable to add workspace member",
+      "roleUpdated": "Workspace role updated",
+      "roleUpdateFailed": "Unable to update workspace role",
+      "remove": "Remove member",
+      "removeSuccess": "Workspace member removed",
+      "removeFailed": "Unable to remove workspace member",
+      "loadFailed": "Unable to load workspace members",
+      "retryLater": "Please try again later.",
+      "loading": "Loading members",
+      "empty": "No members have been added to this workspace.",
+      "count": "{{count}} member",
+      "count_plural": "{{count}} members",
+      "ownerLocked": "Owner",
+      "noWorkspace": "Select a workspace to manage its members.",
+      "noPermission": "Only workspace owners and admins can manage members.",
+      "people": "People",
+      "peopleDescription": "Owners and admins can update roles or remove members.",
+      "roleHelp": {
+        "admin": "Can manage members and projects.",
+        "member": "Can create and edit workspace projects.",
+        "viewer": "Can view workspace projects only."
+      }
     }
   },
   "auth": {
@@ -233,6 +263,47 @@
     }
   },
   "collab": {
+    "hub": {
+      "title": "Collaboration Hub",
+      "description": "See projects you shared, projects shared with you, and the projects in your team workspace.",
+      "refresh": "Refresh",
+      "stats": {
+        "sharedByMe": "Shared by me",
+        "sharedWithMe": "Shared with me",
+        "workspaceProjects": "Workspace projects"
+      },
+      "sharedByMe": {
+        "title": "Projects I shared",
+        "description": "Owned projects with project-specific collaborators.",
+        "empty": "No projects have been shared yet.",
+        "collaboratorCount": "{{count}} collaborator",
+        "collaboratorCount_plural": "{{count}} collaborators",
+        "access": "Shared access"
+      },
+      "sharedWithMe": {
+        "title": "Shared with me",
+        "description": "Projects where you can edit or review through direct sharing.",
+        "empty": "No projects have been shared with you yet.",
+        "role": "Your role"
+      },
+      "workspaceProjects": {
+        "title": "Team workspace projects",
+        "description": "Projects owned by the selected workspace.",
+        "empty": "This workspace does not have projects yet.",
+        "role": "Workspace role"
+      },
+      "project": {
+        "updatedAt": "Updated {{date}}",
+        "open": "Open project",
+        "none": "None",
+        "workspaceFallback": "Workspace"
+      },
+      "error": {
+        "projectsTitle": "Failed to load shared projects",
+        "workspaceTitle": "Failed to load workspace projects",
+        "defaultMessage": "Unable to load collaboration projects"
+      }
+    },
     "header": {
       "badge": "Live Docs",
       "title": "Collaboration",

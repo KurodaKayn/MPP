@@ -14,6 +14,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/datatypes"
@@ -28,9 +29,11 @@ var ErrManualPublishUnsupported = errors.New("manual publish is only supported f
 var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
 
 type Service struct {
-	db       *gorm.DB
-	accounts *platformaccount.Service
-	queue    PublishQueue
+	db                    *gorm.DB
+	accounts              *platformaccount.Service
+	queue                 PublishQueue
+	browserWorkerClient   publisher.BrowserWorkerClient
+	browserSessionService *browsersession.BrowserSessionService
 }
 
 func NewService(db *gorm.DB, accounts *platformaccount.Service) *Service {
@@ -52,11 +55,22 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 	if s.accounts != nil {
 		scoped.accounts = s.accounts.WithContext(ctx)
 	}
+	if s.browserSessionService != nil {
+		scoped.browserSessionService = s.browserSessionService.WithContext(ctx)
+	}
 	return &scoped
 }
 
 func (s *Service) SetQueue(queue PublishQueue) {
 	s.queue = queue
+}
+
+func (s *Service) SetBrowserWorkerClient(client publisher.BrowserWorkerClient) {
+	s.browserWorkerClient = client
+}
+
+func (s *Service) SetBrowserSessionService(service *browsersession.BrowserSessionService) {
+	s.browserSessionService = service
 }
 
 func (s *Service) UseRedis(client *redis.Client) {
@@ -116,7 +130,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	if err != nil {
 		return nil, err
 	}
-	if !publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusQueued && pub.Status != models.PublicationStatusPublishing {
+	if pub.Status == models.PublicationStatusSyncing || (!publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusQueued && pub.Status != models.PublicationStatusPublishing) {
 		return nil, ErrPublicationRequiresSync
 	}
 
@@ -139,11 +153,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	}
 
 	startedAt := time.Now().UTC()
-	if err := s.db.Model(&pub).Updates(map[string]interface{}{
-		"status":          models.PublicationStatusPublishing,
-		"error_message":   "",
-		"last_attempt_at": &startedAt,
-	}).Error; err != nil {
+	if err := s.markPublicationPublishing(&pub, startedAt); err != nil {
 		return nil, err
 	}
 
@@ -194,6 +204,25 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	return response, nil
 }
 
+func (s *Service) markPublicationPublishing(pub *models.ProjectPlatformPublication, startedAt time.Time) error {
+	result := s.db.Model(&models.ProjectPlatformPublication{}).
+		Where("id = ? AND status = ?", pub.ID, pub.Status).
+		Updates(map[string]interface{}{
+			"status":          models.PublicationStatusPublishing,
+			"error_message":   "",
+			"last_attempt_at": &startedAt,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return s.publicationStateChangedError(pub.ID)
+	}
+	pub.Status = models.PublicationStatusPublishing
+	pub.LastAttemptAt = &startedAt
+	return nil
+}
+
 func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID) (map[string]interface{}, error) {
 	var proj models.Project
 	if err := s.db.Where("id = ? AND user_id = ?", projectID, *scopeUserID).First(&proj).Error; err != nil {
@@ -234,6 +263,17 @@ func normalizeIdempotencyKey(key string) string {
 	return strings.TrimSpace(key)
 }
 
+func (s *Service) publicationStateChangedError(publicationID uuid.UUID) error {
+	var pub models.ProjectPlatformPublication
+	if err := s.db.Select("status", "last_attempt_at").First(&pub, "id = ?", publicationID).Error; err != nil {
+		return err
+	}
+	if pub.Status == models.PublicationStatusQueued || pub.Status == models.PublicationStatusPublishing {
+		return ErrPublicationAlreadyPublishing
+	}
+	return ErrPublicationRequiresSync
+}
+
 func publicationHasSyncedDraft(pub models.ProjectPlatformPublication) bool {
 	content := strings.TrimSpace(string(pub.AdaptedContent))
 	return content != "" && content != "{}" && content != "null"
@@ -257,11 +297,11 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 		return nil, false, nil
 	}
 
-	var event models.PublishEvent
+	var queued models.PublishEvent
 	err := s.db.
-		Where("project_id = ? AND platform = ? AND user_id = ? AND idempotency_key = ? AND event_type IN ?", projectID, platform, userID, key, []string{"requested", "queued"}).
+		Where("project_id = ? AND platform = ? AND user_id = ? AND idempotency_key = ? AND event_type = ?", projectID, platform, userID, key, "queued").
 		Order("created_at DESC").
-		First(&event).Error
+		First(&queued).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, false, nil
 	}
@@ -269,22 +309,80 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 		return nil, false, err
 	}
 
-	var pub models.ProjectPlatformPublication
-	if err := s.db.Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
+	event := queued
+	var events []models.PublishEvent
+	err = s.db.
+		Where("project_id = ? AND platform = ? AND user_id = ? AND job_id = ?", projectID, platform, userID, queued.JobID).
+		Order("created_at ASC").
+		Find(&events).Error
+	if err != nil {
 		return nil, false, err
+	}
+	for _, candidate := range events {
+		if publishEventNewerForReplay(candidate, event) {
+			event = candidate
+		}
 	}
 
 	resp := map[string]interface{}{
-		"status":          pub.Status,
-		"job_id":          event.JobID.String(),
+		"status":          event.Status,
+		"job_id":          queued.JobID.String(),
 		"idempotency_key": key,
 		"platform":        platform,
-		"queued_at":       event.CreatedAt,
-		"remote_id":       pub.RemoteID,
-		"publish_url":     pub.PublishURL,
-		"error_message":   pub.ErrorMessage,
+		"queued_at":       queued.CreatedAt,
+		"remote_id":       event.RemoteID,
+		"publish_url":     event.PublishURL,
+		"error_message":   event.ErrorMessage,
 	}
 	return resp, true, nil
+}
+
+func publishEventNewerForReplay(candidate, current models.PublishEvent) bool {
+	if candidate.CreatedAt.After(current.CreatedAt) {
+		return true
+	}
+	if current.CreatedAt.After(candidate.CreatedAt) {
+		return false
+	}
+	return publishEventReplayRank(candidate.EventType) > publishEventReplayRank(current.EventType)
+}
+
+func publishEventReplayRank(eventType string) int {
+	switch eventType {
+	case "succeeded", "failed":
+		return 4
+	case "started":
+		return 3
+	case "queued":
+		return 2
+	case "requested":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func (s *Service) waitForIdempotentPublishResponse(ctx context.Context, projectID uuid.UUID, platform string, userID uuid.UUID, key string) (map[string]interface{}, bool, error) {
+	deadline := time.NewTimer(publishReplayWait)
+	defer deadline.Stop()
+
+	ticker := time.NewTicker(publishReplayPoll)
+	defer ticker.Stop()
+
+	for {
+		resp, ok, err := s.findIdempotentPublishResponse(projectID, platform, userID, key)
+		if err != nil || ok {
+			return resp, ok, err
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, false, ctx.Err()
+		case <-deadline.C:
+			return nil, false, nil
+		case <-ticker.C:
+		}
+	}
 }
 
 func (s *Service) applySavedBrowserCookies(ctx context.Context, userID uuid.UUID, platform string, account *models.PlatformAccount) error {

@@ -90,6 +90,12 @@ const (
 	ProjectRoleViewer = "viewer"
 )
 
+const (
+	ProjectAccessSourceOwner       = "owner"
+	ProjectAccessSourceDirectShare = "direct_share"
+	ProjectAccessSourceWorkspace   = "workspace"
+)
+
 type ProjectCollaborator struct {
 	ProjectID uuid.UUID `gorm:"type:uuid;primaryKey"`
 	UserID    uuid.UUID `gorm:"type:uuid;primaryKey;index:idx_project_collaborators_user_role"`

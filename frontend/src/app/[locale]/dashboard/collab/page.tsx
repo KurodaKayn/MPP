@@ -1,5 +1,5 @@
-import { CollabEditorPage } from "@/features/collab-editor/collab-editor";
+import { CollaborationHubPage } from "./_components/collaboration-hub-page";
 
 export default function Page() {
-  return <CollabEditorPage />;
+  return <CollaborationHubPage />;
 }

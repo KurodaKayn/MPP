@@ -28,6 +28,8 @@ const (
 	publishLockTTL          = 30 * time.Minute
 	publishLockRefreshEvery = publishLockTTL / 3
 	publishStaleAfter       = 2 * publishLockTTL
+	publishReplayWait       = 2 * time.Second
+	publishReplayPoll       = 25 * time.Millisecond
 )
 
 var (
@@ -177,10 +179,17 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		return nil, ErrForbidden
 	}
 	req.IdempotencyKey = normalizeIdempotencyKey(req.IdempotencyKey)
+	if req.IdempotencyKey != "" {
+		if resp, ok, err := s.findIdempotentPublishResponse(projectID, platform, *scopeUserID, req.IdempotencyKey); err != nil {
+			return nil, err
+		} else if ok {
+			return resp, nil
+		}
+	}
 
 	project, pub, err := s.preparePublishJob(projectID, platform, *scopeUserID)
 	if err != nil {
-		if errors.Is(err, ErrPublicationAlreadyPublishing) && req.IdempotencyKey != "" {
+		if req.IdempotencyKey != "" {
 			if resp, ok, lookupErr := s.findIdempotentPublishResponse(projectID, platform, *scopeUserID, req.IdempotencyKey); lookupErr != nil {
 				return nil, lookupErr
 			} else if ok {
@@ -188,14 +197,6 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 			}
 		}
 		return nil, err
-	}
-
-	if req.IdempotencyKey != "" {
-		if resp, ok, err := s.findIdempotentPublishResponse(project.ID, platform, *scopeUserID, req.IdempotencyKey); err != nil {
-			return nil, err
-		} else if ok {
-			return resp, nil
-		}
 	}
 
 	job := PublishJob{
@@ -214,8 +215,8 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 	}
 	if !acquired {
 		if req.IdempotencyKey != "" {
-			if resp, ok, lookupErr := s.findIdempotentPublishResponse(project.ID, platform, *scopeUserID, req.IdempotencyKey); lookupErr != nil {
-				return nil, lookupErr
+			if resp, ok, err := s.waitForIdempotentPublishResponse(ctx, project.ID, platform, *scopeUserID, req.IdempotencyKey); err != nil {
+				return nil, err
 			} else if ok {
 				return resp, nil
 			}
@@ -240,6 +241,11 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
 		return nil, err
 	}
+	if err := s.queue.Enqueue(ctx, job); err != nil {
+		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
+		_ = s.markPublicationFailed(project.ID, platform, "failed to enqueue publish job: "+err.Error())
+		return nil, err
+	}
 	if err := s.recordPublishEvent(models.PublishEvent{
 		PublicationID:  pub.ID,
 		ProjectID:      project.ID,
@@ -250,13 +256,7 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		EventType:      "queued",
 		Status:         models.PublicationStatusQueued,
 	}); err != nil {
-		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
-		return nil, err
-	}
-	if err := s.queue.Enqueue(ctx, job); err != nil {
-		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
-		_ = s.markPublicationFailed(project.ID, platform, "failed to enqueue publish job: "+err.Error())
-		return nil, err
+		log.Printf("failed to record publish job %s queued event: %v", job.JobID, err)
 	}
 
 	return map[string]interface{}{
@@ -462,7 +462,7 @@ func (s *Service) preparePublishJob(projectID uuid.UUID, platform string, userID
 	if _, err := publisher.Factory.GetPublisher(platform); err != nil {
 		return models.Project{}, models.ProjectPlatformPublication{}, err
 	}
-	if !publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusPublishing {
+	if pub.Status == models.PublicationStatusSyncing || (!publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusPublishing) {
 		return models.Project{}, models.ProjectPlatformPublication{}, ErrPublicationRequiresSync
 	}
 
@@ -488,11 +488,22 @@ func publicationPublishingStale(pub models.ProjectPlatformPublication) bool {
 }
 
 func (s *Service) markPublicationQueued(pub *models.ProjectPlatformPublication, queuedAt time.Time) error {
-	return s.db.Model(pub).Updates(map[string]interface{}{
-		"status":          models.PublicationStatusQueued,
-		"error_message":   "",
-		"last_attempt_at": &queuedAt,
-	}).Error
+	result := s.db.Model(&models.ProjectPlatformPublication{}).
+		Where("id = ? AND status = ?", pub.ID, pub.Status).
+		Updates(map[string]interface{}{
+			"status":          models.PublicationStatusQueued,
+			"error_message":   "",
+			"last_attempt_at": &queuedAt,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return s.publicationStateChangedError(pub.ID)
+	}
+	pub.Status = models.PublicationStatusQueued
+	pub.LastAttemptAt = &queuedAt
+	return nil
 }
 
 func (s *Service) markPublicationFailed(projectID uuid.UUID, platform, message string) error {

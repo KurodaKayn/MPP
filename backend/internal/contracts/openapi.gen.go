@@ -97,6 +97,13 @@ const (
 	PlatformAccountStatusUntested     PlatformAccountStatus = "untested"
 )
 
+// Defines values for ProjectAccessSource.
+const (
+	ProjectAccessSourceDirectShare ProjectAccessSource = "direct_share"
+	ProjectAccessSourceOwner       ProjectAccessSource = "owner"
+	ProjectAccessSourceWorkspace   ProjectAccessSource = "workspace"
+)
+
 // Defines values for ProjectCollaboratorRole.
 const (
 	ProjectCollaboratorRoleEditor ProjectCollaboratorRole = "editor"
@@ -520,6 +527,9 @@ type PaginationProjects struct {
 // PlatformAccountStatus defines model for PlatformAccountStatus.
 type PlatformAccountStatus string
 
+// ProjectAccessSource defines model for ProjectAccessSource.
+type ProjectAccessSource string
+
 // ProjectCollaborator defines model for ProjectCollaborator.
 type ProjectCollaborator struct {
 	CreatedAt time.Time               `json:"created_at"`
@@ -541,6 +551,7 @@ type ProjectCollaboratorsResponse struct {
 
 // ProjectDetail defines model for ProjectDetail.
 type ProjectDetail struct {
+	AccessSource     *ProjectAccessSource `json:"access_source,omitempty"`
 	CollabDocumentId *openapi_types.UUID  `json:"collab_document_id"`
 	CreatedAt        time.Time            `json:"created_at"`
 	Id               openapi_types.UUID   `json:"id"`
@@ -556,6 +567,7 @@ type ProjectDetail struct {
 
 // ProjectListItem defines model for ProjectListItem.
 type ProjectListItem struct {
+	AccessSource     *ProjectAccessSource `json:"access_source,omitempty"`
 	CollabDocumentId *openapi_types.UUID  `json:"collab_document_id"`
 	CreatedAt        time.Time            `json:"created_at"`
 	Id               openapi_types.UUID   `json:"id"`
