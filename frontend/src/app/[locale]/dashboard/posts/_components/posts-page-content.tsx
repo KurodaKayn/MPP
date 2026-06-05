@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Pencil, RefreshCw, XCircle } from "lucide-react";
 import Link from "next/link";
 
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  getDashboardProjects,
+  getWorkspaceProjects,
   type ProjectListItem,
 } from "@/lib/dashboard/api";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
@@ -23,6 +23,8 @@ import { DashboardErrorCard } from "../../_components/dashboard-error-card";
 import { DashboardStatCard } from "../../_components/dashboard-stat-card";
 import { ProjectStatusBadge } from "../../_components/project-status-badge";
 import { PlatformIconRow } from "../../_components/publication-platforms";
+import { WorkspaceSwitcher } from "../../_components/workspace-switcher";
+import { useDashboardWorkspaceSelection } from "../../_hooks/use-dashboard-workspace-selection";
 import { formatOptionalDashboardDate } from "../../_lib/formatters";
 import {
   getEnabledPublications,
@@ -164,17 +166,27 @@ export function PostsPageContent() {
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "dashboard");
   const { t: tCommon } = useTranslation(locale, "common");
+  const workspaceSelection = useDashboardWorkspaceSelection();
 
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const loadPosts = async () => {
+  const loadPosts = useCallback(async () => {
+    const workspaceId = workspaceSelection.selectedWorkspaceId;
+    if (!workspaceId) {
+      setProjects([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError("");
 
     try {
-      const projectsResponse = await getDashboardProjects(20);
+      const projectsResponse = await getWorkspaceProjects(workspaceId, {
+        limit: 20,
+      });
       setProjects(projectsResponse.items);
     } catch (requestError) {
       setError(
@@ -185,16 +197,17 @@ export function PostsPageContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t, workspaceSelection.selectedWorkspaceId]);
 
   useEffect(() => {
     void loadPosts();
-  }, []);
+  }, [loadPosts]);
 
   const publicationTotals = useMemo(
     () => getPublicationTotals(projects),
     [projects],
   );
+  const isPageLoading = workspaceSelection.isLoading || loading;
 
   return (
     <div className="flex flex-col gap-4">
@@ -205,16 +218,35 @@ export function PostsPageContent() {
           </h2>
           <p className="text-muted-foreground">{t("posts.description")}</p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => void loadPosts()}
-          disabled={loading}
-        >
-          <RefreshCw className="h-4 w-4" />
-          {t("posts.refresh")}
-        </Button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <WorkspaceSwitcher
+            disabled={loading}
+            isLoading={workspaceSelection.isLoading}
+            selectedWorkspace={workspaceSelection.selectedWorkspace}
+            workspaces={workspaceSelection.workspaces}
+            onWorkspaceChange={workspaceSelection.selectWorkspace}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void loadPosts()}
+            disabled={isPageLoading || !workspaceSelection.selectedWorkspaceId}
+          >
+            <RefreshCw className="h-4 w-4" />
+            {t("posts.refresh")}
+          </Button>
+        </div>
       </div>
+
+      {workspaceSelection.error ? (
+        <DashboardErrorCard
+          compact
+          title={t("workspace.error.title")}
+          message={workspaceSelection.error}
+          retryLabel={t("workspace.error.retry")}
+          onRetry={() => void workspaceSelection.reloadWorkspaces()}
+        />
+      ) : null}
 
       {error ? (
         <DashboardErrorCard
@@ -225,14 +257,18 @@ export function PostsPageContent() {
       ) : null}
 
       <PostsStatsGrid
-        loading={loading}
+        loading={isPageLoading}
         projects={projects}
         publicationTotals={publicationTotals}
         t={t}
       />
 
-      {loading ? (
+      {isPageLoading ? (
         <ProjectSkeleton />
+      ) : !workspaceSelection.selectedWorkspaceId ? (
+        <div className="flex min-h-56 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+          {t("workspace.empty")}
+        </div>
       ) : projects.length === 0 ? (
         <div className="flex min-h-56 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
           {t("posts.empty")}
