@@ -3,6 +3,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Workspace } from "@/lib/dashboard/api";
 import { useContentPageStore } from "../_stores/content-page-store";
 import { useContentPageController } from "./use-content-page-controller";
 
@@ -13,6 +14,7 @@ declare global {
 const mocks = vi.hoisted(() => ({
   cancelBrowserSession: vi.fn(),
   createDashboardProject: vi.fn(),
+  createWorkspaceProject: vi.fn(),
   getDashboardProject: vi.fn(),
   getProjectPublications: vi.fn(),
   publishProject: vi.fn(),
@@ -47,6 +49,7 @@ vi.mock("@/lib/i18n/client", () => ({
 vi.mock("@/lib/dashboard/api", () => ({
   cancelBrowserSession: mocks.cancelBrowserSession,
   createDashboardProject: mocks.createDashboardProject,
+  createWorkspaceProject: mocks.createWorkspaceProject,
   getDashboardProject: mocks.getDashboardProject,
   getProjectPublications: mocks.getProjectPublications,
   publishProject: mocks.publishProject,
@@ -74,19 +77,23 @@ vi.mock("sonner", () => ({
 }));
 
 type Controller = ReturnType<typeof useContentPageController>;
+type WorkspaceContext = Parameters<typeof useContentPageController>[1];
 
 function flushPromises() {
   return new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
-function renderController(projectId?: string) {
+function renderController(
+  projectId?: string,
+  workspaceContext?: WorkspaceContext,
+) {
   let controller: Controller | undefined;
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
 
   function Harness() {
-    controller = useContentPageController(projectId);
+    controller = useContentPageController(projectId, workspaceContext);
     return null;
   }
 
@@ -115,6 +122,7 @@ describe("useContentPageController", () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     mocks.cancelBrowserSession.mockReset();
     mocks.createDashboardProject.mockReset();
+    mocks.createWorkspaceProject.mockReset();
     mocks.getDashboardProject.mockReset();
     mocks.getProjectPublications.mockReset();
     mocks.publishProject.mockReset();
@@ -248,6 +256,70 @@ describe("useContentPageController", () => {
     });
     expect(mocks.toastSuccess).toHaveBeenCalledWith("project.syncSuccess", {
       description: "project.syncDesc",
+    });
+    expect(mocks.replace).toHaveBeenCalledWith("/dashboard/content/project-1");
+
+    view.unmount();
+  });
+
+  it("creates prepublish drafts in the selected workspace", async () => {
+    const selectedWorkspace: Workspace = {
+      created_at: "2026-06-05T12:00:00.000Z",
+      id: "workspace-1",
+      name: "Team Workspace",
+      owner_user_id: "user-1",
+      role: "member",
+      slug: "team-workspace",
+      status: "active",
+      updated_at: "2026-06-05T12:00:00.000Z",
+    };
+
+    mocks.createWorkspaceProject.mockResolvedValue({ id: "project-1" });
+    mocks.syncProjectPrepublish.mockResolvedValue({
+      items: [
+        {
+          adapted_content: {
+            format: "html",
+            html: "<p>Workspace body</p>",
+            source_revision: "2026-06-05T12:00:00.000Z",
+          },
+          enabled: true,
+          platform: "wechat",
+          updated_at: "2026-06-05T12:00:00.000Z",
+        },
+      ],
+      project_id: "project-1",
+    });
+    const view = renderController(undefined, {
+      requiresWorkspace: true,
+      selectedWorkspace,
+    });
+
+    act(() => {
+      useContentPageStore.setState({
+        content: {
+          firstImageSrc: "",
+          html: "<p>Workspace body</p>",
+          text: "Workspace body",
+        },
+        selectedPlatforms: ["wechat"],
+        title: "Workspace post",
+      });
+    });
+
+    await act(async () => {
+      await view.getController().prepublish.onSync();
+    });
+
+    expect(mocks.createWorkspaceProject).toHaveBeenCalledWith("workspace-1", {
+      platforms: ["wechat"],
+      source_content: "<p>Workspace body</p>",
+      summary: "Workspace body",
+      title: "Workspace post",
+    });
+    expect(mocks.createDashboardProject).not.toHaveBeenCalled();
+    expect(mocks.syncProjectPrepublish).toHaveBeenCalledWith("project-1", {
+      platforms: ["wechat"],
     });
     expect(mocks.replace).toHaveBeenCalledWith("/dashboard/content/project-1");
 
