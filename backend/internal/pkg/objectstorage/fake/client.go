@@ -97,6 +97,27 @@ func (c *Client) GetObject(ctx context.Context, key string) (io.ReadCloser, obje
 	return io.NopCloser(bytes.NewReader(object.body)), object.info, nil
 }
 
+// CopyObject copies a stored fake object to another key.
+func (c *Client) CopyObject(ctx context.Context, input objectstorage.CopyObjectInput) (objectstorage.ObjectInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return objectstorage.ObjectInfo{}, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	object, ok := c.objects[input.SourceKey]
+	if !ok {
+		return objectstorage.ObjectInfo{}, objectstorage.ErrObjectNotFound
+	}
+	info := object.info
+	info.Key = input.DestinationKey
+	c.objects[input.DestinationKey] = storedObject{
+		body: append([]byte(nil), object.body...),
+		info: info,
+	}
+	return info, nil
+}
+
 // DeleteObject removes a stored fake object.
 func (c *Client) DeleteObject(ctx context.Context, key string) error {
 	if err := ctx.Err(); err != nil {

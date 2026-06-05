@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -127,6 +128,22 @@ func (c *Client) GetObject(ctx context.Context, key string) (io.ReadCloser, obje
 		ETag:         trimETag(aws.ToString(output.ETag)),
 		LastModified: aws.ToTime(output.LastModified),
 	}, nil
+}
+
+// CopyObject copies an R2 object to another key and returns destination metadata.
+func (c *Client) CopyObject(ctx context.Context, input objectstorage.CopyObjectInput) (objectstorage.ObjectInfo, error) {
+	sourceBucket := c.bucketFor(input.SourceBucket)
+	destinationBucket := c.bucketFor(input.DestinationBucket)
+	source := url.PathEscape(sourceBucket + "/" + input.SourceKey)
+	_, err := c.s3.CopyObject(ctx, &s3.CopyObjectInput{
+		Bucket:     aws.String(destinationBucket),
+		Key:        aws.String(input.DestinationKey),
+		CopySource: aws.String(source),
+	})
+	if err != nil {
+		return objectstorage.ObjectInfo{}, mapObjectError(err)
+	}
+	return c.HeadObject(ctx, input.DestinationKey)
 }
 
 // DeleteObject removes an R2 object.

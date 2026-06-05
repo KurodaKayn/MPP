@@ -56,6 +56,23 @@ func TestClientStoresAndDeletesObjects(t *testing.T) {
 	require.Equal(t, []byte("image-bytes"), data)
 	require.Equal(t, info, objectInfo)
 
+	copied, err := client.CopyObject(context.Background(), objectstorage.CopyObjectInput{
+		SourceBucket:      "media",
+		SourceKey:         "projects/asset.png",
+		DestinationBucket: "media",
+		DestinationKey:    "projects/final-asset.png",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "projects/final-asset.png", copied.Key)
+	require.Equal(t, "image/png", copied.ContentType)
+
+	body, _, err = client.GetObject(context.Background(), "projects/final-asset.png")
+	require.NoError(t, err)
+	defer body.Close()
+	data, err = io.ReadAll(body)
+	require.NoError(t, err)
+	require.Equal(t, []byte("image-bytes"), data)
+
 	require.NoError(t, client.DeleteObject(context.Background(), "projects/asset.png"))
 	_, err = client.HeadObject(context.Background(), "projects/asset.png")
 	require.ErrorIs(t, err, objectstorage.ErrObjectNotFound)
