@@ -220,6 +220,53 @@ func SetupTestDB() *gorm.DB {
 		PRIMARY KEY (project_id, user_id)
 	)`)
 
+	db.Exec(`CREATE TABLE project_activities (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		actor_user_id TEXT NOT NULL,
+		target_user_id TEXT,
+		event_type TEXT NOT NULL,
+		metadata TEXT NOT NULL DEFAULT '{}',
+		created_at DATETIME NOT NULL
+	)`)
+
+	db.Exec(`CREATE TABLE project_comments (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		author_id TEXT NOT NULL,
+		body TEXT NOT NULL,
+		anchor_text TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'open',
+		metadata TEXT NOT NULL DEFAULT '{}',
+		created_at DATETIME NOT NULL,
+		resolved_at DATETIME
+	)`)
+
+	db.Exec(`CREATE TABLE project_versions (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		created_by TEXT NOT NULL,
+		version_number INTEGER NOT NULL,
+		title TEXT NOT NULL,
+		source_content TEXT NOT NULL,
+		collab_document_id TEXT,
+		collab_seq INTEGER NOT NULL DEFAULT 0,
+		source TEXT NOT NULL,
+		created_at DATETIME NOT NULL
+	)`)
+
+	db.Exec(`CREATE TABLE project_share_links (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		created_by TEXT NOT NULL,
+		token_hash TEXT NOT NULL UNIQUE,
+		role TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'active',
+		expires_at DATETIME,
+		created_at DATETIME NOT NULL,
+		revoked_at DATETIME
+	)`)
+
 	db.Exec(`CREATE TABLE platform_accounts (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
