@@ -87,6 +87,16 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		PRIMARY KEY (workspace_id, user_id)
 	)`).Error)
 
+	require.NoError(t, db.Exec(`CREATE TABLE workspace_activities (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		actor_user_id TEXT NOT NULL,
+		target_user_id TEXT,
+		event_type TEXT NOT NULL,
+		metadata TEXT NOT NULL DEFAULT '{}',
+		created_at DATETIME NOT NULL
+	)`).Error)
+
 	require.NoError(t, db.Exec(`CREATE TABLE collab_documents (
 		id TEXT PRIMARY KEY,
 		owner_user_id TEXT NOT NULL,
@@ -851,6 +861,27 @@ func TestUserDashboardHandlerWorkspaces(t *testing.T) {
 	var updatedMember dto.WorkspaceMember
 	require.NoError(t, json.Unmarshal(updateMemberRec.Body.Bytes(), &updatedMember))
 	require.Equal(t, models.WorkspaceRoleViewer, updatedMember.Role)
+
+	activityContext, activityRec := newHandlerTestContext(e, http.MethodGet, "/api/workspaces/"+created.ID.String()+"/activity?limit=5")
+	activityContext.SetParamNames("id")
+	activityContext.SetParamValues(created.ID.String())
+	setContextUser(activityContext, owner.ID)
+
+	require.NoError(t, handler.ListWorkspaceActivities(activityContext))
+	require.Equal(t, http.StatusOK, activityRec.Code)
+
+	var activities dto.WorkspaceActivitiesResponse
+	require.NoError(t, json.Unmarshal(activityRec.Body.Bytes(), &activities))
+	require.NotEmpty(t, activities.Items)
+	require.LessOrEqual(t, len(activities.Items), 5)
+
+	forbiddenActivityContext, forbiddenActivityRec := newHandlerTestContext(e, http.MethodGet, "/api/workspaces/"+created.ID.String()+"/activity")
+	forbiddenActivityContext.SetParamNames("id")
+	forbiddenActivityContext.SetParamValues(created.ID.String())
+	setContextUser(forbiddenActivityContext, member.ID)
+
+	require.NoError(t, handler.ListWorkspaceActivities(forbiddenActivityContext))
+	require.Equal(t, http.StatusForbidden, forbiddenActivityRec.Code)
 
 	forbiddenReq := httptest.NewRequest(
 		http.MethodPost,

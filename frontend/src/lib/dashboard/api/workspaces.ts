@@ -9,6 +9,7 @@ import type {
   UpdateWorkspaceInput,
   UpdateWorkspaceMemberInput,
   Workspace,
+  WorkspaceActivitiesResponse,
   WorkspaceMember,
   WorkspaceMembersResponse,
   WorkspacesResponse,
@@ -79,6 +80,16 @@ export function updateWorkspace(
 export function getWorkspaceMembers(workspaceId: string) {
   return fetchDashboard<WorkspaceMembersResponse>(
     `/api/workspaces/${workspaceId}/members`,
+  );
+}
+
+export function getWorkspaceActivities(workspaceId: string, limit = 20) {
+  const params = new URLSearchParams({
+    limit: String(limit),
+  });
+
+  return fetchDashboard<WorkspaceActivitiesResponse>(
+    `/api/workspaces/${workspaceId}/activity?${params.toString()}`,
   );
 }
 
