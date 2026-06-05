@@ -23,6 +23,7 @@ type Client interface {
 	PresignGetObject(ctx context.Context, input GetObjectInput) (PresignedURL, error)
 	HeadObject(ctx context.Context, key string) (ObjectInfo, error)
 	GetObject(ctx context.Context, key string) (io.ReadCloser, ObjectInfo, error)
+	CopyObject(ctx context.Context, input CopyObjectInput) (ObjectInfo, error)
 	DeleteObject(ctx context.Context, key string) error
 }
 
@@ -53,6 +54,14 @@ type GetObjectInput struct {
 	Bucket  string
 	Key     string
 	Expires time.Duration
+}
+
+// CopyObjectInput describes an object copy operation.
+type CopyObjectInput struct {
+	SourceBucket      string
+	SourceKey         string
+	DestinationBucket string
+	DestinationKey    string
 }
 
 // PresignedURL is a temporary URL and the headers required to use it.
