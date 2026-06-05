@@ -158,3 +158,37 @@ func TestUserDashboardRoutesIncludeExtensionEvents(t *testing.T) {
 
 	t.Fatal("expected extension events route to be registered")
 }
+
+func TestUserDashboardRoutesIncludeMediaAssetEndpoints(t *testing.T) {
+	server, err := newServer(serverConfig{
+		runtimeConfig: backendRuntimeConfig{
+			processRole: backendProcessRoleAPI,
+		},
+		jwtSigningKey: []byte("test-secret"),
+		ready:         &atomic.Bool{},
+	}, serverHandlers{
+		userDashboard: &handlers.UserDashboardHandler{},
+	})
+	if err != nil {
+		t.Fatalf("expected server: %v", err)
+	}
+
+	expected := map[string]bool{
+		http.MethodPost + " /api/user/dashboard/projects/:id/media/uploads": false,
+		http.MethodPost + " /api/user/dashboard/media/:id/complete":         false,
+		http.MethodPost + " /api/user/dashboard/media/resolve":              false,
+		http.MethodDelete + " /api/user/dashboard/media/:id":                false,
+	}
+	for _, route := range server.Routes() {
+		key := route.Method + " " + route.Path
+		if _, ok := expected[key]; ok {
+			expected[key] = true
+		}
+	}
+
+	for route, found := range expected {
+		if !found {
+			t.Fatalf("expected media asset route to be registered: %s", route)
+		}
+	}
+}
