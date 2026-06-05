@@ -91,6 +91,8 @@ export interface components {
     /** @enum {string} */
     WorkspaceRole: "owner" | "admin" | "member" | "viewer";
     /** @enum {string} */
+    WorkspaceMemberRequestRole: "admin" | "member" | "viewer";
+    /** @enum {string} */
     WorkspaceStatus: "active" | "archived";
     /** @enum {string} */
     PublicationStatus:
@@ -386,10 +388,10 @@ export interface components {
       user_id?: string;
       /** Format: email */
       email?: string;
-      role: components["schemas"]["WorkspaceRole"];
+      role: components["schemas"]["WorkspaceMemberRequestRole"];
     };
     UpdateWorkspaceMemberRequest: {
-      role: components["schemas"]["WorkspaceRole"];
+      role: components["schemas"]["WorkspaceMemberRequestRole"];
     };
     Workspace: {
       /** Format: uuid */

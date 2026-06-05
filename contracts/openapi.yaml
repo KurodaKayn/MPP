@@ -159,6 +159,17 @@ components:
         - WorkspaceRoleMember
         - WorkspaceRoleViewer
 
+    WorkspaceMemberRequestRole:
+      type: string
+      enum:
+        - admin
+        - member
+        - viewer
+      x-enum-varnames:
+        - WorkspaceMemberRequestRoleAdmin
+        - WorkspaceMemberRequestRoleMember
+        - WorkspaceMemberRequestRoleViewer
+
     WorkspaceStatus:
       type: string
       enum:
@@ -957,7 +968,7 @@ components:
           type: string
           format: email
         role:
-          $ref: "#/components/schemas/WorkspaceRole"
+          $ref: "#/components/schemas/WorkspaceMemberRequestRole"
 
     UpdateWorkspaceMemberRequest:
       type: object
@@ -966,7 +977,7 @@ components:
         - role
       properties:
         role:
-          $ref: "#/components/schemas/WorkspaceRole"
+          $ref: "#/components/schemas/WorkspaceMemberRequestRole"
 
     Workspace:
       type: object

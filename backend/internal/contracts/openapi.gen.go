@@ -161,6 +161,13 @@ const (
 	Wechat WechatAccountPlatform = "wechat"
 )
 
+// Defines values for WorkspaceMemberRequestRole.
+const (
+	WorkspaceMemberRequestRoleAdmin  WorkspaceMemberRequestRole = "admin"
+	WorkspaceMemberRequestRoleMember WorkspaceMemberRequestRole = "member"
+	WorkspaceMemberRequestRoleViewer WorkspaceMemberRequestRole = "viewer"
+)
+
 // Defines values for WorkspaceRole.
 const (
 	WorkspaceRoleAdmin  WorkspaceRole = "admin"
@@ -271,9 +278,9 @@ type AddProjectCollaboratorRequest struct {
 
 // AddWorkspaceMemberRequest defines model for AddWorkspaceMemberRequest.
 type AddWorkspaceMemberRequest struct {
-	Email  *openapi_types.Email `json:"email,omitempty"`
-	Role   WorkspaceRole        `json:"role"`
-	UserId *openapi_types.UUID  `json:"user_id,omitempty"`
+	Email  *openapi_types.Email       `json:"email,omitempty"`
+	Role   WorkspaceMemberRequestRole `json:"role"`
+	UserId *openapi_types.UUID        `json:"user_id,omitempty"`
 }
 
 // BrowserSession defines model for BrowserSession.
@@ -677,7 +684,7 @@ type UpdateProjectCollaboratorRequest struct {
 
 // UpdateWorkspaceMemberRequest defines model for UpdateWorkspaceMemberRequest.
 type UpdateWorkspaceMemberRequest struct {
-	Role WorkspaceRole `json:"role"`
+	Role WorkspaceMemberRequestRole `json:"role"`
 }
 
 // UpdateWorkspaceRequest defines model for UpdateWorkspaceRequest.
@@ -737,6 +744,9 @@ type WorkspaceMember struct {
 	Username    string              `json:"username"`
 	WorkspaceId openapi_types.UUID  `json:"workspace_id"`
 }
+
+// WorkspaceMemberRequestRole defines model for WorkspaceMemberRequestRole.
+type WorkspaceMemberRequestRole string
 
 // WorkspaceMembersResponse defines model for WorkspaceMembersResponse.
 type WorkspaceMembersResponse struct {

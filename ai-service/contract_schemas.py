@@ -67,6 +67,12 @@ class WorkspaceRole(StrEnum):
     WorkspaceRoleViewer = "viewer"
 
 
+class WorkspaceMemberRequestRole(StrEnum):
+    WorkspaceMemberRequestRoleAdmin = "admin"
+    WorkspaceMemberRequestRoleMember = "member"
+    WorkspaceMemberRequestRoleViewer = "viewer"
+
+
 class WorkspaceStatus(StrEnum):
     WorkspaceStatusActive = "active"
     WorkspaceStatusArchived = "archived"
@@ -481,14 +487,14 @@ class AddWorkspaceMemberRequest(BaseModel):
     )
     user_id: UUID | None = None
     email: EmailStr | None = None
-    role: WorkspaceRole
+    role: WorkspaceMemberRequestRole
 
 
 class UpdateWorkspaceMemberRequest(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    role: WorkspaceRole
+    role: WorkspaceMemberRequestRole
 
 
 class Workspace(BaseModel):
