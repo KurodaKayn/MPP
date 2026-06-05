@@ -26,6 +26,7 @@ export type UpdateCollabDocumentInput =
   ContractSchema<"UpdateCollabDocumentRequest">;
 
 export type PublishProjectOptions = {
+  idempotencyKey?: string;
   mode?: "manual";
 };
 
