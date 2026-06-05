@@ -18,6 +18,8 @@ import (
 const (
 	defaultMediaUploadMaxBytes = 5 * 1024 * 1024
 	mediaObjectRefPrefix       = "mpp://media/"
+	mediaStagingSegment        = "uploads"
+	mediaFinalSegment          = "assets"
 )
 
 var allowedMediaAssetMIMETypes = map[string]struct{}{
@@ -62,14 +64,14 @@ func (s *Service) CreateProjectMediaUpload(projectID uuid.UUID, userID uuid.UUID
 		WorkspaceID:      &workspaceID,
 		ProjectID:        &project.ID,
 		Bucket:           s.storageConfig.Bucket,
-		ObjectKey:        mediaAssetObjectKey(workspaceID, project.ID, uuid.Nil, filename),
+		ObjectKey:        mediaAssetStagingObjectKey(workspaceID, project.ID, uuid.Nil, filename),
 		OriginalFilename: filename,
 		MimeType:         mimeType,
 		SizeBytes:        req.SizeBytes,
 		Usage:            usage,
 		Status:           models.MediaAssetStatusPending,
 	}
-	asset.ObjectKey = mediaAssetObjectKey(workspaceID, project.ID, asset.ID, filename)
+	asset.ObjectKey = mediaAssetStagingObjectKey(workspaceID, project.ID, asset.ID, filename)
 	if err := s.db.Create(&asset).Error; err != nil {
 		return nil, err
 	}
@@ -98,11 +100,12 @@ func (s *Service) CompleteMediaUpload(assetID uuid.UUID, userID uuid.UUID) (*dto
 		return nil, err
 	}
 
-	asset, err := s.mediaAssetForEdit(assetID, userID)
+	asset, project, err := s.mediaAssetForEdit(assetID, userID)
 	if err != nil {
 		return nil, err
 	}
-	info, err := s.objectStorage.HeadObject(s.requestContext(), asset.ObjectKey)
+	stagingKey := asset.ObjectKey
+	info, err := s.objectStorage.HeadObject(s.requestContext(), stagingKey)
 	if err != nil {
 		if errors.Is(err, objectstorage.ErrObjectNotFound) {
 			if updateErr := s.markMediaAssetFailed(asset, "uploaded object was not found"); updateErr != nil {
@@ -119,10 +122,25 @@ func (s *Service) CompleteMediaUpload(assetID uuid.UUID, userID uuid.UUID) (*dto
 		return nil, ErrInvalidMediaAsset
 	}
 
+	finalKey := mediaAssetFinalObjectKey(mediaAssetWorkspaceID(*project), project.ID, asset.ID, asset.OriginalFilename)
+	finalInfo, err := s.objectStorage.CopyObject(s.requestContext(), objectstorage.CopyObjectInput{
+		SourceBucket:      asset.Bucket,
+		SourceKey:         stagingKey,
+		DestinationBucket: asset.Bucket,
+		DestinationKey:    finalKey,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("promote media upload: %w", err)
+	}
+	if err := s.objectStorage.DeleteObject(s.requestContext(), stagingKey); err != nil && !errors.Is(err, objectstorage.ErrObjectNotFound) {
+		return nil, fmt.Errorf("delete staged media upload: %w", err)
+	}
+
 	if err := s.db.Model(asset).Updates(map[string]interface{}{
-		"e_tag":         info.ETag,
+		"e_tag":         finalInfo.ETag,
 		"error_message": "",
-		"size_bytes":    info.Size,
+		"object_key":    finalKey,
+		"size_bytes":    finalInfo.Size,
 		"status":        models.MediaAssetStatusReady,
 	}).Error; err != nil {
 		return nil, err
@@ -173,7 +191,7 @@ func (s *Service) DeleteMediaAsset(assetID uuid.UUID, userID uuid.UUID) error {
 	if err := s.ensureMediaStorage(); err != nil {
 		return err
 	}
-	asset, err := s.mediaAssetForEdit(assetID, userID)
+	asset, _, err := s.mediaAssetForEdit(assetID, userID)
 	if err != nil {
 		return err
 	}
@@ -212,19 +230,19 @@ func validateMediaUploadRequest(filename string, mimeType string, sizeBytes int6
 	return nil
 }
 
-func (s *Service) mediaAssetForEdit(assetID uuid.UUID, userID uuid.UUID) (*models.MediaAsset, error) {
+func (s *Service) mediaAssetForEdit(assetID uuid.UUID, userID uuid.UUID) (*models.MediaAsset, *models.Project, error) {
 	asset, project, err := s.mediaAssetWithProject(assetID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	role, err := s.projects.ProjectAccessRole(*project, userID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !projectsvc.CanEditProjectRole(role) {
-		return nil, ErrForbidden
+		return nil, nil, ErrForbidden
 	}
-	return asset, nil
+	return asset, project, nil
 }
 
 func (s *Service) mediaAssetForRead(assetID uuid.UUID, userID uuid.UUID) (*models.MediaAsset, error) {
@@ -270,13 +288,21 @@ func mediaAssetWorkspaceID(project models.Project) uuid.UUID {
 	return models.PersonalWorkspaceID(project.UserID)
 }
 
-func mediaAssetObjectKey(workspaceID uuid.UUID, projectID uuid.UUID, assetID uuid.UUID, filename string) string {
+func mediaAssetStagingObjectKey(workspaceID uuid.UUID, projectID uuid.UUID, assetID uuid.UUID, filename string) string {
+	return mediaAssetObjectKey(workspaceID, projectID, mediaStagingSegment, assetID, filename)
+}
+
+func mediaAssetFinalObjectKey(workspaceID uuid.UUID, projectID uuid.UUID, assetID uuid.UUID, filename string) string {
+	return mediaAssetObjectKey(workspaceID, projectID, mediaFinalSegment, assetID, filename)
+}
+
+func mediaAssetObjectKey(workspaceID uuid.UUID, projectID uuid.UUID, segment string, assetID uuid.UUID, filename string) string {
 	return path.Join(
 		"workspaces",
 		workspaceID.String(),
 		"projects",
 		projectID.String(),
-		"assets",
+		segment,
 		assetID.String(),
 		safeMediaFilename(filename),
 	)
