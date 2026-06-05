@@ -35,13 +35,24 @@ type FakeProjectDraftCompiler struct {
 }
 
 type FakeProjectDocumentInitializer struct {
-	Err         error
-	DocumentIDs []uuid.UUID
+	Err                          error
+	SyncErr                      error
+	DocumentIDs                  []uuid.UUID
+	SourceContentDocumentIDs     []uuid.UUID
+	SyncProjectSourceContentFunc func(context.Context, uuid.UUID) error
 }
 
 func (f *FakeProjectDocumentInitializer) InitializeProjectDocument(ctx context.Context, documentID uuid.UUID) error {
 	f.DocumentIDs = append(f.DocumentIDs, documentID)
 	return f.Err
+}
+
+func (f *FakeProjectDocumentInitializer) SyncProjectSourceContent(ctx context.Context, documentID uuid.UUID) error {
+	f.SourceContentDocumentIDs = append(f.SourceContentDocumentIDs, documentID)
+	if f.SyncProjectSourceContentFunc != nil {
+		return f.SyncProjectSourceContentFunc(ctx, documentID)
+	}
+	return f.SyncErr
 }
 
 func (f *FakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
