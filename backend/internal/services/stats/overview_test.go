@@ -1,14 +1,15 @@
-package dashboard_test
+package stats_test
 
 import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestGetStats(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	u1 := models.User{Username: "test1"}

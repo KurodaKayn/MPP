@@ -1,15 +1,16 @@
-package dashboard_test
+package project_test
 
 import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/datatypes"
 	"testing"
 )
 
 func TestGetProjectPublications(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	u1 := models.User{Username: "owner"}

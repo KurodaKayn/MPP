@@ -1,10 +1,11 @@
-package dashboard_test
+package extension_test
 
 import (
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
@@ -15,7 +16,7 @@ import (
 )
 
 func TestGetExtensionSessionReturnsCurrentUser(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 	user := models.User{Username: "creator", Email: "creator@example.com"}
 	require.NoError(t, db.Create(&user).Error)
@@ -29,7 +30,7 @@ func TestGetExtensionSessionReturnsCurrentUser(t *testing.T) {
 }
 
 func TestGetExtensionSessionReturnsNotFoundForMissingUser(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	_, err := s.GetExtensionSession(uuid.New())
@@ -38,7 +39,7 @@ func TestGetExtensionSessionReturnsNotFoundForMissingUser(t *testing.T) {
 }
 
 func TestListExtensionPrepublishReturnsCurrentUserDouyinDrafts(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 	owner := models.User{Username: "owner", Email: "owner@example.com"}
 	stranger := models.User{Username: "stranger", Email: "stranger@example.com"}
@@ -131,7 +132,7 @@ func TestListExtensionPrepublishReturnsCurrentUserDouyinDrafts(t *testing.T) {
 }
 
 func TestCreateExtensionHandoffReturnsDouyinArticleHandoff(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 	user := models.User{Username: "owner", Email: "owner@example.com"}
 	require.NoError(t, db.Create(&user).Error)
@@ -189,7 +190,7 @@ func TestCreateExtensionHandoffReturnsDouyinArticleHandoff(t *testing.T) {
 }
 
 func TestRecordExtensionEventAcceptsKnownTokenAndDeduplicatesEventID(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 	user := models.User{Username: "owner", Email: "owner@example.com"}
 	require.NoError(t, db.Create(&user).Error)
@@ -247,7 +248,7 @@ func TestRecordExtensionEventAcceptsKnownTokenAndDeduplicatesEventID(t *testing.
 }
 
 func TestRecordExtensionEventRejectsUnknownToken(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	_, err := s.RecordExtensionEvent(dto.ExtensionEventCallbackRequest{
@@ -261,7 +262,7 @@ func TestRecordExtensionEventRejectsUnknownToken(t *testing.T) {
 }
 
 func TestRecordExtensionEventRejectsExpiredToken(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 	user := models.User{Username: "owner", Email: "owner@example.com"}
 	require.NoError(t, db.Create(&user).Error)
@@ -299,7 +300,7 @@ func TestRecordExtensionEventRejectsExpiredToken(t *testing.T) {
 }
 
 func TestCreateExtensionHandoffRejectsForeignProject(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 	owner := models.User{Username: "owner", Email: "owner@example.com"}
 	stranger := models.User{Username: "stranger", Email: "stranger@example.com"}
@@ -322,7 +323,7 @@ func TestCreateExtensionHandoffRejectsForeignProject(t *testing.T) {
 }
 
 func TestCreateExtensionHandoffRejectsDisabledPublication(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 	user := models.User{Username: "owner", Email: "owner@example.com"}
 	require.NoError(t, db.Create(&user).Error)
@@ -352,7 +353,7 @@ func TestCreateExtensionHandoffRejectsDisabledPublication(t *testing.T) {
 }
 
 func TestCreateExtensionHandoffRejectsMissingAdaptedText(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 	user := models.User{Username: "owner", Email: "owner@example.com"}
 	require.NoError(t, db.Create(&user).Error)

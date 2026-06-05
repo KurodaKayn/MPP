@@ -1,4 +1,4 @@
-package dashboard
+package extension
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"strings"
@@ -22,7 +23,7 @@ const (
 	extensionHandoffTTL           = 10 * time.Minute
 )
 
-func (s *DashboardService) GetExtensionSession(userID uuid.UUID) (*dto.ExtensionSessionResponse, error) {
+func (s *Service) GetExtensionSession(userID uuid.UUID) (*dto.ExtensionSessionResponse, error) {
 	var user models.User
 	if err := s.db.Select("id", "username").First(&user, "id = ?", userID).Error; err != nil {
 		return nil, err
@@ -37,7 +38,7 @@ func (s *DashboardService) GetExtensionSession(userID uuid.UUID) (*dto.Extension
 	}, nil
 }
 
-func (s *DashboardService) ListExtensionPrepublish(userID uuid.UUID) (*dto.ExtensionPrepublishResponse, error) {
+func (s *Service) ListExtensionPrepublish(userID uuid.UUID) (*dto.ExtensionPrepublishResponse, error) {
 	var projects []models.Project
 	if err := s.db.
 		Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id AND ppp.platform = ?", "douyin").
@@ -94,14 +95,14 @@ func extensionPrepublishPreview(raw datatypes.JSON) string {
 		}
 		value = strings.TrimSpace(value)
 		if value != "" {
-			return truncateRunes(value, extensionPreviewLimit)
+			return projectsvc.TruncateRunes(value, extensionPreviewLimit)
 		}
 	}
 
 	return ""
 }
 
-func (s *DashboardService) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensionHandoffRequest, callbackURL string) (*dto.ExtensionPublishHandoff, error) {
+func (s *Service) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensionHandoffRequest, callbackURL string) (*dto.ExtensionPublishHandoff, error) {
 	if req.ProjectID == uuid.Nil || len(req.Platforms) == 0 {
 		return nil, ErrInvalidProject
 	}
@@ -181,7 +182,7 @@ func (s *DashboardService) CreateExtensionHandoff(userID uuid.UUID, req dto.Crea
 	}, nil
 }
 
-func (s *DashboardService) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*dto.ExtensionEventCallbackResponse, error) {
+func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*dto.ExtensionEventCallbackResponse, error) {
 	tokenValue := strings.TrimSpace(req.Token)
 	eventID := strings.TrimSpace(req.EventID)
 	platform := strings.TrimSpace(req.Platform)

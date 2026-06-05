@@ -12,6 +12,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
+	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 )
 
 const (
@@ -46,11 +47,11 @@ func (s *DashboardService) CreateProjectMediaUpload(projectID uuid.UUID, userID 
 	if err := s.db.First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
 	}
-	role, err := s.projectAccessRole(project, userID)
+	role, err := s.Project.Service.ProjectAccessRole(project, userID)
 	if err != nil {
 		return nil, err
 	}
-	if !canEditProjectRole(role) {
+	if !projectsvc.CanEditProjectRole(role) {
 		return nil, ErrForbidden
 	}
 
@@ -216,11 +217,11 @@ func (s *DashboardService) mediaAssetForEdit(assetID uuid.UUID, userID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
-	role, err := s.projectAccessRole(*project, userID)
+	role, err := s.Project.Service.ProjectAccessRole(*project, userID)
 	if err != nil {
 		return nil, err
 	}
-	if !canEditProjectRole(role) {
+	if !projectsvc.CanEditProjectRole(role) {
 		return nil, ErrForbidden
 	}
 	return asset, nil
@@ -231,7 +232,7 @@ func (s *DashboardService) mediaAssetForRead(assetID uuid.UUID, userID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.projectAccessRole(*project, userID); err != nil {
+	if _, err := s.Project.Service.ProjectAccessRole(*project, userID); err != nil {
 		return nil, err
 	}
 	return asset, nil

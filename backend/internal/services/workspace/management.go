@@ -1,4 +1,4 @@
-package dashboard
+package workspace
 
 import (
 	"errors"
@@ -71,7 +71,7 @@ func ensurePersonalWorkspace(tx *gorm.DB, ownerUserID uuid.UUID) error {
 	}).Create(&member).Error
 }
 
-func (s *DashboardService) workspaceAccessRole(workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
+func (s *Service) workspaceAccessRole(workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
 	if workspaceID == uuid.Nil || userID == uuid.Nil {
 		return "", ErrInvalidWorkspace
 	}
@@ -97,7 +97,7 @@ func (s *DashboardService) workspaceAccessRole(workspaceID uuid.UUID, userID uui
 	return member.Role, nil
 }
 
-func (s *DashboardService) requireWorkspaceManager(workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
+func (s *Service) requireWorkspaceManager(workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
 	role, err := s.workspaceAccessRole(workspaceID, userID)
 	if err != nil {
 		return "", err
@@ -108,7 +108,7 @@ func (s *DashboardService) requireWorkspaceManager(workspaceID uuid.UUID, userID
 	return role, nil
 }
 
-func (s *DashboardService) ListWorkspaces(userID uuid.UUID) (*dto.WorkspacesResponse, error) {
+func (s *Service) ListWorkspaces(userID uuid.UUID) (*dto.WorkspacesResponse, error) {
 	if userID == uuid.Nil {
 		return nil, ErrInvalidWorkspace
 	}
@@ -139,7 +139,7 @@ func (s *DashboardService) ListWorkspaces(userID uuid.UUID) (*dto.WorkspacesResp
 	return &dto.WorkspacesResponse{Items: items}, nil
 }
 
-func (s *DashboardService) ListWorkspaceProjects(workspaceID uuid.UUID, actorUserID uuid.UUID, page, limit int, status, platform string) (*dto.PaginationResponse, error) {
+func (s *Service) ListWorkspaceProjects(workspaceID uuid.UUID, actorUserID uuid.UUID, page, limit int, status, platform string) (*dto.PaginationResponse, error) {
 	if _, err := s.workspaceAccessRole(workspaceID, actorUserID); err != nil {
 		return nil, err
 	}
@@ -154,10 +154,10 @@ func (s *DashboardService) ListWorkspaceProjects(workspaceID uuid.UUID, actorUse
 			Group("projects.id")
 	}
 
-	return s.listProjectPage(query, page, limit, &actorUserID)
+	return s.projects.ListProjectPage(query, page, limit, &actorUserID)
 }
 
-func (s *DashboardService) CreateWorkspaceProject(workspaceID uuid.UUID, actorUserID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
+func (s *Service) CreateWorkspaceProject(workspaceID uuid.UUID, actorUserID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
 	role, err := s.workspaceAccessRole(workspaceID, actorUserID)
 	if err != nil {
 		return nil, err
@@ -166,10 +166,10 @@ func (s *DashboardService) CreateWorkspaceProject(workspaceID uuid.UUID, actorUs
 		return nil, ErrForbidden
 	}
 
-	return s.createProjectWithWorkspace(actorUserID, &workspaceID, req)
+	return s.projects.CreateProjectWithWorkspace(actorUserID, &workspaceID, req)
 }
 
-func (s *DashboardService) CreateWorkspace(actorUserID uuid.UUID, req dto.CreateWorkspaceRequest) (*dto.Workspace, error) {
+func (s *Service) CreateWorkspace(actorUserID uuid.UUID, req dto.CreateWorkspaceRequest) (*dto.Workspace, error) {
 	if actorUserID == uuid.Nil {
 		return nil, ErrInvalidWorkspace
 	}
@@ -207,7 +207,7 @@ func (s *DashboardService) CreateWorkspace(actorUserID uuid.UUID, req dto.Create
 	return &item, nil
 }
 
-func (s *DashboardService) GetWorkspace(workspaceID uuid.UUID, actorUserID uuid.UUID) (*dto.Workspace, error) {
+func (s *Service) GetWorkspace(workspaceID uuid.UUID, actorUserID uuid.UUID) (*dto.Workspace, error) {
 	role, err := s.workspaceAccessRole(workspaceID, actorUserID)
 	if err != nil {
 		return nil, err
@@ -221,7 +221,7 @@ func (s *DashboardService) GetWorkspace(workspaceID uuid.UUID, actorUserID uuid.
 	return &item, nil
 }
 
-func (s *DashboardService) UpdateWorkspace(workspaceID uuid.UUID, actorUserID uuid.UUID, req dto.UpdateWorkspaceRequest) (*dto.Workspace, error) {
+func (s *Service) UpdateWorkspace(workspaceID uuid.UUID, actorUserID uuid.UUID, req dto.UpdateWorkspaceRequest) (*dto.Workspace, error) {
 	if _, err := s.requireWorkspaceManager(workspaceID, actorUserID); err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func (s *DashboardService) UpdateWorkspace(workspaceID uuid.UUID, actorUserID uu
 	return s.GetWorkspace(workspaceID, actorUserID)
 }
 
-func (s *DashboardService) ListWorkspaceMembers(workspaceID uuid.UUID, actorUserID uuid.UUID) (*dto.WorkspaceMembersResponse, error) {
+func (s *Service) ListWorkspaceMembers(workspaceID uuid.UUID, actorUserID uuid.UUID) (*dto.WorkspaceMembersResponse, error) {
 	if _, err := s.requireWorkspaceManager(workspaceID, actorUserID); err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func (s *DashboardService) ListWorkspaceMembers(workspaceID uuid.UUID, actorUser
 	return &dto.WorkspaceMembersResponse{Items: items}, nil
 }
 
-func (s *DashboardService) AddWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUID, req dto.AddWorkspaceMemberRequest) (*dto.WorkspaceMember, error) {
+func (s *Service) AddWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUID, req dto.AddWorkspaceMemberRequest) (*dto.WorkspaceMember, error) {
 	if _, err := s.requireWorkspaceManager(workspaceID, actorUserID); err != nil {
 		return nil, err
 	}
@@ -312,7 +312,7 @@ func (s *DashboardService) AddWorkspaceMember(workspaceID uuid.UUID, actorUserID
 	return s.getWorkspaceMember(workspaceID, user.ID)
 }
 
-func (s *DashboardService) UpdateWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUID, targetUserID uuid.UUID, req dto.UpdateWorkspaceMemberRequest) (*dto.WorkspaceMember, error) {
+func (s *Service) UpdateWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUID, targetUserID uuid.UUID, req dto.UpdateWorkspaceMemberRequest) (*dto.WorkspaceMember, error) {
 	if _, err := s.requireWorkspaceManager(workspaceID, actorUserID); err != nil {
 		return nil, err
 	}
@@ -342,7 +342,7 @@ func (s *DashboardService) UpdateWorkspaceMember(workspaceID uuid.UUID, actorUse
 	return s.getWorkspaceMember(workspaceID, targetUserID)
 }
 
-func (s *DashboardService) RemoveWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUID, targetUserID uuid.UUID) error {
+func (s *Service) RemoveWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUID, targetUserID uuid.UUID) error {
 	if _, err := s.requireWorkspaceManager(workspaceID, actorUserID); err != nil {
 		return err
 	}
@@ -368,7 +368,7 @@ func (s *DashboardService) RemoveWorkspaceMember(workspaceID uuid.UUID, actorUse
 	return nil
 }
 
-func (s *DashboardService) resolveWorkspaceMemberUser(req dto.AddWorkspaceMemberRequest) (*models.User, error) {
+func (s *Service) resolveWorkspaceMemberUser(req dto.AddWorkspaceMemberRequest) (*models.User, error) {
 	var user models.User
 	if req.UserID != uuid.Nil {
 		if err := s.db.Select("id", "username", "email").First(&user, "id = ?", req.UserID).Error; err != nil {
@@ -390,7 +390,7 @@ func (s *DashboardService) resolveWorkspaceMemberUser(req dto.AddWorkspaceMember
 	return &user, nil
 }
 
-func (s *DashboardService) getWorkspaceMember(workspaceID uuid.UUID, userID uuid.UUID) (*dto.WorkspaceMember, error) {
+func (s *Service) getWorkspaceMember(workspaceID uuid.UUID, userID uuid.UUID) (*dto.WorkspaceMember, error) {
 	var member models.WorkspaceMember
 	if err := s.db.
 		Preload("User", func(db *gorm.DB) *gorm.DB {
@@ -404,7 +404,7 @@ func (s *DashboardService) getWorkspaceMember(workspaceID uuid.UUID, userID uuid
 	return &item, nil
 }
 
-func (s *DashboardService) workspaceRolesForUser(workspaces []models.Workspace, userID uuid.UUID) (map[uuid.UUID]string, error) {
+func (s *Service) workspaceRolesForUser(workspaces []models.Workspace, userID uuid.UUID) (map[uuid.UUID]string, error) {
 	roles := make(map[uuid.UUID]string, len(workspaces))
 	memberWorkspaceIDs := make([]uuid.UUID, 0)
 	for _, workspace := range workspaces {
@@ -427,52 +427,6 @@ func (s *DashboardService) workspaceRolesForUser(workspaces []models.Workspace, 
 	}
 	for _, member := range members {
 		roles[member.WorkspaceID] = member.Role
-	}
-	return roles, nil
-}
-
-func (s *DashboardService) workspaceProjectRolesForUser(workspaceIDSet map[uuid.UUID]struct{}, userID uuid.UUID) (map[uuid.UUID]string, error) {
-	roles := make(map[uuid.UUID]string, len(workspaceIDSet))
-	if len(workspaceIDSet) == 0 {
-		return roles, nil
-	}
-
-	workspaceIDs := make([]uuid.UUID, 0, len(workspaceIDSet))
-	for workspaceID := range workspaceIDSet {
-		workspaceIDs = append(workspaceIDs, workspaceID)
-	}
-
-	var ownedWorkspaces []models.Workspace
-	if err := s.db.
-		Select("id").
-		Where("owner_user_id = ? AND id IN ?", userID, workspaceIDs).
-		Find(&ownedWorkspaces).Error; err != nil {
-		return nil, err
-	}
-	for _, workspace := range ownedWorkspaces {
-		role, err := projectRoleForWorkspaceRole(models.WorkspaceRoleOwner)
-		if err != nil {
-			return nil, err
-		}
-		roles[workspace.ID] = role
-	}
-
-	var members []models.WorkspaceMember
-	if err := s.db.
-		Select("workspace_id", "role").
-		Where("user_id = ? AND workspace_id IN ?", userID, workspaceIDs).
-		Find(&members).Error; err != nil {
-		return nil, err
-	}
-	for _, member := range members {
-		if _, ok := roles[member.WorkspaceID]; ok {
-			continue
-		}
-		role, err := projectRoleForWorkspaceRole(member.Role)
-		if err != nil {
-			return nil, err
-		}
-		roles[member.WorkspaceID] = role
 	}
 	return roles, nil
 }

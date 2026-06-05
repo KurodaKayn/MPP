@@ -1,4 +1,4 @@
-package dashboard_test
+package project_test
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -13,7 +14,7 @@ import (
 )
 
 func TestListProjects(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	u1 := models.User{Username: "test"}
@@ -48,7 +49,7 @@ func TestListProjects(t *testing.T) {
 }
 
 func TestListProjectsIncludesCollaboratorProjectsWithRoles(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	owner := models.User{Username: "owner", Email: "owner@example.com"}
@@ -91,7 +92,7 @@ func TestListProjectsIncludesCollaboratorProjectsWithRoles(t *testing.T) {
 }
 
 func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	user := models.User{Username: "owner"}
@@ -154,7 +155,7 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 }
 
 func TestCreateProjectRejectsInvalidInput(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	user := models.User{Username: "owner"}
@@ -175,7 +176,7 @@ func TestCreateProjectRejectsInvalidInput(t *testing.T) {
 }
 
 func TestGetProjectReturnsSourceContentForOwner(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	owner := models.User{Username: "owner", Email: "owner@example.com"}
@@ -223,7 +224,7 @@ func TestGetProjectReturnsSourceContentForOwner(t *testing.T) {
 }
 
 func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	owner := models.User{Username: "owner", Email: "owner@example.com"}
@@ -245,7 +246,7 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 		Status:       models.PublicationStatusPublished,
 		PublishURL:   "https://example.com/old",
 		RemoteID:     "old-remote",
-		PublishedAt:  ptrTime(time.Now()),
+		PublishedAt:  testsupport.PtrTime(time.Now()),
 		RetryCount:   2,
 		ErrorMessage: "old error",
 	})
@@ -302,7 +303,7 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 }
 
 func TestUpdateProjectAllowsEditorAndRejectsViewer(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	owner := models.User{Username: "owner", Email: "owner@example.com"}
@@ -367,7 +368,7 @@ func TestUpdateProjectAllowsEditorAndRejectsViewer(t *testing.T) {
 }
 
 func TestSaveProjectContentAllowsEditorAndRejectsViewer(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	owner := models.User{Username: "owner", Email: "owner@example.com"}
@@ -419,7 +420,7 @@ func TestSaveProjectContentAllowsEditorAndRejectsViewer(t *testing.T) {
 }
 
 func TestSaveProjectPlatformsAllowsEditorAndRejectsViewer(t *testing.T) {
-	db := setupTestDB()
+	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
 	owner := models.User{Username: "owner", Email: "owner@example.com"}

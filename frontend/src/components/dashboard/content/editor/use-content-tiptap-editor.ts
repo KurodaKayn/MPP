@@ -1,6 +1,16 @@
+import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCaret from "@tiptap/extension-collaboration-caret";
+import type { HocuspocusProvider } from "@hocuspocus/provider";
 import { useEditor, type Editor } from "@tiptap/react";
-import { useEffect, useMemo, type ChangeEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type ChangeEvent,
+} from "react";
 import { toast } from "sonner";
+import type * as Y from "yjs";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 import { createContentEditorExtensions } from "@/components/dashboard/content/editor/content-editor-extensions";
@@ -11,96 +21,210 @@ import {
   normalizeUrl,
   sanitizeClipboardHtml,
 } from "@/components/dashboard/content/editor/content-editor-utils";
+import {
+  renderCollabCursor,
+  renderCollabSelection,
+  type CollabUserProfile,
+} from "@/features/collab-editor/collab-provider";
 import type { ContentValue } from "@/lib/content/types";
 import styles from "./content-editor.module.css";
 
+const COLLAB_CONTENT_SYNC_DEBOUNCE_MS = 250;
+
+export type ContentEditorCollaborationProvider = {
+  canEdit: boolean;
+  provider: HocuspocusProvider | null;
+  user: CollabUserProfile | null;
+  ydoc: Y.Doc | null;
+};
+
 type UseContentTipTapEditorOptions = {
+  collaboration?: ContentEditorCollaborationProvider;
   content: ContentValue;
   editable?: boolean;
   onContentChange: (content: ContentValue) => void;
 };
 
 export function useContentTipTapEditor({
+  collaboration,
   content,
   editable = true,
   onContentChange,
 }: UseContentTipTapEditorOptions) {
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
-
-  const extensions = useMemo(
-    () =>
-      createContentEditorExtensions({
-        emptyEditorClassName: styles.emptyEditor,
-        imageClassName: styles.image,
-        linkClassName: styles.link,
-        placeholder: t("editor.placeholder"),
-      }),
-    [],
+  const collaborationProvider = collaboration?.provider ?? null;
+  const collaborationUser = collaboration?.user ?? null;
+  const collaborationYdoc = collaboration?.ydoc ?? null;
+  const isCollaborationReady = Boolean(
+    collaborationProvider && collaborationUser && collaborationYdoc,
   );
-  const editor = useEditor({
-    extensions,
-    content: normalizeStoredHtml(content.html),
-    editable,
-    editorProps: {
-      attributes: {
-        "aria-label": t("editor.ariaLabel"),
-        class: styles.prose,
-      },
-      handleDrop: (_view, event) => {
-        if (!editable) {
-          return false;
+  const canEdit = editable && (!collaboration || collaboration.canEdit);
+  const lastEmittedHtmlRef = useRef("");
+  const onContentChangeRef = useRef(onContentChange);
+  const pendingContentUpdateRef = useRef<ReturnType<
+    typeof globalThis.setTimeout
+  > | null>(null);
+
+  useEffect(() => {
+    onContentChangeRef.current = onContentChange;
+  }, [onContentChange]);
+
+  const emitContentChange = useCallback((activeEditor: Editor) => {
+    const html = activeEditor.getHTML();
+
+    if (html === lastEmittedHtmlRef.current) {
+      return;
+    }
+
+    lastEmittedHtmlRef.current = html;
+    onContentChangeRef.current(contentValueFromHtml(html));
+  }, []);
+
+  const scheduleContentChange = useCallback(
+    (activeEditor: Editor) => {
+      if (!isCollaborationReady) {
+        emitContentChange(activeEditor);
+        return;
+      }
+
+      if (pendingContentUpdateRef.current !== null) {
+        return;
+      }
+
+      pendingContentUpdateRef.current = globalThis.setTimeout(() => {
+        pendingContentUpdateRef.current = null;
+
+        if (!activeEditor.isDestroyed) {
+          emitContentChange(activeEditor);
         }
+      }, COLLAB_CONTENT_SYNC_DEBOUNCE_MS);
+    },
+    [emitContentChange, isCollaborationReady],
+  );
 
-        const files = getImageFiles(event.dataTransfer?.files);
+  const extensions = useMemo(() => {
+    const baseExtensions = createContentEditorExtensions({
+      emptyEditorClassName: styles.emptyEditor,
+      enableUndoRedo: !isCollaborationReady,
+      imageClassName: styles.image,
+      linkClassName: styles.link,
+      placeholder: t("editor.placeholder"),
+    });
 
-        if (files.length === 0) {
-          return false;
-        }
+    if (!collaborationProvider || !collaborationUser || !collaborationYdoc) {
+      return baseExtensions;
+    }
 
-        event.preventDefault();
-        return insertImageFiles(files);
-      },
-      handlePaste: (_view, event) => {
-        if (!editable) {
-          return false;
-        }
+    return [
+      ...baseExtensions,
+      Collaboration.configure({
+        document: collaborationYdoc,
+        field: "content",
+      }),
+      CollaborationCaret.configure({
+        provider: collaborationProvider,
+        render: renderCollabCursor,
+        selectionRender: renderCollabSelection,
+        user: collaborationUser,
+      }),
+    ];
+  }, [
+    collaborationProvider,
+    collaborationUser,
+    collaborationYdoc,
+    isCollaborationReady,
+    t,
+  ]);
+  const editor = useEditor(
+    {
+      extensions,
+      content: isCollaborationReady
+        ? undefined
+        : normalizeStoredHtml(content.html),
+      editable: canEdit,
+      editorProps: {
+        attributes: {
+          "aria-label": t("editor.ariaLabel"),
+          class: styles.prose,
+        },
+        handleDrop: (_view, event) => {
+          if (!canEdit) {
+            return false;
+          }
 
-        const files = getImageFiles(event.clipboardData?.files);
+          const files = getImageFiles(event.dataTransfer?.files);
 
-        if (files.length > 0) {
+          if (files.length === 0) {
+            return false;
+          }
+
           event.preventDefault();
           return insertImageFiles(files);
-        }
+        },
+        handlePaste: (_view, event) => {
+          if (!canEdit) {
+            return false;
+          }
 
-        const html = event.clipboardData?.getData("text/html");
+          const files = getImageFiles(event.clipboardData?.files);
 
-        if (!html || !editor) {
-          return false;
-        }
+          if (files.length > 0) {
+            event.preventDefault();
+            return insertImageFiles(files);
+          }
 
-        event.preventDefault();
-        editor.chain().focus().insertContent(sanitizeClipboardHtml(html)).run();
-        return true;
+          const html = event.clipboardData?.getData("text/html");
+
+          if (!html || !editor) {
+            return false;
+          }
+
+          event.preventDefault();
+          editor
+            .chain()
+            .focus()
+            .insertContent(sanitizeClipboardHtml(html))
+            .run();
+          return true;
+        },
+      },
+      immediatelyRender: false,
+      shouldRerenderOnTransaction: true,
+      onUpdate: ({ editor }) => {
+        scheduleContentChange(editor);
       },
     },
-    immediatelyRender: false,
-    shouldRerenderOnTransaction: true,
-    onUpdate: ({ editor }) => {
-      onContentChange(contentValueFromHtml(editor.getHTML()));
-    },
-  });
+    [
+      collaborationProvider,
+      collaborationUser?.color,
+      collaborationUser?.name,
+      collaborationUser?.role,
+      collaborationYdoc,
+      isCollaborationReady,
+      scheduleContentChange,
+    ],
+  );
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) {
       return;
     }
 
-    editor.setEditable(editable);
-  }, [editable, editor]);
+    editor.setEditable(canEdit);
+  }, [canEdit, editor]);
 
   useEffect(() => {
-    if (!editor || editor.isDestroyed) {
+    return () => {
+      if (pendingContentUpdateRef.current !== null) {
+        globalThis.clearTimeout(pendingContentUpdateRef.current);
+        pendingContentUpdateRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isCollaborationReady || !editor || editor.isDestroyed) {
       return;
     }
 
@@ -110,11 +234,12 @@ export function useContentTipTapEditor({
       return;
     }
 
+    lastEmittedHtmlRef.current = nextHtml;
     editor.commands.setContent(nextHtml, { emitUpdate: false });
-  }, [content.html, editor]);
+  }, [content.html, editor, isCollaborationReady]);
 
   function insertImageFiles(files: File[]) {
-    if (!editable || !editor || editor.isDestroyed) {
+    if (!canEdit || !editor || editor.isDestroyed) {
       return false;
     }
 
@@ -170,7 +295,7 @@ export function useContentTipTapEditor({
   }
 
   function setLink() {
-    if (!editable || !editor) {
+    if (!canEdit || !editor) {
       return;
     }
 
