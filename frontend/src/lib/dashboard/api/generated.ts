@@ -87,6 +87,8 @@ export interface components {
     /** @enum {string} */
     ProjectRole: "owner" | "editor" | "viewer";
     /** @enum {string} */
+    ProjectAccessSource: "owner" | "direct_share" | "workspace";
+    /** @enum {string} */
     ProjectCollaboratorRole: "editor" | "viewer";
     /** @enum {string} */
     WorkspaceRole: "owner" | "admin" | "member" | "viewer";
@@ -341,6 +343,7 @@ export interface components {
       title: string;
       status: components["schemas"]["ProjectStatus"];
       role: components["schemas"]["ProjectRole"];
+      access_source?: components["schemas"]["ProjectAccessSource"];
       /** Format: date-time */
       created_at: string;
       /** Format: date-time */

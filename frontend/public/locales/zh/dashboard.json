@@ -263,6 +263,47 @@
     }
   },
   "collab": {
+    "hub": {
+      "title": "协作中心",
+      "description": "查看你分享出去的项目、别人分享给你的项目，以及团队工作空间里的项目。",
+      "refresh": "刷新",
+      "stats": {
+        "sharedByMe": "我分享出去的",
+        "sharedWithMe": "分享给我的",
+        "workspaceProjects": "团队项目"
+      },
+      "sharedByMe": {
+        "title": "我分享出去的项目",
+        "description": "你拥有且已添加项目级协作者的项目。",
+        "empty": "还没有分享出去的项目。",
+        "collaboratorCount": "{{count}} 位协作者",
+        "collaboratorCount_plural": "{{count}} 位协作者",
+        "access": "共享访问"
+      },
+      "sharedWithMe": {
+        "title": "分享给我的项目",
+        "description": "别人直接分享给你、可编辑或查看的项目。",
+        "empty": "还没有别人分享给你的项目。",
+        "role": "你的角色"
+      },
+      "workspaceProjects": {
+        "title": "团队工作空间项目",
+        "description": "当前选中工作空间拥有的项目。",
+        "empty": "这个工作空间还没有项目。",
+        "role": "工作空间角色"
+      },
+      "project": {
+        "updatedAt": "更新于 {{date}}",
+        "open": "打开项目",
+        "none": "暂无",
+        "workspaceFallback": "工作空间"
+      },
+      "error": {
+        "projectsTitle": "共享项目加载失败",
+        "workspaceTitle": "工作空间项目加载失败",
+        "defaultMessage": "无法加载协作项目"
+      }
+    },
     "header": {
       "badge": "实时文档",
       "title": "协作编辑",
