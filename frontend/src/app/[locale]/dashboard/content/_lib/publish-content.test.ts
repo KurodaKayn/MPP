@@ -19,7 +19,7 @@ describe("publishContentToPlatforms", () => {
   it("creates a project from editor content before publishing selected platforms", async () => {
     const createProject = vi.fn(async () => project);
     const publishProject = vi.fn(async () => ({
-      status: "published" as const,
+      status: "succeeded" as const,
     }));
 
     const result = await publishContentToPlatforms(
@@ -58,7 +58,7 @@ describe("publishContentToPlatforms", () => {
     const publishProject = vi.fn(
       async (projectId: string, platform: string) => {
         if (platform === "wechat") {
-          return { status: "published" as const };
+          return { status: "succeeded" as const };
         }
         return {
           error_message: "no publisher registered",
@@ -111,7 +111,7 @@ describe("publishContentToPlatforms", () => {
           platform: "wechat",
           publish_url: "https://example.com/post",
           retry_count: 0,
-          status: "published",
+          status: "succeeded",
           updated_at: "2026-05-29T12:00:00Z",
         },
       ],

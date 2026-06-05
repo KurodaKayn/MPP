@@ -70,7 +70,10 @@ export async function publishContentToPlatforms(
   results.forEach((result, index) => {
     const platform = input.platforms[index];
     if (result.status === "fulfilled") {
-      if (result.value.status === "publishing") {
+      if (
+        result.value.status === "queued" ||
+        result.value.status === "publishing"
+      ) {
         pendingPlatforms.push(platform);
         return;
       }
@@ -109,7 +112,7 @@ export async function publishContentToPlatforms(
         return;
       }
 
-      if (publication.status === "published") {
+      if (publication.status === "succeeded") {
         succeeded.push(platform);
         return;
       }

@@ -24,7 +24,7 @@ export function getPublicationTotals(projects: ProjectListItem[]) {
   return {
     failed: enabledPublications.filter((item) => item.status === "failed")
       .length,
-    published: enabledPublications.filter((item) => item.status === "published")
+    published: enabledPublications.filter((item) => item.status === "succeeded")
       .length,
     total: enabledPublications.length,
   };

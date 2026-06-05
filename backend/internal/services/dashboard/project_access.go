@@ -30,15 +30,25 @@ func (s *DashboardService) scopeAccessibleProjects(query *gorm.DB, userID uuid.U
 }
 
 func (s *DashboardService) projectAccessRole(project models.Project, userID uuid.UUID) (string, error) {
-	return projectAccessRoleWithDB(s.db, project, userID)
+	role, _, err := s.projectAccessRoleAndSource(project, userID)
+	return role, err
+}
+
+func (s *DashboardService) projectAccessRoleAndSource(project models.Project, userID uuid.UUID) (string, string, error) {
+	return projectAccessRoleAndSourceWithDB(s.db, project, userID)
 }
 
 func projectAccessRoleWithDB(db *gorm.DB, project models.Project, userID uuid.UUID) (string, error) {
+	role, _, err := projectAccessRoleAndSourceWithDB(db, project, userID)
+	return role, err
+}
+
+func projectAccessRoleAndSourceWithDB(db *gorm.DB, project models.Project, userID uuid.UUID) (string, string, error) {
 	if userID == uuid.Nil {
-		return "", ErrInvalidProject
+		return "", "", ErrInvalidProject
 	}
 	if project.UserID == userID {
-		return models.ProjectRoleOwner, nil
+		return models.ProjectRoleOwner, models.ProjectAccessSourceOwner, nil
 	}
 
 	var collaborator models.ProjectCollaborator
@@ -47,16 +57,17 @@ func projectAccessRoleWithDB(db *gorm.DB, project models.Project, userID uuid.UU
 		Where("project_id = ? AND user_id = ?", project.ID, userID).
 		First(&collaborator).Error; err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", err
+			return "", "", err
 		}
 	} else {
-		return collaborator.Role, nil
+		return collaborator.Role, models.ProjectAccessSourceDirectShare, nil
 	}
 
 	if project.WorkspaceID != nil && *project.WorkspaceID != uuid.Nil {
-		return workspaceProjectAccessRoleWithDB(db, *project.WorkspaceID, userID)
+		role, err := workspaceProjectAccessRoleWithDB(db, *project.WorkspaceID, userID)
+		return role, models.ProjectAccessSourceWorkspace, err
 	}
-	return "", ErrForbidden
+	return "", "", ErrForbidden
 }
 
 func canEditProjectRole(role string) bool {
@@ -111,13 +122,21 @@ func (s *DashboardService) requireProjectOwner(projectID uuid.UUID, actorUserID 
 	return &project, nil
 }
 
-func (s *DashboardService) projectRolesForUser(projects []models.Project, userID uuid.UUID) (map[uuid.UUID]string, error) {
-	roles := make(map[uuid.UUID]string, len(projects))
+type projectAccessResolution struct {
+	role   string
+	source string
+}
+
+func (s *DashboardService) projectAccessForUser(projects []models.Project, userID uuid.UUID) (map[uuid.UUID]projectAccessResolution, error) {
+	access := make(map[uuid.UUID]projectAccessResolution, len(projects))
 	sharedProjectIDs := make([]uuid.UUID, 0)
 	workspaceIDs := make(map[uuid.UUID]struct{})
 	for _, project := range projects {
 		if project.UserID == userID {
-			roles[project.ID] = models.ProjectRoleOwner
+			access[project.ID] = projectAccessResolution{
+				role:   models.ProjectRoleOwner,
+				source: models.ProjectAccessSourceOwner,
+			}
 			continue
 		}
 		sharedProjectIDs = append(sharedProjectIDs, project.ID)
@@ -135,12 +154,15 @@ func (s *DashboardService) projectRolesForUser(projects []models.Project, userID
 			return nil, err
 		}
 		for _, collaborator := range collaborators {
-			roles[collaborator.ProjectID] = collaborator.Role
+			access[collaborator.ProjectID] = projectAccessResolution{
+				role:   collaborator.Role,
+				source: models.ProjectAccessSourceDirectShare,
+			}
 		}
 	}
 
 	if len(workspaceIDs) == 0 {
-		return roles, nil
+		return access, nil
 	}
 
 	workspaceRoles, err := s.workspaceProjectRolesForUser(workspaceIDs, userID)
@@ -148,15 +170,18 @@ func (s *DashboardService) projectRolesForUser(projects []models.Project, userID
 		return nil, err
 	}
 	for _, project := range projects {
-		if _, ok := roles[project.ID]; ok {
+		if _, ok := access[project.ID]; ok {
 			continue
 		}
 		if project.WorkspaceID == nil {
 			continue
 		}
 		if role, ok := workspaceRoles[*project.WorkspaceID]; ok {
-			roles[project.ID] = role
+			access[project.ID] = projectAccessResolution{
+				role:   role,
+				source: models.ProjectAccessSourceWorkspace,
+			}
 		}
 	}
-	return roles, nil
+	return access, nil
 }

@@ -97,6 +97,13 @@ const (
 	PlatformAccountStatusUntested     PlatformAccountStatus = "untested"
 )
 
+// Defines values for ProjectAccessSource.
+const (
+	ProjectAccessSourceDirectShare ProjectAccessSource = "direct_share"
+	ProjectAccessSourceOwner       ProjectAccessSource = "owner"
+	ProjectAccessSourceWorkspace   ProjectAccessSource = "workspace"
+)
+
 // Defines values for ProjectCollaboratorRole.
 const (
 	ProjectCollaboratorRoleEditor ProjectCollaboratorRole = "editor"
@@ -121,12 +128,13 @@ const (
 
 // Defines values for PublicationStatus.
 const (
-	PublicationStatusAdapted    PublicationStatus = "adapted"
-	PublicationStatusDisabled   PublicationStatus = "disabled"
+	PublicationStatusCancelled  PublicationStatus = "cancelled"
+	PublicationStatusDraft      PublicationStatus = "draft"
 	PublicationStatusFailed     PublicationStatus = "failed"
-	PublicationStatusPending    PublicationStatus = "pending"
-	PublicationStatusPublished  PublicationStatus = "published"
 	PublicationStatusPublishing PublicationStatus = "publishing"
+	PublicationStatusQueued     PublicationStatus = "queued"
+	PublicationStatusSucceeded  PublicationStatus = "succeeded"
+	PublicationStatusSyncing    PublicationStatus = "syncing"
 )
 
 // Defines values for PublishPlatform.
@@ -139,13 +147,12 @@ const (
 
 // Defines values for PublishResultStatus.
 const (
-	PublishResultStatusAdapted        PublishResultStatus = "adapted"
 	PublishResultStatusError          PublishResultStatus = "error"
 	PublishResultStatusFailed         PublishResultStatus = "failed"
 	PublishResultStatusManualRequired PublishResultStatus = "manual_required"
-	PublishResultStatusPending        PublishResultStatus = "pending"
-	PublishResultStatusPublished      PublishResultStatus = "published"
 	PublishResultStatusPublishing     PublishResultStatus = "publishing"
+	PublishResultStatusQueued         PublishResultStatus = "queued"
+	PublishResultStatusSucceeded      PublishResultStatus = "succeeded"
 )
 
 // Defines values for RequirementStatusValue.
@@ -520,6 +527,9 @@ type PaginationProjects struct {
 // PlatformAccountStatus defines model for PlatformAccountStatus.
 type PlatformAccountStatus string
 
+// ProjectAccessSource defines model for ProjectAccessSource.
+type ProjectAccessSource string
+
 // ProjectCollaborator defines model for ProjectCollaborator.
 type ProjectCollaborator struct {
 	CreatedAt time.Time               `json:"created_at"`
@@ -541,6 +551,7 @@ type ProjectCollaboratorsResponse struct {
 
 // ProjectDetail defines model for ProjectDetail.
 type ProjectDetail struct {
+	AccessSource     *ProjectAccessSource `json:"access_source,omitempty"`
 	CollabDocumentId *openapi_types.UUID  `json:"collab_document_id"`
 	CreatedAt        time.Time            `json:"created_at"`
 	Id               openapi_types.UUID   `json:"id"`
@@ -556,6 +567,7 @@ type ProjectDetail struct {
 
 // ProjectListItem defines model for ProjectListItem.
 type ProjectListItem struct {
+	AccessSource     *ProjectAccessSource `json:"access_source,omitempty"`
 	CollabDocumentId *openapi_types.UUID  `json:"collab_document_id"`
 	CreatedAt        time.Time            `json:"created_at"`
 	Id               openapi_types.UUID   `json:"id"`
@@ -617,6 +629,7 @@ type PublishPlatform string
 type PublishResult struct {
 	BrowserSessionId *openapi_types.UUID `json:"browser_session_id,omitempty"`
 	ErrorMessage     *string             `json:"error_message,omitempty"`
+	IdempotencyKey   *string             `json:"idempotency_key,omitempty"`
 	JobId            *openapi_types.UUID `json:"job_id,omitempty"`
 	Platform         *PublishPlatform    `json:"platform,omitempty"`
 	PublishUrl       *string             `json:"publish_url,omitempty"`
