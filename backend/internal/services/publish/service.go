@@ -116,7 +116,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	if err != nil {
 		return nil, err
 	}
-	if !publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusQueued && pub.Status != models.PublicationStatusPublishing {
+	if pub.Status == models.PublicationStatusSyncing || (!publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusQueued && pub.Status != models.PublicationStatusPublishing) {
 		return nil, ErrPublicationRequiresSync
 	}
 
