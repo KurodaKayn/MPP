@@ -125,6 +125,9 @@ export function draftsFromPublications(publications: ProjectPublications) {
     if (!publication.enabled || !isPublishPlatform(publication.platform)) {
       return drafts;
     }
+    if (publication.status === "syncing") {
+      return drafts;
+    }
 
     const adaptedContent = publication.adapted_content;
     if (!isPrepublishFormat(adaptedContent.format)) {
