@@ -17,9 +17,18 @@ class EditContentRequest(BaseModel):
     conversation: list[ChatMessage] = Field(default_factory=list)
 
 
+class AIUsage(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cost: float = 0
+    currency: str = "USD"
+
+
 class EditContentResponse(BaseModel):
     channel: str
     content: str
+    usage: AIUsage = Field(default_factory=AIUsage)
 
 
 class EditPrepublishRequest(BaseModel):
@@ -35,6 +44,7 @@ class EditPrepublishResponse(BaseModel):
     platform: PublishPlatform
     adapted_content: AdaptedContent
     content: str
+    usage: AIUsage = Field(default_factory=AIUsage)
 
 
 class CalibrateRequest(BaseModel):

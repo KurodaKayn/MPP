@@ -7,14 +7,18 @@ from main import app
 
 
 class FakeLLM:
-    def __init__(self, *, invoke_content="", stream_contents=None):
+    def __init__(self, *, invoke_content="", stream_contents=None, usage_metadata=None):
         self.invoke_content = invoke_content
         self.stream_contents = stream_contents or []
+        self.usage_metadata = usage_metadata or {}
         self.messages = None
 
     async def ainvoke(self, messages):
         self.messages = messages
-        return SimpleNamespace(content=self.invoke_content)
+        return SimpleNamespace(
+            content=self.invoke_content,
+            usage_metadata=self.usage_metadata,
+        )
 
     async def astream(self, messages):
         self.messages = messages
@@ -41,8 +45,13 @@ def test_ready_returns_status_during_lifespan():
 
 
 def test_edit_content_returns_llm_content(monkeypatch):
-    fake_llm = FakeLLM(invoke_content="  edited copy  ")
+    fake_llm = FakeLLM(
+        invoke_content="  edited copy  ",
+        usage_metadata={"input_tokens": 12, "output_tokens": 3, "total_tokens": 15},
+    )
     monkeypatch.setattr(routes, "build_llm", lambda: fake_llm)
+    monkeypatch.setenv("LLM_INPUT_COST_PER_1K_TOKENS", "0.01")
+    monkeypatch.setenv("LLM_OUTPUT_COST_PER_1K_TOKENS", "0.02")
 
     response = client.post(
         "/content/edit",
@@ -55,7 +64,17 @@ def test_edit_content_returns_llm_content(monkeypatch):
     )
 
     assert response.status_code == 200
-    assert response.json() == {"channel": "content", "content": "edited copy"}
+    assert response.json() == {
+        "channel": "content",
+        "content": "edited copy",
+        "usage": {
+            "input_tokens": 12,
+            "output_tokens": 3,
+            "total_tokens": 15,
+            "cost": 0.00018,
+            "currency": "USD",
+        },
+    }
     assert fake_llm.messages is not None
     assert "Make it shorter" in fake_llm.messages[-1].content
 
@@ -71,7 +90,10 @@ def test_edit_content_rejects_blank_message():
 
 
 def test_edit_prepublish_updates_selected_adapted_content(monkeypatch):
-    fake_llm = FakeLLM(invoke_content="<p>Edited HTML</p>")
+    fake_llm = FakeLLM(
+        invoke_content="<p>Edited HTML</p>",
+        usage_metadata={"input_tokens": 20, "output_tokens": 5, "total_tokens": 25},
+    )
     monkeypatch.setattr(routes, "build_llm", lambda: fake_llm)
 
     response = client.post(
@@ -93,6 +115,9 @@ def test_edit_prepublish_updates_selected_adapted_content(monkeypatch):
     assert body["channel"] == "prepublish"
     assert body["platform"] == "wechat"
     assert body["content"] == "<p>Edited HTML</p>"
+    assert body["usage"]["input_tokens"] == 20
+    assert body["usage"]["output_tokens"] == 5
+    assert body["usage"]["total_tokens"] == 25
     assert body["adapted_content"]["format"] == "html"
     assert body["adapted_content"]["html"] == "<p>Edited HTML</p>"
     assert body["adapted_content"]["text"] == "Original text"
