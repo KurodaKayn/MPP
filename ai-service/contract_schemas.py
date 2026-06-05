@@ -7,7 +7,15 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, conint, constr
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    conint,
+    constr,
+)
 
 
 class DraftFormat(StrEnum):
@@ -39,6 +47,29 @@ class ProjectStatus(StrEnum):
     publishing = "publishing"
     published = "published"
     failed = "failed"
+
+
+class ProjectRole(StrEnum):
+    ProjectRoleOwner = "owner"
+    ProjectRoleEditor = "editor"
+    ProjectRoleViewer = "viewer"
+
+
+class ProjectCollaboratorRole(StrEnum):
+    ProjectCollaboratorRoleEditor = "editor"
+    ProjectCollaboratorRoleViewer = "viewer"
+
+
+class WorkspaceRole(StrEnum):
+    WorkspaceRoleOwner = "owner"
+    WorkspaceRoleAdmin = "admin"
+    WorkspaceRoleMember = "member"
+    WorkspaceRoleViewer = "viewer"
+
+
+class WorkspaceStatus(StrEnum):
+    WorkspaceStatusActive = "active"
+    WorkspaceStatusArchived = "archived"
 
 
 class PublicationStatus(StrEnum):
@@ -304,6 +335,33 @@ class CreateCollabDocumentRequest(BaseModel):
     title: constr(min_length=1)
 
 
+class UpdateCollabDocumentRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    title: constr(min_length=1)
+
+
+class CollabSessionLimits(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    max_message_bytes: conint(ge=1)
+    heartbeat_seconds: conint(ge=1)
+
+
+class CollabDocumentSession(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    document_id: UUID
+    role: CollabDocumentRole
+    websocket_url: str
+    token: str
+    expires_at: AwareDatetime
+    limits: CollabSessionLimits
+
+
 class CollabDocument(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -355,6 +413,7 @@ class ProjectListItem(BaseModel):
     collab_document_id: UUID | None = None
     title: str
     status: ProjectStatus
+    role: ProjectRole
     created_at: AwareDatetime
     updated_at: AwareDatetime
     publications: list[PublicationSummary]
@@ -362,6 +421,116 @@ class ProjectListItem(BaseModel):
 
 class ProjectDetail(ProjectListItem):
     source_content: str
+
+
+class AddProjectCollaboratorRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    user_id: UUID | None = None
+    email: EmailStr | None = None
+    role: ProjectCollaboratorRole
+
+
+class UpdateProjectCollaboratorRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    role: ProjectCollaboratorRole
+
+
+class ProjectCollaborator(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    project_id: UUID
+    user_id: UUID
+    username: str
+    email: EmailStr
+    role: ProjectCollaboratorRole
+    created_by: UUID
+    created_at: AwareDatetime
+
+
+class ProjectCollaboratorsResponse(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    items: list[ProjectCollaborator]
+
+
+class CreateWorkspaceRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: constr(min_length=1)
+    slug: str | None = None
+
+
+class UpdateWorkspaceRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: constr(min_length=1)
+    slug: str | None = None
+
+
+class AddWorkspaceMemberRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    user_id: UUID | None = None
+    email: EmailStr | None = None
+    role: WorkspaceRole
+
+
+class UpdateWorkspaceMemberRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    role: WorkspaceRole
+
+
+class Workspace(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: UUID
+    owner_user_id: UUID
+    name: str
+    slug: str | None = None
+    status: WorkspaceStatus
+    role: WorkspaceRole
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+
+
+class WorkspacesResponse(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    items: list[Workspace]
+
+
+class WorkspaceMember(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    workspace_id: UUID
+    user_id: UUID
+    username: str
+    email: EmailStr
+    role: WorkspaceRole
+    invited_by: UUID | None = None
+    joined_at: AwareDatetime | None = None
+    created_at: AwareDatetime
+
+
+class WorkspaceMembersResponse(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    items: list[WorkspaceMember]
 
 
 class PaginationProjects(BaseModel):
