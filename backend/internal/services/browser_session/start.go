@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
@@ -142,7 +143,7 @@ func (s *BrowserSessionService) StartSessionForTenant(ctx context.Context, userI
 	}
 
 	// 5. Update session with worker info
-	err = s.db.Model(session).Updates(map[string]interface{}{
+	err = s.db.Model(session).Updates(map[string]any{
 		"status":              models.BrowserSessionStatusReady,
 		"worker_session_ref":  resp.WorkerSessionRef,
 		"container_id":        resp.ContainerID,

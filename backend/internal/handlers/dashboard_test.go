@@ -14,6 +14,10 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/contracts"
 	dbobs "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
@@ -22,9 +26,6 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/observability"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
 	"github.com/kurodakayn/mpp-backend/internal/services"
-	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 type noopProjectDocumentInitializer struct{}
@@ -189,7 +190,7 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 
 type handlerFakeProjectDraftCompiler struct{}
 
-func (handlerFakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
+func (handlerFakeProjectDraftCompiler) CompileProjectDrafts(_ context.Context, _ *models.Project, _ []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
 	drafts := make(map[string][]byte, len(platforms))
 	for _, platform := range platforms {
 		switch platform {
@@ -237,7 +238,7 @@ func (r *recordingTraceObserver) ObserveQuery(ctx context.Context, _ dbobs.Query
 	r.traceIDs = append(r.traceIDs, observability.TraceIDFromContext(ctx))
 }
 
-func (f *fakeAIContentEditor) EditContent(ctx context.Context, req dto.AIEditContentRequest) (*dto.AIEditContentResponse, error) {
+func (f *fakeAIContentEditor) EditContent(_ context.Context, req dto.AIEditContentRequest) (*dto.AIEditContentResponse, error) {
 	f.contentReq = req
 	if f.err != nil {
 		return nil, f.err
@@ -245,7 +246,7 @@ func (f *fakeAIContentEditor) EditContent(ctx context.Context, req dto.AIEditCon
 	return f.contentResp, nil
 }
 
-func (f *fakeAIContentEditor) StreamEditContent(ctx context.Context, req dto.AIEditContentRequest) (*services.AIServiceStream, error) {
+func (f *fakeAIContentEditor) StreamEditContent(_ context.Context, req dto.AIEditContentRequest) (*services.AIServiceStream, error) {
 	f.contentReq = req
 	if f.err != nil {
 		return nil, f.err
@@ -253,7 +254,7 @@ func (f *fakeAIContentEditor) StreamEditContent(ctx context.Context, req dto.AIE
 	return f.contentStream, nil
 }
 
-func (f *fakeAIContentEditor) EditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*dto.AIEditPrepublishResponse, error) {
+func (f *fakeAIContentEditor) EditPrepublish(_ context.Context, req dto.AIEditPrepublishRequest) (*dto.AIEditPrepublishResponse, error) {
 	f.prepublishReq = req
 	if f.err != nil {
 		return nil, f.err
@@ -261,7 +262,7 @@ func (f *fakeAIContentEditor) EditPrepublish(ctx context.Context, req dto.AIEdit
 	return f.prepublishResp, nil
 }
 
-func (f *fakeAIContentEditor) StreamEditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*services.AIServiceStream, error) {
+func (f *fakeAIContentEditor) StreamEditPrepublish(_ context.Context, req dto.AIEditPrepublishRequest) (*services.AIServiceStream, error) {
 	f.prepublishReq = req
 	if f.err != nil {
 		return nil, f.err
@@ -966,10 +967,10 @@ func TestUserDashboardHandlerWorkspaceProjects(t *testing.T) {
 	var projects dto.PaginationResponse
 	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &projects))
 	require.Equal(t, int64(1), projects.Total)
-	items, ok := projects.Items.([]interface{})
+	items, ok := projects.Items.([]any)
 	require.True(t, ok)
 	require.Len(t, items, 1)
-	item, ok := items[0].(map[string]interface{})
+	item, ok := items[0].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "Team Project", item["title"])
 	require.Equal(t, models.ProjectRoleEditor, item["role"])
@@ -1395,7 +1396,7 @@ func TestUserDashboardHandlerEditContentWithAIEnforcesUserConcurrency(t *testing
 		Resource: "content",
 	})
 	require.NoError(t, err)
-	defer lease.Release(context.Background())
+	defer func() { _ = lease.Release(context.Background()) }()
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -1479,7 +1480,7 @@ func TestUserDashboardHandlerEditPrepublishWithAI(t *testing.T) {
 		prepublishResp: &dto.AIEditPrepublishResponse{
 			Channel:  "prepublish",
 			Platform: "wechat",
-			AdaptedContent: map[string]interface{}{
+			AdaptedContent: map[string]any{
 				"format": "html",
 				"html":   "<p>Concise draft</p>",
 			},
@@ -1616,7 +1617,7 @@ func TestUserDashboardHandlerCreatesXManualPublishIntent(t *testing.T) {
 	require.NoError(t, handler.PublishProject(c))
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, "manual_required", resp["status"])
 

@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var ErrForbidden = publishsvc.ErrForbidden

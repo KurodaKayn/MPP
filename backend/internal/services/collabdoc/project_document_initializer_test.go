@@ -7,16 +7,18 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
 )
 
 func TestHTTPProjectDocumentInitializerRequestsProjectState(t *testing.T) {
 	documentID := uuid.New()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "/internal/collab/documents/"+documentID.String()+"/project-state", r.URL.Path)
-		require.Equal(t, "Bearer collab-secret", r.Header.Get("Authorization"))
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/internal/collab/documents/"+documentID.String()+"/project-state", r.URL.Path)
+		assert.Equal(t, "Bearer collab-secret", r.Header.Get("Authorization"))
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
@@ -29,9 +31,9 @@ func TestHTTPProjectDocumentInitializerRequestsProjectState(t *testing.T) {
 func TestHTTPProjectDocumentInitializerRequestsProjectSourceContentSync(t *testing.T) {
 	documentID := uuid.New()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "/internal/collab/documents/"+documentID.String()+"/project-source-content", r.URL.Path)
-		require.Equal(t, "Bearer collab-secret", r.Header.Get("Authorization"))
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/internal/collab/documents/"+documentID.String()+"/project-source-content", r.URL.Path)
+		assert.Equal(t, "Bearer collab-secret", r.Header.Get("Authorization"))
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
@@ -42,7 +44,7 @@ func TestHTTPProjectDocumentInitializerRequestsProjectSourceContentSync(t *testi
 }
 
 func TestHTTPProjectDocumentInitializerRejectsFailedStateInitialization(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
@@ -55,7 +57,7 @@ func TestHTTPProjectDocumentInitializerRejectsFailedStateInitialization(t *testi
 }
 
 func TestHTTPProjectDocumentInitializerRejectsFailedSourceContentSync(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer server.Close()

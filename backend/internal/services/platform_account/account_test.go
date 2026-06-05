@@ -1,19 +1,22 @@
+//nolint:gosec // Test fixtures use fake credential strings.
 package platformaccount_test
 
 import (
 	"context"
 	"encoding/json"
+	"net/url"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/datatypes"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"gorm.io/datatypes"
-	"net/url"
-	"testing"
-	"time"
 )
 
 func TestWechatAccountSettingsSaveMasksSecret(t *testing.T) {
@@ -27,14 +30,14 @@ func TestWechatAccountSettingsSaveMasksSecret(t *testing.T) {
 		AppID:     "wx-app",
 		AppSecret: "wx-secret",
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "wechat", resp.Platform)
 	assert.Equal(t, "wx-app", resp.AppID)
 	assert.True(t, resp.HasAppSecret)
 	assert.Equal(t, models.PlatformAccountStatusUntested, resp.Status)
 
 	saved, err := s.GetWechatAccount(user.ID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "wx-app", saved.AppID)
 	assert.True(t, saved.HasAppSecret)
 }
@@ -58,18 +61,18 @@ func TestWechatAccountTestUsesSavedSecretAndUpdatesStatus(t *testing.T) {
 		AppID:     "wx-app",
 		AppSecret: "wx-secret",
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	result, err := s.TestWechatAccount(user.ID, dto.TestWechatAccountRequest{
 		AppID: "wx-app",
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, result.Connected)
 	assert.Equal(t, "wx-app", tester.AppID)
 	assert.Equal(t, "wx-secret", tester.Secret)
 
 	saved, err := s.GetWechatAccount(user.ID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, models.PlatformAccountStatusConnected, saved.Status)
 	assert.Empty(t, saved.LastTestError)
 }
@@ -94,19 +97,19 @@ func TestWechatAccountTestDoesNotPersistUnsavedCredentialsStatus(t *testing.T) {
 		AppID:     "wx-saved",
 		AppSecret: "saved-secret",
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	result, err := s.TestWechatAccount(user.ID, dto.TestWechatAccountRequest{
 		AppID:     "wx-draft",
 		AppSecret: "draft-secret",
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, result.Connected)
 	assert.Equal(t, "wx-draft", tester.AppID)
 	assert.Equal(t, "draft-secret", tester.Secret)
 
 	saved, err := s.GetWechatAccount(user.ID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, models.PlatformAccountStatusUntested, saved.Status)
 	assert.Nil(t, saved.LastTestedAt)
 	assert.Empty(t, saved.LastTestError)
@@ -126,11 +129,11 @@ func TestXAccountSettingsClearsUsernameAndMetadataWhenCredentialsChange(t *testi
 		AccessTokenSecret: "x-old-token-secret",
 		Username:          "oldhandle",
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	var account models.PlatformAccount
-	assert.NoError(t, db.First(&account, "user_id = ? AND platform = ?", user.ID, "x").Error)
-	assert.NoError(t, db.Model(&account).Update("metadata", datatypes.JSON(`{"username":"oldmeta"}`)).Error)
+	require.NoError(t, db.First(&account, "user_id = ? AND platform = ?", user.ID, "x").Error)
+	require.NoError(t, db.Model(&account).Update("metadata", datatypes.JSON(`{"username":"oldmeta"}`)).Error)
 
 	_, err = s.UpsertXAccount(user.ID, dto.UpsertXAccountRequest{
 		APIKey:            "x-new-key",
@@ -138,21 +141,21 @@ func TestXAccountSettingsClearsUsernameAndMetadataWhenCredentialsChange(t *testi
 		AccessToken:       "x-new-token",
 		AccessTokenSecret: "x-new-token-secret",
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	saved, err := s.GetXAccount(user.ID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Empty(t, saved.Username)
 	assert.Equal(t, models.PlatformAccountStatusUntested, saved.Status)
 
-	assert.NoError(t, db.First(&account, "user_id = ? AND platform = ?", user.ID, "x").Error)
+	require.NoError(t, db.First(&account, "user_id = ? AND platform = ?", user.ID, "x").Error)
 	var credentials map[string]string
-	assert.NoError(t, json.Unmarshal(account.Credentials, &credentials))
+	require.NoError(t, json.Unmarshal(account.Credentials, &credentials))
 	assert.Equal(t, "x-new-key", credentials["api_key"])
 	assert.Empty(t, credentials["username"])
 
 	var metadata map[string]string
-	assert.NoError(t, json.Unmarshal(account.Metadata, &metadata))
+	require.NoError(t, json.Unmarshal(account.Metadata, &metadata))
 	assert.Empty(t, metadata["username"])
 }
 

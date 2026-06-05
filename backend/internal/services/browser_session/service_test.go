@@ -11,16 +11,19 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/publisher"
-	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 )
 
 func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *browsersession.BrowserSessionService, *publisher.MockBrowserWorkerClient) {
+	t.Helper()
+
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
@@ -61,7 +64,7 @@ func setupBrowserSessionRedis(t *testing.T, svc *browsersession.BrowserSessionSe
 	return client
 }
 
-func setRedisLiveSession(t *testing.T, client *redis.Client, state map[string]interface{}, ttl time.Duration) {
+func setRedisLiveSession(t *testing.T, client *redis.Client, state map[string]any, ttl time.Duration) {
 	t.Helper()
 
 	sessionID, ok := state["session_id"].(string)
@@ -88,7 +91,7 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, streamURL.Query().Get("token"))
 	assert.True(t, resp.StreamTokenExpiresAt.After(time.Now()))
-	assert.True(t, !resp.StreamTokenExpiresAt.After(resp.ExpiresAt))
+	assert.False(t, resp.StreamTokenExpiresAt.After(resp.ExpiresAt))
 	assert.WithinDuration(t, time.Now().Add(5*time.Minute), resp.StreamTokenExpiresAt, 2*time.Second)
 	streamToken := streamTokenFromPath(t, streamURL.Path)
 	require.NotEmpty(t, streamToken)
@@ -100,19 +103,19 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	assert.True(t, strings.HasPrefix(streamEndpoint, "http://127.0.0.1:"))
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, "bad-token", false)
-	assert.ErrorIs(t, err, browsersession.ErrInvalidStreamToken)
+	require.ErrorIs(t, err, browsersession.ErrInvalidStreamToken)
 
 	// Verify DB state
 	var session models.RemoteBrowserSession
 	err = db.First(&session, resp.SessionID).Error
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, models.BrowserSessionStatusReady, session.Status)
 	assert.NotEmpty(t, session.WorkerSessionRef)
 	assert.WithinDuration(t, resp.StreamTokenExpiresAt, session.ConnectTokenExpiresAt, time.Second)
 
 	// 2. Get Session
 	getStatus, err := svc.GetSession(context.Background(), userID, resp.SessionID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, models.BrowserSessionStatusReady, getStatus.Status)
 	assert.Empty(t, getStatus.StreamURL)
 
@@ -120,40 +123,34 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	getStatus, err = svc.GetSession(context.Background(), userID, resp.SessionID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, models.BrowserSessionStatusReady, getStatus.Status)
 	assert.NotEmpty(t, getStatus.StreamURL)
 
 	// 3. Complete Session (Simulate successful login)
 	completeResp, err := svc.CompleteSession(context.Background(), userID, resp.SessionID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, models.BrowserSessionStatusConnected, completeResp.Status)
 	assert.Equal(t, "Mock User", completeResp.Account.Username)
 
 	// Verify PlatformAccount updated
 	var account models.PlatformAccount
 	err = db.Where("user_id = ? AND platform = ?", userID, platform).First(&account).Error
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, models.PlatformAccountStatusConnected, account.Status)
 	assert.Equal(t, "Mock User", account.Username)
 
-	// 4. Try starting another session (should fail)
-	_, err = svc.StartSession(context.Background(), userID, platform)
-	// Actually, previous session is now COMPLETED, so we CAN start a new one
-	// if we wanted to reconnect. The design doc says "one ACTIVE session".
-	// Let's test active session conflict.
-
-	// Create another user for conflict test
+	// 4. Test active session conflict with a different user.
 	user2ID := uuid.New()
 	resp2, err := svc.StartSession(context.Background(), user2ID, platform)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, err = svc.StartSession(context.Background(), user2ID, platform)
-	assert.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
+	require.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
 
 	// 5. Cancel the second session
 	err = svc.CancelSession(context.Background(), user2ID, resp2.SessionID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestBrowserSessionService_GetStreamEndpointRejectsExpiredDatabaseToken(t *testing.T) {
@@ -173,19 +170,19 @@ func TestBrowserSessionService_GetStreamEndpointRejectsExpiredDatabaseToken(t *t
 		Update("connect_token_expires_at", time.Now().Add(-time.Second)).Error)
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
-	assert.ErrorIs(t, err, browsersession.ErrStreamTokenGone)
+	require.ErrorIs(t, err, browsersession.ErrStreamTokenGone)
 
 	status, err := svc.GetSession(context.Background(), userID, resp.SessionID)
 	require.NoError(t, err)
 	require.NotEmpty(t, status.StreamURL)
 	assert.True(t, status.StreamTokenExpiresAt.After(time.Now()))
-	assert.True(t, !status.StreamTokenExpiresAt.After(status.ExpiresAt))
+	assert.False(t, status.StreamTokenExpiresAt.After(status.ExpiresAt))
 
 	rotatedURL, err := url.Parse(status.StreamURL)
 	require.NoError(t, err)
 	rotatedToken := streamTokenFromPath(t, rotatedURL.Path)
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, rotatedToken, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestBrowserSessionService_GetSessionPreservesTerminalAuditStatusAfterExpiry(t *testing.T) {
@@ -235,7 +232,7 @@ func TestBrowserSessionService_GetSessionReturnsGoneForExpiredRedisSession(t *te
 
 	_, err := svc.GetSession(context.Background(), userID, session.ID)
 
-	assert.ErrorIs(t, err, browsersession.ErrSessionGone)
+	require.ErrorIs(t, err, browsersession.ErrSessionGone)
 	assert.Equal(t, int64(0), client.Exists(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Val())
 
 	var savedSession models.RemoteBrowserSession
@@ -261,7 +258,7 @@ func TestBrowserSessionService_RedisStreamTokenIsConsumedOnce(t *testing.T) {
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, true)
 	require.NoError(t, err)
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
-	assert.ErrorIs(t, err, browsersession.ErrStreamTokenGone)
+	require.ErrorIs(t, err, browsersession.ErrStreamTokenGone)
 
 	status, err := svc.GetSession(context.Background(), userID, resp.SessionID)
 	require.NoError(t, err)
@@ -273,7 +270,7 @@ func TestBrowserSessionService_RedisStreamTokenIsConsumedOnce(t *testing.T) {
 	assert.NotEqual(t, streamToken, rotatedToken)
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, rotatedToken, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestBrowserSessionService_CancelSessionDeletesAllRedisStreamTokens(t *testing.T) {
@@ -299,7 +296,7 @@ func TestBrowserSessionService_CancelSessionDeletesAllRedisStreamTokens(t *testi
 func TestBrowserSessionService_UnsupportedPlatform(t *testing.T) {
 	_, svc, _ := setupBrowserSessionTest(t)
 	_, err := svc.StartSession(context.Background(), uuid.New(), "invalid-platform")
-	assert.ErrorIs(t, err, browsersession.ErrPlatformNotSupported)
+	require.ErrorIs(t, err, browsersession.ErrPlatformNotSupported)
 }
 
 func TestBrowserSessionService_StartSessionIgnoresExpiredActiveRows(t *testing.T) {
@@ -372,7 +369,7 @@ func TestBrowserSessionService_StartSessionPreservesInFlightPendingRows(t *testi
 
 	_, err := svc.StartSession(context.Background(), userID, platform)
 
-	assert.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
+	require.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
 	var savedPendingSession models.RemoteBrowserSession
 	require.NoError(t, db.First(&savedPendingSession, pendingSession.ID).Error)
 	assert.Equal(t, models.BrowserSessionStatusPending, savedPendingSession.Status)
@@ -407,7 +404,7 @@ func TestBrowserSessionService_StartSessionMapsConcurrentDatabaseGuardToConflict
 	_, err := svc.StartSession(context.Background(), userID, platform)
 
 	require.True(t, insertedConcurrentSession)
-	assert.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
+	require.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
 }
 
 func TestBrowserSessionService_StartSessionExpiresOldPendingRows(t *testing.T) {
@@ -455,7 +452,7 @@ func TestBrowserSessionService_StartSessionRecoversStaleRedisActiveLock(t *testi
 	}
 	require.NoError(t, db.Create(&staleSession).Error)
 	require.NoError(t, client.Set(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform, staleSession.ID.String(), time.Hour).Err())
-	setRedisLiveSession(t, client, map[string]interface{}{
+	setRedisLiveSession(t, client, map[string]any{
 		"session_id":          staleSession.ID.String(),
 		"user_id":             userID.String(),
 		"platform":            platform,
@@ -496,7 +493,7 @@ func TestBrowserSessionService_StartSessionPreservesReachableRedisActiveLock(t *
 
 	_, err = svc.StartSession(context.Background(), userID, platform)
 
-	assert.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
+	require.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
 	activeSessionID, err := client.Get(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Result()
 	require.NoError(t, err)
 	assert.Equal(t, resp.SessionID.String(), activeSessionID)
@@ -517,7 +514,7 @@ func TestBrowserSessionService_StartSessionEnforcesUserConcurrencyQuota(t *testi
 	require.NoError(t, err)
 
 	_, err = svc.StartSessionForTenant(context.Background(), userID, tenantID, "zhihu")
-	assert.ErrorIs(t, err, browsersession.ErrUserQuotaExceeded)
+	require.ErrorIs(t, err, browsersession.ErrUserQuotaExceeded)
 	assert.Equal(t, int64(1), client.ZCard(context.Background(), "mpp:browser:quota:user:"+userID.String()).Val())
 
 	require.NoError(t, svc.CancelSession(context.Background(), userID, resp.SessionID))
@@ -544,7 +541,7 @@ func TestBrowserSessionService_StartSessionEnforcesTenantConcurrencyQuota(t *tes
 	require.NoError(t, err)
 
 	_, err = svc.StartSessionForTenant(context.Background(), otherUserID, tenantID, "zhihu")
-	assert.ErrorIs(t, err, browsersession.ErrTenantQuotaExceeded)
+	require.ErrorIs(t, err, browsersession.ErrTenantQuotaExceeded)
 	assert.Equal(t, int64(1), client.ZCard(context.Background(), "mpp:browser:quota:tenant:"+tenantID).Val())
 
 	require.NoError(t, svc.CancelSession(context.Background(), userID, resp.SessionID))
@@ -574,7 +571,7 @@ func TestBrowserSessionService_GetSessionKeepsLiveRedisStateOnTransientWorkerRea
 	require.NoError(t, db.Create(&session).Error)
 	require.NoError(t, client.Set(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform, session.ID.String(), time.Hour).Err())
 	require.NoError(t, client.Set(context.Background(), "mpp:browser:worker-heartbeat:"+workerSessionRef, session.ID.String(), time.Hour).Err())
-	setRedisLiveSession(t, client, map[string]interface{}{
+	setRedisLiveSession(t, client, map[string]any{
 		"session_id":          session.ID.String(),
 		"user_id":             userID.String(),
 		"platform":            platform,

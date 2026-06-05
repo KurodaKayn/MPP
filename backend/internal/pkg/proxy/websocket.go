@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -9,8 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kurodakayn/mpp-backend/internal/pkg/envutil"
 	"github.com/labstack/echo/v4"
+
+	"github.com/kurodakayn/mpp-backend/internal/pkg/envutil"
 )
 
 const (
@@ -22,8 +24,8 @@ const (
 	defaultWebSocketMaxLifetime   = 16 * time.Minute
 )
 
-// ProxyWebSocket hijacks the echo context connection and pipes it to the target URL
-func ProxyWebSocket(c echo.Context, target *url.URL) error {
+// WebSocket hijacks the echo context connection and pipes it to the target URL
+func WebSocket(c echo.Context, target *url.URL) error {
 	req := c.Request()
 	res := c.Response()
 	config := webSocketProxyConfigFromEnv()
@@ -43,7 +45,7 @@ func ProxyWebSocket(c echo.Context, target *url.URL) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, "failed to connect to stream target")
 	}
-	defer targetConn.Close()
+	defer func() { _ = targetConn.Close() }()
 
 	// 2. Perform handshake with target
 	// We need to send the original request but update headers
@@ -74,7 +76,7 @@ func ProxyWebSocket(c echo.Context, target *url.URL) error {
 	if err != nil {
 		return err
 	}
-	defer clientConn.Close()
+	defer func() { _ = clientConn.Close() }()
 
 	if config.MaxConnectionTime > 0 {
 		_ = targetConn.SetDeadline(time.Now().Add(config.MaxConnectionTime))
@@ -98,7 +100,7 @@ func ProxyWebSocket(c echo.Context, target *url.URL) error {
 	case <-req.Context().Done():
 		return req.Context().Err()
 	case err := <-errChan:
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			log.Printf("WebSocket proxy error: %v", err)
 		}
 		return nil
@@ -144,7 +146,7 @@ func TransparentProxy(target *url.URL) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			if strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket" {
-				return ProxyWebSocket(c, target)
+				return WebSocket(c, target)
 			}
 			return next(c)
 		}

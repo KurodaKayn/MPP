@@ -3,11 +3,12 @@ package prepublish
 import (
 	"context"
 
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services/compiler"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
-	"gorm.io/gorm"
 )
 
 var ErrForbidden = publishsvc.ErrForbidden

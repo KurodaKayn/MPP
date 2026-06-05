@@ -3,9 +3,10 @@ package extension
 import (
 	"errors"
 
+	"gorm.io/gorm"
+
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
-	"gorm.io/gorm"
 )
 
 var ErrForbidden = publishsvc.ErrForbidden

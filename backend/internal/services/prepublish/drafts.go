@@ -3,13 +3,15 @@ package prepublish
 import (
 	"encoding/json"
 	"errors"
+
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
-	"gorm.io/datatypes"
-	"gorm.io/gorm"
 )
 
 func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, req dto.SyncPrepublishRequest) (*dto.ProjectPublicationsResponse, error) {
@@ -110,7 +112,7 @@ func (s *Service) markPrepublishSyncing(projectID uuid.UUID, platforms []string)
 				models.PublicationStatusQueued,
 				models.PublicationStatusPublishing,
 			}).
-			Updates(map[string]interface{}{
+			Updates(map[string]any{
 				"error_message": "",
 				"status":        models.PublicationStatusSyncing,
 			}).Error; err != nil {
@@ -160,7 +162,7 @@ func (s *Service) ensurePrepublishPublications(project *models.Project, platform
 			}
 
 			if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
-				if err := tx.Model(&publication).Updates(map[string]interface{}{
+				if err := tx.Model(&publication).Updates(map[string]any{
 					"enabled": true,
 					"status":  models.PublicationStatusDraft,
 				}).Error; err != nil {
@@ -185,7 +187,7 @@ func (s *Service) applyCompiledPrepublishDrafts(projectID uuid.UUID, platforms [
 		for _, platform := range platforms {
 			adaptedContent, ok := drafts[platform]
 			if !ok {
-				if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]interface{}{
+				if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]any{
 					"error_message": "content pipeline did not return a compiled draft",
 					"status":        models.PublicationStatusFailed,
 				}); err != nil {
@@ -194,7 +196,7 @@ func (s *Service) applyCompiledPrepublishDrafts(projectID uuid.UUID, platforms [
 				continue
 			}
 
-			if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]interface{}{
+			if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]any{
 				"adapted_content": datatypes.JSON(adaptedContent),
 				"enabled":         true,
 				"error_message":   "",
@@ -218,7 +220,7 @@ func (s *Service) markPrepublishCompileFailure(projectID uuid.UUID, platforms []
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		for _, platform := range platforms {
-			if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]interface{}{
+			if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]any{
 				"error_message": publishsvc.SanitizeUserFacingErrorMessage(err.Error()),
 				"status":        models.PublicationStatusFailed,
 			}); err != nil {
@@ -229,7 +231,7 @@ func (s *Service) markPrepublishCompileFailure(projectID uuid.UUID, platforms []
 	})
 }
 
-func updateSyncingPrepublishPublication(tx *gorm.DB, projectID uuid.UUID, platform string, updates map[string]interface{}) error {
+func updateSyncingPrepublishPublication(tx *gorm.DB, projectID uuid.UUID, platform string, updates map[string]any) error {
 	result := tx.Model(&models.ProjectPlatformPublication{}).
 		Where("project_id = ? AND platform = ? AND status = ?", projectID, platform, models.PublicationStatusSyncing).
 		Updates(updates)
@@ -273,7 +275,7 @@ func (s *Service) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.
 		return nil, err
 	}
 
-	if err := s.db.Model(&publication).Updates(map[string]interface{}{
+	if err := s.db.Model(&publication).Updates(map[string]any{
 		"adapted_content": datatypes.JSON(adaptedContent),
 		"enabled":         true,
 		"error_message":   "",

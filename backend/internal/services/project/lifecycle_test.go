@@ -3,15 +3,17 @@ package project_test
 import (
 	"context"
 	"encoding/json"
+	"testing"
+	"time"
+
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 func TestListProjects(t *testing.T) {
@@ -34,15 +36,15 @@ func TestListProjects(t *testing.T) {
 
 	// Test global admin pagination
 	res, err := s.ListProjects(1, 10, "", "", "", nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, int64(3), res.Total)
 
 	// Test Personal scope (u1)
 	resScoped, errScoped := s.ListProjects(1, 10, "", "", "", &u1.ID)
-	assert.NoError(t, errScoped)
+	require.NoError(t, errScoped)
 	assert.Equal(t, int64(2), resScoped.Total)
 	items := resScoped.Items.([]dto.ProjectListItem)
-	assert.Equal(t, 2, len(items))
+	assert.Len(t, items, 2)
 	// Ensure p3 is not in list
 	for _, item := range items {
 		assert.NotEqual(t, p3.ID, item.ID)
@@ -107,14 +109,14 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 		Platforms:     []string{"wechat", "wechat", "douyin"},
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "WeChat title", resp.Title)
 	assert.Equal(t, models.ProjectStatusReady, resp.Status)
 	assert.Equal(t, models.ProjectRoleOwner, resp.Role)
 	assert.Len(t, resp.Publications, 2)
 
 	var project models.Project
-	assert.NoError(t, db.First(&project, "id = ?", resp.ID).Error)
+	require.NoError(t, db.First(&project, "id = ?", resp.ID).Error)
 	assert.Equal(t, user.ID, project.UserID)
 	assert.Equal(t, "<p>Hello WeChat</p>", project.SourceContent)
 	assert.NotNil(t, project.WorkspaceID)
@@ -124,34 +126,34 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 	assert.Equal(t, models.PersonalWorkspaceID(user.ID), *resp.WorkspaceID)
 
 	var personalWorkspace models.Workspace
-	assert.NoError(t, db.First(&personalWorkspace, "id = ?", models.PersonalWorkspaceID(user.ID)).Error)
+	require.NoError(t, db.First(&personalWorkspace, "id = ?", models.PersonalWorkspaceID(user.ID)).Error)
 	assert.Equal(t, user.ID, personalWorkspace.OwnerUserID)
 	assert.Equal(t, models.PersonalWorkspaceName, personalWorkspace.Name)
 
 	var ownerMembership models.WorkspaceMember
-	assert.NoError(t, db.First(&ownerMembership, "workspace_id = ? AND user_id = ?", models.PersonalWorkspaceID(user.ID), user.ID).Error)
+	require.NoError(t, db.First(&ownerMembership, "workspace_id = ? AND user_id = ?", models.PersonalWorkspaceID(user.ID), user.ID).Error)
 	assert.Equal(t, models.WorkspaceRoleOwner, ownerMembership.Role)
 
 	workspaceProjects, err := s.ListWorkspaceProjects(models.PersonalWorkspaceID(user.ID), user.ID, 1, 10, "", "")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, int64(1), workspaceProjects.Total)
 
 	var wechatPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", resp.ID, "wechat").Error)
+	require.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", resp.ID, "wechat").Error)
 	assert.Equal(t, models.PublicationStatusPending, wechatPub.Status)
 
 	var config map[string]string
-	assert.NoError(t, json.Unmarshal(wechatPub.Config, &config))
+	require.NoError(t, json.Unmarshal(wechatPub.Config, &config))
 	assert.Equal(t, "WeChat title", config["title"])
 	assert.Equal(t, "Hello WeChat", config["digest"])
 	assert.Equal(t, "data:image/png;base64,aGVsbG8=", config["cover_image_url"])
 
 	var adapted map[string]string
-	assert.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &adapted))
+	require.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &adapted))
 	assert.Empty(t, adapted)
 
 	var douyinPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", resp.ID, "douyin").Error)
+	require.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", resp.ID, "douyin").Error)
 	assert.Equal(t, models.PublicationStatusPending, douyinPub.Status)
 }
 
@@ -166,14 +168,14 @@ func TestCreateProjectRejectsInvalidInput(t *testing.T) {
 		Title:         "Missing platform",
 		SourceContent: "content",
 	})
-	assert.ErrorIs(t, err, services.ErrInvalidProject)
+	require.ErrorIs(t, err, services.ErrInvalidProject)
 
 	_, err = s.CreateProject(user.ID, dto.CreateProjectRequest{
 		Title:         "Unknown platform",
 		SourceContent: "content",
 		Platforms:     []string{"threads"},
 	})
-	assert.ErrorIs(t, err, services.ErrInvalidProject)
+	require.ErrorIs(t, err, services.ErrInvalidProject)
 }
 
 func TestGetProjectReturnsSourceContentForOwner(t *testing.T) {
@@ -208,20 +210,20 @@ func TestGetProjectReturnsSourceContentForOwner(t *testing.T) {
 	})
 
 	resp, err := s.GetProject(project.ID, &owner.ID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, project.ID, resp.ID)
 	assert.Equal(t, models.ProjectRoleOwner, resp.Role)
 	assert.Equal(t, "<p>Editable body</p>", resp.SourceContent)
 	assert.Len(t, resp.Publications, 1)
 
 	collaboratorResp, err := s.GetProject(project.ID, &editor.ID)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, project.ID, collaboratorResp.ID)
 	assert.Equal(t, models.ProjectRoleEditor, collaboratorResp.Role)
 	assert.Equal(t, "<p>Editable body</p>", collaboratorResp.SourceContent)
 
 	_, err = s.GetProject(project.ID, &stranger.ID)
-	assert.ErrorIs(t, err, services.ErrForbidden)
+	require.ErrorIs(t, err, services.ErrForbidden)
 }
 
 func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
@@ -240,6 +242,7 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 		Status:        models.ProjectStatusPublished,
 	}
 	db.Create(&project)
+	publishedAt := time.Now()
 	db.Create(&models.ProjectPlatformPublication{
 		ProjectID:    project.ID,
 		Platform:     "wechat",
@@ -247,7 +250,7 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 		Status:       models.PublicationStatusPublished,
 		PublishURL:   "https://example.com/old",
 		RemoteID:     "old-remote",
-		PublishedAt:  testsupport.PtrTime(time.Now()),
+		PublishedAt:  &publishedAt,
 		RetryCount:   2,
 		ErrorMessage: "old error",
 	})
@@ -266,24 +269,24 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 		Platforms:     []string{"zhihu", "douyin"},
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "New title", resp.Title)
 	assert.Equal(t, "<p>New body</p>", resp.SourceContent)
 	assert.Len(t, resp.Publications, 3)
 
 	var saved models.Project
-	assert.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
+	require.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
 	assert.Equal(t, "New title", saved.Title)
 	assert.Equal(t, "<p>New body</p>", saved.SourceContent)
 	assert.Equal(t, models.ProjectStatusReady, saved.Status)
 
 	var wechatPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	require.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
 	assert.False(t, wechatPub.Enabled)
 	assert.Equal(t, models.PublicationStatusDisabled, wechatPub.Status)
 
 	var zhihuPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	require.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
 	assert.True(t, zhihuPub.Enabled)
 	assert.Equal(t, models.PublicationStatusPending, zhihuPub.Status)
 	assert.Empty(t, zhihuPub.ErrorMessage)
@@ -291,7 +294,7 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 	assert.Nil(t, zhihuPub.PublishedAt)
 
 	var douyinPub models.ProjectPlatformPublication
-	assert.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", project.ID, "douyin").Error)
+	require.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", project.ID, "douyin").Error)
 	assert.True(t, douyinPub.Enabled)
 	assert.Equal(t, models.PublicationStatusPending, douyinPub.Status)
 
@@ -300,7 +303,7 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 		SourceContent: "content",
 		Platforms:     []string{"wechat"},
 	})
-	assert.ErrorIs(t, err, services.ErrForbidden)
+	require.ErrorIs(t, err, services.ErrForbidden)
 }
 
 func TestUpdateProjectSyncsLinkedCollabDocumentSnapshot(t *testing.T) {

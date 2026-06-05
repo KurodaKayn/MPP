@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/contracts/contentpipelinepb"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"gorm.io/datatypes"
+
+	"github.com/kurodakayn/mpp-backend/internal/contracts/contentpipelinepb"
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 type fakePlatformDraftCompilerClient struct {
@@ -19,7 +20,7 @@ type fakePlatformDraftCompilerClient struct {
 	err      error
 }
 
-func (f *fakePlatformDraftCompilerClient) CompileDrafts(ctx context.Context, request *contentpipelinepb.CompileDraftsRequest, opts ...grpc.CallOption) (*contentpipelinepb.CompileDraftsResponse, error) {
+func (f *fakePlatformDraftCompilerClient) CompileDrafts(_ context.Context, request *contentpipelinepb.CompileDraftsRequest, _ ...grpc.CallOption) (*contentpipelinepb.CompileDraftsResponse, error) {
 	f.request = request
 	return f.response, f.err
 }
@@ -76,7 +77,7 @@ func TestContentPipelineDraftCompilerBuildsCompileRequest(t *testing.T) {
 	require.Equal(t, "html", fakeClient.request.GetProject().GetSourceFormat())
 	require.Len(t, fakeClient.request.GetTargets(), 2)
 	require.Equal(t, "zhihu@v1", fakeClient.request.GetTargets()[0].GetProfile())
-	require.Equal(t, `{"title":"Zhihu"}`, fakeClient.request.GetTargets()[0].GetConfigJson())
+	require.JSONEq(t, `{"title":"Zhihu"}`, fakeClient.request.GetTargets()[0].GetConfigJson())
 }
 
 func TestContentPipelineDraftCompilerRejectsWrongPlatformFormat(t *testing.T) {

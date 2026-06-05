@@ -18,9 +18,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/pkg/envutil"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/kurodakayn/mpp-backend/internal/pkg/envutil"
 )
 
 const (
@@ -241,9 +242,9 @@ func (l *Limiter) acquireRedis(ctx context.Context, req AcquireRequest, limits L
 		connID,
 	).Result()
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return "", fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
-	values, ok := result.([]interface{})
+	values, ok := result.([]any)
 	if !ok || len(values) != 2 {
 		log.Printf("streamgate: unexpected redis acquire response: %#v", result)
 		return "", fmt.Errorf("%w: unexpected redis response", ErrUnavailable)
@@ -294,7 +295,7 @@ func (l *Limiter) keys(req AcquireRequest, connID string) []string {
 func SendLimitError(c echo.Context, err error) error {
 	var limitErr *LimitError
 	if errors.As(err, &limitErr) {
-		return c.JSON(http.StatusTooManyRequests, map[string]interface{}{
+		return c.JSON(http.StatusTooManyRequests, map[string]any{
 			"error": map[string]string{
 				"code":    "stream_concurrency_exceeded",
 				"message": "stream concurrency limit exceeded",
@@ -303,7 +304,7 @@ func SendLimitError(c echo.Context, err error) error {
 		})
 	}
 	if errors.Is(err, ErrUnavailable) {
-		return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
+		return c.JSON(http.StatusServiceUnavailable, map[string]any{
 			"error": map[string]string{
 				"code":    "stream_limiter_unavailable",
 				"message": "stream limiter is unavailable",
@@ -365,7 +366,7 @@ func keyPart(value string) string {
 	return result
 }
 
-func redisInt64(value interface{}) (int64, bool) {
+func redisInt64(value any) (int64, bool) {
 	switch typed := value.(type) {
 	case int64:
 		return typed, true

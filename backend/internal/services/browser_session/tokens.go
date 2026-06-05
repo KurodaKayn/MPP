@@ -12,8 +12,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 type browserStreamTokenMeta struct {
@@ -80,7 +81,7 @@ if redis.call("GET", KEYS[2]) == ARGV[1] then
 end
 return payload
 `
-		var result interface{}
+		var result any
 		result, err = s.redisClient.Eval(ctx, script, []string{tokenKey, browserSessionStreamCurrentKey(sessionID)}, tokenHash).Result()
 		if err == nil {
 			switch value := result.(type) {
@@ -181,10 +182,7 @@ func StreamTokenExpiresAt(sessionExpiresAt time.Time, issuedAt ...time.Time) tim
 	if len(issuedAt) > 0 && !issuedAt[0].IsZero() {
 		now = issuedAt[0]
 	}
-	ttl := sessionExpiresAt.Sub(now)
-	if ttl > streamTokenMaxTTL {
-		ttl = streamTokenMaxTTL
-	}
+	ttl := min(sessionExpiresAt.Sub(now), streamTokenMaxTTL)
 	if ttl <= 0 {
 		return now
 	}

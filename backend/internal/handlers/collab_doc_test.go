@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/contracts"
-	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/contracts"
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services"
 )
 
 func setupCollabDocumentHandlerTest(t *testing.T) (*gorm.DB, *CollabDocumentHandler) {

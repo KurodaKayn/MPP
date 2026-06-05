@@ -2,11 +2,13 @@ package project
 
 import (
 	"errors"
+
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/models"
-	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
 )
 
 func projectCollabDocumentRole(role string) (string, error) {
