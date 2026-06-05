@@ -4,6 +4,7 @@ import {
   renderCollabSelection,
   resolveCollabWebSocketUrl,
 } from "./collab-provider";
+import { collabStatusClassName } from "./collab-status";
 
 describe("collab provider utilities", () => {
   it("keeps absolute websocket URLs unchanged", () => {
@@ -49,5 +50,12 @@ describe("collab provider utilities", () => {
       nodeName: "span",
       style: "background-color: #2563eb30",
     });
+  });
+
+  it("maps connection statuses to shared badge classes", () => {
+    expect(collabStatusClassName("synced")).toContain("emerald");
+    expect(collabStatusClassName("connected")).toContain("blue");
+    expect(collabStatusClassName("offline")).toContain("destructive");
+    expect(collabStatusClassName("idle")).toBe("");
   });
 });

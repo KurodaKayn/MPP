@@ -2,7 +2,13 @@ import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import type { HocuspocusProvider } from "@hocuspocus/provider";
 import { useEditor, type Editor } from "@tiptap/react";
-import { useEffect, useMemo, type ChangeEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type ChangeEvent,
+} from "react";
 import { toast } from "sonner";
 import type * as Y from "yjs";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
@@ -22,6 +28,8 @@ import {
 } from "@/features/collab-editor/collab-provider";
 import type { ContentValue } from "@/lib/content/types";
 import styles from "./content-editor.module.css";
+
+const COLLAB_CONTENT_SYNC_DEBOUNCE_MS = 250;
 
 export type ContentEditorCollaborationProvider = {
   canEdit: boolean;
@@ -52,6 +60,48 @@ export function useContentTipTapEditor({
     collaborationProvider && collaborationUser && collaborationYdoc,
   );
   const canEdit = editable && (!collaboration || collaboration.canEdit);
+  const lastEmittedHtmlRef = useRef("");
+  const onContentChangeRef = useRef(onContentChange);
+  const pendingContentUpdateRef = useRef<ReturnType<
+    typeof globalThis.setTimeout
+  > | null>(null);
+
+  useEffect(() => {
+    onContentChangeRef.current = onContentChange;
+  }, [onContentChange]);
+
+  const emitContentChange = useCallback((activeEditor: Editor) => {
+    const html = activeEditor.getHTML();
+
+    if (html === lastEmittedHtmlRef.current) {
+      return;
+    }
+
+    lastEmittedHtmlRef.current = html;
+    onContentChangeRef.current(contentValueFromHtml(html));
+  }, []);
+
+  const scheduleContentChange = useCallback(
+    (activeEditor: Editor) => {
+      if (!isCollaborationReady) {
+        emitContentChange(activeEditor);
+        return;
+      }
+
+      if (pendingContentUpdateRef.current !== null) {
+        return;
+      }
+
+      pendingContentUpdateRef.current = globalThis.setTimeout(() => {
+        pendingContentUpdateRef.current = null;
+
+        if (!activeEditor.isDestroyed) {
+          emitContentChange(activeEditor);
+        }
+      }, COLLAB_CONTENT_SYNC_DEBOUNCE_MS);
+    },
+    [emitContentChange, isCollaborationReady],
+  );
 
   const extensions = useMemo(() => {
     const baseExtensions = createContentEditorExtensions({
@@ -142,7 +192,7 @@ export function useContentTipTapEditor({
       immediatelyRender: false,
       shouldRerenderOnTransaction: true,
       onUpdate: ({ editor }) => {
-        onContentChange(contentValueFromHtml(editor.getHTML()));
+        scheduleContentChange(editor);
       },
     },
     [
@@ -152,6 +202,7 @@ export function useContentTipTapEditor({
       collaborationUser?.role,
       collaborationYdoc,
       isCollaborationReady,
+      scheduleContentChange,
     ],
   );
 
@@ -164,6 +215,15 @@ export function useContentTipTapEditor({
   }, [canEdit, editor]);
 
   useEffect(() => {
+    return () => {
+      if (pendingContentUpdateRef.current !== null) {
+        globalThis.clearTimeout(pendingContentUpdateRef.current);
+        pendingContentUpdateRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (isCollaborationReady || !editor || editor.isDestroyed) {
       return;
     }
@@ -174,6 +234,7 @@ export function useContentTipTapEditor({
       return;
     }
 
+    lastEmittedHtmlRef.current = nextHtml;
     editor.commands.setContent(nextHtml, { emitUpdate: false });
   }, [content.html, editor, isCollaborationReady]);
 
