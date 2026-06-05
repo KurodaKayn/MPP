@@ -203,6 +203,13 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	if err := s.db.Model(&pub).Updates(updates).Error; err != nil {
 		return nil, err
 	}
+	if err := s.recordProjectPublishActivity(projectID, *scopeUserID, models.ProjectActivityPublishQueued, map[string]interface{}{
+		"platform":  platform,
+		"status":    status,
+		"remote_id": remoteID,
+	}); err != nil {
+		return nil, err
+	}
 
 	return response, nil
 }
@@ -295,6 +302,26 @@ func (s *Service) recordPublishEvent(event models.PublishEvent) error {
 		event.Status = models.PublicationStatusDraft
 	}
 	return s.db.Create(&event).Error
+}
+
+func (s *Service) recordProjectPublishActivity(projectID uuid.UUID, userID uuid.UUID, eventType string, metadata map[string]interface{}) error {
+	if projectID == uuid.Nil || userID == uuid.Nil || strings.TrimSpace(eventType) == "" {
+		return nil
+	}
+	payload := datatypes.JSON([]byte(`{}`))
+	if metadata != nil {
+		encoded, err := json.Marshal(metadata)
+		if err != nil {
+			return err
+		}
+		payload = datatypes.JSON(encoded)
+	}
+	return s.db.Create(&models.ProjectActivity{
+		ProjectID:   projectID,
+		ActorUserID: userID,
+		EventType:   eventType,
+		Metadata:    payload,
+	}).Error
 }
 
 func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform string, userID uuid.UUID, key string) (map[string]interface{}, bool, error) {

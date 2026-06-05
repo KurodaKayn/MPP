@@ -564,6 +564,190 @@ func sendProjectCollaboratorError(c echo.Context, err error) error {
 	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 }
 
+func (h *UserDashboardHandler) ListProjectActivities(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	resp, err := h.serviceFor(c).ListProjectActivities(projectID, userID, limit)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) ListProjectComments(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	resp, err := h.serviceFor(c).ListProjectComments(projectID, userID)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) CreateProjectComment(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	req := new(dto.CreateProjectCommentRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+	comment, err := h.serviceFor(c).CreateProjectComment(projectID, userID, *req)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, comment)
+}
+
+func (h *UserDashboardHandler) UpdateProjectComment(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	commentID, err := uuid.Parse(c.Param("commentId"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid comment UUID")
+	}
+	req := new(dto.UpdateProjectCommentRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+	comment, err := h.serviceFor(c).UpdateProjectComment(projectID, userID, commentID, *req)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusOK, comment)
+}
+
+func (h *UserDashboardHandler) ListProjectVersions(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	resp, err := h.serviceFor(c).ListProjectVersions(projectID, userID)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) RestoreProjectVersion(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	versionID, err := uuid.Parse(c.Param("versionId"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid version UUID")
+	}
+	resp, err := h.serviceFor(c).RestoreProjectVersion(projectID, userID, versionID)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) ListProjectShareLinks(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	resp, err := h.serviceFor(c).ListProjectShareLinks(projectID, userID)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) CreateProjectShareLink(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	req := new(dto.CreateProjectShareLinkRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+	link, err := h.serviceFor(c).CreateProjectShareLink(projectID, userID, *req, frontendBaseURL(c))
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, link)
+}
+
+func (h *UserDashboardHandler) RevokeProjectShareLink(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	linkID, err := uuid.Parse(c.Param("linkId"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid share link UUID")
+	}
+	if err := h.serviceFor(c).RevokeProjectShareLink(projectID, userID, linkID); err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func sendProjectExperienceError(c echo.Context, err error) error {
+	if errors.Is(err, services.ErrInvalidProject) ||
+		errors.Is(err, services.ErrInvalidProjectComment) ||
+		errors.Is(err, services.ErrInvalidProjectShareLink) ||
+		errors.Is(err, services.ErrInvalidProjectVersion) {
+		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return sendError(c, http.StatusNotFound, "not_found", "project collaboration resource not found")
+	}
+	if errors.Is(err, services.ErrForbidden) {
+		return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+	}
+	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+}
+
 func (h *UserDashboardHandler) ListWorkspaces(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
@@ -1426,6 +1610,27 @@ func extensionEventsCallbackURL(c echo.Context) string {
 		host = c.Request().Host
 	}
 	return proto + "://" + host + "/api/user/dashboard/extension/events"
+}
+
+func frontendBaseURL(c echo.Context) string {
+	if baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv(frontendBaseURLEnv)), "/"); baseURL != "" {
+		return baseURL
+	}
+
+	proto := strings.TrimSpace(c.Request().Header.Get("X-Forwarded-Proto"))
+	if proto == "" {
+		if c.Request().TLS != nil {
+			proto = "https"
+		} else {
+			proto = "http"
+		}
+	}
+
+	host := strings.TrimSpace(c.Request().Header.Get("X-Forwarded-Host"))
+	if host == "" {
+		host = c.Request().Host
+	}
+	return proto + "://" + host
 }
 
 func xOAuth2SettingsRedirectURL(status string) string {
