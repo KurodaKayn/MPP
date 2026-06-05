@@ -128,6 +128,99 @@ export type ProjectDetail = ContractSchema<"ProjectDetail">;
 export type ProjectCollaborator = ContractSchema<"ProjectCollaborator">;
 export type ProjectCollaboratorsResponse =
   ContractSchema<"ProjectCollaboratorsResponse">;
+export type ProjectActivityType =
+  | "content_saved"
+  | "comment_created"
+  | "comment_resolved"
+  | "collaborator_added"
+  | "collaborator_role_changed"
+  | "collaborator_removed"
+  | "publish_requested"
+  | "publish_queued"
+  | "share_link_created"
+  | "share_link_revoked"
+  | "version_restored";
+export type ProjectActivity = {
+  id: string;
+  project_id: string;
+  actor_user_id: string;
+  actor_username: string;
+  actor_email: string;
+  target_user_id?: string;
+  target_username?: string;
+  target_email?: string;
+  event_type: ProjectActivityType;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+export type ProjectActivitiesResponse = {
+  items: ProjectActivity[];
+};
+export type ProjectComment = {
+  id: string;
+  project_id: string;
+  author_id: string;
+  author_username: string;
+  author_email: string;
+  body: string;
+  anchor_text?: string;
+  status: "open" | "resolved";
+  metadata: Record<string, unknown>;
+  created_at: string;
+  resolved_at?: string;
+};
+export type ProjectCommentsResponse = {
+  items: ProjectComment[];
+};
+export type CreateProjectCommentInput = {
+  body: string;
+  anchor_text?: string;
+  metadata?: Record<string, unknown>;
+};
+export type UpdateProjectCommentInput = {
+  status: "resolved";
+};
+export type ProjectVersion = {
+  id: string;
+  project_id: string;
+  created_by: string;
+  creator_username: string;
+  creator_email: string;
+  version_number: number;
+  title: string;
+  source: string;
+  collab_document_id?: string;
+  collab_seq: number;
+  created_at: string;
+};
+export type ProjectVersionsResponse = {
+  items: ProjectVersion[];
+};
+export type RestoreProjectVersionResponse = {
+  project: ProjectDetail;
+  version: ProjectVersion;
+};
+export type ProjectShareLink = {
+  id: string;
+  project_id: string;
+  created_by: string;
+  role: ProjectCollaboratorRole;
+  status: "active" | "revoked";
+  expires_at?: string;
+  created_at: string;
+  revoked_at?: string;
+};
+export type ProjectShareLinkWithToken = ProjectShareLink & {
+  token: string;
+  url: string;
+};
+export type ProjectShareLinksResponse = {
+  items: ProjectShareLink[];
+};
+export type CreateProjectShareLinkInput = {
+  role: ProjectCollaboratorRole;
+  expires_at?: string;
+};
 export type PaginatedProjects = ContractSchema<"PaginationProjects">;
 export type ListWorkspaceProjectsOptions = {
   page?: number;

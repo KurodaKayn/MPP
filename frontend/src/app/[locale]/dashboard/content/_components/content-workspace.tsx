@@ -16,6 +16,7 @@ import { ContentPageHeader } from "./content-page-header";
 import { ContentPrepublishPanel } from "./content-prepublish-panel";
 import { ContentPublishBar } from "./content-publish-bar";
 import { PlatformPreview } from "./platform-preview";
+import { ProjectCollaborationPanel } from "./project-collaboration-panel";
 import { RemoteBrowserSessionModal } from "../../auth/_components/remote-browser-session-modal";
 import { useContentPageController } from "../_hooks/use-content-page-controller";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
@@ -109,7 +110,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
       ) : null}
 
       {contentView === "editor" ? (
-        <div>
+        <div className="space-y-4">
           <ContentEditor
             canEdit={editor.canEdit}
             collaboration={projectId ? projectCollaboration : undefined}
@@ -124,6 +125,14 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
               />
             }
           />
+          {projectId ? (
+            <ProjectCollaborationPanel
+              canEdit={editor.canEdit}
+              onVersionRestore={editor.restoreVersionContent}
+              projectId={projectId}
+              projectRole={header.projectRole}
+            />
+          ) : null}
         </div>
       ) : (
         <div>
