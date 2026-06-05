@@ -3,6 +3,7 @@ import type { ContentValue } from "@/lib/content/types";
 import type {
   CreateProjectInput,
   ProjectListItem,
+  PublishProjectOptions,
   PublishResult,
 } from "@/lib/dashboard/api";
 import { waitForProjectPublications } from "@/lib/dashboard/api";
@@ -20,6 +21,7 @@ type PublishContentDependencies = {
   publishProject: (
     projectId: string,
     platform: PublishPlatform,
+    options?: Pick<PublishProjectOptions, "idempotencyKey">,
   ) => Promise<PublishResult>;
   waitForProjectPublications?: typeof waitForProjectPublications;
 };
@@ -35,6 +37,21 @@ export type PublishContentResult = {
   succeeded: PublishPlatform[];
 };
 
+export function createPublishAttemptKey(
+  projectId: string,
+  platforms: PublishPlatform[],
+) {
+  const attemptId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`;
+  return `${projectId}:${platforms.join(",")}:${attemptId}`;
+}
+
+export function createPlatformPublishIdempotencyKey(
+  attemptKey: string,
+  platform: PublishPlatform,
+) {
+  return `${attemptKey}:${platform}`;
+}
+
 export async function publishContentToPlatforms(
   input: PublishContentInput,
   dependencies: PublishContentDependencies,
@@ -49,10 +66,19 @@ export async function publishContentToPlatforms(
     summary: input.content.text,
     title: input.title,
   });
+  const publishAttemptKey = createPublishAttemptKey(
+    project.id,
+    input.platforms,
+  );
 
   const results = await Promise.allSettled(
     input.platforms.map(async (platform) => {
-      const result = await dependencies.publishProject(project.id, platform);
+      const result = await dependencies.publishProject(project.id, platform, {
+        idempotencyKey: createPlatformPublishIdempotencyKey(
+          publishAttemptKey,
+          platform,
+        ),
+      });
       if (result.status === "failed" || result.status === "error") {
         throw new Error(result.error_message || `${platform} publish failed`);
       }

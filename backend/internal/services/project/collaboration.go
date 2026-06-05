@@ -1,0 +1,83 @@
+package project
+
+import (
+	"errors"
+	"github.com/google/uuid"
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+func projectCollabDocumentRole(role string) (string, error) {
+	switch role {
+	case models.ProjectRoleOwner, models.ProjectRoleEditor:
+		return models.CollabDocumentRoleEditor, nil
+	case models.ProjectRoleViewer:
+		return models.CollabDocumentRoleViewer, nil
+	default:
+		return "", ErrForbidden
+	}
+}
+
+func (s *Service) CreateProjectCollabSession(projectID uuid.UUID, userID uuid.UUID) (*collabdoc.Session, error) {
+	if projectID == uuid.Nil || userID == uuid.Nil {
+		return nil, ErrInvalidProject
+	}
+	if s.collabDocuments == nil {
+		return nil, ErrProjectCollabUnavailable
+	}
+
+	documentID, documentRole, err := s.ensureProjectCollabDocument(projectID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.collabDocuments.InitializeProjectDocument(s.requestContext(), documentID); err != nil {
+		return nil, errors.Join(ErrProjectCollabUnavailable, err)
+	}
+
+	return s.collabDocuments.CreateAuthorizedSession(s.requestContext(), userID, documentID, documentRole)
+}
+
+func (s *Service) ensureProjectCollabDocument(projectID uuid.UUID, userID uuid.UUID) (uuid.UUID, string, error) {
+	var documentID uuid.UUID
+	var documentRole string
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var project models.Project
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&project, "id = ?", projectID).Error; err != nil {
+			return err
+		}
+
+		role, err := ProjectAccessRoleWithDB(tx, project, userID)
+		if err != nil {
+			return err
+		}
+		documentRole, err = projectCollabDocumentRole(role)
+		if err != nil {
+			return err
+		}
+
+		if project.CollabDocumentID != nil && *project.CollabDocumentID != uuid.Nil {
+			documentID = *project.CollabDocumentID
+			return nil
+		}
+
+		document := models.CollabDocument{
+			OwnerUserID:   project.UserID,
+			Title:         project.Title,
+			Status:        models.CollabDocumentStatusActive,
+			SchemaVersion: 1,
+			CurrentSeq:    0,
+		}
+		if err := tx.Create(&document).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&project).Update("collab_document_id", document.ID).Error; err != nil {
+			return err
+		}
+		documentID = document.ID
+		return nil
+	})
+	return documentID, documentRole, err
+}

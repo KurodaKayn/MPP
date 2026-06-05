@@ -56,7 +56,7 @@ MPP 当前已经具备多服务雏形：
 | 12 | WebSocket/SSE 长连接治理 | 处理 AI stream 和远程浏览器 stream | 网关 timeout、连接数限制、stream token、断线恢复 | 4 | 3 | P1 | 已完成 | AI stream 和远程浏览器长连接已接入连接数限制；远程浏览器 stream 统一校验 token，HTTP gateway timeout 返回 504，token 有效期内支持断线重连 |
 | 13 | 数据库索引、分页与慢查询治理 | 避免列表和 dashboard 查询拖垮数据库 | projects、publications、sessions、accounts 建组合索引 | 5 | 2 | P1 | 完成 | 已有组合索引和列表分页；backend 已接入 GORM 查询指标、结构化慢查询日志、Grafana DB 面板、dashboard 查询计划审计脚本和持续治理文档 |
 | 14 | PostgreSQL 连接池 | 多副本后避免 DB 连接耗尽 | 引入 PgBouncer 或应用层连接池约束 | 4 | 3 | P2 | 完成 | 已接入应用层连接池约束；PgBouncer 可在更大副本规模后再评估 |
-| 15 | 对象存储与签名 URL | 图片和媒体不压在应用容器与数据库上 | S3/R2/OSS 存储媒体，backend 生成 signed URL | 5 | 3 | P2 | 未开始 | 平台媒体上传增长后很重要 |
+| 15 | 对象存储与签名 URL | 图片和媒体不压在应用容器与数据库上 | S3/R2/OSS 存储媒体，backend 生成 signed URL | 5 | 3 | P2 | 进行中 | 平台媒体上传增长后很重要 |
 | 16 | CDN 与静态资源缓存 | 降低前端资源和图片访问压力 | Next 静态资源、媒体文件走 CDN | 4 | 2 | P2 | 未开始 | SaaS 上线后逐步做 |
 | 17 | 多租户配额与计费限额 | SaaS 商业化与资源隔离 | tenant plan、AI 次数、发布次数、浏览器时长限制 | 5 | 4 | P2 | 进行中 | 已有 tenant 维度限流桶，尚无 tenant/plan/quota/billing usage 数据模型 |
 | 18 | 读模型与审计事件 | 支撑 dashboard 快速查询和操作追踪 | publish_event、browser_session_event、account_event | 4 | 3 | P2 | 进行中 | 已有 `remote_browser_sessions` 持久状态/审计行，尚缺 publish/browser/account event 表和 dashboard 读模型 |
