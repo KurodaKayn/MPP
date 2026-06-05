@@ -2,7 +2,10 @@ import { fetchDashboard, fetchDashboardNoContent } from "./client";
 import type {
   AddProjectCollaboratorInput,
   CollabDocumentSession,
+  CompleteMediaUploadResult,
   CreateProjectInput,
+  CreateMediaUploadInput,
+  CreateMediaUploadResult,
   DashboardStats,
   GetProjectPublicationsOptions,
   PaginatedProjects,
@@ -13,6 +16,7 @@ import type {
   ProjectPublications,
   PublishProjectOptions,
   PublishResult,
+  ResolveMediaAssetsResult,
   SaveProjectContentInput,
   SaveProjectPlatformsInput,
   SyncPrepublishInput,
@@ -86,6 +90,40 @@ export function saveDashboardProjectPlatforms(
     {
       body: JSON.stringify(input),
       method: "PATCH",
+    },
+  );
+}
+
+export function createProjectMediaUpload(
+  projectId: string,
+  input: CreateMediaUploadInput,
+) {
+  return fetchDashboard<CreateMediaUploadResult>(
+    `/api/user/dashboard/projects/${projectId}/media/uploads`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
+}
+
+export function completeMediaUpload(assetId: string) {
+  return fetchDashboard<CompleteMediaUploadResult>(
+    `/api/user/dashboard/media/${assetId}/complete`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function resolveMediaAssets(assetIds: string[]) {
+  return fetchDashboard<ResolveMediaAssetsResult>(
+    "/api/user/dashboard/media/resolve",
+    {
+      body: JSON.stringify({
+        asset_ids: assetIds,
+      }),
+      method: "POST",
     },
   );
 }

@@ -13,6 +13,30 @@ type ContentEditorExtensionOptions = {
   placeholder?: string;
 };
 
+const MppImageExtension = ImageExtension.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      mppMediaId: {
+        default: null,
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute("data-mpp-media-id"),
+        renderHTML: (attributes: Record<string, unknown>) => {
+          const mediaId = attributes.mppMediaId;
+
+          if (typeof mediaId !== "string" || !mediaId.trim()) {
+            return {};
+          }
+
+          return {
+            "data-mpp-media-id": mediaId,
+          };
+        },
+      },
+    };
+  },
+});
+
 export function createContentEditorExtensions({
   emptyEditorClassName,
   enableUndoRedo = true,
@@ -39,7 +63,7 @@ export function createContentEditorExtensions({
         target: "_blank",
       },
     }),
-    ImageExtension.configure({
+    MppImageExtension.configure({
       allowBase64: true,
       inline: false,
       HTMLAttributes: {
