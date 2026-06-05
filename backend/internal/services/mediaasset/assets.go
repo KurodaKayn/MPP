@@ -1,4 +1,4 @@
-package dashboard
+package mediaasset
 
 import (
 	"errors"
@@ -32,7 +32,7 @@ var allowedMediaAssetUsages = map[string]struct{}{
 	models.MediaAssetUsageEditorImage: {},
 }
 
-func (s *DashboardService) CreateProjectMediaUpload(projectID uuid.UUID, userID uuid.UUID, req dto.CreateMediaUploadRequest) (*dto.CreateMediaUploadResponse, error) {
+func (s *Service) CreateProjectMediaUpload(projectID uuid.UUID, userID uuid.UUID, req dto.CreateMediaUploadRequest) (*dto.CreateMediaUploadResponse, error) {
 	if err := s.ensureMediaStorage(); err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (s *DashboardService) CreateProjectMediaUpload(projectID uuid.UUID, userID 
 	if err := s.db.First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
 	}
-	role, err := s.Project.Service.ProjectAccessRole(project, userID)
+	role, err := s.projects.ProjectAccessRole(project, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (s *DashboardService) CreateProjectMediaUpload(projectID uuid.UUID, userID 
 		UserID:           userID,
 		WorkspaceID:      &workspaceID,
 		ProjectID:        &project.ID,
-		Bucket:           s.objectStorageConfig.Bucket,
+		Bucket:           s.storageConfig.Bucket,
 		ObjectKey:        mediaAssetObjectKey(workspaceID, project.ID, uuid.Nil, filename),
 		OriginalFilename: filename,
 		MimeType:         mimeType,
@@ -78,7 +78,7 @@ func (s *DashboardService) CreateProjectMediaUpload(projectID uuid.UUID, userID 
 		Bucket:      asset.Bucket,
 		Key:         asset.ObjectKey,
 		ContentType: asset.MimeType,
-		Expires:     s.objectStorageConfig.UploadURLTTL,
+		Expires:     s.storageConfig.UploadURLTTL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("presign media upload: %w", err)
@@ -93,7 +93,7 @@ func (s *DashboardService) CreateProjectMediaUpload(projectID uuid.UUID, userID 
 	}, nil
 }
 
-func (s *DashboardService) CompleteMediaUpload(assetID uuid.UUID, userID uuid.UUID) (*dto.CompleteMediaUploadResponse, error) {
+func (s *Service) CompleteMediaUpload(assetID uuid.UUID, userID uuid.UUID) (*dto.CompleteMediaUploadResponse, error) {
 	if err := s.ensureMediaStorage(); err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (s *DashboardService) CompleteMediaUpload(assetID uuid.UUID, userID uuid.UU
 	}, nil
 }
 
-func (s *DashboardService) ResolveMediaAssets(userID uuid.UUID, req dto.ResolveMediaAssetsRequest) (*dto.ResolveMediaAssetsResponse, error) {
+func (s *Service) ResolveMediaAssets(userID uuid.UUID, req dto.ResolveMediaAssetsRequest) (*dto.ResolveMediaAssetsResponse, error) {
 	if err := s.ensureMediaStorage(); err != nil {
 		return nil, err
 	}
@@ -155,7 +155,7 @@ func (s *DashboardService) ResolveMediaAssets(userID uuid.UUID, req dto.ResolveM
 		presigned, err := s.objectStorage.PresignGetObject(s.requestContext(), objectstorage.GetObjectInput{
 			Bucket:  asset.Bucket,
 			Key:     asset.ObjectKey,
-			Expires: s.objectStorageConfig.DownloadURLTTL,
+			Expires: s.storageConfig.DownloadURLTTL,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("presign media download: %w", err)
@@ -169,7 +169,7 @@ func (s *DashboardService) ResolveMediaAssets(userID uuid.UUID, req dto.ResolveM
 	return &dto.ResolveMediaAssetsResponse{Items: items}, nil
 }
 
-func (s *DashboardService) DeleteMediaAsset(assetID uuid.UUID, userID uuid.UUID) error {
+func (s *Service) DeleteMediaAsset(assetID uuid.UUID, userID uuid.UUID) error {
 	if err := s.ensureMediaStorage(); err != nil {
 		return err
 	}
@@ -186,11 +186,11 @@ func (s *DashboardService) DeleteMediaAsset(assetID uuid.UUID, userID uuid.UUID)
 	return s.db.Delete(asset).Error
 }
 
-func (s *DashboardService) ensureMediaStorage() error {
-	if s.objectStorage == nil || !s.objectStorageConfig.Enabled || strings.TrimSpace(s.objectStorageConfig.Bucket) == "" {
+func (s *Service) ensureMediaStorage() error {
+	if s.objectStorage == nil || !s.storageConfig.Enabled || strings.TrimSpace(s.storageConfig.Bucket) == "" {
 		return ErrMediaStorageUnavailable
 	}
-	if s.objectStorageConfig.UploadURLTTL <= 0 || s.objectStorageConfig.DownloadURLTTL <= 0 {
+	if s.storageConfig.UploadURLTTL <= 0 || s.storageConfig.DownloadURLTTL <= 0 {
 		return ErrMediaStorageUnavailable
 	}
 	return nil
@@ -212,12 +212,12 @@ func validateMediaUploadRequest(filename string, mimeType string, sizeBytes int6
 	return nil
 }
 
-func (s *DashboardService) mediaAssetForEdit(assetID uuid.UUID, userID uuid.UUID) (*models.MediaAsset, error) {
+func (s *Service) mediaAssetForEdit(assetID uuid.UUID, userID uuid.UUID) (*models.MediaAsset, error) {
 	asset, project, err := s.mediaAssetWithProject(assetID)
 	if err != nil {
 		return nil, err
 	}
-	role, err := s.Project.Service.ProjectAccessRole(*project, userID)
+	role, err := s.projects.ProjectAccessRole(*project, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -227,18 +227,18 @@ func (s *DashboardService) mediaAssetForEdit(assetID uuid.UUID, userID uuid.UUID
 	return asset, nil
 }
 
-func (s *DashboardService) mediaAssetForRead(assetID uuid.UUID, userID uuid.UUID) (*models.MediaAsset, error) {
+func (s *Service) mediaAssetForRead(assetID uuid.UUID, userID uuid.UUID) (*models.MediaAsset, error) {
 	asset, project, err := s.mediaAssetWithProject(assetID)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.Project.Service.ProjectAccessRole(*project, userID); err != nil {
+	if _, err := s.projects.ProjectAccessRole(*project, userID); err != nil {
 		return nil, err
 	}
 	return asset, nil
 }
 
-func (s *DashboardService) mediaAssetWithProject(assetID uuid.UUID) (*models.MediaAsset, *models.Project, error) {
+func (s *Service) mediaAssetWithProject(assetID uuid.UUID) (*models.MediaAsset, *models.Project, error) {
 	if assetID == uuid.Nil {
 		return nil, nil, ErrInvalidMediaAsset
 	}
@@ -256,7 +256,7 @@ func (s *DashboardService) mediaAssetWithProject(assetID uuid.UUID) (*models.Med
 	return &asset, &project, nil
 }
 
-func (s *DashboardService) markMediaAssetFailed(asset *models.MediaAsset, message string) error {
+func (s *Service) markMediaAssetFailed(asset *models.MediaAsset, message string) error {
 	return s.db.Model(asset).Updates(map[string]interface{}{
 		"error_message": message,
 		"status":        models.MediaAssetStatusFailed,
