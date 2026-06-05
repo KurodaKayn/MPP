@@ -249,6 +249,56 @@ type ProjectCollaboratorsResponse struct {
 	Items []ProjectCollaborator `json:"items"`
 }
 
+type CreateWorkspaceRequest struct {
+	Name string `json:"name"`
+	Slug string `json:"slug,omitempty"`
+}
+
+type UpdateWorkspaceRequest struct {
+	Name string `json:"name"`
+	Slug string `json:"slug,omitempty"`
+}
+
+type AddWorkspaceMemberRequest struct {
+	UserID uuid.UUID `json:"user_id,omitempty"`
+	Email  string    `json:"email,omitempty"`
+	Role   string    `json:"role"`
+}
+
+type UpdateWorkspaceMemberRequest struct {
+	Role string `json:"role"`
+}
+
+type Workspace struct {
+	ID          uuid.UUID `json:"id"`
+	OwnerUserID uuid.UUID `json:"owner_user_id"`
+	Name        string    `json:"name"`
+	Slug        string    `json:"slug,omitempty"`
+	Status      string    `json:"status"`
+	Role        string    `json:"role"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type WorkspacesResponse struct {
+	Items []Workspace `json:"items"`
+}
+
+type WorkspaceMember struct {
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	Username    string     `json:"username"`
+	Email       string     `json:"email"`
+	Role        string     `json:"role"`
+	InvitedBy   *uuid.UUID `json:"invited_by,omitempty"`
+	JoinedAt    *time.Time `json:"joined_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type WorkspaceMembersResponse struct {
+	Items []WorkspaceMember `json:"items"`
+}
+
 type PublicationDetail struct {
 	ID             uuid.UUID              `json:"id"`
 	Platform       string                 `json:"platform"`

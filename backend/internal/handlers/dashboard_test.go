@@ -61,6 +61,27 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		updated_at DATETIME
 	)`).Error)
 
+	require.NoError(t, db.Exec(`CREATE TABLE workspaces (
+		id TEXT PRIMARY KEY,
+		owner_user_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		slug TEXT,
+		status TEXT NOT NULL DEFAULT 'active',
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		deleted_at DATETIME
+	)`).Error)
+
+	require.NoError(t, db.Exec(`CREATE TABLE workspace_members (
+		workspace_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		role TEXT NOT NULL,
+		invited_by TEXT,
+		joined_at DATETIME,
+		created_at DATETIME NOT NULL,
+		PRIMARY KEY (workspace_id, user_id)
+	)`).Error)
+
 	require.NoError(t, db.Exec(`CREATE TABLE collab_documents (
 		id TEXT PRIMARY KEY,
 		owner_user_id TEXT NOT NULL,
@@ -707,6 +728,147 @@ func TestUserDashboardHandlerProjectCollaborators(t *testing.T) {
 	require.NoError(t, json.Unmarshal(getRecorder.Body.Bytes(), &detail))
 	require.Equal(t, project.ID, detail.ID)
 	require.Equal(t, models.ProjectRoleEditor, detail.Role)
+}
+
+func TestUserDashboardHandlerWorkspaces(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	owner := models.User{Username: "workspace-owner", Email: "workspace-owner@example.com"}
+	member := models.User{Username: "workspace-member", Email: "workspace-member@example.com"}
+	stranger := models.User{Username: "workspace-stranger", Email: "workspace-stranger@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&member).Error)
+	require.NoError(t, db.Create(&stranger).Error)
+
+	createReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/workspaces",
+		strings.NewReader(`{"name":"Team Workspace","slug":"team-workspace"}`),
+	)
+	createReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	createRec := httptest.NewRecorder()
+	createContext := e.NewContext(createReq, createRec)
+	setContextUser(createContext, owner.ID)
+
+	require.NoError(t, handler.CreateWorkspace(createContext))
+	require.Equal(t, http.StatusCreated, createRec.Code)
+
+	var created dto.Workspace
+	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &created))
+	require.Equal(t, owner.ID, created.OwnerUserID)
+	require.Equal(t, "Team Workspace", created.Name)
+	require.Equal(t, "team-workspace", created.Slug)
+	require.Equal(t, models.WorkspaceRoleOwner, created.Role)
+
+	addReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/workspaces/"+created.ID.String()+"/members",
+		strings.NewReader(`{"email":"workspace-member@example.com","role":"member"}`),
+	)
+	addReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	addRec := httptest.NewRecorder()
+	addContext := e.NewContext(addReq, addRec)
+	addContext.SetParamNames("id")
+	addContext.SetParamValues(created.ID.String())
+	setContextUser(addContext, owner.ID)
+
+	require.NoError(t, handler.AddWorkspaceMember(addContext))
+	require.Equal(t, http.StatusCreated, addRec.Code)
+
+	var added dto.WorkspaceMember
+	require.NoError(t, json.Unmarshal(addRec.Body.Bytes(), &added))
+	require.Equal(t, member.ID, added.UserID)
+	require.Equal(t, models.WorkspaceRoleMember, added.Role)
+
+	listContext, listRec := newHandlerTestContext(e, http.MethodGet, "/api/workspaces")
+	setContextUser(listContext, member.ID)
+
+	require.NoError(t, handler.ListWorkspaces(listContext))
+	require.Equal(t, http.StatusOK, listRec.Code)
+
+	var workspaces dto.WorkspacesResponse
+	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &workspaces))
+	require.Len(t, workspaces.Items, 1)
+	require.Equal(t, created.ID, workspaces.Items[0].ID)
+	require.Equal(t, models.WorkspaceRoleMember, workspaces.Items[0].Role)
+
+	membersContext, membersRec := newHandlerTestContext(e, http.MethodGet, "/api/workspaces/"+created.ID.String()+"/members")
+	membersContext.SetParamNames("id")
+	membersContext.SetParamValues(created.ID.String())
+	setContextUser(membersContext, owner.ID)
+
+	require.NoError(t, handler.ListWorkspaceMembers(membersContext))
+	require.Equal(t, http.StatusOK, membersRec.Code)
+
+	var members dto.WorkspaceMembersResponse
+	require.NoError(t, json.Unmarshal(membersRec.Body.Bytes(), &members))
+	require.Len(t, members.Items, 2)
+	require.Equal(t, owner.ID, members.Items[0].UserID)
+	require.Equal(t, member.ID, members.Items[1].UserID)
+
+	updateReq := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/workspaces/"+created.ID.String(),
+		strings.NewReader(`{"name":"Renamed Workspace","slug":"renamed-workspace"}`),
+	)
+	updateReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	updateRec := httptest.NewRecorder()
+	updateContext := e.NewContext(updateReq, updateRec)
+	updateContext.SetParamNames("id")
+	updateContext.SetParamValues(created.ID.String())
+	setContextUser(updateContext, owner.ID)
+
+	require.NoError(t, handler.UpdateWorkspace(updateContext))
+	require.Equal(t, http.StatusOK, updateRec.Code)
+
+	var updated dto.Workspace
+	require.NoError(t, json.Unmarshal(updateRec.Body.Bytes(), &updated))
+	require.Equal(t, "Renamed Workspace", updated.Name)
+	require.Equal(t, "renamed-workspace", updated.Slug)
+
+	updateMemberReq := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/workspaces/"+created.ID.String()+"/members/"+member.ID.String(),
+		strings.NewReader(`{"role":"viewer"}`),
+	)
+	updateMemberReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	updateMemberRec := httptest.NewRecorder()
+	updateMemberContext := e.NewContext(updateMemberReq, updateMemberRec)
+	updateMemberContext.SetParamNames("id", "userId")
+	updateMemberContext.SetParamValues(created.ID.String(), member.ID.String())
+	setContextUser(updateMemberContext, owner.ID)
+
+	require.NoError(t, handler.UpdateWorkspaceMember(updateMemberContext))
+	require.Equal(t, http.StatusOK, updateMemberRec.Code)
+
+	var updatedMember dto.WorkspaceMember
+	require.NoError(t, json.Unmarshal(updateMemberRec.Body.Bytes(), &updatedMember))
+	require.Equal(t, models.WorkspaceRoleViewer, updatedMember.Role)
+
+	forbiddenReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/workspaces/"+created.ID.String()+"/members",
+		strings.NewReader(`{"user_id":"`+stranger.ID.String()+`","role":"member"}`),
+	)
+	forbiddenReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	forbiddenRec := httptest.NewRecorder()
+	forbiddenContext := e.NewContext(forbiddenReq, forbiddenRec)
+	forbiddenContext.SetParamNames("id")
+	forbiddenContext.SetParamValues(created.ID.String())
+	setContextUser(forbiddenContext, member.ID)
+
+	require.NoError(t, handler.AddWorkspaceMember(forbiddenContext))
+	require.Equal(t, http.StatusForbidden, forbiddenRec.Code)
+
+	removeContext, removeRec := newHandlerTestContext(e, http.MethodDelete, "/api/workspaces/"+created.ID.String()+"/members/"+member.ID.String())
+	removeContext.SetParamNames("id", "userId")
+	removeContext.SetParamValues(created.ID.String(), member.ID.String())
+	setContextUser(removeContext, owner.ID)
+
+	require.NoError(t, handler.RemoveWorkspaceMember(removeContext))
+	require.Equal(t, http.StatusNoContent, removeRec.Code)
 }
 
 func TestUserDashboardHandlerCreateProjectCollabSession(t *testing.T) {

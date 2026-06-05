@@ -456,6 +456,180 @@ func sendProjectCollaboratorError(c echo.Context, err error) error {
 	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 }
 
+func (h *UserDashboardHandler) ListWorkspaces(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	resp, err := h.serviceFor(c).ListWorkspaces(userID)
+	if err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) CreateWorkspace(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	req := new(dto.CreateWorkspaceRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	workspace, err := h.serviceFor(c).CreateWorkspace(userID, *req)
+	if err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, workspace)
+}
+
+func (h *UserDashboardHandler) GetWorkspace(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	workspace, err := h.serviceFor(c).GetWorkspace(workspaceID, userID)
+	if err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusOK, workspace)
+}
+
+func (h *UserDashboardHandler) UpdateWorkspace(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	req := new(dto.UpdateWorkspaceRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	workspace, err := h.serviceFor(c).UpdateWorkspace(workspaceID, userID, *req)
+	if err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusOK, workspace)
+}
+
+func (h *UserDashboardHandler) ListWorkspaceMembers(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	resp, err := h.serviceFor(c).ListWorkspaceMembers(workspaceID, userID)
+	if err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) AddWorkspaceMember(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	req := new(dto.AddWorkspaceMemberRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	member, err := h.serviceFor(c).AddWorkspaceMember(workspaceID, userID, *req)
+	if err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, member)
+}
+
+func (h *UserDashboardHandler) UpdateWorkspaceMember(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	targetUserID, err := uuid.Parse(c.Param("userId"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid user UUID")
+	}
+
+	req := new(dto.UpdateWorkspaceMemberRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	member, err := h.serviceFor(c).UpdateWorkspaceMember(workspaceID, userID, targetUserID, *req)
+	if err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusOK, member)
+}
+
+func (h *UserDashboardHandler) RemoveWorkspaceMember(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	targetUserID, err := uuid.Parse(c.Param("userId"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid user UUID")
+	}
+
+	if err := h.serviceFor(c).RemoveWorkspaceMember(workspaceID, userID, targetUserID); err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func sendWorkspaceError(c echo.Context, err error) error {
+	if errors.Is(err, services.ErrInvalidWorkspace) || errors.Is(err, services.ErrInvalidWorkspaceMember) {
+		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return sendError(c, http.StatusNotFound, "not_found", "workspace resource not found")
+	}
+	if errors.Is(err, services.ErrForbidden) {
+		return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+	}
+	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+}
+
 func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {

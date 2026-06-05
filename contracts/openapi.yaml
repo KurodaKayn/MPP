@@ -146,6 +146,39 @@ components:
         - ProjectCollaboratorRoleEditor
         - ProjectCollaboratorRoleViewer
 
+    WorkspaceRole:
+      type: string
+      enum:
+        - owner
+        - admin
+        - member
+        - viewer
+      x-enum-varnames:
+        - WorkspaceRoleOwner
+        - WorkspaceRoleAdmin
+        - WorkspaceRoleMember
+        - WorkspaceRoleViewer
+
+    WorkspaceMemberRequestRole:
+      type: string
+      enum:
+        - admin
+        - member
+        - viewer
+      x-enum-varnames:
+        - WorkspaceMemberRequestRoleAdmin
+        - WorkspaceMemberRequestRoleMember
+        - WorkspaceMemberRequestRoleViewer
+
+    WorkspaceStatus:
+      type: string
+      enum:
+        - active
+        - archived
+      x-enum-varnames:
+        - WorkspaceStatusActive
+        - WorkspaceStatusArchived
+
     PublicationStatus:
       type: string
       enum:
@@ -897,6 +930,143 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProjectCollaborator"
+
+    CreateWorkspaceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+
+    UpdateWorkspaceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+
+    AddWorkspaceMemberRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - role
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/WorkspaceMemberRequestRole"
+
+    UpdateWorkspaceMemberRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - role
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkspaceMemberRequestRole"
+
+    Workspace:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - owner_user_id
+        - name
+        - status
+        - role
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          $ref: "#/components/schemas/WorkspaceStatus"
+        role:
+          $ref: "#/components/schemas/WorkspaceRole"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorkspacesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Workspace"
+
+    WorkspaceMember:
+      type: object
+      additionalProperties: false
+      required:
+        - workspace_id
+        - user_id
+        - username
+        - email
+        - role
+        - created_at
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/WorkspaceRole"
+        invited_by:
+          type: string
+          format: uuid
+        joined_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    WorkspaceMembersResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceMember"
 
     PaginationProjects:
       type: object

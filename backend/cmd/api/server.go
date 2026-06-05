@@ -119,6 +119,9 @@ func registerAPIRoutes(e *echo.Echo, config serverConfig, h serverHandlers) erro
 	if err := registerUserDashboardRoutes(e, config, h); err != nil {
 		return err
 	}
+	if err := registerWorkspaceRoutes(e, config, h); err != nil {
+		return err
+	}
 	return registerCollabRoutes(e, config, h)
 }
 
@@ -191,6 +194,28 @@ func registerUserDashboardRoutes(e *echo.Echo, config serverConfig, h serverHand
 	userGroup.GET("/browser-sessions/:id/stream/*", h.browserSession.StreamSession)
 	userGroup.POST("/browser-sessions/:id/complete", h.browserSession.CompleteSession)
 	userGroup.DELETE("/browser-sessions/:id", h.browserSession.CancelSession)
+	return nil
+}
+
+func registerWorkspaceRoutes(e *echo.Echo, config serverConfig, h serverHandlers) error {
+	workspaceGroup := e.Group("/api/workspaces")
+	workspaceGroup.Use(echojwt.WithConfig(middleware.GetJWTConfig(config.jwtSigningKey)))
+	rateLimitConfig, err := middleware.RateLimitConfigFromEnv(config.redisClient)
+	if err != nil {
+		return err
+	}
+	if rateLimitConfig.Enabled {
+		workspaceGroup.Use(middleware.ApplicationRateLimiter(rateLimitConfig))
+	}
+
+	workspaceGroup.GET("", h.userDashboard.ListWorkspaces)
+	workspaceGroup.POST("", h.userDashboard.CreateWorkspace)
+	workspaceGroup.GET("/:id", h.userDashboard.GetWorkspace)
+	workspaceGroup.PATCH("/:id", h.userDashboard.UpdateWorkspace)
+	workspaceGroup.GET("/:id/members", h.userDashboard.ListWorkspaceMembers)
+	workspaceGroup.POST("/:id/members", h.userDashboard.AddWorkspaceMember)
+	workspaceGroup.PATCH("/:id/members/:userId", h.userDashboard.UpdateWorkspaceMember)
+	workspaceGroup.DELETE("/:id/members/:userId", h.userDashboard.RemoveWorkspaceMember)
 	return nil
 }
 
