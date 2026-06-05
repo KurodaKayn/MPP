@@ -444,8 +444,8 @@ func (s *Service) startPublishLockRefresh(ctx context.Context, lockKey, lockValu
 }
 
 func (s *Service) preparePublishJob(projectID uuid.UUID, platform string, userID uuid.UUID) (models.Project, models.ProjectPlatformPublication, error) {
-	var project models.Project
-	if err := s.db.Where("id = ? AND user_id = ?", projectID, userID).First(&project).Error; err != nil {
+	project, err := s.projectForPublish(context.Background(), projectID, userID)
+	if err != nil {
 		return models.Project{}, models.ProjectPlatformPublication{}, ErrForbidden
 	}
 
