@@ -405,94 +405,99 @@ Delivered:
 
 Remaining hardening:
 
-- Confirm database migration strategy for collab tables.
-- Add operational metrics dashboards and alerts.
-- Validate multi-user editing under realistic load.
+- [x] Confirm database migration strategy for collab tables.
+- [ ] Add operational metrics dashboards and alerts.
+- [ ] Validate multi-user editing under realistic load.
 
-### Phase 1: Project Sharing MVP - Next
-
-Deliverables:
-
-- `project_collaborators` model.
-- Project collaborator list/add/update/remove APIs.
-- Project detail/list APIs include current user's role.
-- Existing Project editor accepts collaborator access.
-- Project-level collab session endpoint.
-- Share dialog in Project editor.
-
-Acceptance:
-
-- Owner shares a Project with another user.
-- Editor opens the same Project and edits content collaboratively.
-- Viewer opens the Project in read-only mode.
-- Non-collaborator cannot access the Project.
-- Publishing controls are hidden/disabled for roles without publish permission.
-
-### Phase 2: Project-Collab State Integration
+### Phase 1: Project Sharing MVP - Mostly Done
 
 Deliverables:
 
-- `projects.collab_document_id`.
-- Lazy creation of Project collab document.
-- Migration path from existing `source_content` to Yjs state.
-- Controlled snapshot sync from Yjs back to Project source content.
-- Prepublish sync reads from latest safe Project content.
+- [x] `project_collaborators` model.
+- [x] Project collaborator list/add/update/remove APIs.
+- [x] Project detail/list APIs include current user's role.
+- [x] Existing Project editor accepts collaborator access.
+- [x] Project-level collab session endpoint.
+- [x] Share dialog in Project editor.
 
 Acceptance:
 
-- Existing Projects can enter realtime editing without creating a separate doc.
-- Refresh/restart preserves Project editor state.
-- Prepublish generation uses collaborative content, not stale owner-local state.
+- [x] Owner shares a Project with another user.
+- [ ] Editor opens the same Project and edits content collaboratively from the
+  Project editor.
+- [x] Viewer opens the Project in read-only mode.
+- [x] Non-collaborator cannot access the Project.
+- [x] Publishing controls are hidden/disabled for roles without publish
+  permission.
 
-### Phase 3: Workspace and Team MVP
+### Phase 2: Project-Collab State Integration - Partial
 
 Deliverables:
 
-- `workspaces` and `workspace_members`.
-- Personal workspace backfill for existing users.
-- Workspace switcher.
-- Workspace-scoped Project list and create flow.
-- Member management screen.
-- Workspace-aware access checks in Project APIs.
+- [x] `projects.collab_document_id`.
+- [x] Lazy creation of Project collab document.
+- [x] Migration path from existing `source_content` to Yjs state.
+- [ ] Controlled snapshot sync from Yjs back to Project source content.
+- [ ] Prepublish sync reads from latest safe Project content.
 
 Acceptance:
 
-- A user creates a workspace and invites a member.
-- Workspace members can access Projects in that workspace by role.
-- Project owner/collaborator overrides still work.
-- Existing personal Projects remain accessible after migration.
+- [ ] Existing Projects can enter realtime editing from the Project editor
+  without creating a separate doc.
+- [ ] Refresh/restart preserves Project editor realtime state.
+- [ ] Prepublish generation uses collaborative content, not stale owner-local
+  state.
+
+### Phase 3: Workspace and Team MVP - Partial
+
+Deliverables:
+
+- [x] `workspaces` and `workspace_members`.
+- [x] Personal workspace backfill for existing users.
+- [ ] Workspace switcher.
+- [x] Workspace-scoped Project list and create APIs.
+- [ ] Workspace-scoped Project list and create UI flow.
+- [ ] Member management screen.
+- [x] Workspace-aware access checks in Project APIs.
+
+Acceptance:
+
+- [ ] A user creates a workspace and invites a member through the dashboard UI.
+- [x] Workspace members can access Projects in that workspace by role.
+- [x] Project owner/collaborator overrides still work.
+- [x] Existing personal Projects remain accessible after migration.
 
 ### Phase 4: Collaboration Experience
 
 Deliverables:
 
-- Comments/review mode.
-- Activity feed for Project changes and member actions.
-- Version history from collab snapshots/update batches.
-- Better conflict/offline messaging.
-- Optional share links.
+- [ ] Comments/review mode.
+- [ ] Activity feed for Project changes and member actions.
+- [ ] Version history from collab snapshots/update batches.
+- [ ] Better conflict/offline messaging.
+- [ ] Optional share links.
 
 Acceptance:
 
-- Teams can review, edit, and publish Projects with clear accountability.
-- Users can inspect recent changes and recover prior content.
+- [ ] Teams can review, edit, and publish Projects with clear accountability.
+- [ ] Users can inspect recent changes and recover prior content.
 
 ### Phase 5: Distributed Readiness
 
 Deliverables:
 
-- Redis pub/sub or Hocuspocus Redis extension.
-- Traefik `/collab` WebSocket routing validation.
-- Multi-instance collab-service test.
-- Prometheus/Grafana dashboards.
-- Load test scripts.
+- [ ] Redis pub/sub or Hocuspocus Redis extension.
+- [ ] Traefik `/collab` WebSocket routing validation.
+- [ ] Multi-instance collab-service test.
+- [ ] Prometheus/Grafana dashboards.
+- [ ] Load test scripts.
 
 Acceptance:
 
-- Two collab-service instances can synchronize active documents.
-- Metrics show connection count, active documents, update flush latency, and auth
+- [ ] Two collab-service instances can synchronize active documents.
+- [ ] Metrics show connection count, active documents, update flush latency, and auth
   denials.
-- No data loss under restart tests.
+- [ ] No data loss under restart tests.
 
 ## 12. Completion Tracking
 
@@ -503,11 +508,11 @@ Acceptance:
 | Collab service token auth | Done | Keep short-lived project-scoped tokens. |
 | Yjs PostgreSQL persistence | Done | Add migration confirmation and ops dashboards. |
 | Presence/cursor UI | Done | Reuse inside Project editor. |
-| Project sharing | Not Started | Add `project_collaborators` and share dialog. |
-| Project-collab linking | Not Started | Add `projects.collab_document_id` and lazy state creation. |
-| Workspace/team model | Not Started | Add `workspaces`, `workspace_members`, workspace switcher. |
-| Workspace-scoped project access | Not Started | Refactor dashboard project queries and policies. |
-| Publishing permission split | Not Started | Separate edit permission from publish permission. |
+| Project sharing | Mostly Done | Wire realtime editing into the Project editor. |
+| Project-collab linking | Partial | Add Yjs-to-Project snapshot sync and Project editor realtime wiring. |
+| Workspace/team model | Partial | Add workspace switcher and member management UI. |
+| Workspace-scoped project access | Done | Continue hardening route/query policy coverage. |
+| Publishing permission split | Partial | Formalize publish capability beyond owner-only gating. |
 | Comments/activity/version UX | Not Started | Build after Project/workspace access is stable. |
 | Distributed collab-service | Not Started | Validate Redis pub/sub and multi-instance routing. |
 
@@ -536,12 +541,12 @@ Reason:
 
 Smallest useful slice:
 
-1. Add `project_collaborators`.
-2. Let Project owner share with another existing user by user ID/email.
-3. Include role in Project detail responses.
-4. Allow shared users to open the Project editor.
-5. Gate source editing and publishing controls by role.
-6. Add Project collab session endpoint that maps Project access to collab
+1. [x] Add `project_collaborators`.
+2. [x] Let Project owner share with another existing user by user ID/email.
+3. [x] Include role in Project detail responses.
+4. [x] Allow shared users to open the Project editor.
+5. [x] Gate source editing and publishing controls by role.
+6. [x] Add Project collab session endpoint that maps Project access to collab
    document access.
 
 Then add Workspace/team as the next structural layer.
