@@ -150,6 +150,23 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 		created_at DATETIME,
 		updated_at DATETIME
 	)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE publish_events (
+		id TEXT PRIMARY KEY,
+		publication_id TEXT NOT NULL,
+		project_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		platform TEXT NOT NULL,
+		job_id TEXT NOT NULL,
+		idempotency_key TEXT NOT NULL,
+		event_type TEXT NOT NULL,
+		status TEXT NOT NULL,
+		message TEXT,
+		remote_id TEXT,
+		publish_url TEXT,
+		error_message TEXT,
+		metadata TEXT NOT NULL DEFAULT '{}',
+		created_at DATETIME
+	)`).Error)
 
 	return db
 }
@@ -185,9 +202,9 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}).Error)
 
-	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID)
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-1"})
 	require.NoError(t, err)
-	require.Equal(t, models.PublicationStatusPublishing, resp["status"])
+	require.Equal(t, models.PublicationStatusQueued, resp["status"])
 	require.Len(t, queue.jobs, 1)
 	require.Equal(t, uuid.Nil, queue.jobs[0].BrowserSessionID)
 
@@ -196,11 +213,12 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
-	require.Equal(t, models.PublicationStatusPublishing, saved.Status)
+	require.Equal(t, models.PublicationStatusQueued, saved.Status)
 	require.NotNil(t, saved.LastAttemptAt)
 
-	_, err = service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID)
-	require.True(t, errors.Is(err, ErrPublicationAlreadyPublishing))
+	duplicate, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-1"})
+	require.NoError(t, err)
+	require.Equal(t, resp["job_id"], duplicate["job_id"])
 }
 
 func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing.T) {
@@ -231,7 +249,7 @@ func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing
 		LastAttemptAt:  &lastAttemptAt,
 	}).Error)
 
-	_, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID)
+	_, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-2"})
 
 	require.True(t, errors.Is(err, ErrPublicationAlreadyPublishing))
 }
@@ -277,7 +295,7 @@ func TestProcessPublishJobPublishesAndReleasesLock(t *testing.T) {
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
-	require.Equal(t, models.PublicationStatusPublished, saved.Status)
+	require.Equal(t, models.PublicationStatusSucceeded, saved.Status)
 	require.Equal(t, "remote-id", saved.RemoteID)
 	require.Equal(t, "https://example.com/published", saved.PublishURL)
 	require.Empty(t, queue.locks[lockKey])
@@ -322,7 +340,7 @@ func TestProcessPublishJobReacquiresExpiredLock(t *testing.T) {
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
-	require.Equal(t, models.PublicationStatusPublished, saved.Status)
+	require.Equal(t, models.PublicationStatusSucceeded, saved.Status)
 	require.Empty(t, queue.locks[publishLockKey(project.ID, "wechat")])
 }
 

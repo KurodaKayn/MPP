@@ -121,12 +121,13 @@ const (
 
 // Defines values for PublicationStatus.
 const (
-	PublicationStatusAdapted    PublicationStatus = "adapted"
-	PublicationStatusDisabled   PublicationStatus = "disabled"
+	PublicationStatusCancelled  PublicationStatus = "cancelled"
+	PublicationStatusDraft      PublicationStatus = "draft"
 	PublicationStatusFailed     PublicationStatus = "failed"
-	PublicationStatusPending    PublicationStatus = "pending"
-	PublicationStatusPublished  PublicationStatus = "published"
 	PublicationStatusPublishing PublicationStatus = "publishing"
+	PublicationStatusQueued     PublicationStatus = "queued"
+	PublicationStatusSucceeded  PublicationStatus = "succeeded"
+	PublicationStatusSyncing    PublicationStatus = "syncing"
 )
 
 // Defines values for PublishPlatform.
@@ -139,13 +140,12 @@ const (
 
 // Defines values for PublishResultStatus.
 const (
-	PublishResultStatusAdapted        PublishResultStatus = "adapted"
 	PublishResultStatusError          PublishResultStatus = "error"
 	PublishResultStatusFailed         PublishResultStatus = "failed"
 	PublishResultStatusManualRequired PublishResultStatus = "manual_required"
-	PublishResultStatusPending        PublishResultStatus = "pending"
-	PublishResultStatusPublished      PublishResultStatus = "published"
 	PublishResultStatusPublishing     PublishResultStatus = "publishing"
+	PublishResultStatusQueued         PublishResultStatus = "queued"
+	PublishResultStatusSucceeded      PublishResultStatus = "succeeded"
 )
 
 // Defines values for RequirementStatusValue.
@@ -617,6 +617,7 @@ type PublishPlatform string
 type PublishResult struct {
 	BrowserSessionId *openapi_types.UUID `json:"browser_session_id,omitempty"`
 	ErrorMessage     *string             `json:"error_message,omitempty"`
+	IdempotencyKey   *string             `json:"idempotency_key,omitempty"`
 	JobId            *openapi_types.UUID `json:"job_id,omitempty"`
 	Platform         *PublishPlatform    `json:"platform,omitempty"`
 	PublishUrl       *string             `json:"publish_url,omitempty"`

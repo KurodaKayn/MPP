@@ -169,6 +169,7 @@ func migrate(database *gorm.DB) error {
 			&models.ProjectCollaborator{},
 			&models.ProjectPlatformPublication{},
 			&models.RemoteBrowserSession{},
+			&models.PublishEvent{},
 			&models.CollabDocument{},
 			&models.CollabDocumentCollaborator{},
 			&models.CollabDocumentState{},
@@ -176,6 +177,10 @@ func migrate(database *gorm.DB) error {
 			&models.ExtensionCallbackToken{},
 			&models.ExtensionExecutionEvent{},
 		); err != nil {
+			return err
+		}
+
+		if err := migratePublicationStatuses(migrationDB); err != nil {
 			return err
 		}
 
@@ -190,6 +195,27 @@ func migrate(database *gorm.DB) error {
 		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
 	`).Error
 	})
+}
+
+func migratePublicationStatuses(database *gorm.DB) error {
+	if !database.Migrator().HasTable(&models.ProjectPlatformPublication{}) {
+		return nil
+	}
+
+	statusMap := map[string]string{
+		"pending":   models.PublicationStatusDraft,
+		"adapted":   models.PublicationStatusDraft,
+		"published": models.PublicationStatusSucceeded,
+		"disabled":  models.PublicationStatusCancelled,
+	}
+	for oldStatus, newStatus := range statusMap {
+		if err := database.Model(&models.ProjectPlatformPublication{}).
+			Where("status = ?", oldStatus).
+			Update("status", newStatus).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func backfillPersonalWorkspaces(database *gorm.DB) error {
