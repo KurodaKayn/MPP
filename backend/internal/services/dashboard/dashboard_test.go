@@ -801,6 +801,24 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 	assert.NoError(t, db.First(&project, "id = ?", resp.ID).Error)
 	assert.Equal(t, user.ID, project.UserID)
 	assert.Equal(t, "<p>Hello WeChat</p>", project.SourceContent)
+	assert.NotNil(t, project.WorkspaceID)
+	assert.Equal(t, models.PersonalWorkspaceID(user.ID), *project.WorkspaceID)
+
+	assert.NotNil(t, resp.WorkspaceID)
+	assert.Equal(t, models.PersonalWorkspaceID(user.ID), *resp.WorkspaceID)
+
+	var personalWorkspace models.Workspace
+	assert.NoError(t, db.First(&personalWorkspace, "id = ?", models.PersonalWorkspaceID(user.ID)).Error)
+	assert.Equal(t, user.ID, personalWorkspace.OwnerUserID)
+	assert.Equal(t, models.PersonalWorkspaceName, personalWorkspace.Name)
+
+	var ownerMembership models.WorkspaceMember
+	assert.NoError(t, db.First(&ownerMembership, "workspace_id = ? AND user_id = ?", models.PersonalWorkspaceID(user.ID), user.ID).Error)
+	assert.Equal(t, models.WorkspaceRoleOwner, ownerMembership.Role)
+
+	workspaceProjects, err := s.ListWorkspaceProjects(models.PersonalWorkspaceID(user.ID), user.ID, 1, 10, "", "")
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), workspaceProjects.Total)
 
 	var wechatPub models.ProjectPlatformPublication
 	assert.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", resp.ID, "wechat").Error)
