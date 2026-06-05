@@ -6,10 +6,12 @@ import * as Y from "yjs";
 import {
   createCollabDocument,
   createCollabDocumentSession,
+  createProjectCollabSession,
   listCollabDocuments,
   updateCollabDocument,
   type CollabDocument,
   type CollabDocumentRole,
+  type CollabDocumentSession,
 } from "@/lib/dashboard/api";
 import {
   createCollabProvider,
@@ -26,6 +28,18 @@ type UseCollabDocumentsOptions = {
 
 type UseCollabConnectionOptions = {
   document: CollabDocument | null;
+  userName: string;
+};
+
+type UseProjectCollabConnectionOptions = {
+  projectId: string | null | undefined;
+  userName: string;
+};
+
+type UseCollabConnectionTargetOptions = {
+  createSession: (targetKey: string) => Promise<CollabDocumentSession>;
+  fallbackError: string;
+  targetKey: string | null | undefined;
   userName: string;
 };
 
@@ -167,6 +181,32 @@ export function useCollabConnection({
   document,
   userName,
 }: UseCollabConnectionOptions) {
+  return useCollabConnectionTarget({
+    createSession: createCollabDocumentSession,
+    fallbackError: "Unable to start collaboration session",
+    targetKey: document?.id,
+    userName,
+  });
+}
+
+export function useProjectCollabConnection({
+  projectId,
+  userName,
+}: UseProjectCollabConnectionOptions) {
+  return useCollabConnectionTarget({
+    createSession: createProjectCollabSession,
+    fallbackError: "Unable to start project collaboration session",
+    targetKey: projectId,
+    userName,
+  });
+}
+
+function useCollabConnectionTarget({
+  createSession,
+  fallbackError,
+  targetKey,
+  userName,
+}: UseCollabConnectionTargetOptions) {
   const [status, setStatus] = useState<CollabConnectionStatus>("idle");
   const [role, setRole] = useState<CollabDocumentRole | null>(null);
   const [ydoc, setYdoc] = useState<Y.Doc | null>(null);
@@ -179,7 +219,7 @@ export function useCollabConnection({
   const [user, setUser] = useState<CollabUserProfile | null>(null);
 
   useEffect(() => {
-    if (!document) {
+    if (!targetKey) {
       setStatus("idle");
       setRole(null);
       setYdoc(null);
@@ -191,7 +231,7 @@ export function useCollabConnection({
       return;
     }
 
-    const targetDocument = document;
+    const activeTargetKey = targetKey;
     let cancelled = false;
     let activeProvider: ReturnType<typeof createCollabProvider> | null = null;
     let activeYdoc: Y.Doc | null = null;
@@ -206,12 +246,12 @@ export function useCollabConnection({
       setError("");
 
       try {
-        const session = await createCollabDocumentSession(targetDocument.id);
+        const session = await createSession(activeTargetKey);
         const nextYdoc = new Y.Doc();
         const nextUser = getCollabUserProfile(
           userName,
           session.role,
-          targetDocument.id,
+          session.document_id,
         );
 
         if (cancelled) {
@@ -221,7 +261,7 @@ export function useCollabConnection({
 
         activeYdoc = nextYdoc;
         activeProvider = createCollabProvider({
-          documentId: targetDocument.id,
+          documentId: session.document_id,
           onAuthenticationFailed: (reason) => {
             setStatus("unauthorized");
             setError(reason);
@@ -248,9 +288,7 @@ export function useCollabConnection({
         }
 
         const message =
-          requestError instanceof Error
-            ? requestError.message
-            : "Unable to start collaboration session";
+          requestError instanceof Error ? requestError.message : fallbackError;
         setStatus("error");
         setError(message);
         toast.error(message);
@@ -264,7 +302,7 @@ export function useCollabConnection({
       activeProvider?.destroy();
       activeYdoc?.destroy();
     };
-  }, [document?.id, userName]);
+  }, [createSession, fallbackError, targetKey, userName]);
 
   return {
     canEdit: role === "editor",
