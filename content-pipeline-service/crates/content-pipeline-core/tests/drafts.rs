@@ -1,7 +1,9 @@
 use content_pipeline_core::{
     DraftCompileError, DraftCompiler, DraftOutput, DraftTarget, SourceProject,
+    supported_draft_profiles,
 };
 use serde_json::json;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 #[test]
@@ -95,6 +97,14 @@ fn rejects_unsupported_profile_version() {
 }
 
 #[test]
+fn defaults_to_registered_profile_version() {
+    let output = compile_output("wechat", "", "Hello", "html", "<p>Hello</p>")
+        .expect("blank profile should use platform default");
+
+    assert_eq!(output.profile, "wechat@v1");
+}
+
+#[test]
 fn falls_back_to_title_for_text_draft_without_body_text() {
     let output = compile_for(
         "douyin",
@@ -158,6 +168,30 @@ fn matches_x_representative_snapshot() {
 #[test]
 fn matches_douyin_representative_snapshot() {
     assert_representative_snapshot("douyin");
+}
+
+#[test]
+fn supported_profiles_match_representative_snapshots() {
+    let snapshot_platforms = snapshot_platforms();
+    let supported_platforms = supported_draft_profiles()
+        .iter()
+        .map(|profile| profile.platform.to_string())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(supported_platforms, snapshot_platforms);
+
+    for profile in supported_draft_profiles() {
+        let snapshot = fixture_json(&format!("draft_snapshots/{}.json", profile.platform));
+        assert_eq!(snapshot["platform"], profile.platform);
+        assert_eq!(snapshot["profile"], profile.profile);
+        assert_eq!(
+            snapshot["adapted_content"]["schema_version"],
+            profile.schema_version
+        );
+        assert_eq!(
+            snapshot["adapted_content"]["format"],
+            profile.format.as_str()
+        );
+    }
 }
 
 fn compile_for(
@@ -240,4 +274,19 @@ fn fixture_path(name: &str) -> PathBuf {
         .join("tests")
         .join("fixtures")
         .join(name)
+}
+
+fn snapshot_platforms() -> BTreeSet<String> {
+    std::fs::read_dir(fixture_path("draft_snapshots"))
+        .expect("snapshot fixture dir should be readable")
+        .map(|entry| {
+            entry
+                .expect("snapshot fixture entry should be readable")
+                .path()
+                .file_stem()
+                .expect("snapshot fixture should have a file stem")
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect()
 }
