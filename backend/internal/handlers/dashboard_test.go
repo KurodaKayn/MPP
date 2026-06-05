@@ -20,6 +20,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/observability"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
@@ -1277,6 +1278,79 @@ func TestUserDashboardHandlerEditContentWithAI(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, "content", resp.Channel)
 	require.Equal(t, "<p>Sharper draft</p>", resp.Content)
+}
+
+func TestUserDashboardHandlerEditContentWithAIEnforcesUserConcurrency(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+	aiEditor := &fakeAIContentEditor{
+		contentResp: &dto.AIEditContentResponse{
+			Channel: "content",
+			Content: "unused",
+		},
+	}
+	handler.UseAIContentEditor(aiEditor)
+	limiter := streamgate.New(nil, streamgate.Config{
+		Enabled: true,
+		AI: streamgate.Limits{
+			User: 1,
+			TTL:  time.Minute,
+		},
+	})
+	handler.UseStreamLimiter(limiter)
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	lease, err := limiter.Acquire(context.Background(), streamgate.AcquireRequest{
+		Kind:     streamgate.KindAI,
+		UserID:   user.ID,
+		TenantID: middleware.DefaultTenantID,
+		IP:       "192.0.2.10",
+		Resource: "content",
+	})
+	require.NoError(t, err)
+	defer lease.Release(context.Background())
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/dashboard/ai/content/edit",
+		strings.NewReader(`{"content":"Draft","message":"Edit"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req.RemoteAddr = "192.0.2.10:12345"
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.EditContentWithAI(c))
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	require.Empty(t, aiEditor.contentReq.Message)
+}
+
+func TestShouldAcquireBrowserStreamLeaseForLongLivedPaths(t *testing.T) {
+	e := echo.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/stream/token/websockify", nil)
+	c := e.NewContext(req, httptest.NewRecorder())
+	require.True(t, shouldAcquireBrowserStreamLease(c, false, "websockify"))
+
+	req = httptest.NewRequest(http.MethodGet, "/stream/token/vnc.html?path=api/browser/websockify", nil)
+	c = e.NewContext(req, httptest.NewRecorder())
+	require.True(t, shouldAcquireBrowserStreamLease(c, false, "vnc.html"))
+
+	req = httptest.NewRequest(http.MethodGet, "/stream/token/vnc.html", nil)
+	c = e.NewContext(req, httptest.NewRecorder())
+	require.False(t, shouldAcquireBrowserStreamLease(c, false, "vnc.html"))
+}
+
+func TestBrowserStreamProxyErrorHandlerMapsTimeoutToGatewayTimeout(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/stream", nil)
+
+	browserStreamProxyErrorHandler(rec, req, context.DeadlineExceeded)
+
+	require.Equal(t, http.StatusGatewayTimeout, rec.Code)
 }
 
 func TestUserDashboardHandlerStreamsContentWithAI(t *testing.T) {
