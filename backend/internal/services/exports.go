@@ -4,6 +4,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/services/ai"
 	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
 	dashboard "github.com/kurodakayn/mpp-backend/internal/services/dashboard"
+	mediaassetsvc "github.com/kurodakayn/mpp-backend/internal/services/mediaasset"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 )
@@ -46,10 +47,10 @@ var ErrInvalidWorkspaceMember = dashboard.ErrInvalidWorkspaceMember
 var ErrProjectCollabUnavailable = dashboard.ErrProjectCollabUnavailable
 var ErrInvalidXOAuth2State = platformaccount.ErrInvalidXOAuth2State
 var ErrManualPublishUnsupported = dashboard.ErrManualPublishUnsupported
-var ErrInvalidMediaAsset = dashboard.ErrInvalidMediaAsset
-var ErrMediaAssetNotReady = dashboard.ErrMediaAssetNotReady
-var ErrMediaAssetUploadIncomplete = dashboard.ErrMediaAssetUploadIncomplete
-var ErrMediaStorageUnavailable = dashboard.ErrMediaStorageUnavailable
+var ErrInvalidMediaAsset = mediaassetsvc.ErrInvalidMediaAsset
+var ErrMediaAssetNotReady = mediaassetsvc.ErrMediaAssetNotReady
+var ErrMediaAssetUploadIncomplete = mediaassetsvc.ErrMediaAssetUploadIncomplete
+var ErrMediaStorageUnavailable = mediaassetsvc.ErrMediaStorageUnavailable
 var ErrPublicationAlreadyPublishing = publishsvc.ErrPublicationAlreadyPublishing
 var ErrPublicationDisabled = dashboard.ErrPublicationDisabled
 var ErrPublicationRequiresSync = dashboard.ErrPublicationRequiresSync

@@ -1,4 +1,4 @@
-package dashboard_test
+package mediaasset_test
 
 import (
 	"context"
@@ -12,7 +12,8 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage/fake"
-	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/mediaasset"
+	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -138,7 +139,7 @@ func TestViewerCannotCreateMediaUpload(t *testing.T) {
 		Usage:     models.MediaAssetUsageEditorImage,
 	})
 
-	require.ErrorIs(t, err, services.ErrForbidden)
+	require.ErrorIs(t, err, mediaasset.ErrForbidden)
 }
 
 func TestDeleteMediaAssetSoftDeletesRecordAndObject(t *testing.T) {
@@ -170,14 +171,14 @@ func TestDeleteMediaAssetSoftDeletesRecordAndObject(t *testing.T) {
 	require.True(t, asset.DeletedAt.Valid)
 }
 
-func setupMediaAssetService(t *testing.T) (*gorm.DB, *services.DashboardService, *fake.Client) {
+func setupMediaAssetService(t *testing.T) (*gorm.DB, *mediaasset.Service, *fake.Client) {
 	t.Helper()
 
 	db := testsupport.SetupTestDB()
 	require.NoError(t, db.AutoMigrate(&models.MediaAsset{}))
 
 	storage := fake.NewClient()
-	service := services.NewDashboardService(db)
+	service := mediaasset.NewService(db, projectsvc.NewService(db))
 	service.UseObjectStorage(storage, objectstorage.Config{
 		Enabled:        true,
 		Provider:       objectstorage.ProviderR2,
