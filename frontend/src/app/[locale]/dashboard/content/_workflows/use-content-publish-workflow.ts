@@ -9,7 +9,6 @@ import {
 import type { ContentValue } from "@/lib/content/types";
 import {
   cancelBrowserSession,
-  createDashboardProject,
   publishProject,
   saveDashboardProjectContent,
   saveDashboardProjectPlatforms,
@@ -20,6 +19,7 @@ import {
   type AdaptedContent,
   type BrowserSessionStatus,
   type CreateProjectInput,
+  type ProjectListItem,
   type ProjectPublications,
 } from "@/lib/dashboard/api";
 import { type PublishPlatform } from "../_lib/publish-content";
@@ -40,6 +40,7 @@ type ContentPublishWorkflowOptions = {
   automaticPublishPlatforms: PublishPlatform[];
   canPublish: boolean;
   content: ContentValue;
+  createProject: (input: CreateProjectInput) => Promise<ProjectListItem>;
   hasBodyContent: boolean;
   navigateToProject: (projectId: string) => void;
   prepublishDrafts: Partial<Record<PublishPlatform, PrepublishDraft>>;
@@ -140,6 +141,7 @@ export function useContentPublishWorkflow({
   automaticPublishPlatforms,
   canPublish,
   content,
+  createProject,
   hasBodyContent,
   navigateToProject,
   prepublishDrafts,
@@ -230,7 +232,7 @@ export function useContentPublishWorkflow({
       return { id: projectId, isNew: false };
     }
 
-    const project = await createDashboardProject(input);
+    const project = await createProject(input);
     return { id: project.id, isNew: true };
   };
 
@@ -267,7 +269,7 @@ export function useContentPublishWorkflow({
     try {
       const targetProject = projectId
         ? await updateDashboardProject(projectId, buildProjectInput(platforms))
-        : await createDashboardProject(buildProjectInput(platforms));
+        : await createProject(buildProjectInput(platforms));
       const publications = await syncProjectPrepublish(targetProject.id, {
         platforms,
       });
