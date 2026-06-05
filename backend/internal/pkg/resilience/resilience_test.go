@@ -16,7 +16,7 @@ import (
 
 func TestResilientRoundTripperRetriesRetryableStatus(t *testing.T) {
 	attempts := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		attempts++
 		if attempts == 1 {
 			w.WriteHeader(http.StatusBadGateway)
@@ -33,7 +33,7 @@ func TestResilientRoundTripperRetriesRetryableStatus(t *testing.T) {
 			MaxAttempts:      2,
 			FailureThreshold: 3,
 			OpenAfter:        time.Second,
-			Sleep:            func(ctx context.Context, delay time.Duration) error { return nil },
+			Sleep:            func(_ context.Context, _ time.Duration) error { return nil },
 		}),
 	}
 
@@ -76,7 +76,7 @@ func TestCircuitBreakerHalfOpenClosesOnSuccess(t *testing.T) {
 
 func TestResilientRoundTripperDoesNotRetryUnsafeMethodsByDefault(t *testing.T) {
 	attempts := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		attempts++
 		w.WriteHeader(http.StatusBadGateway)
 	}))
@@ -88,7 +88,7 @@ func TestResilientRoundTripperDoesNotRetryUnsafeMethodsByDefault(t *testing.T) {
 			MaxAttempts:      2,
 			FailureThreshold: 3,
 			OpenAfter:        time.Second,
-			Sleep:            func(ctx context.Context, delay time.Duration) error { return nil },
+			Sleep:            func(_ context.Context, _ time.Duration) error { return nil },
 		}),
 	}
 
@@ -104,7 +104,7 @@ func TestResilientRoundTripperDoesNotRetryUnsafeMethodsByDefault(t *testing.T) {
 
 func TestResilientRoundTripperCountsUnretriedServerErrorsAsFailures(t *testing.T) {
 	attempts := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		attempts++
 		w.WriteHeader(http.StatusBadGateway)
 	}))
@@ -116,7 +116,7 @@ func TestResilientRoundTripperCountsUnretriedServerErrorsAsFailures(t *testing.T
 			MaxAttempts:      2,
 			FailureThreshold: 2,
 			OpenAfter:        time.Minute,
-			Sleep:            func(ctx context.Context, delay time.Duration) error { return nil },
+			Sleep:            func(_ context.Context, _ time.Duration) error { return nil },
 		}),
 	}
 
@@ -136,7 +136,7 @@ func TestResilientRoundTripperCountsUnretriedServerErrorsAsFailures(t *testing.T
 }
 
 func TestResilientRoundTripperRejectsUnreplayableRetryBodyWhenUnsafeOptedIn(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
 	}))
 	defer server.Close()
@@ -148,7 +148,7 @@ func TestResilientRoundTripperRejectsUnreplayableRetryBodyWhenUnsafeOptedIn(t *t
 			FailureThreshold:   3,
 			OpenAfter:          time.Second,
 			RetryUnsafeMethods: true,
-			Sleep:              func(ctx context.Context, delay time.Duration) error { return nil },
+			Sleep:              func(_ context.Context, _ time.Duration) error { return nil },
 		}),
 	}
 
@@ -170,8 +170,8 @@ func TestRunRetriesRetryableOperationError(t *testing.T) {
 		MaxAttempts:      2,
 		FailureThreshold: 3,
 		OpenAfter:        time.Second,
-		Sleep:            func(ctx context.Context, delay time.Duration) error { return nil },
-	}, func(ctx context.Context) error {
+		Sleep:            func(_ context.Context, _ time.Duration) error { return nil },
+	}, func(_ context.Context) error {
 		attempts++
 		if attempts == 1 {
 			return errors.New("gateway timeout")
@@ -190,8 +190,8 @@ func TestRunDoesNotRetryNonRetryableOperationError(t *testing.T) {
 		MaxAttempts:      2,
 		FailureThreshold: 3,
 		OpenAfter:        time.Second,
-		Sleep:            func(ctx context.Context, delay time.Duration) error { return nil },
-	}, func(ctx context.Context) error {
+		Sleep:            func(_ context.Context, _ time.Duration) error { return nil },
+	}, func(_ context.Context) error {
 		attempts++
 		return errors.New("login expired")
 	})
@@ -207,11 +207,11 @@ func TestRunDoesNotOpenCircuitForNonRetryableOperationErrors(t *testing.T) {
 		MaxAttempts:      2,
 		FailureThreshold: 2,
 		OpenAfter:        time.Minute,
-		Sleep:            func(ctx context.Context, delay time.Duration) error { return nil },
+		Sleep:            func(_ context.Context, _ time.Duration) error { return nil },
 	}
 
 	for range 3 {
-		err := Run(t.Context(), policy, func(ctx context.Context) error {
+		err := Run(t.Context(), policy, func(_ context.Context) error {
 			attempts++
 			return errors.New("invalid credentials")
 		})
@@ -229,11 +229,11 @@ func TestRunOpensCircuitForRetryableOperationErrors(t *testing.T) {
 		MaxAttempts:      1,
 		FailureThreshold: 2,
 		OpenAfter:        time.Minute,
-		Sleep:            func(ctx context.Context, delay time.Duration) error { return nil },
+		Sleep:            func(_ context.Context, _ time.Duration) error { return nil },
 	}
 
 	for range 2 {
-		err := Run(t.Context(), policy, func(ctx context.Context) error {
+		err := Run(t.Context(), policy, func(_ context.Context) error {
 			attempts++
 			return errors.New("gateway timeout")
 		})
@@ -241,7 +241,7 @@ func TestRunOpensCircuitForRetryableOperationErrors(t *testing.T) {
 		require.NotErrorIs(t, err, ErrCircuitOpen)
 	}
 
-	err := Run(t.Context(), policy, func(ctx context.Context) error {
+	err := Run(t.Context(), policy, func(_ context.Context) error {
 		attempts++
 		return nil
 	})

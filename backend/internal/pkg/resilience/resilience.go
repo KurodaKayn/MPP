@@ -451,13 +451,13 @@ func RetryableError(err error) bool {
 	return false
 }
 
-func nextBackoff(current, max time.Duration) time.Duration {
+func nextBackoff(current, limit time.Duration) time.Duration {
 	if current <= 0 {
 		return 0
 	}
 	next := current * 2
-	if next > max {
-		return max
+	if next > limit {
+		return limit
 	}
 	return next
 }

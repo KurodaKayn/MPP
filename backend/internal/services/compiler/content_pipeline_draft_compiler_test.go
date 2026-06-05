@@ -20,7 +20,7 @@ type fakePlatformDraftCompilerClient struct {
 	err      error
 }
 
-func (f *fakePlatformDraftCompilerClient) CompileDrafts(ctx context.Context, request *contentpipelinepb.CompileDraftsRequest, opts ...grpc.CallOption) (*contentpipelinepb.CompileDraftsResponse, error) {
+func (f *fakePlatformDraftCompilerClient) CompileDrafts(_ context.Context, request *contentpipelinepb.CompileDraftsRequest, _ ...grpc.CallOption) (*contentpipelinepb.CompileDraftsResponse, error) {
 	f.request = request
 	return f.response, f.err
 }

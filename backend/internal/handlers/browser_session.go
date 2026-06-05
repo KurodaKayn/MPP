@@ -163,7 +163,7 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 		// Update target path with proxy path before proxying
 		target.Path = joinURLPath(target.Path, proxyPath)
 		target.RawQuery = rawQuery
-		return proxy.ProxyWebSocket(c, target)
+		return proxy.WebSocket(c, target)
 	}
 
 	reverseProxy := &httputil.ReverseProxy{

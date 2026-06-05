@@ -17,7 +17,7 @@ type fakeXTweetClient struct {
 	err  error
 }
 
-func (f *fakeXTweetClient) CreateTweet(ctx context.Context, text string) (pkgx.Tweet, error) {
+func (f *fakeXTweetClient) CreateTweet(_ context.Context, text string) (pkgx.Tweet, error) {
 	f.text = text
 	if f.err != nil {
 		return pkgx.Tweet{}, f.err
@@ -69,7 +69,7 @@ func TestXPublisherPublishUsesOAuth2AccountCredentials(t *testing.T) {
 
 	oauth1Called := false
 	oauth2Client := &fakeXTweetClient{}
-	newXOAuth1TweetClient = func(creds pkgx.Credentials) xTweetClient {
+	newXOAuth1TweetClient = func(_ pkgx.Credentials) xTweetClient {
 		oauth1Called = true
 		return &fakeXTweetClient{err: fmt.Errorf("unexpected oauth1 publish")}
 	}

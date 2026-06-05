@@ -24,8 +24,8 @@ const (
 	defaultWebSocketMaxLifetime   = 16 * time.Minute
 )
 
-// ProxyWebSocket hijacks the echo context connection and pipes it to the target URL
-func ProxyWebSocket(c echo.Context, target *url.URL) error {
+// WebSocket hijacks the echo context connection and pipes it to the target URL
+func WebSocket(c echo.Context, target *url.URL) error {
 	req := c.Request()
 	res := c.Response()
 	config := webSocketProxyConfigFromEnv()
@@ -146,7 +146,7 @@ func TransparentProxy(target *url.URL) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			if strings.ToLower(c.Request().Header.Get("Upgrade")) == "websocket" {
-				return ProxyWebSocket(c, target)
+				return WebSocket(c, target)
 			}
 			return next(c)
 		}
