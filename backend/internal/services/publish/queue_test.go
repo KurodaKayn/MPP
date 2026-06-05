@@ -229,6 +229,135 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 	require.Equal(t, resp["job_id"], duplicate["job_id"])
 }
 
+func TestEnqueuePublishProjectReplaysDuplicateWhenLockWinsBeforeQueuedEvent(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	publication := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}
+	require.NoError(t, db.Create(&publication).Error)
+
+	originalJobID := uuid.New()
+	lockKey := publishLockKey(project.ID, "wechat")
+	queue.locks[lockKey] = originalJobID.String()
+	queue.onAcquireLocked = func(key, value string) {
+		if key != lockKey {
+			return
+		}
+		require.NoError(t, db.Create(&models.PublishEvent{
+			PublicationID:  publication.ID,
+			ProjectID:      project.ID,
+			UserID:         user.ID,
+			Platform:       "wechat",
+			JobID:          originalJobID,
+			IdempotencyKey: "click-race",
+			EventType:      "queued",
+			Status:         models.PublicationStatusQueued,
+		}).Error)
+	}
+
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-race"})
+
+	require.NoError(t, err)
+	require.Equal(t, models.PublicationStatusQueued, resp["status"])
+	require.Equal(t, originalJobID.String(), resp["job_id"])
+	require.Empty(t, queue.jobs)
+}
+
+func TestEnqueuePublishProjectReplaysOriginalJobEventsAfterPublicationChanges(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	service.queue = newTestPublishQueue()
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	publication := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusSucceeded,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+		RemoteID:       "newer-remote",
+		PublishURL:     "https://example.com/newer",
+	}
+	require.NoError(t, db.Create(&publication).Error)
+
+	jobID := uuid.New()
+	queuedAt := time.Now().UTC().Add(-time.Minute)
+	succeededAt := queuedAt.Add(time.Second)
+	require.NoError(t, db.Create(&models.PublishEvent{
+		PublicationID:  publication.ID,
+		ProjectID:      project.ID,
+		UserID:         user.ID,
+		Platform:       "wechat",
+		JobID:          jobID,
+		IdempotencyKey: "click-original",
+		EventType:      "queued",
+		Status:         models.PublicationStatusQueued,
+		CreatedAt:      queuedAt,
+	}).Error)
+	require.NoError(t, db.Create(&models.PublishEvent{
+		PublicationID:  publication.ID,
+		ProjectID:      project.ID,
+		UserID:         user.ID,
+		Platform:       "wechat",
+		JobID:          jobID,
+		IdempotencyKey: "click-original",
+		EventType:      "succeeded",
+		Status:         models.PublicationStatusSucceeded,
+		RemoteID:       "event-remote",
+		PublishURL:     "https://example.com/original",
+		CreatedAt:      succeededAt,
+	}).Error)
+	require.NoError(t, db.Model(&publication).Updates(map[string]interface{}{
+		"enabled":       false,
+		"error_message": "publication was later cancelled",
+		"publish_url":   "https://example.com/changed",
+		"remote_id":     "changed-remote",
+		"status":        models.PublicationStatusCancelled,
+	}).Error)
+
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-original"})
+
+	require.NoError(t, err)
+	require.Equal(t, models.PublicationStatusSucceeded, resp["status"])
+	require.Equal(t, jobID.String(), resp["job_id"])
+	require.Equal(t, "event-remote", resp["remote_id"])
+	require.Equal(t, "https://example.com/original", resp["publish_url"])
+	require.Empty(t, resp["error_message"])
+}
+
 func TestEnqueuePublishProjectDoesNotReplayFailedEnqueueAsQueued(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
 	service := newPublishTestService(db)
