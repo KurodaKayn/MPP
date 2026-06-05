@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/react";
+import type { ReactNode } from "react";
 import {
   AlignCenter,
   AlignLeft,
@@ -26,6 +27,7 @@ type ContentEditorToolbarProps = {
   editor: Editor | null;
   onInsertImage: () => void;
   onSetLink: () => void;
+  trailing?: ReactNode;
 };
 
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
@@ -34,6 +36,7 @@ export function ContentEditorToolbar({
   editor,
   onInsertImage,
   onSetLink,
+  trailing,
 }: ContentEditorToolbarProps) {
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
@@ -60,6 +63,12 @@ export function ContentEditorToolbar({
       >
         <ImagePlus className="size-4" />
       </ToolbarButton>
+
+      {trailing ? (
+        <div className="ml-auto flex flex-wrap items-center gap-2 pl-2">
+          {trailing}
+        </div>
+      ) : null}
     </div>
   );
 }
