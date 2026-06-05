@@ -1,6 +1,7 @@
 package project_test
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
@@ -302,6 +303,62 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 	assert.ErrorIs(t, err, services.ErrForbidden)
 }
 
+func TestUpdateProjectSyncsLinkedCollabDocumentSnapshot(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	collabService := services.NewCollabDocumentService(db)
+	initializer := &testsupport.FakeProjectDocumentInitializer{
+		SyncProjectSourceContentFunc: func(_ context.Context, documentID uuid.UUID) error {
+			return db.Model(&models.Project{}).
+				Where("collab_document_id = ?", documentID).
+				Update("source_content", "<p>Realtime update snapshot</p>").Error
+		},
+	}
+	collabService.UseProjectDocumentInitializer(initializer)
+	s := services.NewDashboardService(db)
+	s.SetCollabDocumentService(collabService)
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+
+	document := models.CollabDocument{
+		OwnerUserID: owner.ID,
+		Title:       "Collaborative project",
+		Status:      models.CollabDocumentStatusActive,
+	}
+	require.NoError(t, db.Create(&document).Error)
+	project := models.Project{
+		UserID:           owner.ID,
+		CollabDocumentID: &document.ID,
+		Title:            "Old title",
+		SourceContent:    "<p>Stale canonical content</p>",
+		Status:           models.ProjectStatusDraft,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusPending,
+	}).Error)
+
+	updated, err := s.UpdateProject(project.ID, owner.ID, dto.UpdateProjectRequest{
+		Title:         "Updated title",
+		SourceContent: "<p>Stale browser payload</p>",
+		Platforms:     []string{"wechat"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "Updated title", updated.Title)
+	require.Equal(t, "<p>Realtime update snapshot</p>", updated.SourceContent)
+	require.Equal(t, []uuid.UUID{document.ID}, initializer.SourceContentDocumentIDs)
+
+	var saved models.Project
+	require.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
+	require.Equal(t, "Updated title", saved.Title)
+	require.Equal(t, "<p>Realtime update snapshot</p>", saved.SourceContent)
+	require.Equal(t, models.ProjectStatusReady, saved.Status)
+}
+
 func TestUpdateProjectAllowsEditorAndRejectsViewer(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
@@ -417,6 +474,55 @@ func TestSaveProjectContentAllowsEditorAndRejectsViewer(t *testing.T) {
 	require.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
 	require.Equal(t, "Editor title", saved.Title)
 	require.Equal(t, "editor body", saved.SourceContent)
+}
+
+func TestSaveProjectContentSyncsLinkedCollabDocumentSnapshot(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	collabService := services.NewCollabDocumentService(db)
+	initializer := &testsupport.FakeProjectDocumentInitializer{
+		SyncProjectSourceContentFunc: func(_ context.Context, documentID uuid.UUID) error {
+			return db.Model(&models.Project{}).
+				Where("collab_document_id = ?", documentID).
+				Update("source_content", "<p>Realtime snapshot</p>").Error
+		},
+	}
+	collabService.UseProjectDocumentInitializer(initializer)
+	s := services.NewDashboardService(db)
+	s.SetCollabDocumentService(collabService)
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+
+	document := models.CollabDocument{
+		OwnerUserID: owner.ID,
+		Title:       "Collaborative project",
+		Status:      models.CollabDocumentStatusActive,
+	}
+	require.NoError(t, db.Create(&document).Error)
+	project := models.Project{
+		UserID:           owner.ID,
+		CollabDocumentID: &document.ID,
+		Title:            "Old title",
+		SourceContent:    "<p>Stale canonical content</p>",
+		Status:           models.ProjectStatusDraft,
+	}
+	require.NoError(t, db.Create(&project).Error)
+
+	updated, err := s.SaveProjectContent(project.ID, owner.ID, dto.SaveProjectContentRequest{
+		Title:         "Saved title",
+		SourceContent: "<p>Stale browser payload</p>",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "Saved title", updated.Title)
+	require.Equal(t, "<p>Realtime snapshot</p>", updated.SourceContent)
+	require.Equal(t, []uuid.UUID{document.ID}, initializer.SourceContentDocumentIDs)
+
+	var saved models.Project
+	require.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
+	require.Equal(t, "Saved title", saved.Title)
+	require.Equal(t, "<p>Realtime snapshot</p>", saved.SourceContent)
+	require.Equal(t, models.ProjectStatusReady, saved.Status)
 }
 
 func TestSaveProjectPlatformsAllowsEditorAndRejectsViewer(t *testing.T) {

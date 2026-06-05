@@ -40,6 +40,39 @@ func (s *Service) CreateProjectCollabSession(projectID uuid.UUID, userID uuid.UU
 	return s.collabDocuments.CreateAuthorizedSession(s.requestContext(), userID, documentID, documentRole)
 }
 
+func (s *Service) SyncProjectCollabSourceContent(projectID uuid.UUID, userID uuid.UUID) error {
+	if projectID == uuid.Nil || userID == uuid.Nil {
+		return ErrInvalidProject
+	}
+
+	var project models.Project
+	if err := s.db.Select("id", "user_id", "workspace_id", "collab_document_id").First(&project, "id = ?", projectID).Error; err != nil {
+		return err
+	}
+	role, err := s.ProjectAccessRole(project, userID)
+	if err != nil {
+		return err
+	}
+	if !CanEditProjectRole(role) {
+		return ErrForbidden
+	}
+
+	return s.syncProjectSourceContentDocument(project.CollabDocumentID)
+}
+
+func (s *Service) syncProjectSourceContentDocument(documentID *uuid.UUID) error {
+	if documentID == nil || *documentID == uuid.Nil {
+		return nil
+	}
+	if s.collabDocuments == nil {
+		return ErrProjectCollabUnavailable
+	}
+	if err := s.collabDocuments.SyncProjectSourceContent(s.requestContext(), *documentID); err != nil {
+		return errors.Join(ErrProjectCollabUnavailable, err)
+	}
+	return nil
+}
+
 func (s *Service) ensureProjectCollabDocument(projectID uuid.UUID, userID uuid.UUID) (uuid.UUID, string, error) {
 	var documentID uuid.UUID
 	var documentRole string

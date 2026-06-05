@@ -128,6 +128,10 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 		return nil, ErrInvalidProject
 	}
 
+	if err := s.SyncProjectCollabSourceContent(projectID, userID); err != nil {
+		return nil, err
+	}
+
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		var project models.Project
 		if err := tx.First(&project, "id = ?", projectID).Error; err != nil {
@@ -142,7 +146,9 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 		}
 
 		project.Title = title
-		project.SourceContent = sourceContent
+		if project.CollabDocumentID == nil || *project.CollabDocumentID == uuid.Nil {
+			project.SourceContent = sourceContent
+		}
 		project.Status = models.ProjectStatusReady
 		if err := tx.Save(&project).Error; err != nil {
 			return err
@@ -239,11 +245,19 @@ func (s *Service) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req 
 		return nil, ErrForbidden
 	}
 
-	if err := s.db.Model(&project).Updates(map[string]interface{}{
-		"source_content": sourceContent,
-		"status":         models.ProjectStatusReady,
-		"title":          title,
-	}).Error; err != nil {
+	if err := s.syncProjectSourceContentDocument(project.CollabDocumentID); err != nil {
+		return nil, err
+	}
+
+	updates := map[string]interface{}{
+		"status": models.ProjectStatusReady,
+		"title":  title,
+	}
+	if project.CollabDocumentID == nil || *project.CollabDocumentID == uuid.Nil {
+		updates["source_content"] = sourceContent
+	}
+
+	if err := s.db.Model(&project).Updates(updates).Error; err != nil {
 		return nil, err
 	}
 
