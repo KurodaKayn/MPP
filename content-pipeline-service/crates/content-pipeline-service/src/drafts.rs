@@ -57,6 +57,11 @@ fn draft_error_to_status(err: content_pipeline_core::DraftCompileError) -> Statu
         content_pipeline_core::DraftCompileError::EmptySource => {
             Status::invalid_argument(err.to_string())
         }
+        content_pipeline_core::DraftCompileError::UnsupportedSourceFormat(_)
+        | content_pipeline_core::DraftCompileError::UnsupportedPlatform(_)
+        | content_pipeline_core::DraftCompileError::UnsupportedProfile { .. } => {
+            Status::invalid_argument(err.to_string())
+        }
         content_pipeline_core::DraftCompileError::Encode(_) => Status::internal(err.to_string()),
     }
 }
