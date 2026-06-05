@@ -91,7 +91,9 @@ async def edit_content(request: EditContentRequest):
         usage = response_usage(response)
         record_ai_usage("/content/edit", usage)
 
-        return EditContentResponse(channel="content", content=edited_content, usage=usage)
+        return EditContentResponse(
+            channel="content", content=edited_content, usage=usage
+        )
     except HTTPException:
         raise
     except Exception as e:
