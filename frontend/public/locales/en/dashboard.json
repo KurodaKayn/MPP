@@ -263,6 +263,47 @@
     }
   },
   "collab": {
+    "hub": {
+      "title": "Collaboration Hub",
+      "description": "See projects you shared, projects shared with you, and the projects in your team workspace.",
+      "refresh": "Refresh",
+      "stats": {
+        "sharedByMe": "Shared by me",
+        "sharedWithMe": "Shared with me",
+        "workspaceProjects": "Workspace projects"
+      },
+      "sharedByMe": {
+        "title": "Projects I shared",
+        "description": "Owned projects with project-specific collaborators.",
+        "empty": "No projects have been shared yet.",
+        "collaboratorCount": "{{count}} collaborator",
+        "collaboratorCount_plural": "{{count}} collaborators",
+        "access": "Shared access"
+      },
+      "sharedWithMe": {
+        "title": "Shared with me",
+        "description": "Projects where you can edit or review through direct sharing.",
+        "empty": "No projects have been shared with you yet.",
+        "role": "Your role"
+      },
+      "workspaceProjects": {
+        "title": "Team workspace projects",
+        "description": "Projects owned by the selected workspace.",
+        "empty": "This workspace does not have projects yet.",
+        "role": "Workspace role"
+      },
+      "project": {
+        "updatedAt": "Updated {{date}}",
+        "open": "Open project",
+        "none": "None",
+        "workspaceFallback": "Workspace"
+      },
+      "error": {
+        "projectsTitle": "Failed to load shared projects",
+        "workspaceTitle": "Failed to load workspace projects",
+        "defaultMessage": "Unable to load collaboration projects"
+      }
+    },
     "header": {
       "badge": "Live Docs",
       "title": "Collaboration",

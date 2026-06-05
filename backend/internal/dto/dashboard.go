@@ -218,6 +218,7 @@ type ProjectListItem struct {
 	Title            string               `json:"title"`
 	Status           string               `json:"status"`
 	Role             string               `json:"role"`
+	AccessSource     string               `json:"access_source"`
 	CreatedAt        time.Time            `json:"created_at"`
 	UpdatedAt        time.Time            `json:"updated_at"`
 	Publications     []PublicationSummary `json:"publications"`
@@ -232,6 +233,7 @@ type ProjectDetail struct {
 	SourceContent    string               `json:"source_content"`
 	Status           string               `json:"status"`
 	Role             string               `json:"role"`
+	AccessSource     string               `json:"access_source"`
 	CreatedAt        time.Time            `json:"created_at"`
 	UpdatedAt        time.Time            `json:"updated_at"`
 	Publications     []PublicationSummary `json:"publications"`

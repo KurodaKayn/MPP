@@ -177,6 +177,7 @@ func TestWorkspaceProjectFlow(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, ownerItems, 1)
 	require.Equal(t, models.ProjectRoleEditor, ownerItems[0].Role)
+	require.Equal(t, models.ProjectAccessSourceWorkspace, ownerItems[0].AccessSource)
 	require.NotNil(t, ownerItems[0].WorkspaceID)
 	require.Equal(t, workspace.ID, *ownerItems[0].WorkspaceID)
 
@@ -184,19 +185,23 @@ func TestWorkspaceProjectFlow(t *testing.T) {
 	require.NoError(t, err)
 	viewerItems := viewerProjects.Items.([]dto.ProjectListItem)
 	require.Equal(t, models.ProjectRoleViewer, viewerItems[0].Role)
+	require.Equal(t, models.ProjectAccessSourceWorkspace, viewerItems[0].AccessSource)
 
 	memberDetail, err := s.GetProject(created.ID, &member.ID)
 	require.NoError(t, err)
 	require.Equal(t, models.ProjectRoleOwner, memberDetail.Role)
+	require.Equal(t, models.ProjectAccessSourceOwner, memberDetail.AccessSource)
 	require.Equal(t, "<p>shared draft</p>", memberDetail.SourceContent)
 
 	ownerDetail, err := s.GetProject(created.ID, &owner.ID)
 	require.NoError(t, err)
 	require.Equal(t, models.ProjectRoleEditor, ownerDetail.Role)
+	require.Equal(t, models.ProjectAccessSourceWorkspace, ownerDetail.AccessSource)
 
 	viewerDetail, err := s.GetProject(created.ID, &viewer.ID)
 	require.NoError(t, err)
 	require.Equal(t, models.ProjectRoleViewer, viewerDetail.Role)
+	require.Equal(t, models.ProjectAccessSourceWorkspace, viewerDetail.AccessSource)
 
 	updated, err := s.UpdateProject(created.ID, owner.ID, dto.UpdateProjectRequest{
 		Title:         "Owner Edited",
@@ -223,6 +228,7 @@ func TestWorkspaceProjectFlow(t *testing.T) {
 	accessibleItems := accessible.Items.([]dto.ProjectListItem)
 	require.Len(t, accessibleItems, 1)
 	require.Equal(t, models.ProjectRoleEditor, accessibleItems[0].Role)
+	require.Equal(t, models.ProjectAccessSourceWorkspace, accessibleItems[0].AccessSource)
 
 	_, err = s.CreateWorkspaceProject(workspace.ID, viewer.ID, dto.CreateProjectRequest{
 		Title:         "Viewer Post",
