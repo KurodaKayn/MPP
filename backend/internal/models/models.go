@@ -197,12 +197,12 @@ type WorkspaceMember struct {
 
 type WorkspaceActivity struct {
 	ID           uuid.UUID      `gorm:"type:uuid;primaryKey"`
-	WorkspaceID  uuid.UUID      `gorm:"type:uuid;not null;index:idx_workspace_activities_workspace_created_at"`
+	WorkspaceID  uuid.UUID      `gorm:"type:uuid;not null;index:idx_workspace_activities_workspace_created_at,priority:1"`
 	ActorUserID  uuid.UUID      `gorm:"type:uuid;not null;index"`
 	TargetUserID *uuid.UUID     `gorm:"type:uuid;index"`
-	EventType    string         `gorm:"not null;index:idx_workspace_activities_workspace_created_at"`
+	EventType    string         `gorm:"not null;index"`
 	Metadata     datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt    time.Time      `gorm:"not null;index:idx_workspace_activities_workspace_created_at"`
+	CreatedAt    time.Time      `gorm:"not null;index:idx_workspace_activities_workspace_created_at,priority:2"`
 	Workspace    Workspace      `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
 	Actor        User           `gorm:"foreignKey:ActorUserID;constraint:OnDelete:CASCADE"`
 	TargetUser   *User          `gorm:"foreignKey:TargetUserID;constraint:OnDelete:SET NULL"`

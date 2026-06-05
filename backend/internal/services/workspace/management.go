@@ -285,6 +285,9 @@ func (s *Service) UpdateWorkspace(workspaceID uuid.UUID, actorUserID uuid.UUID, 
 		if err := tx.Select("id", "name", "slug").First(&workspace, "id = ?", workspaceID).Error; err != nil {
 			return err
 		}
+		if workspace.Name == name && workspace.Slug == nextSlug {
+			return nil
+		}
 		updates := map[string]interface{}{
 			"name": name,
 			"slug": nextSlug,
