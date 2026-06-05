@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -57,29 +58,31 @@ export function WorkspaceSwitcher({
         }
       />
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel>{t("workspace.switcher.label")}</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {workspaces.map((workspace) => (
-          <DropdownMenuItem
-            key={workspace.id}
-            onClick={() => onWorkspaceChange(workspace.id)}
-            className="gap-2"
-          >
-            <UsersRound className="size-4 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate">{workspace.name}</span>
-            <span className="text-xs text-muted-foreground">
-              {t(`workspace.role.${workspace.role}`)}
-            </span>
-            <Check
-              className={cn(
-                "size-4",
-                selectedWorkspace?.id === workspace.id
-                  ? "opacity-100"
-                  : "opacity-0",
-              )}
-            />
-          </DropdownMenuItem>
-        ))}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{t("workspace.switcher.label")}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {workspaces.map((workspace) => (
+            <DropdownMenuItem
+              key={workspace.id}
+              onClick={() => onWorkspaceChange(workspace.id)}
+              className="gap-2"
+            >
+              <UsersRound className="size-4 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate">{workspace.name}</span>
+              <span className="text-xs text-muted-foreground">
+                {t(`workspace.role.${workspace.role}`)}
+              </span>
+              <Check
+                className={cn(
+                  "size-4",
+                  selectedWorkspace?.id === workspace.id
+                    ? "opacity-100"
+                    : "opacity-0",
+                )}
+              />
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
