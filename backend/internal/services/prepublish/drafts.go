@@ -13,6 +13,10 @@ import (
 )
 
 func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, req dto.SyncPrepublishRequest) (*dto.ProjectPublicationsResponse, error) {
+	if err := s.projects.SyncProjectCollabSourceContent(projectID, userID); err != nil {
+		return nil, err
+	}
+
 	var project models.Project
 	if err := s.db.Preload("Publications").First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err

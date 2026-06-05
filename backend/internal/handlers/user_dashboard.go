@@ -253,6 +253,9 @@ func (h *UserDashboardHandler) UpdateProject(c echo.Context) error {
 		if errors.Is(err, services.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
+		if errors.Is(err, services.ErrProjectCollabUnavailable) {
+			return sendError(c, http.StatusServiceUnavailable, "service_unavailable", "project collaboration unavailable")
+		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 
@@ -286,6 +289,9 @@ func (h *UserDashboardHandler) SaveProjectContent(c echo.Context) error {
 		}
 		if errors.Is(err, services.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		if errors.Is(err, services.ErrProjectCollabUnavailable) {
+			return sendError(c, http.StatusServiceUnavailable, "service_unavailable", "project collaboration unavailable")
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -740,6 +746,9 @@ func (h *UserDashboardHandler) SyncProjectPrepublish(c echo.Context) error {
 		}
 		if errors.Is(err, services.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		if errors.Is(err, services.ErrProjectCollabUnavailable) {
+			return sendError(c, http.StatusServiceUnavailable, "service_unavailable", "project collaboration unavailable")
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}

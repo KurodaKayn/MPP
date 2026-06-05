@@ -10,6 +10,9 @@ class FakeDocumentPersistence implements DocumentPersistence {
   initializedDocumentIds: string[] = [];
   initializeProjectDocumentError?: Error;
   initializeProjectDocumentResult = true;
+  syncedSourceDocumentIds: string[] = [];
+  syncProjectSourceContentError?: Error;
+  syncProjectSourceContentResult = true;
 
   constructor(private readonly pingError?: Error) {}
 
@@ -21,6 +24,14 @@ class FakeDocumentPersistence implements DocumentPersistence {
       throw this.initializeProjectDocumentError;
     }
     return this.initializeProjectDocumentResult;
+  }
+
+  async syncProjectSourceContent(documentId: string): Promise<boolean> {
+    this.syncedSourceDocumentIds.push(documentId);
+    if (this.syncProjectSourceContentError) {
+      throw this.syncProjectSourceContentError;
+    }
+    return this.syncProjectSourceContentResult;
   }
 
   async appendUpdate(
@@ -190,6 +201,63 @@ describe("collab-service app", () => {
     const response = await app.inject({
       method: "POST",
       url: "/internal/collab/documents/11111111-1111-4111-8111-111111111111/project-state",
+      headers: {
+        authorization: "Bearer collab-secret",
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+
+    await app.close();
+  });
+
+  it("syncs project source content for authorized backend requests", async () => {
+    const persistence = new FakeDocumentPersistence();
+    const app = await buildApp(testConfig(), { persistence });
+    const documentId = "11111111-1111-4111-8111-111111111111";
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/internal/collab/documents/${documentId}/project-source-content`,
+      headers: {
+        authorization: "Bearer collab-secret",
+      },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(persistence.syncedSourceDocumentIds).toEqual([documentId]);
+
+    await app.close();
+  });
+
+  it("returns not found when source content sync has no linked project", async () => {
+    const persistence = new FakeDocumentPersistence();
+    persistence.syncProjectSourceContentResult = false;
+    const app = await buildApp(testConfig(), { persistence });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/internal/collab/documents/11111111-1111-4111-8111-111111111111/project-source-content",
+      headers: {
+        authorization: "Bearer collab-secret",
+      },
+    });
+
+    expect(response.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("returns service unavailable when source content sync fails", async () => {
+    const persistence = new FakeDocumentPersistence();
+    persistence.syncProjectSourceContentError = new Error(
+      "database unavailable",
+    );
+    const app = await buildApp(testConfig(), { persistence });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/internal/collab/documents/11111111-1111-4111-8111-111111111111/project-source-content",
       headers: {
         authorization: "Bearer collab-secret",
       },

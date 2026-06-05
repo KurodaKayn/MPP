@@ -1,11 +1,13 @@
 package prepublish_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
@@ -107,6 +109,66 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(douyinPub.AdaptedContent, &douyinContent))
 	assert.Equal(t, "text", douyinContent["format"])
 	assert.Contains(t, douyinContent["text"], "Hello draft")
+}
+
+func TestSyncProjectPrepublishReadsLatestCollabSnapshot(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	collabService := services.NewCollabDocumentService(db)
+	initializer := &testsupport.FakeProjectDocumentInitializer{
+		SyncProjectSourceContentFunc: func(_ context.Context, documentID uuid.UUID) error {
+			return db.Model(&models.Project{}).
+				Where("collab_document_id = ?", documentID).
+				Update("source_content", "<p>Realtime draft</p>").Error
+		},
+	}
+	collabService.UseProjectDocumentInitializer(initializer)
+	s := services.NewDashboardService(db)
+	s.SetCollabDocumentService(collabService)
+	compiler := &testsupport.FakeProjectDraftCompiler{}
+	s.SetDraftCompiler(compiler)
+
+	owner := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&owner).Error)
+
+	document := models.CollabDocument{
+		OwnerUserID: owner.ID,
+		Title:       "Collaborative project",
+		Status:      models.CollabDocumentStatusActive,
+	}
+	require.NoError(t, db.Create(&document).Error)
+	project := models.Project{
+		UserID:           owner.ID,
+		CollabDocumentID: &document.ID,
+		Title:            "Platform title",
+		SourceContent:    "<p>Stale source</p>",
+		Status:           models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusPending,
+		Config:    datatypes.JSON(`{"title":"Platform title"}`),
+	}).Error)
+
+	resp, err := s.SyncProjectPrepublish(project.ID, owner.ID, dto.SyncPrepublishRequest{
+		Platforms: []string{"wechat"},
+		Actor:     dto.SyncActor{Type: "system"},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Items, 1)
+	require.Equal(t, []uuid.UUID{document.ID}, initializer.SourceContentDocumentIDs)
+	require.NotNil(t, compiler.LastProject)
+	require.Equal(t, "<p>Realtime draft</p>", compiler.LastProject.SourceContent)
+
+	var wechatPub models.ProjectPlatformPublication
+	require.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	var wechatContent map[string]interface{}
+	require.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &wechatContent))
+	require.Equal(t, "html", wechatContent["format"])
+	require.Equal(t, "<p>Realtime draft</p>", wechatContent["html"])
 }
 
 func TestSyncProjectPrepublishMarksFailedWhenContentPipelineCompilerFails(t *testing.T) {
