@@ -326,6 +326,14 @@ func TestUpdateProjectSyncsLinkedCollabDocumentSnapshot(t *testing.T) {
 		Status:      models.CollabDocumentStatusActive,
 	}
 	require.NoError(t, db.Create(&document).Error)
+	require.NoError(t, db.Create(&models.CollabDocumentState{
+		DocumentID:        document.ID,
+		YDocState:         []byte{1},
+		StateVector:       []byte{},
+		CompactedUntilSeq: 0,
+		StateSizeBytes:    1,
+		UpdatedAt:         time.Now(),
+	}).Error)
 	project := models.Project{
 		UserID:           owner.ID,
 		CollabDocumentID: &document.ID,
@@ -356,6 +364,60 @@ func TestUpdateProjectSyncsLinkedCollabDocumentSnapshot(t *testing.T) {
 	require.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
 	require.Equal(t, "Updated title", saved.Title)
 	require.Equal(t, "<p>Realtime update snapshot</p>", saved.SourceContent)
+	require.Equal(t, models.ProjectStatusReady, saved.Status)
+}
+
+func TestUpdateProjectPreservesRequestContentForUninitializedLinkedCollabDocument(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	collabService := services.NewCollabDocumentService(db)
+	initializer := &testsupport.FakeProjectDocumentInitializer{
+		SyncProjectSourceContentFunc: func(_ context.Context, _ uuid.UUID) error {
+			t.Fatal("uninitialized project collab document should not be synced before saving request content")
+			return nil
+		},
+	}
+	collabService.UseProjectDocumentInitializer(initializer)
+	s := services.NewDashboardService(db)
+	s.SetCollabDocumentService(collabService)
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+
+	document := models.CollabDocument{
+		OwnerUserID: owner.ID,
+		Title:       "Collaborative project",
+		Status:      models.CollabDocumentStatusActive,
+	}
+	require.NoError(t, db.Create(&document).Error)
+	project := models.Project{
+		UserID:           owner.ID,
+		CollabDocumentID: &document.ID,
+		Title:            "Old title",
+		SourceContent:    "<p>Old canonical content</p>",
+		Status:           models.ProjectStatusDraft,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusPending,
+	}).Error)
+
+	updated, err := s.UpdateProject(project.ID, owner.ID, dto.UpdateProjectRequest{
+		Title:         "Updated title",
+		SourceContent: "<p>Request payload</p>",
+		Platforms:     []string{"wechat"},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "Updated title", updated.Title)
+	require.Equal(t, "<p>Request payload</p>", updated.SourceContent)
+	require.Empty(t, initializer.SourceContentDocumentIDs)
+
+	var saved models.Project
+	require.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
+	require.Equal(t, "<p>Request payload</p>", saved.SourceContent)
 	require.Equal(t, models.ProjectStatusReady, saved.Status)
 }
 
@@ -499,6 +561,14 @@ func TestSaveProjectContentSyncsLinkedCollabDocumentSnapshot(t *testing.T) {
 		Status:      models.CollabDocumentStatusActive,
 	}
 	require.NoError(t, db.Create(&document).Error)
+	require.NoError(t, db.Create(&models.CollabDocumentState{
+		DocumentID:        document.ID,
+		YDocState:         []byte{1},
+		StateVector:       []byte{},
+		CompactedUntilSeq: 0,
+		StateSizeBytes:    1,
+		UpdatedAt:         time.Now(),
+	}).Error)
 	project := models.Project{
 		UserID:           owner.ID,
 		CollabDocumentID: &document.ID,
@@ -522,6 +592,53 @@ func TestSaveProjectContentSyncsLinkedCollabDocumentSnapshot(t *testing.T) {
 	require.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
 	require.Equal(t, "Saved title", saved.Title)
 	require.Equal(t, "<p>Realtime snapshot</p>", saved.SourceContent)
+	require.Equal(t, models.ProjectStatusReady, saved.Status)
+}
+
+func TestSaveProjectContentPreservesRequestContentForUninitializedLinkedCollabDocument(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	collabService := services.NewCollabDocumentService(db)
+	initializer := &testsupport.FakeProjectDocumentInitializer{
+		SyncProjectSourceContentFunc: func(_ context.Context, _ uuid.UUID) error {
+			t.Fatal("uninitialized project collab document should not be synced before saving request content")
+			return nil
+		},
+	}
+	collabService.UseProjectDocumentInitializer(initializer)
+	s := services.NewDashboardService(db)
+	s.SetCollabDocumentService(collabService)
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+
+	document := models.CollabDocument{
+		OwnerUserID: owner.ID,
+		Title:       "Collaborative project",
+		Status:      models.CollabDocumentStatusActive,
+	}
+	require.NoError(t, db.Create(&document).Error)
+	project := models.Project{
+		UserID:           owner.ID,
+		CollabDocumentID: &document.ID,
+		Title:            "Old title",
+		SourceContent:    "<p>Old canonical content</p>",
+		Status:           models.ProjectStatusDraft,
+	}
+	require.NoError(t, db.Create(&project).Error)
+
+	updated, err := s.SaveProjectContent(project.ID, owner.ID, dto.SaveProjectContentRequest{
+		Title:         "Saved title",
+		SourceContent: "<p>Request payload</p>",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "Saved title", updated.Title)
+	require.Equal(t, "<p>Request payload</p>", updated.SourceContent)
+	require.Empty(t, initializer.SourceContentDocumentIDs)
+
+	var saved models.Project
+	require.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
+	require.Equal(t, "<p>Request payload</p>", saved.SourceContent)
 	require.Equal(t, models.ProjectStatusReady, saved.Status)
 }
 
