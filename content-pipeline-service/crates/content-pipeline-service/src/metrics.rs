@@ -298,3 +298,112 @@ async fn metrics_handler(State(metrics): State<ContentPipelineMetrics>) -> Respo
             .into_response(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renders_recorded_process_and_draft_metrics() {
+        let metrics = ContentPipelineMetrics::new().expect("metrics should initialize");
+
+        metrics.record_process_asset_success(
+            "wechat",
+            "cover",
+            MediaSourceKind::DataUrl,
+            Some(2_048),
+            Some(1_024),
+            Duration::from_millis(12),
+        );
+        metrics.record_compile_drafts_success("x", "x@v1", 2, Duration::from_millis(8));
+
+        let rendered = metrics.render().expect("metrics should render");
+
+        assert!(rendered.contains("mpp_content_pipeline_requests_total"));
+        assert!(rendered.contains(r#"route="ProcessAsset""#));
+        assert!(rendered.contains(r#"platform="wechat""#));
+        assert!(rendered.contains(r#"status="ok""#));
+        assert!(rendered.contains("mpp_content_pipeline_media_input_bytes_bucket"));
+        assert!(rendered.contains("mpp_content_pipeline_media_output_bytes_bucket"));
+        assert!(rendered.contains(r#"source="data_url""#));
+        assert!(rendered.contains("mpp_content_pipeline_draft_compile_warnings_total"));
+        assert!(rendered.contains(r#"platform="x""#));
+        assert!(rendered.contains(r#"profile="x@v1""#));
+    }
+
+    #[test]
+    fn records_unknown_labels_for_empty_values() {
+        let metrics = ContentPipelineMetrics::new().expect("metrics should initialize");
+
+        metrics.record_process_asset_success(
+            "",
+            " ",
+            MediaSourceKind::Url,
+            Some(128),
+            Some(128),
+            Duration::from_millis(1),
+        );
+
+        let rendered = metrics.render().expect("metrics should render");
+
+        assert!(rendered.contains(r#"platform="unknown""#));
+        assert!(rendered.contains(r#"usage="unknown""#));
+    }
+
+    #[test]
+    fn classifies_status_errors_for_metrics() {
+        assert_eq!(
+            status_error_class(&Status::resource_exhausted("media exceeds max bytes")),
+            "resource_limit_exceeded"
+        );
+        assert_eq!(
+            status_error_class(&Status::deadline_exceeded("media download timed out")),
+            "transient_failure"
+        );
+        assert_eq!(
+            status_error_class(&Status::invalid_argument("unsafe media URL")),
+            "unsafe_source"
+        );
+        assert_eq!(
+            status_error_class(&Status::invalid_argument("unsupported image format")),
+            "unsupported_format"
+        );
+        assert_eq!(
+            status_error_class(&Status::invalid_argument("media source is required")),
+            "invalid_input"
+        );
+    }
+
+    #[test]
+    fn classifies_draft_errors_for_metrics() {
+        assert_eq!(
+            draft_error_class(&content_pipeline_core::DraftCompileError::EmptySource),
+            "invalid_input"
+        );
+        assert_eq!(
+            draft_error_class(
+                &content_pipeline_core::DraftCompileError::UnsupportedSourceFormat(
+                    "markdown".to_string(),
+                ),
+            ),
+            "unsupported_format"
+        );
+        assert_eq!(
+            draft_error_class(
+                &content_pipeline_core::DraftCompileError::UnsupportedPlatform(
+                    "mastodon".to_string(),
+                )
+            ),
+            "unsupported_format"
+        );
+        assert_eq!(
+            draft_error_class(
+                &content_pipeline_core::DraftCompileError::UnsupportedProfile {
+                    platform: "x".to_string(),
+                    profile: "x@v2".to_string(),
+                },
+            ),
+            "invalid_input"
+        );
+    }
+}
