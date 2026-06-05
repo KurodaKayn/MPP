@@ -1,4 +1,4 @@
-package dashboard
+package project
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
-func (s *DashboardService) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.UUID, includeContent bool) (*dto.ProjectPublicationsResponse, error) {
+func (s *Service) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.UUID, includeContent bool) (*dto.ProjectPublicationsResponse, error) {
 	// Verify project exists and access
 	var proj models.Project
 	if err := s.db.Select("id", "user_id", "workspace_id").Where("id = ?", projectID).First(&proj).Error; err != nil {
@@ -15,7 +15,7 @@ func (s *DashboardService) GetProjectPublications(projectID uuid.UUID, scopeUser
 	}
 
 	if scopeUserID != nil {
-		if _, err := s.projectAccessRole(proj, *scopeUserID); err != nil {
+		if _, err := s.ProjectAccessRole(proj, *scopeUserID); err != nil {
 			return nil, err
 		}
 	}
