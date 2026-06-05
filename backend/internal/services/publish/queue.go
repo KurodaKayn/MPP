@@ -462,7 +462,7 @@ func (s *Service) preparePublishJob(projectID uuid.UUID, platform string, userID
 	if _, err := publisher.Factory.GetPublisher(platform); err != nil {
 		return models.Project{}, models.ProjectPlatformPublication{}, err
 	}
-	if !publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusPublishing {
+	if pub.Status == models.PublicationStatusSyncing || (!publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusPublishing) {
 		return models.Project{}, models.ProjectPlatformPublication{}, ErrPublicationRequiresSync
 	}
 
