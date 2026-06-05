@@ -145,6 +145,42 @@
         "member": "可以创建和编辑工作空间项目。",
         "viewer": "只能查看工作空间项目。"
       }
+    },
+    "workspaceActivity": {
+      "title": "工作空间活动",
+      "description": "当前工作空间最近的成员和设置变更。",
+      "refresh": "刷新",
+      "loadFailed": "无法加载工作空间活动",
+      "retryLater": "请稍后重试。",
+      "empty": "此工作空间还没有记录活动。",
+      "noWorkspace": "请选择一个工作空间查看活动。",
+      "noPermission": "只有工作空间所有者和管理员可以查看活动。",
+      "unknownActor": "未知用户",
+      "unknownTarget": "未知成员",
+      "unknownRole": "未知角色",
+      "unknownWorkspace": "此工作空间",
+      "event": {
+        "workspace_created": "创建工作空间",
+        "workspace_updated": "更新工作空间",
+        "member_added": "添加成员",
+        "member_role_changed": "调整成员角色",
+        "member_removed": "移除成员"
+      },
+      "detail": {
+        "workspace_created": "{{actor}} 创建了 {{workspace}}。",
+        "workspace_updated": "{{actor}} 更新了工作空间信息。",
+        "workspace_updatedRenamed": "{{actor}} 将 {{previousName}} 重命名为 {{name}}。",
+        "member_added": "{{actor}} 将 {{target}} 添加为 {{role}}。",
+        "member_role_changed": "{{actor}} 将 {{target}} 从 {{previousRole}} 调整为 {{role}}。",
+        "member_removed": "{{actor}} 将 {{target}}（原{{previousRole}}）移除。"
+      },
+      "badge": {
+        "role": "角色：{{role}}",
+        "formerRole": "原角色：{{role}}",
+        "roleChange": "{{from}} -> {{to}}",
+        "slug": "Slug：{{slug}}",
+        "slugChange": "{{from}} -> {{to}}"
+      }
     }
   },
   "auth": {
