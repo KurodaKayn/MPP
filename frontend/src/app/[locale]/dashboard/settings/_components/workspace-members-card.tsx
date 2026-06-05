@@ -36,21 +36,17 @@ import {
   getWorkspaceMembers,
   removeWorkspaceMember,
   updateWorkspaceMember,
-  type AddWorkspaceMemberInput,
   type WorkspaceMember,
   type WorkspaceRole,
 } from "@/lib/dashboard/api";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import { WorkspaceSwitcher } from "../../_components/workspace-switcher";
 import { useDashboardWorkspaceSelection } from "../../_hooks/use-dashboard-workspace-selection";
-
-type WorkspaceMemberRole = AddWorkspaceMemberInput["role"];
-
-const manageableRoles: WorkspaceMemberRole[] = ["admin", "member", "viewer"];
-
-function canManageWorkspaceMembers(role?: WorkspaceRole | null) {
-  return role === "owner" || role === "admin";
-}
+import {
+  canManageWorkspaceMembers,
+  manageableWorkspaceMemberRoles,
+  type WorkspaceMemberRole,
+} from "../_lib/workspace-members";
 
 export function WorkspaceMembersCard() {
   const locale = useAppLocale();
@@ -354,7 +350,7 @@ function WorkspaceRoleMenu({
         }
       />
       <DropdownMenuContent align="end" className="w-40">
-        {manageableRoles.map((item) => (
+        {manageableWorkspaceMemberRoles.map((item) => (
           <DropdownMenuItem key={item} onClick={() => onRoleChange(item)}>
             <div>
               <div>{workspaceRoleLabel(t, item)}</div>
