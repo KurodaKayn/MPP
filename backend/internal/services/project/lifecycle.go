@@ -128,7 +128,8 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 		return nil, ErrInvalidProject
 	}
 
-	if err := s.SyncProjectCollabSourceContent(projectID, userID); err != nil {
+	syncedCollabSource, err := s.SyncProjectCollabSourceContentIfMaterialized(projectID, userID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -146,7 +147,7 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 		}
 
 		project.Title = title
-		if project.CollabDocumentID == nil || *project.CollabDocumentID == uuid.Nil {
+		if project.CollabDocumentID == nil || *project.CollabDocumentID == uuid.Nil || !syncedCollabSource {
 			project.SourceContent = sourceContent
 		}
 		project.Status = models.ProjectStatusReady
@@ -245,7 +246,8 @@ func (s *Service) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req 
 		return nil, ErrForbidden
 	}
 
-	if err := s.syncProjectSourceContentDocument(project.CollabDocumentID); err != nil {
+	syncedCollabSource, err := s.syncProjectSourceContentDocumentIfMaterialized(project.CollabDocumentID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -253,7 +255,7 @@ func (s *Service) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req 
 		"status": models.ProjectStatusReady,
 		"title":  title,
 	}
-	if project.CollabDocumentID == nil || *project.CollabDocumentID == uuid.Nil {
+	if project.CollabDocumentID == nil || *project.CollabDocumentID == uuid.Nil || !syncedCollabSource {
 		updates["source_content"] = sourceContent
 	}
 

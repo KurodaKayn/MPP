@@ -180,6 +180,27 @@ func SetupTestDB() *gorm.DB {
 		deleted_at DATETIME
 	)`)
 
+	db.Exec(`CREATE TABLE collab_document_states (
+		document_id TEXT PRIMARY KEY,
+		y_doc_state BLOB NOT NULL,
+		state_vector BLOB,
+		compacted_until_seq INTEGER NOT NULL DEFAULT 0,
+		state_size_bytes INTEGER NOT NULL DEFAULT 0,
+		updated_at DATETIME NOT NULL
+	)`)
+
+	db.Exec(`CREATE TABLE collab_document_update_batches (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		document_id TEXT NOT NULL,
+		from_seq INTEGER NOT NULL,
+		to_seq INTEGER NOT NULL,
+		update_payload BLOB NOT NULL,
+		update_count INTEGER NOT NULL,
+		payload_size_bytes INTEGER NOT NULL,
+		actor_user_id TEXT,
+		created_at DATETIME NOT NULL
+	)`)
+
 	db.Exec(`CREATE TABLE project_collaborators (
 		project_id TEXT NOT NULL,
 		user_id TEXT NOT NULL,
