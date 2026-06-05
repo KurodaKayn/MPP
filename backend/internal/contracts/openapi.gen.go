@@ -551,6 +551,7 @@ type ProjectDetail struct {
 	Title            string               `json:"title"`
 	UpdatedAt        time.Time            `json:"updated_at"`
 	UserId           openapi_types.UUID   `json:"user_id"`
+	WorkspaceId      *openapi_types.UUID  `json:"workspace_id"`
 }
 
 // ProjectListItem defines model for ProjectListItem.
@@ -564,6 +565,7 @@ type ProjectListItem struct {
 	Title            string               `json:"title"`
 	UpdatedAt        time.Time            `json:"updated_at"`
 	UserId           openapi_types.UUID   `json:"user_id"`
+	WorkspaceId      *openapi_types.UUID  `json:"workspace_id"`
 }
 
 // ProjectPublications defines model for ProjectPublications.
