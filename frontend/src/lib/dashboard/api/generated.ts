@@ -97,6 +97,13 @@ export interface components {
     /** @enum {string} */
     WorkspaceStatus: "active" | "archived";
     /** @enum {string} */
+    WorkspaceActivityType:
+      | "workspace_created"
+      | "workspace_updated"
+      | "member_added"
+      | "member_role_changed"
+      | "member_removed";
+    /** @enum {string} */
     PublicationStatus:
       | "draft"
       | "syncing"
@@ -111,8 +118,8 @@ export interface components {
       | "failed"
       | "manual_required"
       | "queued"
-      | "publishing"
-      | "succeeded";
+      | "succeeded"
+      | "publishing";
     /** @enum {string} */
     PlatformAccountStatus: "unconfigured" | "untested" | "connected" | "failed";
     /** @enum {string} */
@@ -434,6 +441,31 @@ export interface components {
     };
     WorkspaceMembersResponse: {
       items: components["schemas"]["WorkspaceMember"][];
+    };
+    WorkspaceActivity: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      workspace_id: string;
+      /** Format: uuid */
+      actor_user_id: string;
+      actor_username: string;
+      /** Format: email */
+      actor_email: string;
+      /** Format: uuid */
+      target_user_id?: string;
+      target_username?: string;
+      /** Format: email */
+      target_email?: string;
+      event_type: components["schemas"]["WorkspaceActivityType"];
+      metadata: {
+        [key: string]: unknown;
+      };
+      /** Format: date-time */
+      created_at: string;
+    };
+    WorkspaceActivitiesResponse: {
+      items: components["schemas"]["WorkspaceActivity"][];
     };
     PaginationProjects: {
       items: components["schemas"]["ProjectListItem"][];
