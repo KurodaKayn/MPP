@@ -17,6 +17,7 @@ const SUPPORTED_IMAGE_MIME_TYPES: &[&str] = &["image/png", "image/jpeg", "image/
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessedAsset {
+    pub input_byte_size: u64,
     pub bytes: Vec<u8>,
     pub mime_type: String,
     pub byte_size: u64,
@@ -205,6 +206,7 @@ impl MediaProcessor {
         let sha256 = sha256_hex(&processed.bytes);
 
         Ok(ProcessedAsset {
+            input_byte_size,
             bytes: processed.bytes,
             mime_type: processed.mime_type,
             byte_size,
