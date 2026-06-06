@@ -481,7 +481,8 @@
       "brandProfile": "Brand profile",
       "loading": "Loading...",
       "noTemplate": "No template",
-      "noBrandProfile": "No brand profile"
+      "noBrandProfile": "No brand profile",
+      "replaceConfirm": "Applying this template will replace the current title, content, and selected platforms. Continue?"
     },
     "collaboration": {
       "title": "Collaboration Experience",
