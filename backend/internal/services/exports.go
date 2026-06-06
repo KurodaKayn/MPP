@@ -69,6 +69,7 @@ var NewAIServiceClientFromEnv = ai.NewAIServiceClientFromEnv
 var NewCollabDocumentService = collabdoc.NewService
 var NewHTTPProjectDocumentInitializer = collabdoc.NewHTTPProjectDocumentInitializer
 var NewDashboardService = dashboard.NewDashboardService
+var NewDashboardServiceWithRouter = dashboard.NewDashboardServiceWithRouter
 var NewDashboardServiceWithPlatformTesters = dashboard.NewDashboardServiceWithPlatformTesters
 var NewDashboardServiceWithWechatTester = dashboard.NewDashboardServiceWithWechatTester
 var NewDashboardServiceWithXOAuth2Provider = dashboard.NewDashboardServiceWithXOAuth2Provider
