@@ -26,6 +26,11 @@ const (
 
 // WebSocket hijacks the echo context connection and pipes it to the target URL
 func WebSocket(c echo.Context, target *url.URL) error {
+	return WebSocketWithHeaders(c, target, nil)
+}
+
+// WebSocketWithHeaders hijacks the echo context connection and sends extra headers to the target URL.
+func WebSocketWithHeaders(c echo.Context, target *url.URL, headers http.Header) error {
 	req := c.Request()
 	res := c.Response()
 	config := webSocketProxyConfigFromEnv()
@@ -55,6 +60,12 @@ func WebSocket(c echo.Context, target *url.URL) error {
 	}
 
 	for k, vv := range req.Header {
+		for _, v := range vv {
+			targetReq.Header.Add(k, v)
+		}
+	}
+	for k, vv := range headers {
+		targetReq.Header.Del(k)
 		for _, v := range vv {
 			targetReq.Header.Add(k, v)
 		}

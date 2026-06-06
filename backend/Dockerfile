@@ -40,10 +40,16 @@ RUN apk add --no-cache \
     harfbuzz \
     ca-certificates \
     ttf-freefont \
-    tzdata
-WORKDIR /root/
-COPY --from=builder /app/backend-api .
-COPY --from=builder /app/publish-worker .
+    tzdata \
+    && addgroup -S app -g 10001 \
+    && adduser -S app -G app -u 10001 \
+    && mkdir -p /app \
+    && chown app:app /app
+WORKDIR /app
+ENV HOME=/home/app
+COPY --from=builder --chown=app:app /app/backend-api .
+COPY --from=builder --chown=app:app /app/publish-worker .
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD wget -qO- http://127.0.0.1:8080/ready >/dev/null || exit 1
+USER app
 CMD ["./backend-api"]

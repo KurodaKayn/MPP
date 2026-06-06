@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { AIEditAssistant } from "@/components/dashboard/content/ai/ai-edit-assistant";
 import { AIMarkdownPreview } from "@/components/dashboard/content/ai/ai-markdown-preview";
+import { normalizeStoredHtml } from "@/components/dashboard/content/editor/content-editor-utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -60,7 +61,9 @@ function renderPreview(draft: PrepublishDraft, title: string) {
     return (
       <article className="prose prose-sm max-w-none dark:prose-invert">
         {title ? <h1>{title}</h1> : null}
-        <div dangerouslySetInnerHTML={{ __html: draft.raw }} />
+        <div
+          dangerouslySetInnerHTML={{ __html: normalizeStoredHtml(draft.raw) }}
+        />
       </article>
     );
   }

@@ -1,6 +1,10 @@
 from collections.abc import AsyncIterator
+import logging
+import os
+import secrets
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
@@ -28,6 +32,31 @@ from schemas import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+AI_SERVICE_INTERNAL_TOKEN_ENV = "AI_SERVICE_INTERNAL_TOKEN"
+GENERIC_AI_FAILURE_DETAIL = "AI service request failed"
+
+
+async def require_internal_bearer_token(
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    expected_token = os.getenv(AI_SERVICE_INTERNAL_TOKEN_ENV, "").strip()
+    if not expected_token:
+        raise HTTPException(
+            status_code=503,
+            detail="AI service internal token is not configured",
+        )
+
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not secrets.compare_digest(
+        token,
+        expected_token,
+    ):
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+
+internal_auth = [Depends(require_internal_bearer_token)]
 
 
 async def stream_response_text(
@@ -52,8 +81,9 @@ async def stream_markdown_response(
         raise HTTPException(status_code=502, detail="LLM returned empty content")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+    except Exception:
+        logger.exception("AI stream failed before first chunk")
+        raise HTTPException(status_code=502, detail=GENERIC_AI_FAILURE_DETAIL)
 
     async def with_first_chunk() -> AsyncIterator[str]:
         yield first_chunk
@@ -78,7 +108,11 @@ async def ready(request: Request):
     return {"status": "ready"}
 
 
-@router.post("/content/edit", response_model=EditContentResponse)
+@router.post(
+    "/content/edit",
+    response_model=EditContentResponse,
+    dependencies=internal_auth,
+)
 async def edit_content(request: EditContentRequest):
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="message is required")
@@ -96,11 +130,12 @@ async def edit_content(request: EditContentRequest):
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+    except Exception:
+        logger.exception("AI content edit failed")
+        raise HTTPException(status_code=502, detail=GENERIC_AI_FAILURE_DETAIL)
 
 
-@router.post("/content/edit/stream")
+@router.post("/content/edit/stream", dependencies=internal_auth)
 async def stream_edit_content(request: EditContentRequest):
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="message is required")
@@ -111,11 +146,16 @@ async def stream_edit_content(request: EditContentRequest):
         return await stream_markdown_response(llm, messages)
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+    except Exception:
+        logger.exception("AI content edit stream failed")
+        raise HTTPException(status_code=502, detail=GENERIC_AI_FAILURE_DETAIL)
 
 
-@router.post("/prepublish/edit", response_model=EditPrepublishResponse)
+@router.post(
+    "/prepublish/edit",
+    response_model=EditPrepublishResponse,
+    dependencies=internal_auth,
+)
 async def edit_prepublish(request: EditPrepublishRequest):
     if not request.platform.strip() or not request.message.strip():
         raise HTTPException(status_code=400, detail="platform and message are required")
@@ -148,11 +188,12 @@ async def edit_prepublish(request: EditPrepublishRequest):
         )
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+    except Exception:
+        logger.exception("AI prepublish edit failed")
+        raise HTTPException(status_code=502, detail=GENERIC_AI_FAILURE_DETAIL)
 
 
-@router.post("/prepublish/edit/stream")
+@router.post("/prepublish/edit/stream", dependencies=internal_auth)
 async def stream_edit_prepublish(request: EditPrepublishRequest):
     if not request.platform.strip() or not request.message.strip():
         raise HTTPException(status_code=400, detail="platform and message are required")
@@ -167,11 +208,12 @@ async def stream_edit_prepublish(request: EditPrepublishRequest):
         return await stream_markdown_response(llm, messages)
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+    except Exception:
+        logger.exception("AI prepublish edit stream failed")
+        raise HTTPException(status_code=502, detail=GENERIC_AI_FAILURE_DETAIL)
 
 
-@router.post("/calibrate")
+@router.post("/calibrate", dependencies=internal_auth)
 async def calibrate(request: CalibrateRequest):
     try:
         response = await build_llm().ainvoke(build_calibrate_messages(request))
@@ -182,5 +224,6 @@ async def calibrate(request: CalibrateRequest):
         }
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+    except Exception:
+        logger.exception("AI calibration failed")
+        raise HTTPException(status_code=502, detail=GENERIC_AI_FAILURE_DETAIL)

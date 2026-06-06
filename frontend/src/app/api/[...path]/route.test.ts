@@ -149,4 +149,58 @@ describe("api proxy route", () => {
     expect(forwardedHeaders.get("x-request-id")).toBe("trace-from-client");
     expect(forwardedHeaders.get("x-trace-id")).toBe("trace-from-client");
   });
+
+  it("rejects cross-origin write requests authenticated only by cookies", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    const body = new TextEncoder().encode("payload").buffer;
+    const request = createRequest({
+      body,
+      cookies: { auth_token: "cookie-token" },
+      headers: {
+        origin: "https://attacker.example",
+      },
+      method: "POST",
+      url: "https://frontend.example/api/dashboard/projects",
+    });
+
+    const response = await POST(
+      request,
+      createContext(["dashboard", "projects"]),
+    );
+    const responseBody = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(responseBody.error.code).toBe("csrf_failed");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(request.arrayBuffer).not.toHaveBeenCalled();
+  });
+
+  it("allows same-origin cookie-authenticated write requests", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const body = new TextEncoder().encode("payload").buffer;
+    const request = createRequest({
+      body,
+      cookies: { auth_token: "cookie-token" },
+      headers: {
+        origin: "https://frontend.example",
+      },
+      method: "POST",
+      url: "https://frontend.example/api/dashboard/projects",
+    });
+
+    const response = await POST(
+      request,
+      createContext(["dashboard", "projects"]),
+    );
+
+    expect(response.status).toBe(204);
+    expect(request.arrayBuffer).toHaveBeenCalledOnce();
+    const [, init] = fetchMock.mock.calls[0];
+    const forwardedHeaders = init!.headers as Headers;
+    expect(forwardedHeaders.get("authorization")).toBe("Bearer cookie-token");
+  });
 });

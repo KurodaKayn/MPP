@@ -17,6 +17,8 @@ spec:
       message: "browser runtime pods must carry the expected MPP runtime labels"
     - expression: "object.spec.restartPolicy == 'Never'"
       message: "browser runtime pods must not restart"
+    - expression: "has(object.spec.activeDeadlineSeconds) && object.spec.activeDeadlineSeconds > 0"
+      message: "browser runtime pods must have a positive active deadline"
     - expression: "!has(object.spec.serviceAccountName) || object.spec.serviceAccountName == '' || object.spec.serviceAccountName == 'default'"
       message: "browser runtime pods must not use privileged service accounts"
     - expression: "has(object.spec.automountServiceAccountToken) && object.spec.automountServiceAccountToken == false"

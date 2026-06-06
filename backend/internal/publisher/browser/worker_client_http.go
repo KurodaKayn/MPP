@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -13,20 +14,26 @@ import (
 )
 
 type HTTPBrowserWorkerClient struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL       string
+	httpClient    *http.Client
+	internalToken string
 }
 
 func NewHTTPBrowserWorkerClient(baseURL string) *HTTPBrowserWorkerClient {
+	return NewHTTPBrowserWorkerClientWithToken(baseURL, "")
+}
+
+func NewHTTPBrowserWorkerClientWithToken(baseURL, internalToken string) *HTTPBrowserWorkerClient {
 	return &HTTPBrowserWorkerClient{
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: resilience.NewHTTPClient("browser-worker", 30*time.Second),
+		baseURL:       strings.TrimRight(baseURL, "/"),
+		httpClient:    resilience.NewHTTPClient("browser-worker", 30*time.Second),
+		internalToken: strings.TrimSpace(internalToken),
 	}
 }
 
 func (c *HTTPBrowserWorkerClient) CreateSession(ctx context.Context, req StartWorkerSessionRequest) (*StartWorkerSessionResponse, error) {
 	body, _ := json.Marshal(req)
-	hReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/internal/browser-sessions", bytes.NewReader(body))
+	hReq, _ := c.newRequest(ctx, http.MethodPost, "/internal/browser-sessions", bytes.NewReader(body))
 	hReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(hReq)
@@ -61,7 +68,7 @@ func (c *HTTPBrowserWorkerClient) CreateSession(ctx context.Context, req StartWo
 }
 
 func (c *HTTPBrowserWorkerClient) GetSession(ctx context.Context, ref string) (*GetWorkerSessionResponse, error) {
-	hReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/internal/browser-sessions/"+ref, nil)
+	hReq, _ := c.newRequest(ctx, http.MethodGet, "/internal/browser-sessions/"+ref, nil)
 
 	resp, err := c.httpClient.Do(hReq)
 	if err != nil {
@@ -81,7 +88,7 @@ func (c *HTTPBrowserWorkerClient) GetSession(ctx context.Context, ref string) (*
 }
 
 func (c *HTTPBrowserWorkerClient) CaptureSession(ctx context.Context, ref string) (*CaptureWorkerSessionResponse, error) {
-	hReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/internal/browser-sessions/"+ref+"/capture", nil)
+	hReq, _ := c.newRequest(ctx, http.MethodPost, "/internal/browser-sessions/"+ref+"/capture", nil)
 
 	resp, err := c.httpClient.Do(hReq)
 	if err != nil {
@@ -102,7 +109,7 @@ func (c *HTTPBrowserWorkerClient) CaptureSession(ctx context.Context, ref string
 
 func (c *HTTPBrowserWorkerClient) StartDouyinPublish(ctx context.Context, ref string, req StartDouyinPublishRequest) error {
 	body, _ := json.Marshal(req)
-	hReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/internal/browser-sessions/"+ref+"/publish/douyin", bytes.NewReader(body))
+	hReq, _ := c.newRequest(ctx, http.MethodPost, "/internal/browser-sessions/"+ref+"/publish/douyin", bytes.NewReader(body))
 	hReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(hReq)
@@ -125,7 +132,7 @@ func (c *HTTPBrowserWorkerClient) StartDouyinPublish(ctx context.Context, ref st
 }
 
 func (c *HTTPBrowserWorkerClient) StopSession(ctx context.Context, ref string) error {
-	hReq, _ := http.NewRequestWithContext(ctx, http.MethodDelete, c.baseURL+"/internal/browser-sessions/"+ref, nil)
+	hReq, _ := c.newRequest(ctx, http.MethodDelete, "/internal/browser-sessions/"+ref, nil)
 
 	resp, err := c.httpClient.Do(hReq)
 	if err != nil {
@@ -137,6 +144,17 @@ func (c *HTTPBrowserWorkerClient) StopSession(ctx context.Context, ref string) e
 		return fmt.Errorf("worker returned status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func (c *HTTPBrowserWorkerClient) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if c.internalToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.internalToken)
+	}
+	return req, nil
 }
 
 func (c *HTTPBrowserWorkerClient) absoluteWorkerURL(ref string) string {

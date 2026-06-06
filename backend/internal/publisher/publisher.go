@@ -51,6 +51,7 @@ var BuildXPostIntentURL = xpub.BuildXPostIntentURL
 var ContextKeyRemoteURL = browser.ContextKeyRemoteURL
 var NewCookieStore = browser.NewCookieStore
 var NewHTTPBrowserWorkerClient = browser.NewHTTPBrowserWorkerClient
+var NewHTTPBrowserWorkerClientWithToken = browser.NewHTTPBrowserWorkerClientWithToken
 var NewMockBrowserWorkerClient = browser.NewMockBrowserWorkerClient
 var NormalizePlatformCookies = browser.NormalizePlatformCookies
 var PasteContent = browser.PasteContent
