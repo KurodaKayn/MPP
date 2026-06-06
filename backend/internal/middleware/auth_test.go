@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -60,4 +62,61 @@ func TestGetUserIDFromContextReturnsClaimUserID(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, expectedUserID, userID)
+}
+
+func TestRequireAdminRejectsMissingUser(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	handler := RequireAdmin()(func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	err := handler(c)
+
+	require.Error(t, err)
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
+}
+
+func TestRequireAdminRejectsNonAdminRole(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set("user", jwt.NewWithClaims(jwt.SigningMethodHS256, &JWTCustomClaims{
+		UserID: uuid.New(),
+		Role:   "user",
+	}))
+	handler := RequireAdmin()(func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	err := handler(c)
+
+	require.Error(t, err)
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	require.Equal(t, http.StatusForbidden, httpErr.Code)
+}
+
+func TestRequireAdminAllowsAdminRole(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set("user", jwt.NewWithClaims(jwt.SigningMethodHS256, &JWTCustomClaims{
+		UserID: uuid.New(),
+		Role:   " ADMIN ",
+	}))
+	handler := RequireAdmin()(func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+
+	err := handler(c)
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
 }
