@@ -24,8 +24,10 @@ CMD ["sh", "-c", "uv sync --frozen && uvicorn main:app --host 0.0.0.0 --port 800
 
 FROM python:3.12-alpine
 WORKDIR /app
-COPY --from=builder /app /app
-ENV PATH="/app/.venv/bin:$PATH"
+RUN addgroup -S app -g 10001 && adduser -S app -G app -u 10001 && chown app:app /app
+COPY --from=builder --chown=app:app /app /app
+ENV HOME=/home/app PATH="/app/.venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD wget -qO- http://127.0.0.1:8000/ready >/dev/null || exit 1
+USER app
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
