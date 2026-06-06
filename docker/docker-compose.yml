@@ -85,6 +85,7 @@ services:
       REDIS_DB: ${REDIS_DB:-0}
       BROWSER_WORKER_URL: ${BROWSER_WORKER_URL:-http://browser-worker:8081}
       BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-}
+      AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-}
       CONTENT_PIPELINE_HOST: ${CONTENT_PIPELINE_HOST:-content-pipeline-service}
       CONTENT_PIPELINE_PORT: ${CONTENT_PIPELINE_PORT:-50051}
       CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-false}
@@ -131,6 +132,7 @@ services:
       REDIS_DB: ${REDIS_DB:-0}
       BROWSER_WORKER_URL: ${BROWSER_WORKER_URL:-http://browser-worker:8081}
       BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-}
+      AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-}
       CONTENT_PIPELINE_HOST: ${CONTENT_PIPELINE_HOST:-content-pipeline-service}
       CONTENT_PIPELINE_PORT: ${CONTENT_PIPELINE_PORT:-50051}
       CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-false}
@@ -204,6 +206,8 @@ services:
       context: ../ai-service
       dockerfile: Dockerfile
     env_file: .env
+    environment:
+      AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/ready >/dev/null"]
       interval: 30s

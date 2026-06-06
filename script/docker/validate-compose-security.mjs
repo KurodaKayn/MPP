@@ -30,6 +30,26 @@ const checks = [
     /browser-worker:[\s\S]*?ports:[\s\S]*?-\s+"127\.0\.0\.1:8081:8081"/,
     devCompose,
   ],
+  [
+    "backend receives ai-service internal token",
+    /backend:[\s\S]*?environment:[\s\S]*?AI_SERVICE_INTERNAL_TOKEN:\s*\$\{AI_SERVICE_INTERNAL_TOKEN:-\}/,
+    compose,
+  ],
+  [
+    "publish-worker receives ai-service internal token",
+    /publish-worker:[\s\S]*?environment:[\s\S]*?AI_SERVICE_INTERNAL_TOKEN:\s*\$\{AI_SERVICE_INTERNAL_TOKEN:-\}/,
+    compose,
+  ],
+  [
+    "ai-service receives internal token env",
+    /ai-service:[\s\S]*?environment:[\s\S]*?AI_SERVICE_INTERNAL_TOKEN:\s*\$\{AI_SERVICE_INTERNAL_TOKEN:-\}/,
+    compose,
+  ],
+  [
+    "ai-service dev port is loopback-only",
+    /ai-service:[\s\S]*?ports:[\s\S]*?-\s+"127\.0\.0\.1:8000:8000"/,
+    devCompose,
+  ],
 ];
 
 let failed = false;
