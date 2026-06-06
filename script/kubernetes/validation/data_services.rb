@@ -44,6 +44,9 @@ module KubernetesValidation
           validate_container(context, container, "self-hosted #{name} container #{container['name']}")
         end
       end
+
+      validate_self_hosted_network_policy(context, "postgres", 5432, ["backend", "publish-worker", "collab-service"])
+      validate_self_hosted_network_policy(context, "redis", 6379, ["backend", "publish-worker", "browser-worker", "collab-service"])
     end
 
     def validate_container(context, container, label)
@@ -56,6 +59,30 @@ module KubernetesValidation
         context.add_error("#{label} must define #{resource} requests") unless requests.key?(resource)
         context.add_error("#{label} must define #{resource} limits") unless limits.key?(resource)
       end
+    end
+
+    def validate_self_hosted_network_policy(context, name, port, allowed_components)
+      policy = context.require_document("NetworkPolicy", "#{name}-app-access", "mpp-system")
+      return unless policy
+
+      selector = policy.spec.dig("podSelector", "matchLabels") || {}
+      unless selector["app.kubernetes.io/component"] == name
+        context.add_error("self-hosted #{name} NetworkPolicy must select #{name} Pods")
+      end
+
+      types = Array(policy.spec["policyTypes"])
+      context.add_error("self-hosted #{name} NetworkPolicy must be an ingress policy") unless types.include?("Ingress")
+
+      from_entries = Array(policy.spec["ingress"]).flat_map { |rule| Array(rule["from"]) }
+      components = from_entries.map { |entry| entry.dig("podSelector", "matchLabels", "app.kubernetes.io/component") }.compact
+      allowed_components.each do |component|
+        unless components.include?(component)
+          context.add_error("self-hosted #{name} NetworkPolicy must allow #{component} ingress")
+        end
+      end
+
+      ports = Array(policy.spec["ingress"]).flat_map { |rule| Array(rule["ports"]) }.map { |entry| entry["port"] }
+      context.add_error("self-hosted #{name} NetworkPolicy must target port #{port}") unless ports.include?(port)
     end
   end
 end

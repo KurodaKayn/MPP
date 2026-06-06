@@ -16,6 +16,10 @@ Required overlay inputs:
   target cluster.
 - Configure backup, restore, and retention outside these manifests.
 
+The included NetworkPolicies allow PostgreSQL ingress from backend,
+publish-worker, and collab-service Pods, and Redis ingress from backend,
+publish-worker, browser-worker, and collab-service Pods.
+
 This package preloads `pg_stat_statements` and mounts an init script that creates
 the extension for newly initialized databases. Existing PostgreSQL volumes need a
 one-time `CREATE EXTENSION IF NOT EXISTS pg_stat_statements;` run by an
