@@ -155,7 +155,7 @@ func postgresDSN(host, user, password, name, port, sslMode, sslRootCert string) 
 		postgresDSNParam("dbname", name),
 		postgresDSNParam("port", port),
 		postgresDSNParam("sslmode", sslMode),
-		postgresDSNParam("TimeZone", "Asia/Shanghai"),
+		postgresDSNRawParam("TimeZone", "Asia/Shanghai"),
 	}
 	if sslRootCert != "" {
 		parts = append(parts, postgresDSNParam("sslrootcert", sslRootCert))
@@ -196,6 +196,10 @@ func envWithFallback(name string, fallbackName string) string {
 
 func postgresDSNParam(key string, value string) string {
 	return key + "=" + quotePostgresDSNValue(value)
+}
+
+func postgresDSNRawParam(key string, value string) string {
+	return key + "=" + value
 }
 
 func quotePostgresDSNValue(value string) string {
