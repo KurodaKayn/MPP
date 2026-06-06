@@ -90,9 +90,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: mpp-app-config
-            - secretRef:
-                name: mpp-app-secrets
-                optional: true
           env:
             - name: BACKEND_PROCESS_ROLE
               value: api
@@ -119,6 +116,11 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: COOKIE_ENCRYPTION_KEY
+            - name: COLLAB_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: COLLAB_TOKEN_SECRET
           readinessProbe:
             httpGet:
               path: /ready
@@ -177,9 +179,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: mpp-app-config
-            - secretRef:
-                name: mpp-app-secrets
-                optional: true
           env:
             - name: BACKEND_PROCESS_ROLE
               value: worker
@@ -206,6 +205,11 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: COOKIE_ENCRYPTION_KEY
+            - name: COLLAB_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: COLLAB_TOKEN_SECRET
           readinessProbe:
             httpGet:
               path: /ready
@@ -264,9 +268,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: mpp-app-config
-            - secretRef:
-                name: mpp-app-secrets
-                optional: true
           env:
             - name: BROWSER_RUNTIME_DRIVER
               value: kubernetes
@@ -346,9 +347,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: mpp-app-config
-            - secretRef:
-                name: mpp-app-secrets
-                optional: true
           env:
             - name: LLM_PROVIDER_KEY
               valueFrom:
@@ -475,9 +473,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: mpp-app-config
-            - secretRef:
-                name: mpp-app-secrets
-                optional: true
           env:
             - name: COLLAB_PORT
               value: "8090"
