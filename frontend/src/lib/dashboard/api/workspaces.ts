@@ -2,6 +2,12 @@ import { fetchDashboard, fetchDashboardNoContent } from "./client";
 import type {
   AcceptWorkspaceInviteInput,
   AddWorkspaceMemberInput,
+  BrandProfile,
+  BrandProfilesResponse,
+  ContentTemplate,
+  ContentTemplatesResponse,
+  CreateBrandProfileInput,
+  CreateContentTemplateInput,
   CreateProjectInput,
   CreateWorkspaceInput,
   CreateWorkspaceInviteInput,
@@ -60,6 +66,44 @@ export function createWorkspaceProject(
 ) {
   return fetchDashboard<ProjectListItem>(
     `/api/workspaces/${workspaceId}/projects`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
+}
+
+export function getWorkspaceContentTemplates(workspaceId: string) {
+  return fetchDashboard<ContentTemplatesResponse>(
+    `/api/workspaces/${workspaceId}/content-templates`,
+  );
+}
+
+export function createWorkspaceContentTemplate(
+  workspaceId: string,
+  input: CreateContentTemplateInput,
+) {
+  return fetchDashboard<ContentTemplate>(
+    `/api/workspaces/${workspaceId}/content-templates`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
+}
+
+export function getWorkspaceBrandProfiles(workspaceId: string) {
+  return fetchDashboard<BrandProfilesResponse>(
+    `/api/workspaces/${workspaceId}/brand-profiles`,
+  );
+}
+
+export function createWorkspaceBrandProfile(
+  workspaceId: string,
+  input: CreateBrandProfileInput,
+) {
+  return fetchDashboard<BrandProfile>(
+    `/api/workspaces/${workspaceId}/brand-profiles`,
     {
       body: JSON.stringify(input),
       method: "POST",

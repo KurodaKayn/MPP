@@ -2,8 +2,14 @@ import { fetchDashboard, fetchDashboardNoContent } from "./client";
 import type {
   AcceptProjectShareLinkResponse,
   AddProjectCollaboratorInput,
+  BrandProfile,
+  BrandProfilesResponse,
   CollabDocumentSession,
   CompleteMediaUploadResult,
+  ContentTemplate,
+  ContentTemplatesResponse,
+  CreateBrandProfileInput,
+  CreateContentTemplateInput,
   CreateMediaUploadInput,
   CreateMediaUploadResult,
   CreateProjectCommentInput,
@@ -55,6 +61,35 @@ export function getDashboardProjects(limit = 8) {
 
 export function createDashboardProject(input: CreateProjectInput) {
   return fetchDashboard<ProjectListItem>("/api/user/dashboard/projects", {
+    body: JSON.stringify(input),
+    method: "POST",
+  });
+}
+
+export function getContentTemplates() {
+  return fetchDashboard<ContentTemplatesResponse>(
+    "/api/user/dashboard/content-templates",
+  );
+}
+
+export function createContentTemplate(input: CreateContentTemplateInput) {
+  return fetchDashboard<ContentTemplate>(
+    "/api/user/dashboard/content-templates",
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
+}
+
+export function getBrandProfiles() {
+  return fetchDashboard<BrandProfilesResponse>(
+    "/api/user/dashboard/brand-profiles",
+  );
+}
+
+export function createBrandProfile(input: CreateBrandProfileInput) {
+  return fetchDashboard<BrandProfile>("/api/user/dashboard/brand-profiles", {
     body: JSON.stringify(input),
     method: "POST",
   });
