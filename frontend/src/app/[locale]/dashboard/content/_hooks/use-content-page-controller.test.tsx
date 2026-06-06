@@ -15,8 +15,12 @@ const mocks = vi.hoisted(() => ({
   cancelBrowserSession: vi.fn(),
   createDashboardProject: vi.fn(),
   createWorkspaceProject: vi.fn(),
+  getBrandProfiles: vi.fn(),
+  getContentTemplates: vi.fn(),
   getDashboardProject: vi.fn(),
   getProjectPublications: vi.fn(),
+  getWorkspaceBrandProfiles: vi.fn(),
+  getWorkspaceContentTemplates: vi.fn(),
   publishProject: vi.fn(),
   push: vi.fn(),
   refresh: vi.fn(),
@@ -50,8 +54,12 @@ vi.mock("@/lib/dashboard/api", () => ({
   cancelBrowserSession: mocks.cancelBrowserSession,
   createDashboardProject: mocks.createDashboardProject,
   createWorkspaceProject: mocks.createWorkspaceProject,
+  getBrandProfiles: mocks.getBrandProfiles,
+  getContentTemplates: mocks.getContentTemplates,
   getDashboardProject: mocks.getDashboardProject,
   getProjectPublications: mocks.getProjectPublications,
+  getWorkspaceBrandProfiles: mocks.getWorkspaceBrandProfiles,
+  getWorkspaceContentTemplates: mocks.getWorkspaceContentTemplates,
   publishProject: mocks.publishProject,
   saveDashboardProjectContent: mocks.saveDashboardProjectContent,
   saveDashboardProjectPlatforms: mocks.saveDashboardProjectPlatforms,
@@ -123,8 +131,12 @@ describe("useContentPageController", () => {
     mocks.cancelBrowserSession.mockReset();
     mocks.createDashboardProject.mockReset();
     mocks.createWorkspaceProject.mockReset();
+    mocks.getBrandProfiles.mockReset();
+    mocks.getContentTemplates.mockReset();
     mocks.getDashboardProject.mockReset();
     mocks.getProjectPublications.mockReset();
+    mocks.getWorkspaceBrandProfiles.mockReset();
+    mocks.getWorkspaceContentTemplates.mockReset();
     mocks.publishProject.mockReset();
     mocks.push.mockReset();
     mocks.replace.mockReset();
@@ -137,6 +149,10 @@ describe("useContentPageController", () => {
     mocks.syncProjectPrepublish.mockReset();
     mocks.updateDashboardProject.mockReset();
     mocks.waitForProjectPublications.mockReset();
+    mocks.getBrandProfiles.mockResolvedValue({ items: [] });
+    mocks.getContentTemplates.mockResolvedValue({ items: [] });
+    mocks.getWorkspaceBrandProfiles.mockResolvedValue({ items: [] });
+    mocks.getWorkspaceContentTemplates.mockResolvedValue({ items: [] });
     useContentPageStore.getState().resetForCreate();
   });
 
@@ -159,6 +175,73 @@ describe("useContentPageController", () => {
     expect(view.getController().publishing.canPublish).toBe(false);
     expect(mocks.getDashboardProject).toHaveBeenCalledWith("new-project");
 
+    view.unmount();
+  });
+
+  it("confirms before applying a template over existing draft content", async () => {
+    mocks.getContentTemplates.mockResolvedValue({
+      items: [
+        {
+          created_at: "2026-06-06T12:00:00.000Z",
+          default_platforms: ["wechat", "zhihu"],
+          description: "",
+          id: "template-1",
+          name: "Launch template",
+          platform_config: {},
+          scope: "personal",
+          source_template: "<p>Template body</p>",
+          tags: [],
+          title_template: "Template title",
+          updated_at: "2026-06-06T12:00:00.000Z",
+        },
+      ],
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const view = renderController();
+
+    await act(async () => {
+      await flushPromises();
+    });
+    act(() => {
+      useContentPageStore.setState({
+        content: {
+          firstImageSrc: "",
+          html: "<p>Custom body</p>",
+          text: "Custom body",
+        },
+        selectedPlatforms: ["x"],
+        title: "Custom title",
+      });
+    });
+
+    act(() => {
+      view.getController().setup.onTemplateChange("template-1");
+    });
+
+    expect(confirmSpy).toHaveBeenCalledWith("content.setup.replaceConfirm");
+    expect(useContentPageStore.getState().title).toBe("Custom title");
+    expect(useContentPageStore.getState().content.html).toBe(
+      "<p>Custom body</p>",
+    );
+    expect(useContentPageStore.getState().selectedPlatforms).toEqual(["x"]);
+    expect(view.getController().setup.selectedTemplateId).toBe("");
+
+    confirmSpy.mockReturnValue(true);
+    act(() => {
+      view.getController().setup.onTemplateChange("template-1");
+    });
+
+    expect(useContentPageStore.getState().title).toBe("Template title");
+    expect(useContentPageStore.getState().content.html).toBe(
+      "<p>Template body</p>",
+    );
+    expect(useContentPageStore.getState().selectedPlatforms).toEqual([
+      "wechat",
+      "zhihu",
+    ]);
+    expect(view.getController().setup.selectedTemplateId).toBe("template-1");
+
+    confirmSpy.mockRestore();
     view.unmount();
   });
 

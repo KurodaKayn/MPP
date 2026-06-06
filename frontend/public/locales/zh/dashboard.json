@@ -481,7 +481,8 @@
       "brandProfile": "品牌资料",
       "loading": "加载中...",
       "noTemplate": "不使用模板",
-      "noBrandProfile": "不使用品牌资料"
+      "noBrandProfile": "不使用品牌资料",
+      "replaceConfirm": "应用此模板会替换当前标题、内容和已选平台。是否继续？"
     },
     "collaboration": {
       "title": "协作体验",

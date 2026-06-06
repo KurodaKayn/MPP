@@ -348,12 +348,26 @@ export function useContentPageController(
   };
 
   const applyTemplate = (templateId: string) => {
-    setSelectedTemplateId(templateId);
+    if (templateId === selectedTemplateId) {
+      return;
+    }
+    if (!templateId) {
+      setSelectedTemplateId("");
+      return;
+    }
+
     const template = contentTemplates.find((item) => item.id === templateId);
     if (!template) {
       return;
     }
+    const hasExistingDraft = Boolean(
+      title.trim() || content.text.trim() || content.firstImageSrc,
+    );
+    if (hasExistingDraft && !window.confirm(t("content.setup.replaceConfirm"))) {
+      return;
+    }
 
+    setSelectedTemplateId(templateId);
     setTitle(template.title_template);
     setContent(contentValueFromSource(template.source_template));
     setSelectedPlatforms(
