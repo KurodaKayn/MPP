@@ -58,6 +58,7 @@ func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 
 	e.Use(observabilitySuite.Middleware())
 	e.Use(echoMiddleware.Recover())
+	e.Use(middleware.StickyWriter())
 	registerExtensionCORS(e, config.runtimeConfig.ExtensionAllowedOrigins)
 	registerPublicRoutes(e, config)
 
