@@ -51,6 +51,10 @@ func (s *CookieStore) WithContext(ctx context.Context) *CookieStore {
 }
 
 func (s *CookieStore) Save(ctx context.Context, userID uuid.UUID, platform string, cookies []Cookie, profile RemoteAccountProfile) error {
+	return s.SaveForAccount(ctx, userID, uuid.Nil, uuid.Nil, platform, cookies, profile)
+}
+
+func (s *CookieStore) SaveForAccount(ctx context.Context, userID uuid.UUID, workspaceID uuid.UUID, accountID uuid.UUID, platform string, cookies []Cookie, profile RemoteAccountProfile) error {
 	key := os.Getenv("COOKIE_ENCRYPTION_KEY")
 	if key == "" {
 		return ErrCookieEncryptionKeyMissing
@@ -87,15 +91,42 @@ func (s *CookieStore) Save(ctx context.Context, userID uuid.UUID, platform strin
 		return fmt.Errorf("failed to marshal envelope: %w", err)
 	}
 
-	// Update PlatformAccount
-	result := s.db.WithContext(ctx).Model(&models.PlatformAccount{}).
-		Where("user_id = ? AND platform = ?", userID, platform).
-		Updates(map[string]any{
-			"cookies":    datatypes.JSON(envelopeJSON),
-			"username":   profile.Username,
-			"avatar_url": profile.AvatarURL,
-			"status":     models.PlatformAccountStatusConnected,
-		})
+	now := time.Now().UTC()
+	updates := map[string]any{
+		"cookies":              datatypes.JSON(envelopeJSON),
+		"username":             profile.Username,
+		"display_name":         firstNonEmpty(profile.Username, platform),
+		"avatar_url":           profile.AvatarURL,
+		"status":               models.PlatformAccountStatusConnected,
+		"health_status":        models.PlatformAccountHealthHealthy,
+		"connected_by_user_id": userID,
+		"last_connected_at":    &now,
+		"last_verified_at":     &now,
+		"last_tested_at":       &now,
+		"last_test_error":      "",
+	}
+	if profile.PlatformUserID != "" {
+		updates["platform_user_id"] = profile.PlatformUserID
+	}
+	if workspaceID != uuid.Nil {
+		updates["workspace_id"] = workspaceID
+	}
+
+	query := s.db.WithContext(ctx).Model(&models.PlatformAccount{})
+	if accountID != uuid.Nil {
+		query = query.Where("id = ?", accountID)
+	} else if profile.PlatformUserID != "" {
+		if workspaceID != uuid.Nil {
+			query = query.Where("workspace_id = ? AND platform = ? AND platform_user_id = ?", workspaceID, platform, profile.PlatformUserID)
+		} else {
+			query = query.Where("user_id = ? AND platform = ? AND platform_user_id = ?", userID, platform, profile.PlatformUserID)
+		}
+	} else if workspaceID != uuid.Nil {
+		query = query.Where("1 = 0")
+	} else {
+		query = query.Where("user_id = ? AND platform = ?", userID, platform)
+	}
+	result := query.Updates(updates)
 
 	if result.Error != nil {
 		return fmt.Errorf("failed to update platform account: %w", result.Error)
@@ -104,16 +135,30 @@ func (s *CookieStore) Save(ctx context.Context, userID uuid.UUID, platform strin
 		// Create if not exists? Usually it should exist by the time we have a browser session.
 		// For safety, let's assume it might not exist if we allow direct connection.
 		account := models.PlatformAccount{
-			UserID:      userID,
-			Platform:    platform,
-			Username:    profile.Username,
-			AvatarURL:   profile.AvatarURL,
-			Cookies:     datatypes.JSON(envelopeJSON),
-			Status:      models.PlatformAccountStatusConnected,
-			Credentials: datatypes.JSON([]byte("{}")),
-			Metadata:    datatypes.JSON([]byte("{}")),
-			Config:      datatypes.JSON([]byte("{}")),
+			UserID:              userID,
+			Platform:            platform,
+			Username:            profile.Username,
+			DisplayName:         firstNonEmpty(profile.Username, platform),
+			PlatformUserID:      profile.PlatformUserID,
+			AvatarURL:           profile.AvatarURL,
+			Cookies:             datatypes.JSON(envelopeJSON),
+			Status:              models.PlatformAccountStatusConnected,
+			HealthStatus:        models.PlatformAccountHealthHealthy,
+			Credentials:         datatypes.JSON([]byte("{}")),
+			Metadata:            datatypes.JSON([]byte("{}")),
+			Config:              datatypes.JSON([]byte("{}")),
+			ConnectedByUserID:   &userID,
+			LastConnectedAt:     &now,
+			LastVerifiedAt:      &now,
+			LastTestedAt:        &now,
+			CredentialSecretRef: "",
 		}
+		ownerID := userID
+		account.OwnerUserID = &ownerID
+		if workspaceID == uuid.Nil {
+			workspaceID = models.PersonalWorkspaceID(userID)
+		}
+		account.WorkspaceID = &workspaceID
 		if err := s.db.WithContext(ctx).Create(&account).Error; err != nil {
 			return fmt.Errorf("failed to create platform account: %w", err)
 		}
@@ -123,8 +168,18 @@ func (s *CookieStore) Save(ctx context.Context, userID uuid.UUID, platform strin
 }
 
 func (s *CookieStore) Load(ctx context.Context, userID uuid.UUID, platform string) ([]Cookie, error) {
+	return s.LoadForAccount(ctx, userID, uuid.Nil, platform)
+}
+
+func (s *CookieStore) LoadForAccount(ctx context.Context, userID uuid.UUID, accountID uuid.UUID, platform string) ([]Cookie, error) {
 	var account models.PlatformAccount
-	err := s.db.WithContext(ctx).Where("user_id = ? AND platform = ?", userID, platform).First(&account).Error
+	query := s.db.WithContext(ctx)
+	if accountID != uuid.Nil {
+		query = query.Where("id = ?", accountID)
+	} else {
+		query = query.Where("user_id = ? AND platform = ?", userID, platform)
+	}
+	err := query.First(&account).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrCookieNotFound
@@ -185,6 +240,15 @@ func (s *CookieStore) Delete(ctx context.Context, userID uuid.UUID, platform str
 			"last_tested_at":  nil,
 			"last_test_error": "",
 		}).Error
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func NormalizePlatformCookies(platform string, cookies []Cookie) ([]Cookie, error) {

@@ -1658,8 +1658,12 @@ func (h *UserDashboardHandler) GetWechatAccount(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
+	workspaceID, workspaceErr := workspaceIDFromQuery(c)
+	if workspaceErr != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
 
-	resp, err := h.serviceFor(c).GetWechatAccount(userID)
+	resp, err := h.serviceFor(c).GetWorkspaceWechatAccount(userID, workspaceID)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -1675,13 +1679,17 @@ func (h *UserDashboardHandler) SaveWechatAccount(c echo.Context) error {
 	if err := h.ensureWorkspaceAccountManager(c, userID); err != nil {
 		return sendWorkspaceError(c, err)
 	}
+	workspaceID, workspaceErr := workspaceIDFromQuery(c)
+	if workspaceErr != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
 
 	req := new(dto.UpsertWechatAccountRequest)
 	if err := c.Bind(req); err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	resp, err := h.serviceFor(c).UpsertWechatAccount(userID, *req)
+	resp, err := h.serviceFor(c).UpsertWorkspaceWechatAccount(userID, workspaceID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidPlatformAccount) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
@@ -1700,13 +1708,17 @@ func (h *UserDashboardHandler) TestWechatAccount(c echo.Context) error {
 	if err := h.ensureWorkspaceAccountManager(c, userID); err != nil {
 		return sendWorkspaceError(c, err)
 	}
+	workspaceID, workspaceErr := workspaceIDFromQuery(c)
+	if workspaceErr != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
 
 	req := new(dto.TestWechatAccountRequest)
 	if err := c.Bind(req); err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	resp, err := h.serviceFor(c).TestWechatAccount(userID, *req)
+	resp, err := h.serviceFor(c).TestWorkspaceWechatAccount(userID, workspaceID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidPlatformAccount) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
@@ -1723,7 +1735,12 @@ func (h *UserDashboardHandler) GetDouyinAccount(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 
-	resp, err := h.serviceFor(c).GetDouyinAccount(userID)
+	workspaceID, workspaceErr := workspaceIDFromQuery(c)
+	if workspaceErr != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	resp, err := h.serviceFor(c).GetWorkspaceDouyinAccount(userID, workspaceID)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -1737,7 +1754,12 @@ func (h *UserDashboardHandler) GetZhihuAccount(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 
-	resp, err := h.serviceFor(c).GetZhihuAccount(userID)
+	workspaceID, workspaceErr := workspaceIDFromQuery(c)
+	if workspaceErr != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	resp, err := h.serviceFor(c).GetWorkspaceZhihuAccount(userID, workspaceID)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -1751,7 +1773,12 @@ func (h *UserDashboardHandler) GetXAccount(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 
-	resp, err := h.serviceFor(c).GetXAccount(userID)
+	workspaceID, workspaceErr := workspaceIDFromQuery(c)
+	if workspaceErr != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	resp, err := h.serviceFor(c).GetWorkspaceXAccount(userID, workspaceID)
 	if err != nil {
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
@@ -1767,13 +1794,17 @@ func (h *UserDashboardHandler) SaveXAccount(c echo.Context) error {
 	if err := h.ensureWorkspaceAccountManager(c, userID); err != nil {
 		return sendWorkspaceError(c, err)
 	}
+	workspaceID, workspaceErr := workspaceIDFromQuery(c)
+	if workspaceErr != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
 
 	req := new(dto.UpsertXAccountRequest)
 	if err := c.Bind(req); err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	resp, err := h.serviceFor(c).UpsertXAccount(userID, *req)
+	resp, err := h.serviceFor(c).UpsertWorkspaceXAccount(userID, workspaceID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidPlatformAccount) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
@@ -1792,13 +1823,17 @@ func (h *UserDashboardHandler) TestXAccount(c echo.Context) error {
 	if err := h.ensureWorkspaceAccountManager(c, userID); err != nil {
 		return sendWorkspaceError(c, err)
 	}
+	workspaceID, workspaceErr := workspaceIDFromQuery(c)
+	if workspaceErr != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
 
 	req := new(dto.TestXAccountRequest)
 	if err := c.Bind(req); err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
-	resp, err := h.serviceFor(c).TestXAccount(userID, *req)
+	resp, err := h.serviceFor(c).TestWorkspaceXAccount(userID, workspaceID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidPlatformAccount) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())

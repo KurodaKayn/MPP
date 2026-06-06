@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -289,13 +290,18 @@ func migrate(database *gorm.DB) error {
 		if err := prepareUserPasswordHashMigration(migrationDB); err != nil {
 			return err
 		}
+		if err := preparePlatformAccountWorkspaceMigration(migrationDB); err != nil {
+			return err
+		}
 		if err := migrationDB.AutoMigrate(
 			&models.User{},
 			&models.Workspace{},
 			&models.WorkspaceMember{},
 			&models.WorkspaceInvite{},
 			&models.WorkspaceActivity{},
+			&models.Notification{},
 			&models.PlatformAccount{},
+			&models.PlatformAccountGrant{},
 			&models.Project{},
 			&models.ProjectCollaborator{},
 			&models.ProjectActivity{},
@@ -323,13 +329,35 @@ func migrate(database *gorm.DB) error {
 		if err := backfillPersonalWorkspaces(migrationDB); err != nil {
 			return err
 		}
+		if err := backfillPlatformAccountWorkspaces(migrationDB); err != nil {
+			return err
+		}
 
 		// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
-		return migrationDB.Exec(`
+		if err := migrationDB.Exec(`
 		CREATE UNIQUE INDEX IF NOT EXISTS ux_remote_browser_sessions_active_user_platform
 		ON remote_browser_sessions (user_id, platform)
 		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
-	`).Error
+	`).Error; err != nil {
+			return err
+		}
+		if migrationDB.Name() == "postgres" {
+			if err := migrationDB.Exec(`
+				CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_accounts_workspace_platform_remote
+				ON platform_accounts (workspace_id, platform, platform_user_id)
+				WHERE platform_user_id IS NOT NULL AND platform_user_id <> ''
+			`).Error; err != nil {
+				return err
+			}
+			if err := migrationDB.Exec(`
+				CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_accounts_workspace_platform_display
+				ON platform_accounts (workspace_id, platform, display_name)
+				WHERE (platform_user_id IS NULL OR platform_user_id = '') AND display_name IS NOT NULL AND display_name <> ''
+			`).Error; err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
@@ -395,6 +423,73 @@ func backfillPersonalWorkspaces(database *gorm.DB) error {
 		}
 		return nil
 	}).Error
+}
+
+func preparePlatformAccountWorkspaceMigration(database *gorm.DB) error {
+	if database.Name() != "postgres" {
+		return nil
+	}
+	if !database.Migrator().HasTable(&models.PlatformAccount{}) {
+		return nil
+	}
+	return database.Exec(`DROP INDEX IF EXISTS idx_platform_accounts_user_platform`).Error
+}
+
+func backfillPlatformAccountWorkspaces(database *gorm.DB) error {
+	if !database.Migrator().HasTable(&models.PlatformAccount{}) {
+		return nil
+	}
+	var accounts []models.PlatformAccount
+	return database.FindInBatches(&accounts, 100, func(tx *gorm.DB, _ int) error {
+		for _, account := range accounts {
+			updates := map[string]any{}
+			if account.WorkspaceID == nil || *account.WorkspaceID == uuid.Nil {
+				workspaceID := models.PersonalWorkspaceID(account.UserID)
+				updates["workspace_id"] = workspaceID
+			}
+			if account.OwnerUserID == nil {
+				updates["owner_user_id"] = account.UserID
+			}
+			if account.ConnectedByUserID == nil {
+				updates["connected_by_user_id"] = account.UserID
+			}
+			if strings.TrimSpace(account.DisplayName) == "" {
+				displayName := account.Username
+				if strings.TrimSpace(displayName) == "" {
+					displayName = account.Platform
+				}
+				updates["display_name"] = displayName
+			}
+			if strings.TrimSpace(account.ShareScope) == "" {
+				updates["share_scope"] = models.PlatformAccountSharePrivate
+			}
+			if strings.TrimSpace(account.HealthStatus) == "" {
+				updates["health_status"] = healthStatusForPlatformAccountStatus(account.Status)
+			}
+			if strings.TrimSpace(account.CredentialSecretRef) == "" {
+				updates["credential_secret_ref"] = "platform-account:" + account.ID.String()
+			}
+			if len(updates) > 0 {
+				if err := tx.Model(&models.PlatformAccount{}).Where("id = ?", account.ID).Updates(updates).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}).Error
+}
+
+func healthStatusForPlatformAccountStatus(status string) string {
+	switch status {
+	case models.PlatformAccountStatusConnected:
+		return models.PlatformAccountHealthHealthy
+	case models.PlatformAccountStatusFailed:
+		return models.PlatformAccountHealthFailed
+	case models.PlatformAccountStatusNeedsReauth:
+		return models.PlatformAccountHealthNeedsReauth
+	default:
+		return models.PlatformAccountHealthUnknown
+	}
 }
 
 func prepareUserEmailMigration(database *gorm.DB) error {

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
@@ -16,6 +17,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 )
 
@@ -246,4 +248,113 @@ func TestGetDouyinAccount(t *testing.T) {
 	assert.Equal(t, "creator", account.Username)
 	assert.Equal(t, "https://example.com/avatar.png", account.AvatarURL)
 	assert.Equal(t, models.PlatformAccountStatusConnected, account.Status)
+}
+
+func TestResolvePublicationAccountFallbackSkipsInaccessibleAccount(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := platformaccount.NewService(db)
+	now := time.Now()
+
+	owner := models.User{Username: "owner"}
+	actor := models.User{Username: "actor"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&actor).Error)
+
+	workspace := models.Workspace{
+		OwnerUserID: owner.ID,
+		Name:        "Team",
+		Slug:        "team",
+		Status:      models.WorkspaceStatusActive,
+	}
+	require.NoError(t, db.Create(&workspace).Error)
+	require.NoError(t, db.Create(&models.WorkspaceMember{
+		WorkspaceID: workspace.ID,
+		UserID:      actor.ID,
+		Role:        models.WorkspaceRoleMember,
+	}).Error)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		WorkspaceID:   &workspace.ID,
+		Title:         "Project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusDraft,
+	}
+	require.NoError(t, db.Create(&project).Error)
+
+	privateOwnerID := owner.ID
+	newerPrivate := models.PlatformAccount{
+		UserID:         owner.ID,
+		WorkspaceID:    &workspace.ID,
+		OwnerUserID:    &privateOwnerID,
+		Platform:       "douyin",
+		Username:       "private",
+		DisplayName:    "private",
+		ShareScope:     models.PlatformAccountSharePrivate,
+		Status:         models.PlatformAccountStatusConnected,
+		HealthStatus:   models.PlatformAccountHealthHealthy,
+		LastTestedAt:   &now,
+		LastVerifiedAt: &now,
+	}
+	require.NoError(t, db.Create(&newerPrivate).Error)
+	require.NoError(t, db.Model(&newerPrivate).Update("updated_at", now.Add(time.Minute)).Error)
+
+	actorOwnerID := actor.ID
+	olderOwned := models.PlatformAccount{
+		UserID:         actor.ID,
+		WorkspaceID:    &workspace.ID,
+		OwnerUserID:    &actorOwnerID,
+		Platform:       "douyin",
+		Username:       "usable",
+		DisplayName:    "usable",
+		ShareScope:     models.PlatformAccountSharePrivate,
+		Status:         models.PlatformAccountStatusConnected,
+		HealthStatus:   models.PlatformAccountHealthHealthy,
+		LastTestedAt:   &now,
+		LastVerifiedAt: &now,
+	}
+	require.NoError(t, db.Create(&olderOwned).Error)
+	require.NoError(t, db.Model(&olderOwned).Update("updated_at", now).Error)
+
+	pub := models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "douyin",
+	}
+	account, err := s.ResolvePublicationAccount(actor.ID, &pub)
+	require.NoError(t, err)
+	require.NotNil(t, pub.PlatformAccountID)
+	assert.Equal(t, olderOwned.ID, account.ID)
+	assert.Equal(t, olderOwned.ID, *pub.PlatformAccountID)
+}
+
+func TestRequireAccountUseRequiresCurrentWorkspaceMembershipForOwner(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := platformaccount.NewService(db)
+
+	user := models.User{Username: "former-member"}
+	require.NoError(t, db.Create(&user).Error)
+	workspace := models.Workspace{
+		OwnerUserID: user.ID,
+		Name:        "Former Team",
+		Slug:        "former-team",
+		Status:      models.WorkspaceStatusActive,
+	}
+	require.NoError(t, db.Create(&workspace).Error)
+
+	ownerID := user.ID
+	account := models.PlatformAccount{
+		UserID:       user.ID,
+		WorkspaceID:  &workspace.ID,
+		OwnerUserID:  &ownerID,
+		Platform:     "douyin",
+		Username:     "owner",
+		DisplayName:  "owner",
+		ShareScope:   models.PlatformAccountSharePrivate,
+		Status:       models.PlatformAccountStatusConnected,
+		HealthStatus: models.PlatformAccountHealthHealthy,
+	}
+	require.NoError(t, db.Create(&account).Error)
+
+	err := s.RequireAccountUse(user.ID, account, uuid.Nil)
+	require.ErrorIs(t, err, platformaccount.ErrPlatformAccountForbidden)
 }

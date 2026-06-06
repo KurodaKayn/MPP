@@ -98,6 +98,18 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		created_at DATETIME NOT NULL
 	)`).Error)
 
+	require.NoError(t, db.Exec(`CREATE TABLE notifications (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		recipient_user_id TEXT NOT NULL,
+		event_type TEXT NOT NULL,
+		resource_type TEXT NOT NULL DEFAULT '',
+		resource_id TEXT,
+		status TEXT NOT NULL DEFAULT 'unread',
+		metadata TEXT NOT NULL DEFAULT '{}',
+		created_at DATETIME NOT NULL
+	)`).Error)
+
 	require.NoError(t, db.Exec(`CREATE TABLE collab_documents (
 		id TEXT PRIMARY KEY,
 		owner_user_id TEXT NOT NULL,
@@ -171,24 +183,48 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(`CREATE TABLE platform_accounts (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
+		workspace_id TEXT,
+		owner_user_id TEXT,
+		connected_by_user_id TEXT,
 		platform TEXT NOT NULL,
 		username TEXT NOT NULL,
+		display_name TEXT NOT NULL DEFAULT '',
+		platform_user_id TEXT NOT NULL DEFAULT '',
+		share_scope TEXT NOT NULL DEFAULT 'private',
 		status TEXT NOT NULL DEFAULT 'untested',
+		health_status TEXT NOT NULL DEFAULT 'unknown',
+		credential_secret_ref TEXT NOT NULL DEFAULT '',
 		credentials TEXT NOT NULL DEFAULT '{}',
 		metadata TEXT NOT NULL DEFAULT '{}',
 		cookies TEXT NOT NULL DEFAULT '[]',
 		config TEXT NOT NULL DEFAULT '{}',
 		avatar_url TEXT,
+		last_connected_at DATETIME,
+		last_verified_at DATETIME,
 		last_tested_at DATETIME,
 		last_test_error TEXT,
+		expires_at DATETIME,
 		created_at DATETIME,
 		updated_at DATETIME
+	)`).Error)
+
+	require.NoError(t, db.Exec(`CREATE TABLE platform_account_grants (
+		id TEXT PRIMARY KEY,
+		platform_account_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
+		grantee_user_id TEXT,
+		project_id TEXT,
+		role TEXT NOT NULL,
+		created_by TEXT NOT NULL,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL
 	)`).Error)
 
 	require.NoError(t, db.Exec(`CREATE TABLE project_platform_publications (
 		id TEXT PRIMARY KEY,
 		project_id TEXT NOT NULL,
 		platform TEXT NOT NULL,
+		platform_account_id TEXT,
 		enabled BOOLEAN NOT NULL DEFAULT 1,
 		status TEXT NOT NULL,
 		config TEXT NOT NULL DEFAULT '{}',

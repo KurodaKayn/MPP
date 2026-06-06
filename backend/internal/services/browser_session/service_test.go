@@ -139,6 +139,7 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.PlatformAccountStatusConnected, account.Status)
 	assert.Equal(t, "Mock User", account.Username)
+	assert.Equal(t, "mock-platform-user", account.PlatformUserID)
 
 	// 4. Test active session conflict with a different user.
 	user2ID := uuid.New()

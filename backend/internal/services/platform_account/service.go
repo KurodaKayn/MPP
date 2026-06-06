@@ -2,13 +2,19 @@ package platformaccount
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
 )
+
+var ErrPlatformAccountForbidden = errors.New("platform account access denied")
 
 type Service struct {
 	db              *gorm.DB
@@ -67,11 +73,266 @@ func (s *Service) UseRedis(client *redis.Client) {
 }
 
 func (s *Service) ApplySavedCredentialsToPublication(userID uuid.UUID, pub *models.ProjectPlatformPublication) error {
-	if err := s.applySavedWechatCredentialsToPublication(userID, pub); err != nil {
+	account, err := s.ResolvePublicationAccount(userID, pub)
+	if err != nil {
+		if errors.Is(err, ErrInvalidPlatformAccount) && publicationHasEmbeddedCredentials(pub) {
+			return nil
+		}
 		return err
 	}
-	if err := s.applySavedXCredentialsToPublication(userID, pub); err != nil {
+	if err := s.applySavedWechatCredentialsToPublication(account, pub); err != nil {
+		return err
+	}
+	if err := s.applySavedXCredentialsToPublication(account, pub); err != nil {
 		return err
 	}
 	return nil
+}
+
+func publicationHasEmbeddedCredentials(pub *models.ProjectPlatformPublication) bool {
+	if pub == nil || len(pub.Config) == 0 {
+		return false
+	}
+	config := map[string]string{}
+	if err := json.Unmarshal(pub.Config, &config); err != nil {
+		return false
+	}
+	switch pub.Platform {
+	case wechatPlatform:
+		return strings.TrimSpace(config["app_id"]) != "" && strings.TrimSpace(config["app_secret"]) != ""
+	case xPlatform:
+		return strings.TrimSpace(config["api_key"]) != "" &&
+			strings.TrimSpace(config["api_secret"]) != "" &&
+			strings.TrimSpace(config["access_token"]) != "" &&
+			strings.TrimSpace(config["access_token_secret"]) != ""
+	default:
+		return false
+	}
+}
+
+func (s *Service) WorkspaceIDForUser(userID uuid.UUID, workspaceID uuid.UUID) uuid.UUID {
+	if workspaceID != uuid.Nil {
+		return workspaceID
+	}
+	return models.PersonalWorkspaceID(userID)
+}
+
+func (s *Service) ResolvePublicationAccount(userID uuid.UUID, pub *models.ProjectPlatformPublication) (*models.PlatformAccount, error) {
+	if pub == nil {
+		return nil, ErrInvalidPlatformAccount
+	}
+	workspaceID := uuid.Nil
+	var project models.Project
+	if err := s.db.Select("workspace_id", "user_id").First(&project, "id = ?", pub.ProjectID).Error; err == nil {
+		if project.WorkspaceID != nil {
+			workspaceID = *project.WorkspaceID
+		} else {
+			workspaceID = models.PersonalWorkspaceID(project.UserID)
+		}
+	}
+	if workspaceID == uuid.Nil {
+		workspaceID = models.PersonalWorkspaceID(userID)
+	}
+
+	var account models.PlatformAccount
+	query := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, pub.Platform)
+	if pub.PlatformAccountID != nil && *pub.PlatformAccountID != uuid.Nil {
+		query = query.Where("id = ?", *pub.PlatformAccountID)
+		if err := query.First(&account).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, ErrInvalidPlatformAccount
+			}
+			return nil, err
+		}
+		if err := s.RequireAccountUse(userID, account, pub.ProjectID); err != nil {
+			return nil, err
+		}
+		if !accountReadyForPublication(account) {
+			if err := s.recordAccountNeedsReauthNotification(userID, workspaceID, account, pub.ProjectID); err != nil {
+				return nil, err
+			}
+			return nil, ErrInvalidPlatformAccount
+		}
+		return &account, nil
+	}
+
+	var accounts []models.PlatformAccount
+	if err := query.Order("updated_at DESC").Find(&accounts).Error; err != nil {
+		return nil, err
+	}
+	var firstUnavailable *models.PlatformAccount
+	for i := range accounts {
+		account = accounts[i]
+		if err := s.RequireAccountUse(userID, account, pub.ProjectID); err != nil {
+			if errors.Is(err, ErrPlatformAccountForbidden) {
+				continue
+			}
+			return nil, err
+		}
+		if !accountReadyForPublication(account) {
+			if firstUnavailable == nil {
+				firstUnavailable = &accounts[i]
+			}
+			continue
+		}
+		accountID := account.ID
+		pub.PlatformAccountID = &accountID
+		return &account, nil
+	}
+	if firstUnavailable != nil {
+		if err := s.recordAccountNeedsReauthNotification(userID, workspaceID, *firstUnavailable, pub.ProjectID); err != nil {
+			return nil, err
+		}
+		return nil, ErrInvalidPlatformAccount
+	}
+	if len(accounts) > 0 {
+		return nil, ErrPlatformAccountForbidden
+	}
+	return nil, ErrInvalidPlatformAccount
+}
+
+func (s *Service) recordAccountNeedsReauthNotification(userID uuid.UUID, workspaceID uuid.UUID, account models.PlatformAccount, projectID uuid.UUID) error {
+	if userID == uuid.Nil || workspaceID == uuid.Nil || account.ID == uuid.Nil {
+		return nil
+	}
+	payload := map[string]any{
+		"platform":            account.Platform,
+		"platform_account_id": account.ID.String(),
+		"status":              account.Status,
+		"health_status":       account.HealthStatus,
+	}
+	if projectID != uuid.Nil {
+		payload["project_id"] = projectID.String()
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	resourceID := account.ID
+	return s.db.Create(&models.Notification{
+		WorkspaceID:     workspaceID,
+		RecipientUserID: userID,
+		EventType:       models.NotificationAccountNeedsReauth,
+		ResourceType:    "platform_account",
+		ResourceID:      &resourceID,
+		Status:          models.NotificationStatusUnread,
+		Metadata:        datatypes.JSON(encoded),
+	}).Error
+}
+
+func (s *Service) RequireAccountUse(userID uuid.UUID, account models.PlatformAccount, projectID uuid.UUID) error {
+	if account.WorkspaceID != nil && (account.OwnerUserID != nil && *account.OwnerUserID == userID || account.UserID == userID) {
+		if err := s.requireWorkspaceAccountMembership(userID, *account.WorkspaceID); err != nil {
+			return err
+		}
+		return nil
+	}
+	if account.ShareScope == models.PlatformAccountShareWorkspace {
+		if account.WorkspaceID == nil {
+			return ErrPlatformAccountForbidden
+		}
+		var member models.WorkspaceMember
+		err := s.db.Select("role").First(&member, "workspace_id = ? AND user_id = ?", *account.WorkspaceID, userID).Error
+		if err == nil && member.Role != models.WorkspaceRoleViewer {
+			return nil
+		}
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+	}
+	roles := []string{models.PlatformAccountGrantRoleManager, models.PlatformAccountGrantRolePublisher}
+	var grant models.PlatformAccountGrant
+	if err := s.db.Select("id").
+		Where("platform_account_id = ? AND grantee_user_id = ? AND role IN ?", account.ID, userID, roles).
+		First(&grant).Error; err == nil {
+		return nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if projectID != uuid.Nil {
+		if err := s.db.Select("id").
+			Where("platform_account_id = ? AND project_id = ? AND role IN ?", account.ID, projectID, roles).
+			First(&grant).Error; err == nil {
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+	}
+	return ErrPlatformAccountForbidden
+}
+
+func (s *Service) requireWorkspaceAccountMembership(userID uuid.UUID, workspaceID uuid.UUID) error {
+	if workspaceID == models.PersonalWorkspaceID(userID) {
+		return nil
+	}
+	var member models.WorkspaceMember
+	err := s.db.Select("role").First(&member, "workspace_id = ? AND user_id = ?", workspaceID, userID).Error
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrPlatformAccountForbidden
+	}
+	return err
+}
+
+func (s *Service) ensureAccountDefaults(account *models.PlatformAccount, userID uuid.UUID, workspaceID uuid.UUID, platform string) {
+	if account.UserID == uuid.Nil {
+		account.UserID = userID
+	}
+	if account.WorkspaceID == nil {
+		id := s.WorkspaceIDForUser(userID, workspaceID)
+		account.WorkspaceID = &id
+	}
+	if account.OwnerUserID == nil {
+		id := userID
+		account.OwnerUserID = &id
+	}
+	if account.ConnectedByUserID == nil {
+		id := userID
+		account.ConnectedByUserID = &id
+	}
+	if strings.TrimSpace(account.Platform) == "" {
+		account.Platform = platform
+	}
+	if strings.TrimSpace(account.ShareScope) == "" {
+		account.ShareScope = models.PlatformAccountSharePrivate
+	}
+	if strings.TrimSpace(account.HealthStatus) == "" {
+		account.HealthStatus = healthStatusForStatus(account.Status)
+	}
+	if strings.TrimSpace(account.CredentialSecretRef) == "" && account.ID != uuid.Nil {
+		account.CredentialSecretRef = "platform-account:" + account.ID.String()
+	}
+	if account.Metadata == nil {
+		account.Metadata = datatypes.JSON([]byte(`{}`))
+	}
+	if account.Credentials == nil {
+		account.Credentials = datatypes.JSON([]byte(`{}`))
+	}
+	if account.Cookies == nil {
+		account.Cookies = datatypes.JSON([]byte(`[]`))
+	}
+	if account.Config == nil {
+		account.Config = datatypes.JSON([]byte(`{}`))
+	}
+}
+
+func healthStatusForStatus(status string) string {
+	switch status {
+	case models.PlatformAccountStatusConnected:
+		return models.PlatformAccountHealthHealthy
+	case models.PlatformAccountStatusFailed:
+		return models.PlatformAccountHealthFailed
+	case models.PlatformAccountStatusNeedsReauth:
+		return models.PlatformAccountHealthNeedsReauth
+	default:
+		return models.PlatformAccountHealthUnknown
+	}
+}
+
+func accountReadyForPublication(account models.PlatformAccount) bool {
+	return account.Status == models.PlatformAccountStatusConnected &&
+		account.HealthStatus != models.PlatformAccountHealthNeedsReauth &&
+		account.HealthStatus != models.PlatformAccountHealthFailed
 }

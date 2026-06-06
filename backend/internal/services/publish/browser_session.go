@@ -19,6 +19,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	publishercontent "github.com/kurodakayn/mpp-backend/internal/publisher/content"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
+	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 )
 
 func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.UUID, userID uuid.UUID) (*dto.StartBrowserSessionResponse, error) {
@@ -45,6 +46,13 @@ func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.
 	if s.browserWorkerClient == nil {
 		return nil, browsersession.ErrPlatformNotSupported
 	}
+	account, err := s.accounts.ResolvePublicationAccount(userID, &pub)
+	if err != nil {
+		if errors.Is(err, platformaccount.ErrPlatformAccountForbidden) {
+			return nil, ErrForbidden
+		}
+		return nil, err
+	}
 	pub, err = s.preparePublicationMediaRefs(ctx, project, pub)
 	if err != nil {
 		return nil, err
@@ -54,7 +62,11 @@ func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.
 		return nil, err
 	}
 
-	resp, err := s.browserSessionService.StartSession(ctx, userID, "douyin")
+	workspaceID := uuid.Nil
+	if project.WorkspaceID != nil {
+		workspaceID = *project.WorkspaceID
+	}
+	resp, err := s.browserSessionService.StartSessionForWorkspace(ctx, userID, "", workspaceID, account.ID, "douyin")
 	if err != nil {
 		if !errors.Is(err, browsersession.ErrActiveSessionExists) {
 			return nil, err
@@ -62,7 +74,7 @@ func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.
 		if cleanupErr := s.cancelActiveDouyinBrowserSessions(ctx, userID); cleanupErr != nil {
 			return nil, cleanupErr
 		}
-		resp, err = s.browserSessionService.StartSession(ctx, userID, "douyin")
+		resp, err = s.browserSessionService.StartSessionForWorkspace(ctx, userID, "", workspaceID, account.ID, "douyin")
 		if err != nil {
 			return nil, err
 		}
