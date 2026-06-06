@@ -1,9 +1,11 @@
-# Draft Profile Versioning
+# Content Pipeline Profile Versioning
 
 Draft profiles are the compatibility boundary for compiled platform payloads.
 Each profile name has the form `<platform>@v<integer>`, for example `wechat@v1`.
+Media profiles are the compatibility boundary for platform media constraints.
+They use the same `<platform>@v<integer>` naming rule.
 
-## Policy
+## Draft Profile Policy
 
 - Keep existing profile output compatible once merged.
 - Add a new profile version when changing required fields, output format, schema version, or platform-specific semantics in a way that old publishers may not understand.
@@ -27,7 +29,7 @@ Run:
 cargo test -p content-pipeline-core
 ```
 
-## Current Profiles
+## Current Draft Profiles
 
 | Profile | Schema | Format | Notes |
 | --- | --- | --- | --- |
@@ -36,7 +38,29 @@ cargo test -p content-pipeline-core
 | `x@v1` | `1` | `text` | Joins title/body and applies weighted length truncation. |
 | `douyin@v1` | `1` | `text` | Extracts body text with title/source fallback. |
 
+## Media Profile Policy
+
+- Keep existing media constraints compatible once merged.
+- Add a new media profile version when changing byte limits, compression behavior, MIME semantics, or platform-specific usage rules.
+- Keep old profile implementations available until callers and any persisted media refs that may request them are retired or migrated.
+- Register every supported media profile in `content-pipeline-core/src/media/profiles.rs`.
+- Empty or unknown platform keys resolve to `generic@v1`.
+- Record every media profile behavior change in the changelog below.
+
+## Current Media Profiles
+
+| Profile | Platform | Max Bytes | Compress to Limit | Notes |
+| --- | --- | --- | --- | --- |
+| `wechat@v1` | WeChat | 2 MiB | Yes | Applies current WeChat image upload limit behavior. |
+| `douyin@v1` | Douyin | 10 MiB | No | Uses the generic image byte limit until stricter platform rules are added. |
+| `generic@v1` | Generic fallback | 10 MiB | No | Used for empty or unknown platform keys. |
+
 ## Changelog
+
+### 2026-06-06
+
+- Added a Rust media profile registry for `wechat@v1`, `douyin@v1`, and `generic@v1`.
+- Routed media default byte limits and WeChat compression behavior through registered profile metadata.
 
 ### 2026-06-05
 
