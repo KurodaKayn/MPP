@@ -33,6 +33,9 @@ func DownloadAndProcessForPlatform(sourceURL string, platform string, usage stri
 		if err == nil {
 			return data, nil
 		}
+		if isMediaObjectRef(sourceURL) {
+			return nil, err
+		}
 		if !shouldFallbackContentPipelineError(err) {
 			return nil, err
 		}
@@ -129,4 +132,8 @@ func decodeDataURL(value string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to decode data URL: %w", err)
 	}
 	return []byte(decoded), nil
+}
+
+func isMediaObjectRef(sourceURL string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(sourceURL)), mediaObjectRefPrefix)
 }

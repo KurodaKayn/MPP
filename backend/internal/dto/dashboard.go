@@ -182,6 +182,15 @@ type ResolveMediaAssetsResponse struct {
 	Items []ResolvedMediaAsset `json:"items"`
 }
 
+type ResolveMediaObjectRefRequest struct {
+	ObjectRef string `json:"object_ref"`
+}
+
+type ResolveMediaObjectRefResponse struct {
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 type AddProjectCollaboratorRequest struct {
 	UserID uuid.UUID `json:"user_id,omitempty"`
 	Email  string    `json:"email,omitempty"`
