@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/datatypes"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -156,6 +157,49 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 	var douyinPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", resp.ID, "douyin").Error)
 	assert.Equal(t, models.PublicationStatusPending, douyinPub.Status)
+}
+
+func TestCreateProjectAppliesContentTemplateDefaults(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	ownerID := user.ID
+	template := models.ContentTemplate{
+		Scope:            models.ContentTemplateScopePersonal,
+		OwnerUserID:      &ownerID,
+		Name:             "Launch article",
+		TitleTemplate:    "Launch {{product}}",
+		SourceTemplate:   "<h2>Intro</h2><p>Default body</p>",
+		DefaultPlatforms: datatypes.JSON(`["wechat","zhihu"]`),
+		PlatformConfig:   datatypes.JSON(`{"wechat":{"digest":"Template digest"}}`),
+		Tags:             datatypes.JSON(`["launch"]`),
+	}
+	require.NoError(t, db.Create(&template).Error)
+
+	resp, err := s.CreateProject(user.ID, dto.CreateProjectRequest{
+		TemplateID: &template.ID,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, template.ID, *resp.TemplateID)
+	require.Equal(t, "Launch {{product}}", resp.Title)
+	require.Len(t, resp.Publications, 2)
+
+	var saved models.Project
+	require.NoError(t, db.First(&saved, "id = ?", resp.ID).Error)
+	require.Equal(t, "<h2>Intro</h2><p>Default body</p>", saved.SourceContent)
+
+	var wechatPub models.ProjectPlatformPublication
+	require.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", resp.ID, "wechat").Error)
+	require.True(t, wechatPub.SyncRequired)
+	require.Equal(t, models.PublicationDraftStatusUnsynced, wechatPub.DraftStatus)
+
+	var config map[string]string
+	require.NoError(t, json.Unmarshal(wechatPub.Config, &config))
+	require.Equal(t, "Template digest", config["digest"])
+	require.Equal(t, "Launch {{product}}", config["title"])
 }
 
 func TestCreateProjectSanitizesStoredSourceContent(t *testing.T) {

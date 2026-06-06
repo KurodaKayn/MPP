@@ -271,6 +271,82 @@ func TestPublishProjectPresignsReadyMediaRefsWithoutPersistingSignedURLs(t *test
 	assert.NotContains(t, string(saved.AdaptedContent), expectedURL)
 }
 
+func TestPublishProjectValidatesWorkspaceLibraryMediaReadyState(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(&models.MediaAsset{}))
+	s := services.NewDashboardService(db)
+	storage := fake.NewClient()
+	s.UseObjectStorage(storage, objectstorage.Config{
+		Enabled:        true,
+		Provider:       objectstorage.ProviderR2,
+		Bucket:         "mpp-media",
+		UploadURLTTL:   10 * time.Minute,
+		DownloadURLTTL: 5 * time.Minute,
+	})
+	fakePublisher := &testsupport.FakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	workspaceID := models.PersonalWorkspaceID(user.ID)
+	project := models.Project{
+		UserID:        user.ID,
+		WorkspaceID:   &workspaceID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	createConnectedPublishAccount(t, db, user.ID, "wechat", datatypes.JSON(`{"app_id":"wx","app_secret":"secret"}`))
+
+	assetID := uuid.New()
+	asset := models.MediaAsset{
+		ID:               assetID,
+		UserID:           user.ID,
+		WorkspaceID:      &workspaceID,
+		Bucket:           "mpp-media",
+		ObjectKey:        "workspaces/" + workspaceID.String() + "/library/" + assetID.String() + "/hero.png",
+		OriginalFilename: "hero.png",
+		MimeType:         "image/png",
+		SizeBytes:        11,
+		Usage:            models.MediaAssetUsageEditorImage,
+		LibraryScope:     models.MediaAssetLibraryScopeWorkspace,
+		Status:           models.MediaAssetStatusPending,
+	}
+	require.NoError(t, db.Create(&asset).Error)
+	mediaRef := "mpp://media/" + assetID.String()
+	config, err := json.Marshal(map[string]string{
+		"app_id":          "wx",
+		"app_secret":      "secret",
+		"title":           "Title",
+		"cover_image_url": mediaRef,
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(config),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
+	require.ErrorIs(t, err, services.ErrPublishMediaAssetNotReady)
+	require.Nil(t, result)
+	require.Empty(t, fakePublisher.Config)
+
+	require.NoError(t, db.Model(&models.MediaAsset{}).
+		Where("id = ?", assetID).
+		Update("status", models.MediaAssetStatusReady).Error)
+
+	result, err = s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Contains(t, string(fakePublisher.Config), "fake://get/mpp-media/"+asset.ObjectKey)
+}
+
 func TestPublishProjectPreservesReadyMediaRefsWhenContentPipelineResolverIsConfigured(t *testing.T) {
 	t.Setenv("CONTENT_PIPELINE_MEDIA_ENABLED", "true")
 	t.Setenv("CONTENT_PIPELINE_MEDIA_RESOLVER_URL", "http://backend:8080/internal/media/resolve")
@@ -598,7 +674,7 @@ func TestPublishProjectRequiresPrepublishSyncForSyncingPublication(t *testing.T)
 	assert.Nil(t, saved.LastAttemptAt)
 }
 
-func TestPublishProjectAllowsProjectEditor(t *testing.T) {
+func TestPublishProjectRejectsProjectEditor(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 	fakePublisher := &testsupport.FakePlatformPublisher{}
@@ -641,13 +717,9 @@ func TestPublishProjectAllowsProjectEditor(t *testing.T) {
 
 	result, err := s.PublishProject(project.ID, "wechat", &editor.ID, uuid.Nil)
 
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	var config map[string]string
-	require.NoError(t, json.Unmarshal(fakePublisher.Config, &config))
-	assert.Equal(t, "Title", config["title"])
-	assert.Equal(t, "wx", config["app_id"])
-	assert.Equal(t, "secret", config["app_secret"])
+	require.ErrorIs(t, err, services.ErrForbidden)
+	require.Nil(t, result)
+	require.Empty(t, fakePublisher.Config)
 }
 
 func TestPublishProjectRejectsProjectViewer(t *testing.T) {
@@ -903,7 +975,7 @@ func TestCreateXPostIntentRequiresPrepublishSyncForPendingPublication(t *testing
 	assert.JSONEq(t, `{}`, string(saved.AdaptedContent))
 }
 
-func TestCreateXPostIntentAllowsProjectEditor(t *testing.T) {
+func TestCreateXPostIntentRejectsProjectEditor(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
@@ -936,12 +1008,12 @@ func TestCreateXPostIntentAllowsProjectEditor(t *testing.T) {
 
 	result, err := s.CreateXPostIntent(project.ID, &editor.ID)
 
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	require.ErrorIs(t, err, services.ErrForbidden)
+	require.Nil(t, result)
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
-	assert.NotEmpty(t, saved.PublishURL)
+	assert.Empty(t, saved.PublishURL)
 }
 
 func TestCreateXPostIntentRejectsProjectViewer(t *testing.T) {
