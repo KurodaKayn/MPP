@@ -1,0 +1,105 @@
+name: Container Images
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  REPOSITORY_OWNER: ${{ github.repository_owner }}
+  FRONTEND_BASE_URL: ${{ vars.FRONTEND_BASE_URL || 'https://mpp.example.invalid' }}
+  BACKEND_API_BASE_URL: ${{ vars.BACKEND_API_BASE_URL || 'http://backend:8080' }}
+
+jobs:
+  publish:
+    name: Publish ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: frontend
+            image: mpp-frontend
+            context: ./frontend
+            file: ./frontend/Dockerfile
+          - name: backend
+            image: mpp-backend
+            context: ./backend
+            file: ./backend/Dockerfile
+          - name: browser-worker
+            image: mpp-browser-worker
+            context: ./browser-worker
+            file: ./browser-worker/Dockerfile
+          - name: browser-runtime
+            image: mpp-browser-runtime
+            context: ./browser-worker/runtime
+            file: ./browser-worker/runtime/Dockerfile
+          - name: ai-service
+            image: mpp-ai-service
+            context: ./ai-service
+            file: ./ai-service/Dockerfile
+          - name: content-pipeline-service
+            image: mpp-content-pipeline-service
+            context: ./content-pipeline-service
+            file: ./content-pipeline-service/Dockerfile
+          - name: collab-service
+            image: mpp-collab-service
+            context: ./collab-service
+            file: ./collab-service/Dockerfile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Normalize image namespace
+        id: image-namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          owner="${REPOSITORY_OWNER,,}"
+          echo "value=${REGISTRY}/${owner}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image-namespace.outputs.value }}/${{ matrix.image }}
+          tags: |
+            type=sha,prefix=sha-,format=long
+            type=ref,event=branch
+            type=ref,event=tag
+
+      - name: Build and publish image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            FRONTEND_BASE_URL=${{ env.FRONTEND_BASE_URL }}
+            BACKEND_API_BASE_URL=${{ env.BACKEND_API_BASE_URL }}
