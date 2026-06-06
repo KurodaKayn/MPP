@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSessionReferenceInternalStreamURL(t *testing.T) {
@@ -62,7 +63,7 @@ func TestSessionReferenceJSONUsesStableNames(t *testing.T) {
 
 	payload, err := json.Marshal(reference)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.JSONEq(t, `{
 		"driver": "docker",
 		"runtime_id": "container-123",
