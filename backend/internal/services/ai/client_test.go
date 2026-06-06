@@ -116,6 +116,44 @@ func TestAIServiceClientStreamsEditedContent(t *testing.T) {
 	require.Equal(t, "first second", string(body))
 }
 
+func TestAIServiceClientSendsInternalBearerToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer ai-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"channel":"content","content":"edited"}`))
+	}))
+	defer server.Close()
+
+	client := NewAIServiceClientWithToken(server.URL, server.Client(), "ai-token")
+	resp, err := client.EditContent(t.Context(), dto.AIEditContentRequest{
+		Content: "Draft",
+		Message: "Edit",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "edited", resp.Content)
+}
+
+func TestAIServiceClientFromEnvSendsInternalBearerToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer env-ai-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"channel":"content","content":"edited"}`))
+	}))
+	defer server.Close()
+	t.Setenv(aiServiceURLEnv, server.URL)
+	t.Setenv(aiServiceInternalTokenEnv, "env-ai-token")
+
+	client := NewAIServiceClientFromEnv()
+	resp, err := client.EditContent(t.Context(), dto.AIEditContentRequest{
+		Content: "Draft",
+		Message: "Edit",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "edited", resp.Content)
+}
+
 func TestAIServiceClientMapsBadRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -133,6 +171,47 @@ func TestAIServiceClientMapsBadRequest(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrInvalidAIEditRequest)
 	require.Contains(t, err.Error(), "message is required")
+}
+
+func TestAIServiceClientRedactsUpstreamFailureDetails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"detail":"provider key sk-test-secret failed at internal.host"}`))
+	}))
+	defer server.Close()
+
+	client := NewAIServiceClient(server.URL, server.Client())
+	_, err := client.EditContent(t.Context(), dto.AIEditContentRequest{
+		Content: "Draft",
+		Message: "Edit",
+	})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrAIServiceUnavailable)
+	require.Contains(t, err.Error(), aiServiceUnavailableMessage)
+	require.NotContains(t, err.Error(), "sk-test-secret")
+	require.NotContains(t, err.Error(), "internal.host")
+}
+
+func TestAIServiceClientRedactsAuthenticationFailureDetails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"detail":"wrong token used against ai.internal"}`))
+	}))
+	defer server.Close()
+
+	client := NewAIServiceClient(server.URL, server.Client())
+	_, err := client.EditContent(t.Context(), dto.AIEditContentRequest{
+		Content: "Draft",
+		Message: "Edit",
+	})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrAIServiceUnavailable)
+	require.Contains(t, err.Error(), aiServiceAuthenticationError)
+	require.NotContains(t, err.Error(), "ai.internal")
 }
 
 func TestAIServiceClientRejectsInvalidContentEditMessage(t *testing.T) {
