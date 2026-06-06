@@ -28,8 +28,9 @@ Required overlay inputs:
   browser-worker ServiceAccount, RoleBinding, admission policy, and
   NetworkPolicy.
 - A `mpp-app-secrets` Secret in `mpp-system` with at least `JWT_SECRET`,
-  `DB_PASSWORD`, `COLLAB_TOKEN_SECRET`, `COOKIE_ENCRYPTION_KEY`, and
-  `LLM_PROVIDER_KEY`.
+  `DB_PASSWORD`, `COLLAB_TOKEN_SECRET`, `COOKIE_ENCRYPTION_KEY`,
+  `LLM_PROVIDER_KEY`, `AI_SERVICE_INTERNAL_TOKEN`,
+  `BROWSER_WORKER_INTERNAL_TOKEN`, and `CONTENT_PIPELINE_INTERNAL_TOKEN`.
 
 The CI validation overlay under `deploy/kubernetes/validation/app-baseline`
 uses fake values to verify manifest shape without committing real secrets or

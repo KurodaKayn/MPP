@@ -5,7 +5,9 @@ import os
 import secrets
 
 
-SECRET_NAMES = ("jwt", "cookie", "collab", "pipeline", "all")
+APP_SECRET_KINDS = ("jwt", "cookie", "collab", "ai", "pipeline", "browser")
+INFRA_SECRET_KINDS = ("db", "redis", "grafana")
+SECRET_NAMES = (*APP_SECRET_KINDS, *INFRA_SECRET_KINDS, "app", "infra", "all")
 
 
 def hex_secret() -> str:
@@ -26,15 +28,24 @@ def generate(kind: str) -> list[tuple[str, str]]:
         return [("COOKIE_ENCRYPTION_KEY", cookie_key())]
     if kind == "collab":
         return [("COLLAB_TOKEN_SECRET", hex_secret())]
+    if kind == "ai":
+        return [("AI_SERVICE_INTERNAL_TOKEN", hex_secret())]
     if kind == "pipeline":
         return [("CONTENT_PIPELINE_INTERNAL_TOKEN", hex_secret())]
+    if kind == "browser":
+        return [("BROWSER_WORKER_INTERNAL_TOKEN", hex_secret())]
+    if kind == "db":
+        return [("DB_PASSWORD", hex_secret())]
+    if kind == "redis":
+        return [("REDIS_PASSWORD", hex_secret())]
+    if kind == "grafana":
+        return [("GRAFANA_ADMIN_PASSWORD", hex_secret())]
+    if kind == "app":
+        return [item for name in APP_SECRET_KINDS for item in generate(name)]
+    if kind == "infra":
+        return [item for name in INFRA_SECRET_KINDS for item in generate(name)]
     if kind == "all":
-        return [
-            ("JWT_SECRET", hex_secret()),
-            ("COOKIE_ENCRYPTION_KEY", cookie_key()),
-            ("COLLAB_TOKEN_SECRET", hex_secret()),
-            ("CONTENT_PIPELINE_INTERNAL_TOKEN", hex_secret()),
-        ]
+        return generate("app") + generate("infra")
     raise ValueError(f"unknown secret kind: {kind}")
 
 
