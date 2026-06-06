@@ -7,6 +7,7 @@ require_relative "validation/app_baseline"
 require_relative "validation/browser_runtime_control"
 require_relative "validation/observability"
 require_relative "validation/data_services"
+require_relative "validation/environment_overlays"
 
 package_dir, rendered_path = ARGV
 
@@ -43,6 +44,13 @@ end
 
 if context.path_suffix?("deploy/kubernetes/data-services/self-hosted")
   KubernetesValidation::DataServices.validate_self_hosted(context)
+end
+
+if context.path_suffix?("deploy/kubernetes/overlays/staging-self-hosted")
+  KubernetesValidation::AppBaseline.validate_workloads(context)
+  KubernetesValidation::BrowserRuntimeControl.validate(context)
+  KubernetesValidation::DataServices.validate_self_hosted(context)
+  KubernetesValidation::EnvironmentOverlays.validate_staging_self_hosted(context)
 end
 
 unless context.valid?
