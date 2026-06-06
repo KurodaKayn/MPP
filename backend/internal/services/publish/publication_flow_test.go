@@ -15,6 +15,8 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage/fake"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/services"
@@ -116,6 +118,89 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	assert.Equal(t, "wx-saved", config["app_id"])
 	assert.Equal(t, "saved-secret", config["app_secret"])
 	assert.Equal(t, "Title", config["title"])
+}
+
+func TestPublishProjectPresignsReadyMediaRefsWithoutPersistingSignedURLs(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(&models.MediaAsset{}))
+	s := services.NewDashboardService(db)
+	storage := fake.NewClient()
+	s.UseObjectStorage(storage, objectstorage.Config{
+		Enabled:        true,
+		Provider:       objectstorage.ProviderR2,
+		Bucket:         "mpp-media",
+		UploadURLTTL:   10 * time.Minute,
+		DownloadURLTTL: 5 * time.Minute,
+	})
+	fakePublisher := &testsupport.FakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	workspaceID := models.PersonalWorkspaceID(user.ID)
+	project := models.Project{
+		UserID:        user.ID,
+		WorkspaceID:   &workspaceID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	assetID := uuid.New()
+	assetProjectID := project.ID
+	asset := models.MediaAsset{
+		ID:               assetID,
+		UserID:           user.ID,
+		WorkspaceID:      &workspaceID,
+		ProjectID:        &assetProjectID,
+		Bucket:           "mpp-media",
+		ObjectKey:        "workspaces/" + workspaceID.String() + "/projects/" + project.ID.String() + "/assets/" + assetID.String() + "/hero.png",
+		OriginalFilename: "hero.png",
+		MimeType:         "image/png",
+		SizeBytes:        11,
+		Usage:            models.MediaAssetUsageEditorImage,
+		Status:           models.MediaAssetStatusReady,
+	}
+	require.NoError(t, db.Create(&asset).Error)
+	mediaRef := "mpp://media/" + assetID.String()
+	config, err := json.Marshal(map[string]string{
+		"app_id":          "wx",
+		"app_secret":      "secret",
+		"title":           "Title",
+		"cover_image_url": mediaRef,
+	})
+	require.NoError(t, err)
+	adaptedContent, err := json.Marshal(map[string]string{
+		"format": "html",
+		"html":   `<p><img src="` + mediaRef + `" data-mpp-media-id="` + assetID.String() + `"></p>`,
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(config),
+		AdaptedContent: datatypes.JSON(adaptedContent),
+	}).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	expectedURL := "fake://get/mpp-media/" + asset.ObjectKey
+	assert.Contains(t, string(fakePublisher.Config), expectedURL)
+	assert.NotContains(t, string(fakePublisher.Config), mediaRef)
+	assert.Contains(t, string(fakePublisher.AdaptedContent), expectedURL)
+	assert.NotContains(t, string(fakePublisher.AdaptedContent), mediaRef)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	assert.Contains(t, string(saved.Config), mediaRef)
+	assert.Contains(t, string(saved.AdaptedContent), mediaRef)
+	assert.NotContains(t, string(saved.Config), expectedURL)
+	assert.NotContains(t, string(saved.AdaptedContent), expectedURL)
 }
 
 func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {

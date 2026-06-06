@@ -7,6 +7,8 @@ import (
 )
 
 func TestDownloadAndProcessSupportsBase64DataURL(t *testing.T) {
+	t.Setenv(contentPipelineMediaEnabledEnv, "false")
+
 	data, err := DownloadAndProcess("data:image/png;base64,aGVsbG8=")
 
 	require.NoError(t, err)

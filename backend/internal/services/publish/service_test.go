@@ -15,3 +15,18 @@ func TestUserFacingErrorMessageRedactsSensitiveWechatParams(t *testing.T) {
 		t.Fatalf("user-facing error did not mark redacted parameters: %q", message)
 	}
 }
+
+func TestUserFacingErrorMessageRedactsSignedURLParams(t *testing.T) {
+	message := SanitizeUserFacingErrorMessage(`failed to download image: Get "https://bucket.example/object.png?X-Amz-Credential=access-key/20260606/auto/s3/aws4_request&X-Amz-Signature=signature-value&X-Amz-Security-Token=session-token&X-Amz-Date=20260606T120000Z": 403 Forbidden`)
+
+	for _, leaked := range []string{"access-key", "signature-value", "session-token"} {
+		if strings.Contains(message, leaked) {
+			t.Fatalf("user-facing error leaked signed URL material: %q", message)
+		}
+	}
+	for _, redacted := range []string{"X-Amz-Credential=<redacted>", "X-Amz-Signature=<redacted>", "X-Amz-Security-Token=<redacted>"} {
+		if !strings.Contains(message, redacted) {
+			t.Fatalf("user-facing error did not redact %s: %q", redacted, message)
+		}
+	}
+}

@@ -367,6 +367,7 @@ func (f *FakeWechatTester) Test(appID, appSecret string) dto.WechatConnectionTes
 
 type FakePlatformPublisher struct {
 	Config         datatypes.JSON
+	AdaptedContent datatypes.JSON
 	AccountCookies datatypes.JSON
 	RemoteURL      string
 }
@@ -377,6 +378,7 @@ func (f *FakePlatformPublisher) ValidateConfig(_ []byte) error {
 
 func (f *FakePlatformPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
 	f.Config = append(datatypes.JSON(nil), pub.Config...)
+	f.AdaptedContent = append(datatypes.JSON(nil), pub.AdaptedContent...)
 	if account != nil {
 		f.AccountCookies = append(datatypes.JSON(nil), account.Cookies...)
 	}

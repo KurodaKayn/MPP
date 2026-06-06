@@ -45,6 +45,10 @@ func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.
 	if s.browserWorkerClient == nil {
 		return nil, browsersession.ErrPlatformNotSupported
 	}
+	pub, err = s.preparePublicationMediaRefs(ctx, project, pub)
+	if err != nil {
+		return nil, err
+	}
 	draft, err := buildDouyinWorkerDraft(project, pub)
 	if err != nil {
 		return nil, err
