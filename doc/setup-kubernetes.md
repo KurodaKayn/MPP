@@ -21,15 +21,17 @@ The deployment resources are Kustomize packages:
 ```text
 deploy/kubernetes/browser-runtime-control
 deploy/kubernetes/app-baseline
+deploy/kubernetes/observability
 deploy/kubernetes/data-services/managed
 deploy/kubernetes/data-services/self-hosted
 deploy/kubernetes/validation/app-baseline
 ```
 
 Use `browser-runtime-control` with every Kubernetes browser-runtime deployment.
-Use `app-baseline` for the long-running application services. Choose exactly one
-data-service mode: `managed` for production, or `self-hosted` for small test
-clusters and demos.
+Use `app-baseline` for the long-running application services. Add
+`observability` when the cluster has Loki, Alloy, and Prometheus Operator CRDs.
+Choose exactly one data-service mode: `managed` for production, or
+`self-hosted` for small test clusters and demos.
 
 ## Required Overlays
 
@@ -37,6 +39,7 @@ Create an environment overlay that references:
 
 - `../../browser-runtime-control`
 - `../../app-baseline`
+- `../../observability`, if Kubernetes log and metrics discovery is enabled
 - `../../data-services/managed` or `../../data-services/self-hosted`
 
 The overlay must patch:
@@ -49,6 +52,8 @@ The overlay must patch:
   `LLM_MODEL`.
 - Data-service hosts for the managed ExternalName Services, or storage classes
   and sizes for self-hosted StatefulSets.
+- `LOKI_WRITE_URL` in the observability package when Loki is not available at
+  the included in-cluster service DNS name.
 
 ## Secrets
 
@@ -95,6 +100,19 @@ BROWSER_RUNTIME_IMAGE=<registry>/mpp-browser-runtime:<immutable-tag>
 Pods carry session labels, an expiration annotation, an active deadline, and are
 reconciled by the worker cleanup loop. The runtime namespace denies traffic by
 default and allows CDP/stream ingress only from `browser-worker`.
+
+## Observability
+
+The optional `deploy/kubernetes/observability` package replaces Docker log
+discovery with Kubernetes Pod discovery. It deploys Alloy with RBAC scoped to
+Pod and Pod log discovery for `mpp-system` and `mpp-browser-runtime`, sends logs
+to `LOKI_WRITE_URL`, and preserves structured request fields such as trace ID,
+route, status, and latency when services emit JSON request logs.
+
+The package also adds PodMonitor resources for application metrics and
+PrometheusRule alerts for browser runtime startup failures, cleanup failures,
+and cleanup lag. Install the Prometheus Operator CRDs before applying this
+package, or omit it from overlays that use another metrics discovery mechanism.
 
 ## Validate
 
