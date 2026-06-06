@@ -414,6 +414,16 @@ type AddWorkspaceMemberRequest struct {
 	Role   string    `json:"role"`
 }
 
+type CreateWorkspaceInviteRequest struct {
+	Email     string     `json:"email"`
+	Role      string     `json:"role"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+type AcceptWorkspaceInviteRequest struct {
+	Token string `json:"token"`
+}
+
 type UpdateWorkspaceMemberRequest struct {
 	Role string `json:"role"`
 }
@@ -446,6 +456,30 @@ type WorkspaceMember struct {
 
 type WorkspaceMembersResponse struct {
 	Items []WorkspaceMember `json:"items"`
+}
+
+type WorkspaceInvite struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	Email       string     `json:"email"`
+	Role        string     `json:"role"`
+	InvitedBy   uuid.UUID  `json:"invited_by"`
+	AcceptedBy  *uuid.UUID `json:"accepted_by,omitempty"`
+	Status      string     `json:"status"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	AcceptedAt  *time.Time `json:"accepted_at,omitempty"`
+	RevokedAt   *time.Time `json:"revoked_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type WorkspaceInviteWithToken struct {
+	WorkspaceInvite
+	Token string `json:"token"`
+}
+
+type WorkspaceInvitesResponse struct {
+	Items []WorkspaceInvite `json:"items"`
 }
 
 type WorkspaceActivity struct {

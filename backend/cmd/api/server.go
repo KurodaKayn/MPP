@@ -196,11 +196,15 @@ func registerWorkspaceRoutes(e *echo.Echo, config serverConfig, h serverHandlers
 	workspaceGroup.POST("/:id/projects", h.userDashboard.CreateWorkspaceProject)
 	workspaceGroup.GET("/:id/activity", h.userDashboard.ListWorkspaceActivities)
 	workspaceGroup.GET("/:id/members", h.userDashboard.ListWorkspaceMembers)
+	workspaceGroup.GET("/:id/invites", h.userDashboard.ListWorkspaceInvites)
 	workspaceGroup.GET("/:id", h.userDashboard.GetWorkspace)
 	workspaceGroup.PATCH("/:id", h.userDashboard.UpdateWorkspace)
 	workspaceGroup.POST("/:id/members", h.userDashboard.AddWorkspaceMember)
+	workspaceGroup.POST("/:id/invites", h.userDashboard.CreateWorkspaceInvite)
+	workspaceGroup.POST("/invites/accept", h.userDashboard.AcceptWorkspaceInvite)
 	workspaceGroup.PATCH("/:id/members/:userId", h.userDashboard.UpdateWorkspaceMember)
 	workspaceGroup.DELETE("/:id/members/:userId", h.userDashboard.RemoveWorkspaceMember)
+	workspaceGroup.DELETE("/:id/invites/:inviteId", h.userDashboard.RevokeWorkspaceInvite)
 	return nil
 }
 
