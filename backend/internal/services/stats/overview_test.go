@@ -72,3 +72,39 @@ func TestGetStatsUsesReaderForEventualCounts(t *testing.T) {
 	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
 	assert.Equal(t, int64(0), stats.TotalFailedPublications)
 }
+
+func TestGetStatsUsesWriterForScopedCounts(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	s := services.NewDashboardServiceWithRouter(writer, dbrouter.NewRouter(writer, dbrouter.WithReader(reader)))
+
+	user := models.User{Username: "scoped-user"}
+	require.NoError(t, writer.Create(&user).Error)
+	currentProject := models.Project{UserID: user.ID, Title: "current-project", SourceContent: "content", Status: models.ProjectStatusReady}
+	require.NoError(t, writer.Create(&currentProject).Error)
+	require.NoError(t, writer.Create(&models.ProjectPlatformPublication{
+		ProjectID: currentProject.ID,
+		Platform:  "wechat",
+		Status:    models.PublicationStatusPublished,
+	}).Error)
+
+	staleProject := models.Project{UserID: user.ID, Title: "stale-reader-project", SourceContent: "content", Status: models.ProjectStatusReady}
+	require.NoError(t, reader.Create(&staleProject).Error)
+	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
+		ProjectID: staleProject.ID,
+		Platform:  "wechat",
+		Status:    models.PublicationStatusPublished,
+	}).Error)
+	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
+		ProjectID: staleProject.ID,
+		Platform:  "zhihu",
+		Status:    models.PublicationStatusFailed,
+	}).Error)
+
+	stats, err := s.GetStats(&user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalUsers)
+	assert.Equal(t, int64(1), stats.TotalProjects)
+	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
+	assert.Equal(t, int64(0), stats.TotalFailedPublications)
+}

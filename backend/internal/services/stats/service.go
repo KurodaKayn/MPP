@@ -33,6 +33,13 @@ func (s *Service) eventualReadDB() *gorm.DB {
 	return s.router.Reader(s.requestContext(), dbrouter.EventualRead)
 }
 
+func (s *Service) strongReadDB() *gorm.DB {
+	if s.router == nil {
+		return s.db
+	}
+	return s.router.Reader(s.requestContext(), dbrouter.StrongRead)
+}
+
 func (s *Service) requestContext() context.Context {
 	if s.db != nil && s.db.Statement != nil && s.db.Statement.Context != nil {
 		return s.db.Statement.Context

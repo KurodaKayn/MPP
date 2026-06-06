@@ -10,7 +10,7 @@ import (
 
 func (s *Service) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
 	var stats dto.DashboardStatsResponse
-	readDB := s.eventualReadDB()
+	readDB := s.statsReadDB(scopeUserID)
 
 	// Users count (Only admin should see total users)
 	if scopeUserID == nil {
@@ -64,7 +64,7 @@ func (s *Service) GetWorkspaceStats(workspaceID uuid.UUID, scopeUserID uuid.UUID
 
 	var stats dto.DashboardStatsResponse
 	stats.TotalUsers = 1
-	readDB := s.eventualReadDB()
+	readDB := s.strongReadDB()
 
 	projQuery := readDB.Model(&models.Project{}).Where("workspace_id = ?", workspaceID)
 	if err := projQuery.Count(&stats.TotalProjects).Error; err != nil {
@@ -88,4 +88,11 @@ func (s *Service) GetWorkspaceStats(workspaceID uuid.UUID, scopeUserID uuid.UUID
 	}
 
 	return &stats, nil
+}
+
+func (s *Service) statsReadDB(scopeUserID *uuid.UUID) *gorm.DB {
+	if scopeUserID != nil {
+		return s.strongReadDB()
+	}
+	return s.eventualReadDB()
 }
