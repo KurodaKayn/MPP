@@ -39,9 +39,28 @@ const (
 
 // Platform account status constants
 const (
-	PlatformAccountStatusUntested  = string(contracts.PlatformAccountStatusUntested)
-	PlatformAccountStatusConnected = string(contracts.PlatformAccountStatusConnected)
-	PlatformAccountStatusFailed    = string(contracts.PlatformAccountStatusFailed)
+	PlatformAccountStatusUntested    = string(contracts.PlatformAccountStatusUntested)
+	PlatformAccountStatusConnected   = string(contracts.PlatformAccountStatusConnected)
+	PlatformAccountStatusFailed      = string(contracts.PlatformAccountStatusFailed)
+	PlatformAccountStatusNeedsReauth = "needs_reauth"
+)
+
+const (
+	PlatformAccountHealthUnknown     = "unknown"
+	PlatformAccountHealthHealthy     = "healthy"
+	PlatformAccountHealthNeedsReauth = "needs_reauth"
+	PlatformAccountHealthFailed      = "failed"
+)
+
+const (
+	PlatformAccountSharePrivate   = "private"
+	PlatformAccountShareWorkspace = "workspace"
+)
+
+const (
+	PlatformAccountGrantRoleManager   = "manager"
+	PlatformAccountGrantRolePublisher = "publisher"
+	PlatformAccountGrantRoleViewer    = "viewer"
 )
 
 // Remote Browser Session Status Constants
@@ -320,22 +339,45 @@ type WorkspaceActivity struct {
 	TargetUser   *User          `gorm:"foreignKey:TargetUserID;constraint:OnDelete:SET NULL"`
 }
 
+const (
+	NotificationStatusUnread   = "unread"
+	NotificationStatusRead     = "read"
+	NotificationStatusArchived = "archived"
+
+	NotificationAccountNeedsReauth = "account_needs_reauth"
+)
+
+type Notification struct {
+	ID              uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	WorkspaceID     uuid.UUID      `gorm:"type:uuid;not null;index"`
+	RecipientUserID uuid.UUID      `gorm:"type:uuid;not null;index"`
+	EventType       string         `gorm:"not null;index"`
+	ResourceType    string         `gorm:"not null;default:'';index"`
+	ResourceID      *uuid.UUID     `gorm:"type:uuid;index"`
+	Status          string         `gorm:"not null;default:'unread';index"`
+	Metadata        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	CreatedAt       time.Time      `gorm:"not null;index"`
+	Workspace       Workspace      `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
+	Recipient       User           `gorm:"foreignKey:RecipientUserID;constraint:OnDelete:CASCADE"`
+}
+
 type ProjectPlatformPublication struct {
-	ID             uuid.UUID      `gorm:"type:uuid;primaryKey"`
-	ProjectID      uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:idx_publications_project_platform"`
-	Platform       string         `gorm:"not null;uniqueIndex:idx_publications_project_platform;index:idx_publications_platform_status"`
-	Enabled        bool           `gorm:"not null;default:true"`
-	Status         string         `gorm:"not null;index:idx_publications_platform_status"`
-	Config         datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	AdaptedContent datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	RemoteID       string
-	PublishURL     string
-	ErrorMessage   string
-	RetryCount     int `gorm:"not null;default:0"`
-	LastAttemptAt  *time.Time
-	PublishedAt    *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID                uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	ProjectID         uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:idx_publications_project_platform"`
+	Platform          string         `gorm:"not null;uniqueIndex:idx_publications_project_platform;index:idx_publications_platform_status"`
+	PlatformAccountID *uuid.UUID     `gorm:"type:uuid;index"`
+	Enabled           bool           `gorm:"not null;default:true"`
+	Status            string         `gorm:"not null;index:idx_publications_platform_status"`
+	Config            datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	AdaptedContent    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	RemoteID          string
+	PublishURL        string
+	ErrorMessage      string
+	RetryCount        int `gorm:"not null;default:0"`
+	LastAttemptAt     *time.Time
+	PublishedAt       *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type PublishEvent struct {
@@ -357,37 +399,64 @@ type PublishEvent struct {
 }
 
 type PlatformAccount struct {
-	ID            uuid.UUID      `gorm:"type:uuid;primaryKey"`
-	UserID        uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:idx_platform_accounts_user_platform"`
-	Platform      string         `gorm:"not null;uniqueIndex:idx_platform_accounts_user_platform;index:idx_platform_accounts_platform_status"`
-	Username      string         `gorm:"not null;default:''"`
-	Status        string         `gorm:"not null;default:'untested';index:idx_platform_accounts_platform_status"`
-	Cookies       datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"` // From feature branch
-	Credentials   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From main branch
-	Metadata      datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From main branch
-	Config        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"` // From feature branch
-	AvatarURL     string         // From feature branch
-	LastTestedAt  *time.Time
-	LastTestError string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID                  uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	UserID              uuid.UUID      `gorm:"type:uuid;not null;index:idx_platform_accounts_user_platform"`
+	WorkspaceID         *uuid.UUID     `gorm:"type:uuid;index:idx_platform_accounts_workspace_platform"`
+	OwnerUserID         *uuid.UUID     `gorm:"type:uuid;index"`
+	ConnectedByUserID   *uuid.UUID     `gorm:"type:uuid;index"`
+	Platform            string         `gorm:"not null;index:idx_platform_accounts_user_platform;index:idx_platform_accounts_workspace_platform;index:idx_platform_accounts_platform_status"`
+	Username            string         `gorm:"not null;default:''"`
+	DisplayName         string         `gorm:"not null;default:''"`
+	PlatformUserID      string         `gorm:"not null;default:'';index"`
+	ShareScope          string         `gorm:"not null;default:'private';index"`
+	Status              string         `gorm:"not null;default:'untested';index:idx_platform_accounts_platform_status"`
+	HealthStatus        string         `gorm:"not null;default:'unknown';index"`
+	CredentialSecretRef string         `gorm:"not null;default:''"`
+	Cookies             datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	Credentials         datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	Metadata            datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	Config              datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	AvatarURL           string
+	LastConnectedAt     *time.Time
+	LastVerifiedAt      *time.Time
+	LastTestedAt        *time.Time
+	LastTestError       string
+	ExpiresAt           *time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type RemoteBrowserSession struct {
-	ID                    uuid.UUID `gorm:"type:uuid;primaryKey"`
-	UserID                uuid.UUID `gorm:"type:uuid;not null;index:idx_browser_sessions_user_platform"`
-	Platform              string    `gorm:"not null;index:idx_browser_sessions_user_platform"`
-	Status                string    `gorm:"not null;index:idx_browser_sessions_user_platform"`
-	WorkerSessionRef      string    `gorm:"not null;default:''"`
-	ContainerID           string    `gorm:"not null;default:''"`
-	CDPEndpointRef        string    `gorm:"not null;default:''"`
-	StreamEndpointRef     string    `gorm:"not null;default:''"`
-	ConnectTokenHash      string    `gorm:"not null"`
+	ID                    uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	UserID                uuid.UUID  `gorm:"type:uuid;not null;index:idx_browser_sessions_user_platform"`
+	WorkspaceID           *uuid.UUID `gorm:"type:uuid;index"`
+	PlatformAccountID     *uuid.UUID `gorm:"type:uuid;index"`
+	Platform              string     `gorm:"not null;index:idx_browser_sessions_user_platform"`
+	Status                string     `gorm:"not null;index:idx_browser_sessions_user_platform"`
+	WorkerSessionRef      string     `gorm:"not null;default:''"`
+	ContainerID           string     `gorm:"not null;default:''"`
+	CDPEndpointRef        string     `gorm:"not null;default:''"`
+	StreamEndpointRef     string     `gorm:"not null;default:''"`
+	ConnectTokenHash      string     `gorm:"not null"`
 	ConnectTokenExpiresAt time.Time
 	ErrorMessage          string    `gorm:"not null;default:''"`
 	CreatedAt             time.Time `gorm:"not null"`
 	ExpiresAt             time.Time `gorm:"not null"`
 	CompletedAt           *time.Time
+}
+
+type PlatformAccountGrant struct {
+	ID                uuid.UUID       `gorm:"type:uuid;primaryKey"`
+	PlatformAccountID uuid.UUID       `gorm:"type:uuid;not null;index:idx_platform_account_grants_account"`
+	WorkspaceID       uuid.UUID       `gorm:"type:uuid;not null;index"`
+	GranteeUserID     *uuid.UUID      `gorm:"type:uuid;index"`
+	ProjectID         *uuid.UUID      `gorm:"type:uuid;index"`
+	Role              string          `gorm:"not null;index"`
+	CreatedBy         uuid.UUID       `gorm:"type:uuid;not null;index"`
+	CreatedAt         time.Time       `gorm:"not null"`
+	UpdatedAt         time.Time       `gorm:"not null"`
+	Account           PlatformAccount `gorm:"foreignKey:PlatformAccountID;constraint:OnDelete:CASCADE"`
+	Workspace         Workspace       `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
 }
 
 type ExtensionCallbackToken struct {
@@ -475,6 +544,16 @@ func (a *WorkspaceActivity) BeforeCreate(_ *gorm.DB) (err error) {
 	return
 }
 
+func (n *Notification) BeforeCreate(_ *gorm.DB) (err error) {
+	if n.ID == uuid.Nil {
+		n.ID = uuid.New()
+	}
+	if n.Status == "" {
+		n.Status = NotificationStatusUnread
+	}
+	return
+}
+
 func (i *WorkspaceInvite) BeforeCreate(_ *gorm.DB) (err error) {
 	if i.ID == uuid.Nil {
 		i.ID = uuid.New()
@@ -523,12 +602,43 @@ func (pa *PlatformAccount) BeforeCreate(_ *gorm.DB) (err error) {
 	if pa.ID == uuid.Nil {
 		pa.ID = uuid.New()
 	}
+	if pa.OwnerUserID == nil && pa.UserID != uuid.Nil {
+		ownerID := pa.UserID
+		pa.OwnerUserID = &ownerID
+	}
+	if pa.ConnectedByUserID == nil && pa.UserID != uuid.Nil {
+		connectedBy := pa.UserID
+		pa.ConnectedByUserID = &connectedBy
+	}
+	if pa.WorkspaceID == nil && pa.UserID != uuid.Nil {
+		workspaceID := PersonalWorkspaceID(pa.UserID)
+		pa.WorkspaceID = &workspaceID
+	}
+	if pa.DisplayName == "" {
+		pa.DisplayName = pa.Username
+	}
+	if pa.ShareScope == "" {
+		pa.ShareScope = PlatformAccountSharePrivate
+	}
+	if pa.HealthStatus == "" {
+		pa.HealthStatus = PlatformAccountHealthUnknown
+	}
+	if pa.CredentialSecretRef == "" {
+		pa.CredentialSecretRef = "platform-account:" + pa.ID.String()
+	}
 	return
 }
 
 func (s *RemoteBrowserSession) BeforeCreate(_ *gorm.DB) (err error) {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()
+	}
+	return
+}
+
+func (g *PlatformAccountGrant) BeforeCreate(_ *gorm.DB) (err error) {
+	if g.ID == uuid.Nil {
+		g.ID = uuid.New()
 	}
 	return
 }

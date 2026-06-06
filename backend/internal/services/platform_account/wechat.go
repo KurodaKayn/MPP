@@ -37,8 +37,13 @@ func (WechatAPITester) Test(appID, appSecret string) dto.WechatConnectionTestRes
 }
 
 func (s *Service) GetWechatAccount(userID uuid.UUID) (*dto.WechatAccountResponse, error) {
+	return s.GetWorkspaceWechatAccount(userID, uuid.Nil)
+}
+
+func (s *Service) GetWorkspaceWechatAccount(userID uuid.UUID, workspaceID uuid.UUID) (*dto.WechatAccountResponse, error) {
 	var account models.PlatformAccount
-	err := s.db.Where("user_id = ? AND platform = ?", userID, wechatPlatform).First(&account).Error
+	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
+	err := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, wechatPlatform).Order("updated_at DESC").First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		resp := emptyWechatAccountResponse()
 		return &resp, nil
@@ -55,6 +60,10 @@ func (s *Service) GetWechatAccount(userID uuid.UUID) (*dto.WechatAccountResponse
 }
 
 func (s *Service) UpsertWechatAccount(userID uuid.UUID, req dto.UpsertWechatAccountRequest) (*dto.WechatAccountResponse, error) {
+	return s.UpsertWorkspaceWechatAccount(userID, uuid.Nil, req)
+}
+
+func (s *Service) UpsertWorkspaceWechatAccount(userID uuid.UUID, workspaceID uuid.UUID, req dto.UpsertWechatAccountRequest) (*dto.WechatAccountResponse, error) {
 	appID := strings.TrimSpace(req.AppID)
 	appSecret := strings.TrimSpace(req.AppSecret)
 	if appID == "" {
@@ -62,7 +71,8 @@ func (s *Service) UpsertWechatAccount(userID uuid.UUID, req dto.UpsertWechatAcco
 	}
 
 	var account models.PlatformAccount
-	err := s.db.Where("user_id = ? AND platform = ?", userID, wechatPlatform).First(&account).Error
+	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
+	err := s.db.Where("workspace_id = ? AND platform = ? AND (platform_user_id = ? OR platform_user_id = '')", workspaceID, wechatPlatform, appID).Order("updated_at DESC").First(&account).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
@@ -88,21 +98,28 @@ func (s *Service) UpsertWechatAccount(userID uuid.UUID, req dto.UpsertWechatAcco
 
 	if account.ID == uuid.Nil {
 		account = models.PlatformAccount{
-			UserID:      userID,
-			Platform:    wechatPlatform,
-			Username:    "微信公众号",
-			Credentials: credentials,
-			Metadata:    datatypes.JSON([]byte(`{}`)),
-			Status:      models.PlatformAccountStatusUntested,
+			UserID:         userID,
+			Platform:       wechatPlatform,
+			Username:       "微信公众号",
+			DisplayName:    "微信公众号",
+			PlatformUserID: appID,
+			Credentials:    credentials,
+			Metadata:       datatypes.JSON([]byte(`{}`)),
+			Status:         models.PlatformAccountStatusUntested,
+			HealthStatus:   models.PlatformAccountHealthUnknown,
 		}
+		s.ensureAccountDefaults(&account, userID, workspaceID, wechatPlatform)
 		err = s.db.Create(&account).Error
 	} else {
 		err = s.db.Model(&account).Updates(map[string]any{
-			"username":        "微信公众号",
-			"credentials":     credentials,
-			"status":          models.PlatformAccountStatusUntested,
-			"last_tested_at":  nil,
-			"last_test_error": "",
+			"username":         "微信公众号",
+			"display_name":     firstNonEmpty(account.DisplayName, "微信公众号"),
+			"platform_user_id": appID,
+			"credentials":      credentials,
+			"status":           models.PlatformAccountStatusUntested,
+			"health_status":    models.PlatformAccountHealthUnknown,
+			"last_tested_at":   nil,
+			"last_test_error":  "",
 		}).Error
 	}
 
@@ -110,7 +127,7 @@ func (s *Service) UpsertWechatAccount(userID uuid.UUID, req dto.UpsertWechatAcco
 		return nil, err
 	}
 
-	if err := s.db.Where("user_id = ? AND platform = ?", userID, wechatPlatform).First(&account).Error; err != nil {
+	if err := s.db.Where("workspace_id = ? AND platform = ? AND platform_user_id = ?", workspaceID, wechatPlatform, appID).First(&account).Error; err != nil {
 		return nil, err
 	}
 
@@ -122,11 +139,20 @@ func (s *Service) UpsertWechatAccount(userID uuid.UUID, req dto.UpsertWechatAcco
 }
 
 func (s *Service) TestWechatAccount(userID uuid.UUID, req dto.TestWechatAccountRequest) (*dto.WechatConnectionTestResponse, error) {
+	return s.TestWorkspaceWechatAccount(userID, uuid.Nil, req)
+}
+
+func (s *Service) TestWorkspaceWechatAccount(userID uuid.UUID, workspaceID uuid.UUID, req dto.TestWechatAccountRequest) (*dto.WechatConnectionTestResponse, error) {
 	appID := strings.TrimSpace(req.AppID)
 	appSecret := strings.TrimSpace(req.AppSecret)
 
 	var account models.PlatformAccount
-	err := s.db.Where("user_id = ? AND platform = ?", userID, wechatPlatform).First(&account).Error
+	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
+	query := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, wechatPlatform)
+	if appID != "" {
+		query = query.Where("platform_user_id = ? OR platform_user_id = ''", appID)
+	}
+	err := query.Order("updated_at DESC").First(&account).Error
 	accountExists := err == nil
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -161,9 +187,11 @@ func (s *Service) TestWechatAccount(userID uuid.UUID, req dto.TestWechatAccountR
 		}
 
 		if err := s.db.Model(&account).Updates(map[string]any{
-			"status":          status,
-			"last_tested_at":  result.TestedAt,
-			"last_test_error": errMessage,
+			"status":           status,
+			"health_status":    healthStatusForStatus(status),
+			"last_tested_at":   result.TestedAt,
+			"last_verified_at": result.TestedAt,
+			"last_test_error":  errMessage,
 		}).Error; err != nil {
 			return nil, err
 		}
@@ -172,18 +200,12 @@ func (s *Service) TestWechatAccount(userID uuid.UUID, req dto.TestWechatAccountR
 	return &result, nil
 }
 
-func (s *Service) applySavedWechatCredentialsToPublication(userID uuid.UUID, pub *models.ProjectPlatformPublication) error {
+func (s *Service) applySavedWechatCredentialsToPublication(account *models.PlatformAccount, pub *models.ProjectPlatformPublication) error {
 	if pub.Platform != wechatPlatform {
 		return nil
 	}
-
-	var account models.PlatformAccount
-	err := s.db.Where("user_id = ? AND platform = ?", userID, wechatPlatform).First(&account).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if account == nil {
 		return nil
-	}
-	if err != nil {
-		return err
 	}
 
 	credentials, err := parseWechatCredentials(account.Credentials)

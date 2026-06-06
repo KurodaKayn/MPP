@@ -55,8 +55,13 @@ func (XAPITester) Test(ctx context.Context, credentials pkgx.Credentials) dto.XC
 }
 
 func (s *Service) GetXAccount(userID uuid.UUID) (*dto.XAccountResponse, error) {
+	return s.GetWorkspaceXAccount(userID, uuid.Nil)
+}
+
+func (s *Service) GetWorkspaceXAccount(userID uuid.UUID, workspaceID uuid.UUID) (*dto.XAccountResponse, error) {
 	var account models.PlatformAccount
-	err := s.db.Where("user_id = ? AND platform = ?", userID, xPlatform).First(&account).Error
+	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
+	err := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, xPlatform).Order("updated_at DESC").First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		resp := emptyXAccountResponse()
 		return &resp, nil
@@ -73,6 +78,10 @@ func (s *Service) GetXAccount(userID uuid.UUID) (*dto.XAccountResponse, error) {
 }
 
 func (s *Service) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccountRequest) (*dto.XAccountResponse, error) {
+	return s.UpsertWorkspaceXAccount(userID, uuid.Nil, req)
+}
+
+func (s *Service) UpsertWorkspaceXAccount(userID uuid.UUID, workspaceID uuid.UUID, req dto.UpsertXAccountRequest) (*dto.XAccountResponse, error) {
 	incoming := xCredentials{
 		AuthType:          xAuthTypeOAuth1,
 		APIKey:            strings.TrimSpace(req.APIKey),
@@ -83,7 +92,8 @@ func (s *Service) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccountRequest
 	}
 
 	var account models.PlatformAccount
-	err := s.db.Where("user_id = ? AND platform = ?", userID, xPlatform).First(&account).Error
+	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
+	err := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, xPlatform).Order("updated_at DESC").First(&account).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
@@ -104,20 +114,25 @@ func (s *Service) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccountRequest
 
 	if account.ID == uuid.Nil {
 		account = models.PlatformAccount{
-			UserID:      userID,
-			Platform:    xPlatform,
-			Username:    "X",
-			Credentials: credentials,
-			Metadata:    datatypes.JSON([]byte(`{}`)),
-			Status:      models.PlatformAccountStatusUntested,
+			UserID:       userID,
+			Platform:     xPlatform,
+			Username:     "X",
+			DisplayName:  firstNonEmpty(incoming.Username, "X"),
+			Credentials:  credentials,
+			Metadata:     datatypes.JSON([]byte(`{}`)),
+			Status:       models.PlatformAccountStatusUntested,
+			HealthStatus: models.PlatformAccountHealthUnknown,
 		}
+		s.ensureAccountDefaults(&account, userID, workspaceID, xPlatform)
 		err = s.db.Create(&account).Error
 	} else {
 		err = s.db.Model(&account).Updates(map[string]any{
 			"username":        "X",
+			"display_name":    firstNonEmpty(incoming.Username, account.DisplayName, "X"),
 			"credentials":     credentials,
 			"metadata":        datatypes.JSON([]byte(`{}`)),
 			"status":          models.PlatformAccountStatusUntested,
+			"health_status":   models.PlatformAccountHealthUnknown,
 			"last_tested_at":  nil,
 			"last_test_error": "",
 		}).Error
@@ -126,7 +141,7 @@ func (s *Service) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccountRequest
 		return nil, err
 	}
 
-	if err := s.db.Where("user_id = ? AND platform = ?", userID, xPlatform).First(&account).Error; err != nil {
+	if err := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, xPlatform).Order("updated_at DESC").First(&account).Error; err != nil {
 		return nil, err
 	}
 
@@ -138,6 +153,10 @@ func (s *Service) UpsertXAccount(userID uuid.UUID, req dto.UpsertXAccountRequest
 }
 
 func (s *Service) TestXAccount(userID uuid.UUID, req dto.TestXAccountRequest) (*dto.XConnectionTestResponse, error) {
+	return s.TestWorkspaceXAccount(userID, uuid.Nil, req)
+}
+
+func (s *Service) TestWorkspaceXAccount(userID uuid.UUID, workspaceID uuid.UUID, req dto.TestXAccountRequest) (*dto.XConnectionTestResponse, error) {
 	incoming := xCredentials{
 		APIKey:            strings.TrimSpace(req.APIKey),
 		APISecret:         strings.TrimSpace(req.APISecret),
@@ -146,7 +165,8 @@ func (s *Service) TestXAccount(userID uuid.UUID, req dto.TestXAccountRequest) (*
 	}
 
 	var account models.PlatformAccount
-	err := s.db.Where("user_id = ? AND platform = ?", userID, xPlatform).First(&account).Error
+	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
+	err := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, xPlatform).Order("updated_at DESC").First(&account).Error
 	accountExists := err == nil
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -175,9 +195,11 @@ func (s *Service) TestXAccount(userID uuid.UUID, req dto.TestXAccountRequest) (*
 		}
 
 		updates := map[string]any{
-			"status":          status,
-			"last_tested_at":  result.TestedAt,
-			"last_test_error": errMessage,
+			"status":           status,
+			"health_status":    healthStatusForStatus(status),
+			"last_tested_at":   result.TestedAt,
+			"last_verified_at": result.TestedAt,
+			"last_test_error":  errMessage,
 		}
 		if result.Connected {
 			credentials, err := marshalJSON(savedCredentials)
@@ -194,6 +216,8 @@ func (s *Service) TestXAccount(userID uuid.UUID, req dto.TestXAccountRequest) (*
 			}
 			updates["credentials"] = credentials
 			updates["metadata"] = metadata
+			updates["platform_user_id"] = result.UserID
+			updates["display_name"] = firstNonEmpty(result.Username, result.Name, account.DisplayName, "X")
 		}
 
 		if err := s.db.Model(&account).Updates(updates).Error; err != nil {
@@ -204,18 +228,12 @@ func (s *Service) TestXAccount(userID uuid.UUID, req dto.TestXAccountRequest) (*
 	return &result, nil
 }
 
-func (s *Service) applySavedXCredentialsToPublication(userID uuid.UUID, pub *models.ProjectPlatformPublication) error {
+func (s *Service) applySavedXCredentialsToPublication(account *models.PlatformAccount, pub *models.ProjectPlatformPublication) error {
 	if pub.Platform != xPlatform {
 		return nil
 	}
-
-	var account models.PlatformAccount
-	err := s.db.Where("user_id = ? AND platform = ?", userID, xPlatform).First(&account).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if account == nil {
 		return nil
-	}
-	if err != nil {
-		return err
 	}
 
 	credentials, err := parseXCredentials(account.Credentials)
@@ -235,7 +253,7 @@ func (s *Service) applySavedXCredentialsToPublication(userID uuid.UUID, pub *mod
 
 	switch credentials.authType() {
 	case xAuthTypeOAuth2:
-		credentials, err = s.refreshXOAuth2CredentialsIfNeeded(context.Background(), &account, credentials)
+		credentials, err = s.refreshXOAuth2CredentialsIfNeeded(context.Background(), account, credentials)
 		if err != nil {
 			return err
 		}

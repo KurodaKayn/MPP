@@ -91,7 +91,15 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 		Username:  captureResp.Account.Username,
 		AvatarURL: captureResp.Account.AvatarURL,
 	}
-	err = s.cookieStore.Save(ctx, userID, session.Platform, captureResp.Cookies, profile)
+	workspaceID := uuid.Nil
+	if session.WorkspaceID != nil {
+		workspaceID = *session.WorkspaceID
+	}
+	accountID := uuid.Nil
+	if session.PlatformAccountID != nil {
+		accountID = *session.PlatformAccountID
+	}
+	err = s.cookieStore.SaveForAccount(ctx, userID, workspaceID, accountID, session.Platform, captureResp.Cookies, profile)
 	if err != nil {
 		s.db.Model(&session).Update("status", models.BrowserSessionStatusReady)
 		_ = s.saveRedisLiveSession(ctx, browserSessionLiveState{
