@@ -714,6 +714,22 @@ func (h *UserDashboardHandler) CreateProjectShareLink(c echo.Context) error {
 	return c.JSON(http.StatusCreated, link)
 }
 
+func (h *UserDashboardHandler) AcceptProjectShareLink(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	token := strings.TrimSpace(c.Param("token"))
+	if token == "" {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid share link token")
+	}
+	resp, err := h.serviceFor(c).AcceptProjectShareLink(token, userID)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
 func (h *UserDashboardHandler) RevokeProjectShareLink(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
