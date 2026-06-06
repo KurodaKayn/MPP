@@ -1,11 +1,14 @@
 use std::io::Cursor;
 
+mod profiles;
+
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageFormat, ImageReader};
 use percent_encoding::percent_decode_str;
+pub use profiles::{MediaProfile, supported_media_profiles};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -49,12 +52,11 @@ impl MediaConstraints {
         max_bytes: Option<u64>,
         preferred_mime_types: Vec<String>,
     ) -> Self {
-        let mut constraints = Self::new(
-            max_bytes.or_else(|| Some(default_max_bytes(platform, usage))),
-            preferred_mime_types,
-        );
+        let profile = profiles::resolve_media_profile(platform, usage);
+        let mut constraints =
+            Self::new(max_bytes.or(Some(profile.max_bytes)), preferred_mime_types);
         constraints.compress_to_max_bytes =
-            platform.trim().eq_ignore_ascii_case("wechat") && constraints.max_bytes.is_some();
+            profile.compress_to_max_bytes && constraints.max_bytes.is_some();
         constraints
     }
 }
@@ -219,10 +221,7 @@ impl MediaProcessor {
 }
 
 pub fn default_max_bytes(platform: &str, _usage: &str) -> u64 {
-    match platform.trim().to_ascii_lowercase().as_str() {
-        "wechat" => WECHAT_MAX_BYTES,
-        _ => DEFAULT_MAX_BYTES,
-    }
+    profiles::resolve_media_profile(platform, _usage).max_bytes
 }
 
 fn normalize_mime_types(values: Vec<String>) -> Vec<String> {
