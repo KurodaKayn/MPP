@@ -21,11 +21,7 @@ interface CollabDocumentParams {
 
 const DocumentIdSchema = z.string().uuid();
 
-type WebSocketRawMessage =
-  | ArrayBuffer
-  | ArrayBufferView
-  | Buffer
-  | Buffer[];
+type WebSocketRawMessage = ArrayBuffer | ArrayBufferView | Buffer | Buffer[];
 
 export interface BuildAppOptions {
   persistence?: DocumentPersistence;
@@ -173,7 +169,9 @@ export async function buildApp(
       );
 
       socket.on("message", (message) => {
-        clientConnection.handleMessage(rawWebSocketMessageToUint8Array(message));
+        clientConnection.handleMessage(
+          rawWebSocketMessageToUint8Array(message),
+        );
       });
       socket.on("close", (code, reason) => {
         clientConnection.handleClose({
