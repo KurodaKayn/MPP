@@ -24,7 +24,7 @@ var publishMediaObjectRefPattern = regexp.MustCompile(`mpp://media/([0-9a-fA-F]{
 const (
 	contentPipelineMediaEnabledEnv     = "CONTENT_PIPELINE_MEDIA_ENABLED"
 	contentPipelineMediaResolverURLEnv = "CONTENT_PIPELINE_MEDIA_RESOLVER_URL"
-	contentPipelineInternalTokenEnv    = "CONTENT_PIPELINE_INTERNAL_TOKEN" //nolint:gosec // Environment variable name only.
+	contentPipelineInternalTokenEnv    = "CONTENT_PIPELINE_INTERNAL_TOKEN"
 )
 
 var ErrPublishMediaStorageUnavailable = errors.New("publish media storage unavailable")
