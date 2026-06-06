@@ -24,10 +24,14 @@ RUN pnpm build
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+ENV HOME=/home/app
+RUN addgroup -S app -g 10001 && adduser -S app -G app -u 10001 && chown app:app /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --prod --frozen-lockfile
-COPY --from=builder /app/dist ./dist
+COPY --from=builder --chown=app:app /app/dist ./dist
+RUN chown -R app:app /app
 
 EXPOSE 8090
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD wget -qO- http://127.0.0.1:8090/ready >/dev/null || exit 1
+USER app
 CMD ["node", "dist/server.js"]
