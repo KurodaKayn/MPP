@@ -189,4 +189,136 @@ describe("useContentTipTapEditor", () => {
 
     view.unmount();
   });
+
+  it("marks failed local uploads and retries them on the next save", async () => {
+    const view = renderEditorHook({ projectId: "project-1" });
+    const file = new File(["image"], "draft.png", { type: "image/png" });
+    mocks.createProjectMediaUpload
+      .mockResolvedValueOnce({
+        asset_id: "asset-failed",
+        expires_at: "2026-06-06T12:10:00Z",
+        headers: { "Content-Type": "image/png" },
+        object_ref: "mpp://media/asset-failed",
+        upload_url: "https://r2.example/upload-failed",
+      })
+      .mockResolvedValueOnce({
+        asset_id: "asset-2",
+        expires_at: "2026-06-06T12:10:00Z",
+        headers: { "Content-Type": "image/png" },
+        object_ref: "mpp://media/asset-2",
+        upload_url: "https://r2.example/upload-retry",
+      });
+    mocks.completeMediaUpload.mockResolvedValue({
+      asset_id: "asset-2",
+      object_ref: "mpp://media/asset-2",
+      status: "ready",
+    });
+    mocks.resolveMediaAssets.mockResolvedValue({
+      items: [
+        {
+          asset_id: "asset-2",
+          expires_at: "2026-06-06T12:05:00Z",
+          url: "https://r2.example/signed-retry",
+        },
+      ],
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      .mockResolvedValueOnce({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    act(() => {
+      view.getResult().handleImageSelect(changeEventForFiles([file]));
+    });
+
+    await expect(
+      act(async () => {
+        await view.getResult().prepareContentForSave();
+      }),
+    ).rejects.toThrow("Upload failed (500)");
+
+    expect(view.getResult().editor?.getHTML()).toContain(
+      'data-mpp-upload-status="failed"',
+    );
+    expect(view.getResult().editor?.getHTML()).toContain(
+      "blob:http://localhost:3000/local-preview",
+    );
+    expect(mocks.completeMediaUpload).not.toHaveBeenCalled();
+
+    let preparedContent: ContentValue | undefined;
+
+    await act(async () => {
+      preparedContent = await view.getResult().prepareContentForSave();
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://r2.example/upload-retry",
+      {
+        body: file,
+        headers: { "Content-Type": "image/png" },
+        method: "PUT",
+      },
+    );
+    expect(preparedContent?.html).toContain("mpp://media/asset-2");
+    expect(preparedContent?.html).not.toContain("blob:");
+    expect(preparedContent?.html).not.toContain("data-mpp-local-media-id");
+    expect(preparedContent?.html).not.toContain("data-mpp-upload-status");
+    expect(view.getResult().editor?.getHTML()).toContain(
+      "https://r2.example/signed-retry",
+    );
+
+    view.unmount();
+  });
+
+  it("does not upload local images removed before save", async () => {
+    const view = renderEditorHook({ projectId: "project-1" });
+    const file = new File(["image"], "removed.png", { type: "image/png" });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    act(() => {
+      view.getResult().handleImageSelect(changeEventForFiles([file]));
+      view.getResult().editor?.commands.clearContent();
+    });
+
+    let preparedContent: ContentValue | undefined;
+
+    await act(async () => {
+      preparedContent = await view.getResult().prepareContentForSave();
+    });
+
+    expect(mocks.createProjectMediaUpload).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(preparedContent?.html).not.toContain("blob:");
+    expect(preparedContent?.html).not.toContain("data-mpp-local-media-id");
+
+    view.unmount();
+  });
+
+  it("blocks save preparation when a pending image file is unavailable", async () => {
+    const view = renderEditorHook({
+      content: {
+        firstImageSrc: "blob:http://localhost:3000/lost-preview",
+        html: '<p><img src="blob:http://localhost:3000/lost-preview" data-mpp-local-media-id="local-lost" data-mpp-upload-status="pending"></p>',
+        text: "",
+      },
+      projectId: "project-1",
+    });
+
+    await expect(
+      act(async () => {
+        await view.getResult().prepareContentForSave();
+      }),
+    ).rejects.toThrow("editor.imageUploadError");
+
+    expect(mocks.createProjectMediaUpload).not.toHaveBeenCalled();
+    expect(view.getResult().editor?.getHTML()).toContain("blob:");
+    expect(view.getResult().editor?.getHTML()).toContain(
+      'data-mpp-local-media-id="local-lost"',
+    );
+
+    view.unmount();
+  });
 });
