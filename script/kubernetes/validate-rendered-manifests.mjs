@@ -11,6 +11,7 @@ if (!packageDir || !renderedPath) {
   process.exit(2);
 }
 
+const normalizedPackageDir = packageDir.replace(/\\/g, "/");
 const rendered = readFileSync(renderedPath, "utf8");
 const errors = [];
 
@@ -34,11 +35,13 @@ if (latestImages.length > 0) {
   addError(`rendered manifests contain latest image tags: ${latestImages.join("; ")}`);
 }
 
-for (const issue of runtimeImageIssues()) {
+for (const issue of runtimeImageIssues({
+  rejectPlaceholders: isDeployablePackage(normalizedPackageDir),
+})) {
   addError(issue);
 }
 
-if (packageDir.endsWith("validation/app-baseline")) {
+if (isPathSuffix(normalizedPackageDir, "validation/app-baseline")) {
   validateAppBaselineOverlay();
 }
 
@@ -53,7 +56,7 @@ function findLines(pattern) {
     .flatMap((line, index) => (pattern.test(line) ? [`${index + 1}:${line}`] : []));
 }
 
-function runtimeImageIssues() {
+function runtimeImageIssues({ rejectPlaceholders }) {
   const issues = [];
   const lines = rendered.split("\n");
   for (let index = 0; index < lines.length; index += 1) {
@@ -77,10 +80,31 @@ function runtimeImageIssues() {
           `BROWSER_RUNTIME_IMAGE is unresolved at line ${cursor + 1}: ${lines[cursor]}`,
         );
       }
+      if (
+        rejectPlaceholders &&
+        (value.includes("replace-me") || value.startsWith("registry.example.invalid/"))
+      ) {
+        issues.push(
+          `BROWSER_RUNTIME_IMAGE has a placeholder value at line ${cursor + 1}: ${lines[cursor]}`,
+        );
+      }
       break;
     }
   }
   return issues;
+}
+
+function isDeployablePackage(dir) {
+  return (
+    !isPathSuffix(dir, "deploy/kubernetes/app-baseline") &&
+    !isPathSuffix(dir, "deploy/kubernetes/browser-runtime-control") &&
+    !dir.startsWith("validation/") &&
+    !dir.includes("/validation/")
+  );
+}
+
+function isPathSuffix(dir, suffix) {
+  return dir === suffix || dir.endsWith(`/${suffix}`);
 }
 
 function validateAppBaselineOverlay() {
