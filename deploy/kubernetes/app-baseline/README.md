@@ -1,0 +1,22 @@
+# Kubernetes App Baseline
+
+This package is a renderable workload base, not a standalone production
+deployment. Environment overlays must provide the cluster-specific pieces before
+applying it to a real cluster.
+
+Required overlay inputs:
+
+- Registry-qualified immutable images for every
+  `registry.example.invalid/...:replace-me` image.
+- A reachable PostgreSQL endpoint through `DB_HOST`/`DB_PORT` or an in-cluster Service.
+- A reachable Redis endpoint through `REDIS_ADDR` or an in-cluster Service.
+- Public collaboration routing through `COLLAB_WEBSOCKET_URL_BASE`.
+- LLM provider configuration through `LLM_PROVIDER_URL`, `LLM_MODEL`, and
+  `LLM_PROVIDER_KEY`.
+- A `mpp-app-secrets` Secret in `mpp-system` with at least `JWT_SECRET`,
+  `DB_PASSWORD`, `COLLAB_TOKEN_SECRET`, `COOKIE_ENCRYPTION_KEY`, and
+  `LLM_PROVIDER_KEY`.
+
+The CI validation overlay under `deploy/kubernetes/validation/app-baseline`
+uses fake values to verify manifest shape without committing real secrets or
+pretending that production data services and image publishing already exist.
