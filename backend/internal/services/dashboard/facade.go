@@ -6,6 +6,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
@@ -56,11 +57,16 @@ type DashboardService struct {
 	*AccountSettings
 	*Publisher
 
-	db *gorm.DB
+	db       *gorm.DB
+	dbRouter *dbrouter.Router
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
-	return NewDashboardServiceWithPlatformTesters(db, platformaccount.WechatAPITester{}, platformaccount.XAPITester{})
+	return NewDashboardServiceWithRouter(db, nil)
+}
+
+func NewDashboardServiceWithRouter(db *gorm.DB, router *dbrouter.Router) *DashboardService {
+	return newDashboardServiceWithPlatformTesters(db, platformaccount.WechatAPITester{}, platformaccount.XAPITester{}, router)
 }
 
 func (s *DashboardService) WithContext(ctx context.Context) *DashboardService {
@@ -74,7 +80,7 @@ func (s *DashboardService) WithContext(ctx context.Context) *DashboardService {
 	scoped.Prepublish.Service = prepublishsvc.NewService(scoped.db, scoped.Project.Service, s.ServiceDraftCompiler())
 	scoped.Extension.Service = extensionsvc.NewService(scoped.db)
 	scoped.MediaAsset.Service = s.MediaAsset.WithContext(ctx)
-	scoped.Stats.Service = statssvc.NewService(scoped.db, scoped.Project.Service)
+	scoped.Stats.Service = statssvc.NewServiceWithRouter(scoped.db, scoped.Project.Service, scoped.dbRouter)
 	scoped.AccountSettings.Service = s.AccountSettings.WithContext(ctx)
 	scoped.Publisher.Service = s.Publisher.WithContext(ctx)
 	return &scoped
@@ -149,6 +155,13 @@ func NewDashboardServiceWithWechatTester(db *gorm.DB, tester platformaccount.Wec
 }
 
 func NewDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.WechatConnectionTester, xTester platformaccount.XConnectionTester) *DashboardService {
+	return newDashboardServiceWithPlatformTesters(db, tester, xTester, nil)
+}
+
+func newDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.WechatConnectionTester, xTester platformaccount.XConnectionTester, router *dbrouter.Router) *DashboardService {
+	if router == nil {
+		router = dbrouter.NewRouter(db)
+	}
 	accounts := platformaccount.NewServiceWithPlatformTesters(db, tester, xTester)
 	projects := projectsvc.NewService(db)
 	publisher := publishsvc.NewService(db, accounts)
@@ -158,10 +171,11 @@ func NewDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.
 		Prepublish:      &Prepublish{Service: prepublishsvc.NewService(db, projects, compiler.NewContentPipelineDraftCompiler())},
 		Extension:       &Extension{Service: extensionsvc.NewService(db)},
 		MediaAsset:      &MediaAsset{Service: mediaassetsvc.NewService(db, projects)},
-		Stats:           &Stats{Service: statssvc.NewService(db, projects)},
+		Stats:           &Stats{Service: statssvc.NewServiceWithRouter(db, projects, router)},
 		AccountSettings: &AccountSettings{Service: accounts},
 		Publisher:       &Publisher{Service: publisher},
 		db:              db,
+		dbRouter:        router,
 	}
 }
 
@@ -169,16 +183,18 @@ func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider platformaccoun
 	accounts := platformaccount.NewServiceWithXOAuth2Provider(db, provider)
 	projects := projectsvc.NewService(db)
 	publisher := publishsvc.NewService(db, accounts)
+	router := dbrouter.NewRouter(db)
 	return &DashboardService{
 		Project:         &Project{Service: projects},
 		Workspace:       &Workspace{Service: workspacesvc.NewService(db, projects)},
 		Prepublish:      &Prepublish{Service: prepublishsvc.NewService(db, projects, compiler.NewContentPipelineDraftCompiler())},
 		Extension:       &Extension{Service: extensionsvc.NewService(db)},
 		MediaAsset:      &MediaAsset{Service: mediaassetsvc.NewService(db, projects)},
-		Stats:           &Stats{Service: statssvc.NewService(db, projects)},
+		Stats:           &Stats{Service: statssvc.NewServiceWithRouter(db, projects, router)},
 		AccountSettings: &AccountSettings{Service: accounts},
 		Publisher:       &Publisher{Service: publisher},
 		db:              db,
+		dbRouter:        router,
 	}
 }
 

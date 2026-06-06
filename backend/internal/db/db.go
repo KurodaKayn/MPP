@@ -18,6 +18,7 @@ import (
 )
 
 var DB *gorm.DB
+var DefaultRouter *Router
 
 //go:embed seed/seed_data.sql
 var seedDataSQL string
@@ -34,6 +35,13 @@ const (
 	dbConnMaxIdleTimeEnv = "DB_CONN_MAX_IDLE_TIME"
 	dbSSLModeEnv         = "DB_SSLMODE"
 	dbSSLRootCertEnv     = "DB_SSLROOTCERT"
+	dbReaderHostEnv      = "DB_READER_HOST"
+	dbReaderUserEnv      = "DB_READER_USER"
+	dbReaderPasswordEnv  = "DB_READER_PASSWORD" //nolint:gosec // This is an environment variable name, not a password value.
+	dbReaderNameEnv      = "DB_READER_NAME"
+	dbReaderPortEnv      = "DB_READER_PORT"
+	dbReaderSSLModeEnv   = "DB_READER_SSLMODE"
+	dbReaderSSLRootEnv   = "DB_READER_SSLROOTCERT"
 	defaultMaxOpenConns  = 10
 	defaultMaxIdleConns  = 5
 	defaultConnMaxLife   = 30 * time.Minute
@@ -53,19 +61,26 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("Failed to configure database connection:", err)
 	}
-	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	database, err := openPostgresDatabase(dsn)
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
-	if err := configureConnectionPool(database); err != nil {
-		log.Fatal("Failed to configure database connection pool:", err)
-	}
 
 	DB = database
+	DefaultRouter = NewRouter(database)
 	fmt.Println("Database connection established")
 
 	if err := migrate(database); err != nil {
 		log.Fatal("Failed to migrate database:", err)
+	}
+
+	reader, err := optionalPostgresReadReplicaFromEnv()
+	if err != nil {
+		log.Fatal("Failed to connect to database read replica:", err)
+	}
+	if reader != nil {
+		DefaultRouter = NewRouter(database, WithReader(reader))
+		fmt.Println("Database read replica connection established")
 	}
 
 	if devSeedEnabled() {
@@ -75,37 +90,107 @@ func InitDB() {
 	}
 }
 
+func openPostgresDatabase(dsn string) (*gorm.DB, error) {
+	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+	if err := configureConnectionPool(database); err != nil {
+		return nil, err
+	}
+	return database, nil
+}
+
+func optionalPostgresReadReplicaFromEnv() (*gorm.DB, error) {
+	dsn, enabled, err := postgresReadReplicaDSNFromEnv()
+	if err != nil || !enabled {
+		return nil, err
+	}
+	return openPostgresDatabase(dsn)
+}
+
 func postgresDSNFromEnv() (string, error) {
 	sslMode, err := postgresSSLModeFromEnv()
 	if err != nil {
 		return "", err
 	}
+	return postgresDSN(
+		os.Getenv("DB_HOST"),
+		os.Getenv("DB_USER"),
+		os.Getenv("DB_PASSWORD"),
+		os.Getenv("DB_NAME"),
+		os.Getenv("DB_PORT"),
+		sslMode,
+		strings.TrimSpace(os.Getenv(dbSSLRootCertEnv)),
+	), nil
+}
+
+func postgresReadReplicaDSNFromEnv() (string, bool, error) {
+	host := strings.TrimSpace(os.Getenv(dbReaderHostEnv))
+	if host == "" {
+		return "", false, nil
+	}
+
+	sslMode, err := postgresReadReplicaSSLModeFromEnv()
+	if err != nil {
+		return "", false, err
+	}
+	return postgresDSN(
+		host,
+		envWithFallback(dbReaderUserEnv, "DB_USER"),
+		envWithFallback(dbReaderPasswordEnv, "DB_PASSWORD"),
+		envWithFallback(dbReaderNameEnv, "DB_NAME"),
+		envWithFallback(dbReaderPortEnv, "DB_PORT"),
+		sslMode,
+		strings.TrimSpace(envWithFallback(dbReaderSSLRootEnv, dbSSLRootCertEnv)),
+	), true, nil
+}
+
+func postgresDSN(host, user, password, name, port, sslMode, sslRootCert string) string {
 	parts := []string{
-		postgresDSNParam("host", os.Getenv("DB_HOST")),
-		postgresDSNParam("user", os.Getenv("DB_USER")),
-		postgresDSNParam("password", os.Getenv("DB_PASSWORD")),
-		postgresDSNParam("dbname", os.Getenv("DB_NAME")),
-		postgresDSNParam("port", os.Getenv("DB_PORT")),
+		postgresDSNParam("host", host),
+		postgresDSNParam("user", user),
+		postgresDSNParam("password", password),
+		postgresDSNParam("dbname", name),
+		postgresDSNParam("port", port),
 		postgresDSNParam("sslmode", sslMode),
 		postgresDSNParam("TimeZone", "Asia/Shanghai"),
 	}
-	if sslRootCert := strings.TrimSpace(os.Getenv(dbSSLRootCertEnv)); sslRootCert != "" {
+	if sslRootCert != "" {
 		parts = append(parts, postgresDSNParam("sslrootcert", sslRootCert))
 	}
-	return strings.Join(parts, " "), nil
+	return strings.Join(parts, " ")
 }
 
 func postgresSSLModeFromEnv() (string, error) {
-	sslMode := strings.ToLower(strings.TrimSpace(os.Getenv(dbSSLModeEnv)))
+	return postgresSSLModeFromNamedEnv(dbSSLModeEnv, defaultDBSSLMode)
+}
+
+func postgresReadReplicaSSLModeFromEnv() (string, error) {
+	if strings.TrimSpace(os.Getenv(dbReaderSSLModeEnv)) != "" {
+		return postgresSSLModeFromNamedEnv(dbReaderSSLModeEnv, defaultDBSSLMode)
+	}
+	return postgresSSLModeFromEnv()
+}
+
+func postgresSSLModeFromNamedEnv(name string, fallback string) (string, error) {
+	sslMode := strings.ToLower(strings.TrimSpace(os.Getenv(name)))
 	if sslMode == "" {
-		return defaultDBSSLMode, nil
+		return fallback, nil
 	}
 	switch sslMode {
 	case "disable", "allow", "prefer", "require", "verify-ca", "verify-full":
 		return sslMode, nil
 	default:
-		return "", fmt.Errorf("invalid %s %q: expected disable, allow, prefer, require, verify-ca, or verify-full", dbSSLModeEnv, sslMode)
+		return "", fmt.Errorf("invalid %s %q: expected disable, allow, prefer, require, verify-ca, or verify-full", name, sslMode)
 	}
+}
+
+func envWithFallback(name string, fallbackName string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+	return os.Getenv(fallbackName)
 }
 
 func postgresDSNParam(key string, value string) string {
