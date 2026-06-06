@@ -50,7 +50,7 @@ var rolePermissions = map[string]map[Permission]struct{}{
 		PermissionProjectReview: {}, PermissionPublishPublish: {}, PermissionPublishSchedule: {},
 	},
 	models.WorkspaceRoleViewer: {
-		PermissionProjectReview: {}, PermissionPublishSchedule: {},
+		PermissionProjectReview: {},
 	},
 }
 
