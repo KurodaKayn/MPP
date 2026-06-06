@@ -163,7 +163,7 @@ func newDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.
 		router = dbrouter.NewRouter(db)
 	}
 	accounts := platformaccount.NewServiceWithPlatformTesters(db, tester, xTester)
-	projects := projectsvc.NewService(db)
+	projects := projectsvc.NewServiceWithRouter(db, router)
 	publisher := publishsvc.NewService(db, accounts)
 	return &DashboardService{
 		Project:         &Project{Service: projects},
@@ -181,9 +181,9 @@ func newDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.
 
 func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider platformaccount.XOAuth2Provider) *DashboardService {
 	accounts := platformaccount.NewServiceWithXOAuth2Provider(db, provider)
-	projects := projectsvc.NewService(db)
-	publisher := publishsvc.NewService(db, accounts)
 	router := dbrouter.NewRouter(db)
+	projects := projectsvc.NewServiceWithRouter(db, router)
+	publisher := publishsvc.NewService(db, accounts)
 	return &DashboardService{
 		Project:         &Project{Service: projects},
 		Workspace:       &Workspace{Service: workspacesvc.NewService(db, projects)},

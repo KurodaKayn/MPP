@@ -504,7 +504,7 @@ func TruncateRunes(value string, limit int) string {
 }
 
 func (s *Service) ListProjects(page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
-	query := s.db.Model(&models.Project{})
+	query := s.projectListReadDB(scopeUserID).Model(&models.Project{})
 
 	// Apply scope (User dashboard enforces scopeUserID, overriding any filterUserID)
 	if scopeUserID != nil {
@@ -527,6 +527,13 @@ func (s *Service) ListProjects(page, limit int, status, filterUserID, platform s
 	}
 
 	return s.ListProjectPage(query, page, limit, scopeUserID)
+}
+
+func (s *Service) projectListReadDB(scopeUserID *uuid.UUID) *gorm.DB {
+	if scopeUserID != nil {
+		return s.strongReadDB()
+	}
+	return s.eventualReadDB()
 }
 
 func (s *Service) ListProjectPage(query *gorm.DB, page, limit int, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
