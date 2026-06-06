@@ -5,4 +5,5 @@ resources:
   - availability.yaml
   - deployments.yaml
   - ingress.yaml
+  - networkpolicy.yaml
   - services.yaml
