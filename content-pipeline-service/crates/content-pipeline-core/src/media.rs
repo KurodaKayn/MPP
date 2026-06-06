@@ -446,6 +446,42 @@ mod tests {
     }
 
     #[test]
+    fn exposes_versioned_media_profiles() {
+        let profiles = supported_media_profiles()
+            .iter()
+            .map(|profile| {
+                (
+                    profile.platform,
+                    profile.profile,
+                    profile.max_bytes,
+                    profile.compress_to_max_bytes,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            profiles,
+            vec![
+                ("wechat", "wechat@v1", WECHAT_MAX_BYTES, true),
+                ("douyin", "douyin@v1", DEFAULT_MAX_BYTES, false),
+                ("generic", "generic@v1", DEFAULT_MAX_BYTES, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn defaults_unknown_media_platform_to_generic_profile() {
+        assert_eq!(
+            default_max_bytes("mastodon", "inline_image"),
+            DEFAULT_MAX_BYTES
+        );
+
+        let constraints = MediaConstraints::for_platform("mastodon", "inline_image", None, vec![]);
+
+        assert_eq!(constraints.max_bytes, Some(DEFAULT_MAX_BYTES));
+    }
+
+    #[test]
     fn compresses_wechat_images_before_enforcing_output_limit() {
         let processor = MediaProcessor::new();
         let max_bytes = 50 * 1024;
@@ -470,6 +506,31 @@ mod tests {
 
         assert_eq!(asset.mime_type, "image/jpeg");
         assert!(asset.byte_size <= max_bytes);
+        assert_eq!(
+            asset.warnings,
+            vec!["image compressed to satisfy byte limit"]
+        );
+    }
+
+    #[test]
+    fn compresses_wechat_images_with_profile_default_limit() {
+        let processor = MediaProcessor::new();
+        let source = noisy_jpeg(1536, 1536, 100);
+        assert!(
+            source.len() as u64 > WECHAT_MAX_BYTES,
+            "fixture must start over the WeChat profile limit"
+        );
+
+        let asset = processor
+            .process_bytes(
+                source,
+                Some("image/jpeg"),
+                &MediaConstraints::for_platform("wechat", "inline_image", None, Vec::new()),
+            )
+            .expect("compressible WeChat image should use profile default limit");
+
+        assert_eq!(asset.mime_type, "image/jpeg");
+        assert!(asset.byte_size <= WECHAT_MAX_BYTES);
         assert_eq!(
             asset.warnings,
             vec!["image compressed to satisfy byte limit"]
