@@ -1,0 +1,37 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mpp-browser-runtime-alerts
+  namespace: mpp-observability
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: mpp
+spec:
+  groups:
+    - name: mpp.browser-runtime
+      rules:
+        - alert: MPPBrowserRuntimeStartupFailures
+          expr: sum(rate(mpp_browser_runtime_session_starts_total{service="browser-worker",result="error"}[5m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Browser runtime startup failures are occurring
+            description: browser-worker has failed to start one or more browser runtime sessions for at least 10 minutes.
+        - alert: MPPBrowserRuntimeCleanupFailures
+          expr: sum(rate(mpp_browser_runtime_cleanup_runs_total{service="browser-worker",result="error"}[5m])) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Browser runtime cleanup is failing
+            description: browser-worker is unable to complete expired runtime cleanup runs.
+        - alert: MPPBrowserRuntimeCleanupLagHigh
+          expr: max(mpp_browser_runtime_cleanup_lag_seconds{service="browser-worker"}) > 300
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Browser runtime cleanup lag is high
+            description: The oldest runtime cleaned in recent TTL cleanup was more than five minutes past its expiration time.
