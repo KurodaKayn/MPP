@@ -24,7 +24,7 @@ type JWTCustomClaims struct {
 // GetJWTConfig returns the configuration for the JWT middleware.
 func GetJWTConfig(signingKey []byte) echojwt.Config {
 	return echojwt.Config{
-		NewClaimsFunc: func(c echo.Context) jwt.Claims {
+		NewClaimsFunc: func(_ echo.Context) jwt.Claims {
 			return new(JWTCustomClaims)
 		},
 		SigningKey:  signingKey,

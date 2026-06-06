@@ -14,8 +14,8 @@ import (
 const xOAuth2StateKeyPrefix = "mpp:x_oauth2_state:"
 
 type XOAuth2StateStore interface {
-	Store(ctx context.Context, state string, pending xOAuth2PendingState, ttl time.Duration) error
-	Consume(ctx context.Context, state string) (xOAuth2PendingState, bool, error)
+	Store(_ context.Context, state string, pending xOAuth2PendingState, ttl time.Duration) error
+	Consume(_ context.Context, state string) (xOAuth2PendingState, bool, error)
 }
 
 type MemoryXOAuth2StateStore struct {

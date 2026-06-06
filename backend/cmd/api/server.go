@@ -6,15 +6,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	dbobs "github.com/kurodakayn/mpp-backend/internal/db"
-	"github.com/kurodakayn/mpp-backend/internal/handlers"
-	"github.com/kurodakayn/mpp-backend/internal/middleware"
-	"github.com/kurodakayn/mpp-backend/internal/observability"
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+
+	dbobs "github.com/kurodakayn/mpp-backend/internal/db"
+	"github.com/kurodakayn/mpp-backend/internal/handlers"
+	"github.com/kurodakayn/mpp-backend/internal/middleware"
+	"github.com/kurodakayn/mpp-backend/internal/observability"
 )
 
 type serverConfig struct {

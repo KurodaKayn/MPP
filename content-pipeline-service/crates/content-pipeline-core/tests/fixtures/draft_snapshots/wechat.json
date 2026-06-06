@@ -1,0 +1,13 @@
+{
+  "platform": "wechat",
+  "profile": "wechat@v1",
+  "status": "compiled",
+  "adapted_content": {
+    "schema_version": 1,
+    "format": "html",
+    "html": "<h1>Launch Notes</h1>\n<p>MPP now supports <strong>rich drafts</strong> across platforms.</p>\n<p>Read the <a href=\"https://example.com/release\">release notes</a> before publishing.</p>\n<blockquote>Keep platform rules deterministic.</blockquote>\n<ul>\n  <li>WeChat keeps HTML.</li>\n  <li>Zhihu gets Markdown.</li>\n</ul>\n<p><img src=\"https://example.com/assets/cover.png\" alt=\"Cover\"></p>\n<p>中文摘要保持可读。</p>",
+    "summary": "Launch Notes\nMPP now supports rich drafts across platforms.\nRead the release not"
+  },
+  "summary": "Launch Notes\nMPP now supports rich drafts across platforms.\nRead the release not",
+  "warnings": []
+}

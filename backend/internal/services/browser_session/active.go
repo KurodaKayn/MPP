@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
@@ -54,7 +55,7 @@ func (s *BrowserSessionService) activeSessionExists(ctx context.Context, userID 
 }
 
 func (s *BrowserSessionService) expireStaleSession(ctx context.Context, session *models.RemoteBrowserSession, message string) error {
-	return s.db.WithContext(ctx).Model(session).Updates(map[string]interface{}{
+	return s.db.WithContext(ctx).Model(session).Updates(map[string]any{
 		"status":        models.BrowserSessionStatusExpired,
 		"error_message": message,
 	}).Error
@@ -63,7 +64,7 @@ func (s *BrowserSessionService) expireStaleSession(ctx context.Context, session 
 func (s *BrowserSessionService) expireSupersededActiveRows(ctx context.Context, userID uuid.UUID, platform string) error {
 	return s.db.WithContext(ctx).Model(&models.RemoteBrowserSession{}).
 		Where("user_id = ? AND platform = ? AND status IN ?", userID, platform, activeBrowserSessionStatuses()).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"status":        models.BrowserSessionStatusExpired,
 			"error_message": "superseded by redis active-session lock recovery",
 		}).Error

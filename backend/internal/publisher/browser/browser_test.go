@@ -14,7 +14,7 @@ import (
 func TestSetupBrowserRestoresCookiesWithoutNavigationPreflight(t *testing.T) {
 	oldRunBrowserActions := runBrowserActions
 	var capturedActions []chromedp.Action
-	runBrowserActions = func(ctx context.Context, actions ...chromedp.Action) error {
+	runBrowserActions = func(_ context.Context, actions ...chromedp.Action) error {
 		capturedActions = append([]chromedp.Action(nil), actions...)
 		return nil
 	}

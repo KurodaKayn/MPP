@@ -3,6 +3,9 @@ package dashboard
 import (
 	"context"
 
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
@@ -16,8 +19,6 @@ import (
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 	statssvc "github.com/kurodakayn/mpp-backend/internal/services/stats"
 	workspacesvc "github.com/kurodakayn/mpp-backend/internal/services/workspace"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 var ErrForbidden = publishsvc.ErrForbidden
@@ -64,14 +65,14 @@ func (s *DashboardService) WithContext(ctx context.Context) *DashboardService {
 	}
 	scoped := *s
 	scoped.db = s.db.WithContext(ctx)
-	scoped.Project.Service = s.Project.Service.WithContext(ctx)
+	scoped.Project.Service = s.Project.WithContext(ctx)
 	scoped.Workspace.Service = workspacesvc.NewService(scoped.db, scoped.Project.Service)
-	scoped.Prepublish.Service = prepublishsvc.NewService(scoped.db, scoped.Project.Service, s.Prepublish.ServiceDraftCompiler())
+	scoped.Prepublish.Service = prepublishsvc.NewService(scoped.db, scoped.Project.Service, s.ServiceDraftCompiler())
 	scoped.Extension.Service = extensionsvc.NewService(scoped.db)
-	scoped.MediaAsset.Service = s.MediaAsset.Service.WithContext(ctx)
+	scoped.MediaAsset.Service = s.MediaAsset.WithContext(ctx)
 	scoped.Stats.Service = statssvc.NewService(scoped.db, scoped.Project.Service)
-	scoped.AccountSettings.Service = s.AccountSettings.Service.WithContext(ctx)
-	scoped.Publisher.Service = s.Publisher.Service.WithContext(ctx)
+	scoped.AccountSettings.Service = s.AccountSettings.WithContext(ctx)
+	scoped.Publisher.Service = s.Publisher.WithContext(ctx)
 	return &scoped
 }
 
@@ -111,7 +112,7 @@ func (p *Prepublish) ServiceDraftCompiler() ProjectDraftCompiler {
 	if p == nil || p.Service == nil {
 		return nil
 	}
-	return p.Service.DraftCompiler()
+	return p.DraftCompiler()
 }
 
 func (s *DashboardService) SetBrowserWorkerClient(client publisher.BrowserWorkerClient) {
@@ -123,7 +124,7 @@ func (s *DashboardService) SetBrowserSessionService(svc *browsersession.BrowserS
 }
 
 func (s *DashboardService) SetCollabDocumentService(svc *collabdoc.Service) {
-	s.Project.Service.SetCollabDocumentService(svc)
+	s.Project.SetCollabDocumentService(svc)
 }
 
 func (s *DashboardService) SetDraftCompiler(compiler ProjectDraftCompiler) {
@@ -173,7 +174,7 @@ func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider platformaccoun
 }
 
 func (s *DashboardService) SetPublishQueue(queue publishsvc.PublishQueue) {
-	s.Publisher.SetQueue(queue)
+	s.SetQueue(queue)
 }
 
 func (s *DashboardService) UseRedis(client *redis.Client) {
@@ -182,11 +183,4 @@ func (s *DashboardService) UseRedis(client *redis.Client) {
 	}
 	s.AccountSettings.UseRedis(client)
 	s.Publisher.UseRedis(client)
-}
-
-func (s *DashboardService) requestContext() context.Context {
-	if s.db != nil && s.db.Statement != nil && s.db.Statement.Context != nil {
-		return s.db.Statement.Context
-	}
-	return context.Background()
 }

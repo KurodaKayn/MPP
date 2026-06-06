@@ -10,12 +10,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/kurodakayn/mpp-backend/internal/contracts/contentpipelinepb"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/contentpipeline"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/envutil"
 )
 
-const contentPipelineDraftTimeout = 20 * time.Second
+const (
+	contentPipelineDraftsEnabledEnv = "CONTENT_PIPELINE_DRAFTS_ENABLED"
+	contentPipelineDraftTimeout     = 20 * time.Second
+)
 
 var errContentPipelineDraftContract = errors.New("content pipeline draft contract error")
 
@@ -30,9 +37,20 @@ type contentPipelineDraftCompiler struct {
 }
 
 func NewContentPipelineDraftCompiler() ProjectDraftCompiler {
-	return &contentPipelineDraftCompiler{
-		newClient: dialContentPipelineDraftCompilerClient,
+	fallback := NewFallbackDraftCompiler()
+	if !contentPipelineDraftsEnabled() {
+		return fallback
 	}
+	return &fallbackingDraftCompiler{
+		primary: &contentPipelineDraftCompiler{
+			newClient: dialContentPipelineDraftCompilerClient,
+		},
+		fallback: fallback,
+	}
+}
+
+func contentPipelineDraftsEnabled() bool {
+	return envutil.Bool(contentPipelineDraftsEnabledEnv, false)
 }
 
 func (c *contentPipelineDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
@@ -50,7 +68,7 @@ func (c *contentPipelineDraftCompiler) CompileProjectDrafts(ctx context.Context,
 		return nil, fmt.Errorf("connect content pipeline draft compiler: %w", err)
 	}
 	if closer != nil {
-		defer closer.Close()
+		defer func() { _ = closer.Close() }()
 	}
 
 	response, err := client.CompileDrafts(ctx, &contentpipelinepb.CompileDraftsRequest{
@@ -187,4 +205,35 @@ func hasNonEmptyStringField(payload map[string]json.RawMessage, field string) bo
 		return false
 	}
 	return strings.TrimSpace(value) != ""
+}
+
+type fallbackingDraftCompiler struct {
+	primary  ProjectDraftCompiler
+	fallback ProjectDraftCompiler
+}
+
+func (c *fallbackingDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
+	drafts, err := c.primary.CompileProjectDrafts(ctx, project, publications, platforms)
+	if err == nil {
+		return drafts, nil
+	}
+	if !shouldFallbackContentPipelineDraftError(err) {
+		return nil, err
+	}
+	return c.fallback.CompileProjectDrafts(ctx, project, publications, platforms)
+}
+
+func shouldFallbackContentPipelineDraftError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, errContentPipelineDraftContract) {
+		return false
+	}
+	switch status.Code(err) {
+	case codes.Unavailable, codes.DeadlineExceeded, codes.Unimplemented, codes.Unknown:
+		return true
+	default:
+		return false
+	}
 }

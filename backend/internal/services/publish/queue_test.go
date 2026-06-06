@@ -11,32 +11,33 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
-	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/publisher"
-	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 )
 
 type queueTestPublisher struct{}
 
-func (p queueTestPublisher) ValidateConfig(config []byte) error {
+func (p queueTestPublisher) ValidateConfig(_ []byte) error {
 	return nil
 }
 
-func (p queueTestPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
+func (p queueTestPublisher) Publish(_ context.Context, _ *models.ProjectPlatformPublication, _ *models.PlatformAccount) (string, string, error) {
 	return "remote-id", "https://example.com/published", nil
 }
 
 type failingQueueTestPublisher struct{}
 
-func (p failingQueueTestPublisher) ValidateConfig(config []byte) error {
+func (p failingQueueTestPublisher) ValidateConfig(_ []byte) error {
 	return nil
 }
 
-func (p failingQueueTestPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, account *models.PlatformAccount) (string, string, error) {
+func (p failingQueueTestPublisher) Publish(_ context.Context, _ *models.ProjectPlatformPublication, _ *models.PlatformAccount) (string, string, error) {
 	return "", "", errors.New("platform unavailable")
 }
 
@@ -44,16 +45,16 @@ type testPublishQueue struct {
 	jobs            []PublishJob
 	locks           map[string]string
 	refreshes       int
-	onAcquire       func(key, value string)
+	onAcquire       func(key, _ string)
 	enqueueErr      error
-	onAcquireLocked func(key, value string)
+	onAcquireLocked func(key, _ string)
 }
 
 func newTestPublishQueue() *testPublishQueue {
 	return &testPublishQueue{locks: map[string]string{}}
 }
 
-func (q *testPublishQueue) Enqueue(ctx context.Context, job PublishJob) error {
+func (q *testPublishQueue) Enqueue(_ context.Context, job PublishJob) error {
 	if q.enqueueErr != nil {
 		return q.enqueueErr
 	}
@@ -69,7 +70,7 @@ func (q *testPublishQueue) Start(ctx context.Context, handler PublishJobHandler)
 	}
 }
 
-func (q *testPublishQueue) AcquireLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
+func (q *testPublishQueue) AcquireLock(_ context.Context, key, value string, _ time.Duration) (bool, error) {
 	if _, exists := q.locks[key]; exists {
 		if q.onAcquireLocked != nil {
 			q.onAcquireLocked(key, value)
@@ -83,11 +84,11 @@ func (q *testPublishQueue) AcquireLock(ctx context.Context, key, value string, t
 	return true, nil
 }
 
-func (q *testPublishQueue) LockValue(ctx context.Context, key string) (string, error) {
+func (q *testPublishQueue) LockValue(_ context.Context, key string) (string, error) {
 	return q.locks[key], nil
 }
 
-func (q *testPublishQueue) RefreshLock(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
+func (q *testPublishQueue) RefreshLock(_ context.Context, key, value string, _ time.Duration) (bool, error) {
 	if q.locks[key] != value {
 		return false, nil
 	}
@@ -95,7 +96,7 @@ func (q *testPublishQueue) RefreshLock(ctx context.Context, key, value string, t
 	return true, nil
 }
 
-func (q *testPublishQueue) ReleaseLock(ctx context.Context, key, value string) error {
+func (q *testPublishQueue) ReleaseLock(_ context.Context, key, value string) error {
 	if q.locks[key] == value {
 		delete(q.locks, key)
 	}
@@ -323,7 +324,7 @@ func TestEnqueuePublishProjectReplaysDuplicateWhenLockWinsBeforeQueuedEvent(t *t
 	originalJobID := uuid.New()
 	lockKey := publishLockKey(project.ID, "wechat")
 	queue.locks[lockKey] = originalJobID.String()
-	queue.onAcquireLocked = func(key, value string) {
+	queue.onAcquireLocked = func(key, _ string) {
 		if key != lockKey {
 			return
 		}
@@ -403,7 +404,7 @@ func TestEnqueuePublishProjectReplaysOriginalJobEventsAfterPublicationChanges(t 
 		PublishURL:     "https://example.com/original",
 		CreatedAt:      succeededAt,
 	}).Error)
-	require.NoError(t, db.Model(&publication).Updates(map[string]interface{}{
+	require.NoError(t, db.Model(&publication).Updates(map[string]any{
 		"enabled":       false,
 		"error_message": "publication was later cancelled",
 		"publish_url":   "https://example.com/changed",
@@ -496,7 +497,7 @@ func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing
 
 	_, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-2"})
 
-	require.True(t, errors.Is(err, ErrPublicationAlreadyPublishing))
+	require.ErrorIs(t, err, ErrPublicationAlreadyPublishing)
 }
 
 func TestEnqueuePublishProjectRequiresPrepublishSyncForSyncingPublication(t *testing.T) {
@@ -566,7 +567,7 @@ func TestEnqueuePublishProjectRejectsPublicationChangedToSyncingAfterLock(t *tes
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}
 	require.NoError(t, db.Create(&publication).Error)
-	queue.onAcquire = func(key, value string) {
+	queue.onAcquire = func(_, _ string) {
 		require.NoError(t, db.Model(&models.ProjectPlatformPublication{}).
 			Where("id = ?", publication.ID).
 			Update("status", models.PublicationStatusSyncing).Error)
@@ -727,7 +728,7 @@ func TestProcessPublishJobReturnsErrorForFailedPublication(t *testing.T) {
 func TestRedisPublishQueueEnqueuesAsynqTask(t *testing.T) {
 	redisServer := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	queue := NewRedisPublishQueue(client)
 	job := PublishJob{

@@ -11,11 +11,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	dbobs "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	dbobs "github.com/kurodakayn/mpp-backend/internal/db"
 )
 
 const (

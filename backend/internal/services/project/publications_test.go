@@ -1,12 +1,15 @@
 package project_test
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/datatypes"
+
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
-	"github.com/stretchr/testify/assert"
-	"gorm.io/datatypes"
-	"testing"
 )
 
 func TestGetProjectPublications(t *testing.T) {
@@ -43,20 +46,20 @@ func TestGetProjectPublications(t *testing.T) {
 
 	// Admin can see it
 	res, err := s.GetProjectPublications(p.ID, nil, false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, p.ID, res.ProjectID)
 
 	// Owner can see it
 	resOwner, errOwner := s.GetProjectPublications(p.ID, &u1.ID, false)
-	assert.NoError(t, errOwner)
+	require.NoError(t, errOwner)
 	assert.Equal(t, p.ID, resOwner.ProjectID)
 
 	// Collaborator can see it
 	resCollaborator, errCollaborator := s.GetProjectPublications(p.ID, &collaborator.ID, false)
-	assert.NoError(t, errCollaborator)
+	require.NoError(t, errCollaborator)
 	assert.Equal(t, p.ID, resCollaborator.ProjectID)
 
 	// Stranger gets Forbidden
 	_, errStranger := s.GetProjectPublications(p.ID, &u2.ID, false)
-	assert.ErrorIs(t, errStranger, services.ErrForbidden)
+	require.ErrorIs(t, errStranger, services.ErrForbidden)
 }

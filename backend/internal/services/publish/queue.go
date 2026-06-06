@@ -11,10 +11,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
-	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/publisher"
 )
 
 const (
@@ -171,7 +172,7 @@ return 0
 	return q.redisClient.Eval(ctx, releaseLockScript, []string{key}, value).Err()
 }
 
-func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, req PublishRequest) (map[string]interface{}, error) {
+func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, req PublishRequest) (map[string]any, error) {
 	if s.queue == nil {
 		return s.PublishProject(projectID, platform, scopeUserID, uuid.Nil)
 	}
@@ -272,7 +273,7 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		log.Printf("failed to record project publish activity for job %s: %v", job.JobID, err)
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"status":          models.PublicationStatusQueued,
 		"job_id":          job.JobID.String(),
 		"idempotency_key": req.IdempotencyKey,
@@ -282,8 +283,8 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 	}, nil
 }
 
-func (s *Service) BatchEnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID, req PublishRequest) (map[string]map[string]interface{}, error) {
-	results := make(map[string]map[string]interface{})
+func (s *Service) BatchEnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID, req PublishRequest) (map[string]map[string]any, error) {
+	results := make(map[string]map[string]any)
 	for _, platform := range platforms {
 		platformReq := req
 		if platformReq.IdempotencyKey != "" {
@@ -291,7 +292,7 @@ func (s *Service) BatchEnqueuePublishProject(ctx context.Context, projectID uuid
 		}
 		resp, err := s.EnqueuePublishProject(ctx, projectID, platform, scopeUserID, platformReq)
 		if err != nil {
-			results[platform] = map[string]interface{}{"status": "error", "message": err.Error()}
+			results[platform] = map[string]any{"status": "error", "message": err.Error()}
 			continue
 		}
 		results[platform] = resp
@@ -503,7 +504,7 @@ func publicationPublishingStale(pub models.ProjectPlatformPublication) bool {
 func (s *Service) markPublicationQueued(pub *models.ProjectPlatformPublication, queuedAt time.Time) error {
 	result := s.db.Model(&models.ProjectPlatformPublication{}).
 		Where("id = ? AND status = ?", pub.ID, pub.Status).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"status":          models.PublicationStatusQueued,
 			"error_message":   "",
 			"last_attempt_at": &queuedAt,
@@ -522,7 +523,7 @@ func (s *Service) markPublicationQueued(pub *models.ProjectPlatformPublication, 
 func (s *Service) markPublicationFailed(projectID uuid.UUID, platform, message string) error {
 	return s.db.Model(&models.ProjectPlatformPublication{}).
 		Where("project_id = ? AND platform = ?", projectID, platform).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"status":        models.PublicationStatusFailed,
 			"error_message": SanitizeUserFacingErrorMessage(message),
 			"retry_count":   gorm.Expr("retry_count + ?", 1),

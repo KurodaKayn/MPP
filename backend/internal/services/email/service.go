@@ -91,7 +91,7 @@ func (s *SMTPEmailService) send(ctx context.Context, to, subject, body string) e
 		}
 		conn := tls.Client(rawConn, &tls.Config{ServerName: s.Host, MinVersion: tls.VersionTLS12})
 		if dialErr := conn.Handshake(); dialErr != nil {
-			conn.Close()
+			_ = conn.Close()
 			return dialErr
 		}
 		client, err = smtp.NewClient(conn, s.Host)
@@ -105,7 +105,7 @@ func (s *SMTPEmailService) send(ctx context.Context, to, subject, body string) e
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -146,7 +146,7 @@ func (s *SMTPEmailService) send(ctx context.Context, to, subject, body string) e
 		return err
 	}
 	if _, err := io.WriteString(writer, msg); err != nil {
-		writer.Close()
+		_ = writer.Close()
 		return err
 	}
 	if err := writer.Close(); err != nil {
@@ -181,7 +181,7 @@ func buildHTMLMessage(from, to, subject, body string) (string, error) {
 	}
 	quotedHTML := quotedprintable.NewWriter(htmlPart)
 	if _, err := quotedHTML.Write([]byte(body)); err != nil {
-		quotedHTML.Close()
+		_ = quotedHTML.Close()
 		return "", err
 	}
 	if err := quotedHTML.Close(); err != nil {
