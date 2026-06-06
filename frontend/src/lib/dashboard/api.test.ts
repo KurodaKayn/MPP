@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  acceptProjectShareLink,
   addProjectCollaborator,
   addWorkspaceMember,
   cancelBrowserSession,
@@ -1175,6 +1176,10 @@ describe("dashboard api client", () => {
       token: "share-token",
       url: "https://app.example.com/share/projects/share-token",
     };
+    const acceptedLink = {
+      project: restored.project,
+      role: "viewer",
+    };
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse(activities))
@@ -1185,6 +1190,7 @@ describe("dashboard api client", () => {
       .mockResolvedValueOnce(jsonResponse(restored))
       .mockResolvedValueOnce(jsonResponse(links))
       .mockResolvedValueOnce(jsonResponse(link))
+      .mockResolvedValueOnce(jsonResponse(acceptedLink))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -1206,6 +1212,9 @@ describe("dashboard api client", () => {
     await expect(
       createProjectShareLink("project-1", { role: "viewer" }),
     ).resolves.toEqual(link);
+    await expect(acceptProjectShareLink("share-token")).resolves.toEqual(
+      acceptedLink,
+    );
     await expect(
       revokeProjectShareLink("project-1", "link-1"),
     ).resolves.toBeUndefined();
@@ -1230,6 +1239,11 @@ describe("dashboard api client", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       9,
+      "/api/user/dashboard/project-share-links/share-token/accept",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      10,
       "/api/user/dashboard/projects/project-1/share-links/link-1",
       expect.objectContaining({ method: "DELETE" }),
     );
