@@ -56,7 +56,16 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
     (selectedWorkspace && canCreateWorkspaceProject(selectedWorkspace.role)),
   );
 
-  if (contentPage.isLoading) {
+  const isCollabConnecting = Boolean(
+    projectId &&
+      (!projectCollaboration.provider ||
+        !projectCollaboration.user ||
+        !projectCollaboration.ydoc ||
+        (projectCollaboration.status !== "synced" &&
+          projectCollaboration.status !== "connected")),
+  );
+
+  if (contentPage.isLoading || isCollabConnecting) {
     return (
       <div className="flex flex-col gap-6 pb-4">
         <div className="space-y-2">
