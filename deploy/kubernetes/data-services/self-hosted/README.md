@@ -16,5 +16,10 @@ Required overlay inputs:
   target cluster.
 - Configure backup, restore, and retention outside these manifests.
 
+This package preloads `pg_stat_statements` and mounts an init script that creates
+the extension for newly initialized databases. Existing PostgreSQL volumes need a
+one-time `CREATE EXTENSION IF NOT EXISTS pg_stat_statements;` run by an
+administrator and a PostgreSQL restart for the preload setting to take effect.
+
 The backend remains responsible for schema migration and initialization. Do not
 run migrations as Kubernetes manifest side effects.
