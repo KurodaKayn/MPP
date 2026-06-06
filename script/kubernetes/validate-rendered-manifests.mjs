@@ -25,19 +25,26 @@ function requireMatch(pattern, message) {
   }
 }
 
-const localImages = findLines(/^\s*image:\s+mpp-\S+/);
+const deployablePackage = isDeployablePackage(normalizedPackageDir);
+
+const localImages = renderedImageIssues((image) => image.startsWith("mpp-"));
 if (localImages.length > 0) {
   addError(`rendered manifests contain local app images: ${localImages.join("; ")}`);
 }
 
-const latestImages = findLines(/^\s*image:\s+\S+:latest\s*$/);
+const latestImages = renderedImageIssues((image) => image.endsWith(":latest"));
 if (latestImages.length > 0) {
   addError(`rendered manifests contain latest image tags: ${latestImages.join("; ")}`);
 }
 
-for (const issue of runtimeImageIssues({
-  rejectPlaceholders: isDeployablePackage(normalizedPackageDir),
-})) {
+const placeholderImages = deployablePackage
+  ? renderedImageIssues(isPlaceholderImageValue)
+  : [];
+if (placeholderImages.length > 0) {
+  addError(`rendered manifests contain placeholder app images: ${placeholderImages.join("; ")}`);
+}
+
+for (const issue of runtimeImageIssues({ rejectPlaceholders: deployablePackage })) {
   addError(issue);
 }
 
@@ -56,6 +63,38 @@ function findLines(pattern) {
     .flatMap((line, index) => (pattern.test(line) ? [`${index + 1}:${line}`] : []));
 }
 
+function renderedImageIssues(isIssue) {
+  return imageLines()
+    .filter(({ value }) => isIssue(value))
+    .map(({ lineNumber, line }) => `${lineNumber}:${line}`);
+}
+
+function imageLines() {
+  return rendered.split("\n").flatMap((line, index) => {
+    const match = line.match(/^\s*image:\s*([^#\s]+)\s*(?:#.*)?$/);
+    if (!match) {
+      return [];
+    }
+
+    return [
+      {
+        lineNumber: index + 1,
+        line,
+        value: unquoteYamlScalar(match[1]),
+      },
+    ];
+  });
+}
+
+function unquoteYamlScalar(value) {
+  const first = value.at(0);
+  const last = value.at(-1);
+  if ((first === `"` && last === `"`) || (first === `'` && last === `'`)) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
 function runtimeImageIssues({ rejectPlaceholders }) {
   const issues = [];
   const lines = rendered.split("\n");
@@ -69,21 +108,18 @@ function runtimeImageIssues({ rejectPlaceholders }) {
         break;
       }
 
-      const match = lines[cursor].match(/^\s*value:\s*(\S+)\s*$/);
+      const match = lines[cursor].match(/^\s*value:\s*([^#\s]+)\s*(?:#.*)?$/);
       if (!match) {
         continue;
       }
 
-      const value = match[1];
+      const value = unquoteYamlScalar(match[1]);
       if (value.startsWith("mpp-") || value.endsWith(":latest")) {
         issues.push(
           `BROWSER_RUNTIME_IMAGE is unresolved at line ${cursor + 1}: ${lines[cursor]}`,
         );
       }
-      if (
-        rejectPlaceholders &&
-        (value.includes("replace-me") || value.startsWith("registry.example.invalid/"))
-      ) {
+      if (rejectPlaceholders && isPlaceholderImageValue(value)) {
         issues.push(
           `BROWSER_RUNTIME_IMAGE has a placeholder value at line ${cursor + 1}: ${lines[cursor]}`,
         );
@@ -92,6 +128,10 @@ function runtimeImageIssues({ rejectPlaceholders }) {
     }
   }
   return issues;
+}
+
+function isPlaceholderImageValue(value) {
+  return value.includes("replace-me") || value.startsWith("registry.example.invalid/");
 }
 
 function isDeployablePackage(dir) {
