@@ -88,8 +88,9 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 
 	// 3. Save cookies via CookieStore
 	profile := publisher.RemoteAccountProfile{
-		Username:  captureResp.Account.Username,
-		AvatarURL: captureResp.Account.AvatarURL,
+		Username:       captureResp.Account.Username,
+		AvatarURL:      captureResp.Account.AvatarURL,
+		PlatformUserID: captureResp.Account.PlatformUserID,
 	}
 	workspaceID := uuid.Nil
 	if session.WorkspaceID != nil {

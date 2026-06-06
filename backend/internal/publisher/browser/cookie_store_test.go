@@ -126,4 +126,47 @@ func TestCookieStore(t *testing.T) {
 		}, RemoteAccountProfile{})
 		require.ErrorIs(t, err, ErrCookieValidationFailed)
 	})
+
+	t.Run("Workspace Save Without Account ID Creates Distinct Remote Account", func(t *testing.T) {
+		t.Setenv("COOKIE_ENCRYPTION_KEY", encryptionKey)
+		workspaceID := uuid.New()
+		accountUserID := uuid.New()
+		existing := models.PlatformAccount{
+			UserID:         accountUserID,
+			WorkspaceID:    &workspaceID,
+			Platform:       platform,
+			Username:       "existing",
+			DisplayName:    "existing",
+			PlatformUserID: "remote-existing",
+			Cookies:        datatypes.JSON([]byte(`[]`)),
+			Status:         models.PlatformAccountStatusConnected,
+			HealthStatus:   models.PlatformAccountHealthHealthy,
+		}
+		require.NoError(t, db.Create(&existing).Error)
+
+		cookies := []Cookie{
+			{Name: "sessionid", Value: "new-secret", Domain: ".douyin.com", Path: "/"},
+			{Name: "sid_guard", Value: "new-guard", Domain: ".douyin.com", Path: "/"},
+			{Name: "passport_csrf_token", Value: "new-csrf", Domain: ".douyin.com", Path: "/"},
+		}
+		err := store.SaveForAccount(context.Background(), accountUserID, workspaceID, uuid.Nil, platform, cookies, RemoteAccountProfile{
+			Username:       "new-account",
+			PlatformUserID: "remote-new",
+		})
+		require.NoError(t, err)
+
+		var accounts []models.PlatformAccount
+		require.NoError(t, db.Where("workspace_id = ? AND platform = ?", workspaceID, platform).Order("username").Find(&accounts).Error)
+		require.Len(t, accounts, 2)
+
+		var unchanged models.PlatformAccount
+		require.NoError(t, db.First(&unchanged, "id = ?", existing.ID).Error)
+		assert.Equal(t, "existing", unchanged.Username)
+		assert.JSONEq(t, `[]`, string(unchanged.Cookies))
+
+		var created models.PlatformAccount
+		require.NoError(t, db.First(&created, "workspace_id = ? AND platform = ? AND platform_user_id = ?", workspaceID, platform, "remote-new").Error)
+		assert.Equal(t, "new-account", created.Username)
+		assert.Contains(t, string(created.Cookies), "ciphertext")
+	})
 }
