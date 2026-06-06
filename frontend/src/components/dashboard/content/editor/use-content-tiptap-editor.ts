@@ -387,29 +387,36 @@ export function useContentTipTapEditor({
         throw new Error(t("editor.imageUploadError"));
       }
 
-      const upload = await createProjectMediaUpload(projectId, {
-        filename: pendingMedia.file.name || "image",
-        mime_type: pendingMedia.file.type,
-        size_bytes: pendingMedia.file.size,
-        usage: "editor_image",
-      });
-      const uploadResponse = await fetch(upload.upload_url, {
-        body: pendingMedia.file,
-        headers: upload.headers,
-        method: "PUT",
-      });
+      setLocalMediaUploadStatus(editor, localMediaId, "pending");
 
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed (${uploadResponse.status})`);
+      try {
+        const upload = await createProjectMediaUpload(projectId, {
+          filename: pendingMedia.file.name || "image",
+          mime_type: pendingMedia.file.type,
+          size_bytes: pendingMedia.file.size,
+          usage: "editor_image",
+        });
+        const uploadResponse = await fetch(upload.upload_url, {
+          body: pendingMedia.file,
+          headers: upload.headers,
+          method: "PUT",
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload failed (${uploadResponse.status})`);
+        }
+
+        const completed = await completeMediaUpload(upload.asset_id);
+        completedRefs.push({
+          assetId: completed.asset_id,
+          localMediaId,
+        });
+        URL.revokeObjectURL(pendingMedia.previewURL);
+        pendingLocalMediaRef.current.delete(localMediaId);
+      } catch (uploadError) {
+        setLocalMediaUploadStatus(editor, localMediaId, "failed");
+        throw uploadError;
       }
-
-      const completed = await completeMediaUpload(upload.asset_id);
-      completedRefs.push({
-        assetId: completed.asset_id,
-        localMediaId,
-      });
-      URL.revokeObjectURL(pendingMedia.previewURL);
-      pendingLocalMediaRef.current.delete(localMediaId);
     }
 
     const savedHtml = replaceLocalMediaRefs(editor.getHTML(), completedRefs);
@@ -499,4 +506,45 @@ function countImages(editor: Editor | null) {
   });
 
   return imageCount;
+}
+
+function setLocalMediaUploadStatus(
+  editor: Editor,
+  localMediaId: string,
+  status: "failed" | "pending",
+) {
+  if (editor.isDestroyed) {
+    return;
+  }
+
+  const updates: Array<{ attrs: Record<string, unknown>; pos: number }> = [];
+
+  editor.state.doc.descendants((node, pos) => {
+    if (
+      node.type.name !== "image" ||
+      node.attrs.mppLocalMediaId !== localMediaId
+    ) {
+      return;
+    }
+
+    updates.push({
+      attrs: {
+        ...node.attrs,
+        mppUploadStatus: status,
+      },
+      pos,
+    });
+  });
+
+  if (updates.length === 0) {
+    return;
+  }
+
+  const transaction = editor.state.tr;
+
+  updates.forEach(({ attrs, pos }) => {
+    transaction.setNodeMarkup(pos, undefined, attrs);
+  });
+
+  editor.view.dispatch(transaction);
 }
