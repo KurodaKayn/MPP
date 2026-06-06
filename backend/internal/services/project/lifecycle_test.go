@@ -202,6 +202,61 @@ func TestCreateProjectAppliesContentTemplateDefaults(t *testing.T) {
 	require.Equal(t, "Launch {{product}}", config["title"])
 }
 
+func TestCreateContentTemplateRecordsMediaAssetUsages(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(&models.MediaAsset{}))
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	workspaceID := models.PersonalWorkspaceID(user.ID)
+	require.NoError(t, db.Create(&models.Workspace{
+		ID:          workspaceID,
+		OwnerUserID: user.ID,
+		Name:        models.PersonalWorkspaceName,
+		Slug:        "personal-" + user.ID.String(),
+		Status:      models.WorkspaceStatusActive,
+	}).Error)
+	assetID := uuid.New()
+	require.NoError(t, db.Create(&models.MediaAsset{
+		ID:               assetID,
+		UserID:           user.ID,
+		WorkspaceID:      &workspaceID,
+		Bucket:           "mpp-media",
+		ObjectKey:        "workspaces/" + workspaceID.String() + "/library/" + assetID.String() + "/hero.png",
+		OriginalFilename: "hero.png",
+		MimeType:         "image/png",
+		SizeBytes:        12,
+		Usage:            models.MediaAssetUsageEditorImage,
+		LibraryScope:     models.MediaAssetLibraryScopeWorkspace,
+		Status:           models.MediaAssetStatusReady,
+	}).Error)
+	mediaRef := "mpp://media/" + assetID.String()
+
+	template, err := s.CreateContentTemplate(user.ID, workspaceID, dto.CreateContentTemplateRequest{
+		Name:             "Media template",
+		TitleTemplate:    "Media title",
+		SourceTemplate:   "<p>" + mediaRef + "</p>",
+		DefaultPlatforms: []string{"wechat"},
+		PlatformConfig: map[string]any{
+			"wechat": map[string]any{
+				"cover_image_url": mediaRef,
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	var usages []models.MediaAssetUsage
+	require.NoError(t, db.Find(&usages, "template_id = ?", template.ID).Error)
+	require.Len(t, usages, 1)
+	require.Equal(t, assetID, usages[0].MediaAssetID)
+	require.Equal(t, workspaceID, usages[0].WorkspaceID)
+	require.Equal(t, "template", usages[0].ResourceType)
+	require.Equal(t, template.ID, usages[0].ResourceID)
+	require.NotNil(t, usages[0].TemplateID)
+	require.Equal(t, template.ID, *usages[0].TemplateID)
+}
+
 func TestCreateProjectSanitizesStoredSourceContent(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)

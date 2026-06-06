@@ -243,7 +243,8 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 		resource_type TEXT NOT NULL,
 		resource_id TEXT NOT NULL,
 		usage_kind TEXT NOT NULL DEFAULT '',
-		created_at DATETIME NOT NULL
+		created_at DATETIME NOT NULL,
+		UNIQUE(media_asset_id, resource_type, resource_id)
 	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE publish_events (
 		id TEXT PRIMARY KEY,

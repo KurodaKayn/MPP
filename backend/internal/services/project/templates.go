@@ -114,7 +114,12 @@ func (s *Service) CreateContentTemplate(userID uuid.UUID, workspaceID uuid.UUID,
 		ownerID := userID
 		template.OwnerUserID = &ownerID
 	}
-	if err := s.db.Create(&template).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&template).Error; err != nil {
+			return err
+		}
+		return refreshContentTemplateMediaUsages(tx, workspaceID, template)
+	}); err != nil {
 		return nil, err
 	}
 	resp := contentTemplateFromModel(template)
