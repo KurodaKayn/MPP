@@ -176,6 +176,7 @@ func registerUserDashboardRoutes(e *echo.Echo, config serverConfig, h serverHand
 	userGroup.GET("/projects/:id/share-links", h.userDashboard.ListProjectShareLinks)
 	userGroup.POST("/projects/:id/share-links", h.userDashboard.CreateProjectShareLink)
 	userGroup.DELETE("/projects/:id/share-links/:linkId", h.userDashboard.RevokeProjectShareLink)
+	userGroup.POST("/project-share-links/:token/accept", h.userDashboard.AcceptProjectShareLink)
 	userGroup.POST("/projects/:id/collab/session", h.userDashboard.CreateProjectCollabSession)
 	userGroup.PATCH("/projects/:id/content", h.userDashboard.SaveProjectContent)
 	userGroup.PATCH("/projects/:id/platforms", h.userDashboard.SaveProjectPlatforms)
