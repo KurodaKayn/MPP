@@ -153,7 +153,7 @@ func EnvFlagWithDefault(name string, defaultValue bool) bool {
 
 func isLocalEnvironment(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "local", "dev", "development", "test":
+	case "local", "dev", "development":
 		return true
 	default:
 		return false
