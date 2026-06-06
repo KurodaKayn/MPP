@@ -44,6 +44,7 @@ const EnvSchema = z.object({
   REDIS_ADDR: z.string().default("redis:6379"),
   REDIS_PASSWORD: z.string().default(""),
   REDIS_DB: z.coerce.number().int().nonnegative().default(0),
+  REDIS_TLS: EnvBoolean.default(false),
   COLLAB_REDIS_SYNC_ENABLED: EnvBoolean.default(true),
   COLLAB_REDIS_CHANNEL_PREFIX: z.string().default("mpp:collab:doc"),
   BACKEND_INTERNAL_URL: z.string().url().default("http://backend:8080"),
