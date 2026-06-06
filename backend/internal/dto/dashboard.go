@@ -393,6 +393,11 @@ type ProjectShareLinksResponse struct {
 	Items []ProjectShareLink `json:"items"`
 }
 
+type AcceptProjectShareLinkResponse struct {
+	Project *ProjectDetail `json:"project"`
+	Role    string         `json:"role"`
+}
+
 type CreateWorkspaceRequest struct {
 	Name string `json:"name"`
 	Slug string `json:"slug,omitempty"`

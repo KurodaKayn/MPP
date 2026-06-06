@@ -132,6 +132,7 @@ const (
 	ProjectActivityCollaboratorRemoved     = "collaborator_removed"
 	ProjectActivityPublishRequested        = "publish_requested"
 	ProjectActivityPublishQueued           = "publish_queued"
+	ProjectActivityShareLinkAccepted       = "share_link_accepted"
 	ProjectActivityShareLinkCreated        = "share_link_created"
 	ProjectActivityShareLinkRevoked        = "share_link_revoked"
 	ProjectActivityVersionRestored         = "version_restored"
