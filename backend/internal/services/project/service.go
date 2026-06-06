@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
@@ -28,11 +29,19 @@ var allowedProjectPlatforms = map[string]struct{}{
 
 type Service struct {
 	db              *gorm.DB
+	router          *dbrouter.Router
 	collabDocuments *collabdoc.Service
 }
 
 func NewService(db *gorm.DB) *Service {
-	return &Service{db: db}
+	return NewServiceWithRouter(db, nil)
+}
+
+func NewServiceWithRouter(db *gorm.DB, router *dbrouter.Router) *Service {
+	if router == nil {
+		router = dbrouter.NewRouter(db)
+	}
+	return &Service{db: db, router: router}
 }
 
 func (s *Service) WithContext(ctx context.Context) *Service {
@@ -56,6 +65,20 @@ func (s *Service) requestContext() context.Context {
 		return s.db.Statement.Context
 	}
 	return context.Background()
+}
+
+func (s *Service) eventualReadDB() *gorm.DB {
+	if s.router == nil {
+		return s.db
+	}
+	return s.router.Reader(s.requestContext(), dbrouter.EventualRead)
+}
+
+func (s *Service) strongReadDB() *gorm.DB {
+	if s.router == nil {
+		return s.db
+	}
+	return s.router.Reader(s.requestContext(), dbrouter.StrongRead)
 }
 
 func ensurePersonalWorkspace(tx *gorm.DB, ownerUserID uuid.UUID) error {
