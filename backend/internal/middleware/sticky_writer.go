@@ -1,6 +1,10 @@
 package middleware
 
 import (
+	"crypto/hmac"
+	cryptorand "crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,11 +26,14 @@ const (
 	maxStickyWriterTTL     = 30 * time.Second
 )
 
+var defaultStickyWriterSecret = newStickyWriterSecret()
+
 type StickyWriterConfig struct {
 	TTL    time.Duration
 	Path   string
 	Now    func() time.Time
 	Secure bool
+	Secret []byte
 }
 
 func StickyWriter() echo.MiddlewareFunc {
@@ -52,10 +59,16 @@ func StickyWriterWithConfig(config StickyWriterConfig) echo.MiddlewareFunc {
 		now = time.Now
 	}
 
+	secret := config.Secret
+	if len(secret) == 0 {
+		secret = defaultStickyWriterSecret
+	}
+	secret = append([]byte(nil), secret...)
+
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			current := now()
-			if until, ok := stickyWriterCookieUntil(c, current); ok {
+			if until, ok := stickyWriterCookieUntil(c, current, secret); ok {
 				req := c.Request()
 				req = req.WithContext(dbrouter.WithStickyWriter(req.Context(), until))
 				c.SetRequest(req)
@@ -63,7 +76,7 @@ func StickyWriterWithConfig(config StickyWriterConfig) echo.MiddlewareFunc {
 
 			c.Response().Before(func() {
 				if shouldRefreshStickyWriter(c.Response().Status, c.Request().Method, c.Request().URL.Path, path) {
-					refreshStickyWriter(c, now().Add(ttl), ttl, path, config.Secure)
+					refreshStickyWriter(c, now().Add(ttl), ttl, path, config.Secure, secret)
 				}
 			})
 
@@ -72,12 +85,12 @@ func StickyWriterWithConfig(config StickyWriterConfig) echo.MiddlewareFunc {
 	}
 }
 
-func stickyWriterCookieUntil(c echo.Context, now time.Time) (time.Time, bool) {
+func stickyWriterCookieUntil(c echo.Context, now time.Time, secret []byte) (time.Time, bool) {
 	cookie, err := c.Cookie(StickyWriterCookieName)
 	if err != nil {
 		return time.Time{}, false
 	}
-	until, ok := parseStickyWriterUntil(cookie.Value)
+	until, ok := parseStickyWriterUntil(cookie.Value, secret)
 	if !ok || !until.After(now) {
 		return time.Time{}, false
 	}
@@ -87,12 +100,35 @@ func stickyWriterCookieUntil(c echo.Context, now time.Time) (time.Time, bool) {
 	return until, true
 }
 
-func parseStickyWriterUntil(raw string) (time.Time, bool) {
-	value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+func parseStickyWriterUntil(raw string, secret []byte) (time.Time, bool) {
+	timestamp, signature, ok := strings.Cut(strings.TrimSpace(raw), ".")
+	if !ok || timestamp == "" || signature == "" {
+		return time.Time{}, false
+	}
+	if !validStickyWriterSignature(timestamp, signature, secret) {
+		return time.Time{}, false
+	}
+	value, err := strconv.ParseInt(timestamp, 10, 64)
 	if err != nil || value <= 0 {
 		return time.Time{}, false
 	}
 	return time.UnixMilli(value).UTC(), true
+}
+
+func signedStickyWriterValue(until time.Time, secret []byte) string {
+	timestamp := strconv.FormatInt(until.UnixMilli(), 10)
+	return timestamp + "." + stickyWriterSignature(timestamp, secret)
+}
+
+func validStickyWriterSignature(timestamp string, signature string, secret []byte) bool {
+	expected := stickyWriterSignature(timestamp, secret)
+	return hmac.Equal([]byte(signature), []byte(expected))
+}
+
+func stickyWriterSignature(timestamp string, secret []byte) string {
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(timestamp))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func shouldRefreshStickyWriter(status int, method string, requestPath string, stickyPath string) bool {
@@ -119,12 +155,12 @@ func requestPathMatchesStickyPath(requestPath string, stickyPath string) bool {
 	return requestPath == stickyPath || strings.HasPrefix(requestPath, stickyPath+"/")
 }
 
-func refreshStickyWriter(c echo.Context, until time.Time, ttl time.Duration, path string, secure bool) {
+func refreshStickyWriter(c echo.Context, until time.Time, ttl time.Duration, path string, secure bool, secret []byte) {
 	c.Response().Header().Set(StickyWriterHeader, strconv.FormatInt(until.UnixMilli(), 10))
 	// #nosec G124 -- Secure is config-driven so local HTTP development can exercise read-your-write routing.
 	c.SetCookie(&http.Cookie{
 		Name:     StickyWriterCookieName,
-		Value:    strconv.FormatInt(until.UnixMilli(), 10),
+		Value:    signedStickyWriterValue(until, secret),
 		Path:     path,
 		Expires:  until,
 		MaxAge:   int(ttl.Seconds()),
@@ -132,4 +168,12 @@ func refreshStickyWriter(c echo.Context, until time.Time, ttl time.Duration, pat
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secure,
 	})
+}
+
+func newStickyWriterSecret() []byte {
+	secret := make([]byte, 32)
+	if _, err := cryptorand.Read(secret); err != nil {
+		panic("generate sticky writer cookie secret: " + err.Error())
+	}
+	return secret
 }

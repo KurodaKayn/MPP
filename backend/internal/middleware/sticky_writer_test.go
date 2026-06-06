@@ -18,9 +18,10 @@ func TestStickyWriterAddsCookieContext(t *testing.T) {
 	now := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
 	until := now.Add(5 * time.Second)
 	e := echo.New()
-	middleware := StickyWriterWithConfig(StickyWriterConfig{Now: func() time.Time {
-		return now
-	}})
+	middleware := StickyWriterWithConfig(StickyWriterConfig{
+		Now:    func() time.Time { return now },
+		Secret: stickyWriterTestSecret,
+	})
 	handler := middleware(func(c echo.Context) error {
 		got, ok := dbrouter.StickyWriterUntil(c.Request().Context())
 		require.True(t, ok)
@@ -29,7 +30,7 @@ func TestStickyWriterAddsCookieContext(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/dashboard/projects", nil)
-	req.AddCookie(stickyWriterRequestCookie(strconv.FormatInt(until.UnixMilli(), 10)))
+	req.AddCookie(stickyWriterRequestCookie(signedStickyWriterValue(until, stickyWriterTestSecret)))
 	rec := httptest.NewRecorder()
 
 	require.NoError(t, handler(e.NewContext(req, rec)))
@@ -40,9 +41,10 @@ func TestStickyWriterAddsCookieContext(t *testing.T) {
 func TestStickyWriterIgnoresExpiredCookie(t *testing.T) {
 	now := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
 	e := echo.New()
-	middleware := StickyWriterWithConfig(StickyWriterConfig{Now: func() time.Time {
-		return now
-	}})
+	middleware := StickyWriterWithConfig(StickyWriterConfig{
+		Now:    func() time.Time { return now },
+		Secret: stickyWriterTestSecret,
+	})
 	handler := middleware(func(c echo.Context) error {
 		_, ok := dbrouter.StickyWriterUntil(c.Request().Context())
 		require.False(t, ok)
@@ -50,7 +52,7 @@ func TestStickyWriterIgnoresExpiredCookie(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/dashboard/projects", nil)
-	req.AddCookie(stickyWriterRequestCookie(strconv.FormatInt(now.Add(-time.Second).UnixMilli(), 10)))
+	req.AddCookie(stickyWriterRequestCookie(signedStickyWriterValue(now.Add(-time.Second), stickyWriterTestSecret)))
 	rec := httptest.NewRecorder()
 
 	require.NoError(t, handler(e.NewContext(req, rec)))
@@ -60,9 +62,10 @@ func TestStickyWriterIgnoresExpiredCookie(t *testing.T) {
 func TestStickyWriterIgnoresCookieBeyondMaxTTL(t *testing.T) {
 	now := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
 	e := echo.New()
-	middleware := StickyWriterWithConfig(StickyWriterConfig{Now: func() time.Time {
-		return now
-	}})
+	middleware := StickyWriterWithConfig(StickyWriterConfig{
+		Now:    func() time.Time { return now },
+		Secret: stickyWriterTestSecret,
+	})
 	handler := middleware(func(c echo.Context) error {
 		_, ok := dbrouter.StickyWriterUntil(c.Request().Context())
 		require.False(t, ok)
@@ -70,7 +73,7 @@ func TestStickyWriterIgnoresCookieBeyondMaxTTL(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/dashboard/projects", nil)
-	req.AddCookie(stickyWriterRequestCookie(strconv.FormatInt(now.Add(time.Hour).UnixMilli(), 10)))
+	req.AddCookie(stickyWriterRequestCookie(signedStickyWriterValue(now.Add(time.Hour), stickyWriterTestSecret)))
 	rec := httptest.NewRecorder()
 
 	require.NoError(t, handler(e.NewContext(req, rec)))
@@ -83,8 +86,9 @@ func TestStickyWriterRefreshesCookieAfterSuccessfulMutation(t *testing.T) {
 	clockCalls := 0
 	e := echo.New()
 	middleware := StickyWriterWithConfig(StickyWriterConfig{
-		TTL:  5 * time.Second,
-		Path: "/api/user",
+		TTL:    5 * time.Second,
+		Path:   "/api/user",
+		Secret: stickyWriterTestSecret,
 		Now: func() time.Time {
 			clockCalls++
 			if clockCalls == 1 {
@@ -107,7 +111,9 @@ func TestStickyWriterRefreshesCookieAfterSuccessfulMutation(t *testing.T) {
 	cookies := rec.Result().Cookies()
 	require.Len(t, cookies, 1)
 	require.Equal(t, StickyWriterCookieName, cookies[0].Name)
-	require.Equal(t, strconv.FormatInt(completed.Add(5*time.Second).UnixMilli(), 10), cookies[0].Value)
+	until, ok := parseStickyWriterUntil(cookies[0].Value, stickyWriterTestSecret)
+	require.True(t, ok)
+	require.True(t, until.Equal(completed.Add(5*time.Second)))
 	require.Equal(t, "/api/user", cookies[0].Path)
 	require.True(t, cookies[0].HttpOnly)
 	require.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite)
@@ -118,9 +124,10 @@ func TestStickyWriterCapsRefreshTTL(t *testing.T) {
 	now := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
 	e := echo.New()
 	middleware := StickyWriterWithConfig(StickyWriterConfig{
-		TTL:  time.Hour,
-		Now:  func() time.Time { return now },
-		Path: "/api",
+		TTL:    time.Hour,
+		Now:    func() time.Time { return now },
+		Path:   "/api",
+		Secret: stickyWriterTestSecret,
 	})
 	handler := middleware(func(c echo.Context) error {
 		return c.NoContent(http.StatusNoContent)
@@ -133,7 +140,9 @@ func TestStickyWriterCapsRefreshTTL(t *testing.T) {
 	cookies := rec.Result().Cookies()
 	require.Len(t, cookies, 1)
 	require.Equal(t, 30, cookies[0].MaxAge)
-	require.Equal(t, strconv.FormatInt(now.Add(30*time.Second).UnixMilli(), 10), cookies[0].Value)
+	until, ok := parseStickyWriterUntil(cookies[0].Value, stickyWriterTestSecret)
+	require.True(t, ok)
+	require.True(t, until.Equal(now.Add(30*time.Second)))
 }
 
 func TestStickyWriterDoesNotRefreshAfterRead(t *testing.T) {
@@ -194,9 +203,29 @@ func TestStickyWriterDoesNotRefreshWhenHandlerReturnsError(t *testing.T) {
 	require.Empty(t, rec.Header().Values("Set-Cookie"))
 }
 
+func TestStickyWriterRejectsUnsignedTimestampCookie(t *testing.T) {
+	now := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	e := echo.New()
+	handler := StickyWriterWithConfig(StickyWriterConfig{
+		Now:    func() time.Time { return now },
+		Secret: stickyWriterTestSecret,
+	})(func(c echo.Context) error {
+		_, ok := dbrouter.StickyWriterUntil(c.Request().Context())
+		require.False(t, ok)
+		return c.NoContent(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/user/dashboard/projects", nil)
+	req.AddCookie(stickyWriterRequestCookie(strconv.FormatInt(now.Add(30*time.Second).UnixMilli(), 10)))
+	rec := httptest.NewRecorder()
+
+	require.NoError(t, handler(e.NewContext(req, rec)))
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
 func TestStickyWriterRejectsInvalidCookieValue(t *testing.T) {
 	e := echo.New()
-	handler := StickyWriterWithConfig(StickyWriterConfig{})(func(c echo.Context) error {
+	handler := StickyWriterWithConfig(StickyWriterConfig{Secret: stickyWriterTestSecret})(func(c echo.Context) error {
 		_, ok := dbrouter.StickyWriterUntil(c.Request().Context())
 		require.False(t, ok)
 		return c.NoContent(http.StatusOK)
@@ -219,3 +248,5 @@ func stickyWriterRequestCookie(value string) *http.Cookie {
 		Secure:   true,
 	}
 }
+
+var stickyWriterTestSecret = []byte("sticky-writer-test-secret")

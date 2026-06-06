@@ -136,6 +136,10 @@ func MockLoginEnabled() bool {
 	return EnvFlagEnabled(MockLoginFlagEnv) && localEnv
 }
 
+func SecureCookiesByDefault() bool {
+	return !isLocalEnvironment(os.Getenv(AppEnvEnv)) && !isLocalEnvironment(os.Getenv(NodeEnvFallbackEnv))
+}
+
 func EnvFlagEnabled(name string) bool {
 	return EnvFlagWithDefault(name, false)
 }

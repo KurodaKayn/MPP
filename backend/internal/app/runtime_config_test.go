@@ -147,6 +147,24 @@ func TestMockLoginEnabledFallsBackToNodeEnvForLocalDevelopment(t *testing.T) {
 	}
 }
 
+func TestSecureCookiesByDefaultOutsideLocalDevelopment(t *testing.T) {
+	t.Setenv(AppEnvEnv, "production")
+	t.Setenv(NodeEnvFallbackEnv, "")
+
+	if !SecureCookiesByDefault() {
+		t.Fatal("secure cookies should be enabled outside local development")
+	}
+}
+
+func TestSecureCookiesByDefaultDisabledForLocalDevelopment(t *testing.T) {
+	t.Setenv(AppEnvEnv, "development")
+	t.Setenv(NodeEnvFallbackEnv, "")
+
+	if SecureCookiesByDefault() {
+		t.Fatal("secure cookies should be disabled for local development")
+	}
+}
+
 func TestNewBaseEmailServiceFromEnvRejectsInvalidSMTPPort(t *testing.T) {
 	t.Setenv("SMTP_HOST", "smtp.example.test")
 	t.Setenv("SMTP_PORT", "invalid")
