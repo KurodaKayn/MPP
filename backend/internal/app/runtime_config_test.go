@@ -156,12 +156,30 @@ func TestSecureCookiesByDefaultOutsideLocalDevelopment(t *testing.T) {
 	}
 }
 
+func TestSecureCookiesByDefaultPrefersAppEnvOverNodeEnv(t *testing.T) {
+	t.Setenv(AppEnvEnv, "production")
+	t.Setenv(NodeEnvFallbackEnv, "development")
+
+	if !SecureCookiesByDefault() {
+		t.Fatal("secure cookies should stay enabled when APP_ENV is production")
+	}
+}
+
 func TestSecureCookiesByDefaultDisabledForLocalDevelopment(t *testing.T) {
 	t.Setenv(AppEnvEnv, "development")
 	t.Setenv(NodeEnvFallbackEnv, "")
 
 	if SecureCookiesByDefault() {
 		t.Fatal("secure cookies should be disabled for local development")
+	}
+}
+
+func TestSecureCookiesByDefaultFallsBackToNodeEnvForLocalDevelopment(t *testing.T) {
+	t.Setenv(AppEnvEnv, "")
+	t.Setenv(NodeEnvFallbackEnv, "development")
+
+	if SecureCookiesByDefault() {
+		t.Fatal("secure cookies should be disabled when only NODE_ENV marks local development")
 	}
 }
 
