@@ -3,6 +3,7 @@ package runtime
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,4 +72,16 @@ func TestSessionReferenceJSONUsesStableNames(t *testing.T) {
 		"stream_endpoint": {"host": "runtime.local", "port": 6080},
 		"cleanup_labels": {"session_id": "session-123"}
 	}`, string(payload))
+}
+
+func TestExpiredSessionReapReportCleanupLag(t *testing.T) {
+	now := time.Date(2026, 6, 6, 12, 5, 0, 0, time.UTC)
+
+	assert.Equal(t, 5*time.Minute, ExpiredSessionReapReport{
+		OldestExpiredAt: now.Add(-5 * time.Minute),
+	}.CleanupLag(now))
+	assert.Equal(t, time.Duration(0), ExpiredSessionReapReport{}.CleanupLag(now))
+	assert.Equal(t, time.Duration(0), ExpiredSessionReapReport{
+		OldestExpiredAt: now.Add(time.Minute),
+	}.CleanupLag(now))
 }

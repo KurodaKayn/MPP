@@ -1,0 +1,104 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: mpp-http-services
+  namespace: mpp-observability
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: mpp
+spec:
+  namespaceSelector:
+    matchNames:
+      - mpp-system
+  selector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - mpp
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - backend
+          - publish-worker
+          - browser-worker
+          - ai-service
+          - collab-service
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      relabelings:
+        - sourceLabels:
+            - __meta_kubernetes_namespace
+          targetLabel: namespace
+        - sourceLabels:
+            - __meta_kubernetes_pod_name
+          targetLabel: pod
+        - sourceLabels:
+            - __meta_kubernetes_pod_label_app_kubernetes_io_component
+          targetLabel: service
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: mpp-content-pipeline-service
+  namespace: mpp-observability
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: mpp
+spec:
+  namespaceSelector:
+    matchNames:
+      - mpp-system
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: content-pipeline-service
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      relabelings:
+        - sourceLabels:
+            - __meta_kubernetes_namespace
+          targetLabel: namespace
+        - sourceLabels:
+            - __meta_kubernetes_pod_name
+          targetLabel: pod
+        - sourceLabels:
+            - __meta_kubernetes_pod_label_app_kubernetes_io_component
+          targetLabel: service
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: mpp-alloy
+  namespace: mpp-observability
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: alloy
+    app.kubernetes.io/part-of: mpp
+spec:
+  namespaceSelector:
+    matchNames:
+      - mpp-observability
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: alloy
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      relabelings:
+        - sourceLabels:
+            - __meta_kubernetes_namespace
+          targetLabel: namespace
+        - sourceLabels:
+            - __meta_kubernetes_pod_name
+          targetLabel: pod
+        - targetLabel: service
+          replacement: alloy
