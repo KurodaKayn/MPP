@@ -5,7 +5,7 @@ import os
 import secrets
 
 
-SECRET_NAMES = ("jwt", "cookie", "collab", "all")
+SECRET_NAMES = ("jwt", "cookie", "collab", "pipeline", "all")
 
 
 def hex_secret() -> str:
@@ -26,11 +26,14 @@ def generate(kind: str) -> list[tuple[str, str]]:
         return [("COOKIE_ENCRYPTION_KEY", cookie_key())]
     if kind == "collab":
         return [("COLLAB_TOKEN_SECRET", hex_secret())]
+    if kind == "pipeline":
+        return [("CONTENT_PIPELINE_INTERNAL_TOKEN", hex_secret())]
     if kind == "all":
         return [
             ("JWT_SECRET", hex_secret()),
             ("COOKIE_ENCRYPTION_KEY", cookie_key()),
             ("COLLAB_TOKEN_SECRET", hex_secret()),
+            ("CONTENT_PIPELINE_INTERNAL_TOKEN", hex_secret()),
         ]
     raise ValueError(f"unknown secret kind: {kind}")
 
