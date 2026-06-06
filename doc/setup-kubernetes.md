@@ -24,6 +24,7 @@ deploy/kubernetes/app-baseline
 deploy/kubernetes/observability
 deploy/kubernetes/data-services/managed
 deploy/kubernetes/data-services/self-hosted
+deploy/kubernetes/overlays/staging-self-hosted
 deploy/kubernetes/validation/app-baseline
 ```
 
@@ -32,6 +33,8 @@ Use `app-baseline` for the long-running application services. Add
 `observability` when the cluster has Loki, Alloy, and Prometheus Operator CRDs.
 Choose exactly one data-service mode: `managed` for production, or
 `self-hosted` for small test clusters and demos.
+Use `overlays/staging-self-hosted` as a renderable starter when staging should
+run PostgreSQL and Redis inside the cluster.
 
 ## Required Overlays
 
@@ -54,6 +57,12 @@ The overlay must patch:
   and sizes for self-hosted StatefulSets.
 - `LOKI_WRITE_URL` in the observability package when Loki is not available at
   the included in-cluster service DNS name.
+
+The included `deploy/kubernetes/overlays/staging-self-hosted` overlay wires the
+baseline app, browser runtime controls, and self-hosted data services together.
+It still contains example image tags, public host values, and generated Secret
+literals, so patch those inputs through your environment workflow before
+applying it to a shared cluster.
 
 ## Images
 
@@ -174,6 +183,17 @@ missing probes or resource requests, broken Service and Ingress wiring, browser
 runtime RBAC or NetworkPolicy drift, missing observability rules, and malformed
 managed or self-hosted data-service packages.
 
+When validating a staging overlay after replacing the checked-in example values,
+enable deployable validation to reject `.example.invalid` hosts, all-zero SHA
+image tags, and generated example Secret values:
+
+```bash
+MPP_KUBERNETES_VALIDATE_DEPLOYABLE=1 \
+  ruby script/kubernetes/validate-rendered-manifests.rb \
+  deploy/kubernetes/overlays/staging-self-hosted \
+  /tmp/mpp-staging.yaml
+```
+
 For the final environment overlay, also run your cluster's schema validator or
 admission dry-run. Tools such as kubeconform or kubeval can complement the
 repository policy checks with Kubernetes API schema coverage.
@@ -189,6 +209,19 @@ kubectl rollout status deployment/backend -n mpp-system
 kubectl rollout status deployment/browser-worker -n mpp-system
 kubectl rollout status deployment/collab-service -n mpp-system
 ```
+
+For the included self-hosted staging starter:
+
+```bash
+kubectl kustomize deploy/kubernetes/overlays/staging-self-hosted > /tmp/mpp-staging.yaml
+ruby script/kubernetes/validate-rendered-manifests.rb \
+  deploy/kubernetes/overlays/staging-self-hosted \
+  /tmp/mpp-staging.yaml
+```
+
+After replacing the example host, image tags, and Secret material, rerun the
+same command with `MPP_KUBERNETES_VALIDATE_DEPLOYABLE=1` before applying it to a
+shared cluster.
 
 Smoke test:
 
