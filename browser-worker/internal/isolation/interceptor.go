@@ -9,6 +9,7 @@ import (
 	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
 

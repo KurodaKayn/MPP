@@ -10,8 +10,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 	"github.com/labstack/echo/v4"
+
+	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
 
 func Handler(sm *session.Manager) echo.HandlerFunc {
