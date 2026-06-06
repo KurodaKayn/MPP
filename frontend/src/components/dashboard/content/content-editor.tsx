@@ -26,7 +26,6 @@ import type {
   CollabConnectionStatus,
   CollabUserProfile,
 } from "@/features/collab-editor/collab-provider";
-import { collabStatusClassName } from "@/features/collab-editor/collab-status";
 
 type ContentEditorProps = {
   canEdit?: boolean;
@@ -191,15 +190,6 @@ function CollaborationHealthNotice({
       </div>
     );
   }
-  if (collaboration.unsyncedChanges > 0) {
-    return (
-      <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700 dark:text-blue-300">
-        {t("collab.editor.unsynced", {
-          count: collaboration.unsyncedChanges,
-        })}
-      </div>
-    );
-  }
   return null;
 }
 
@@ -224,22 +214,9 @@ function ContentCollaborationStatus({
 
   return (
     <>
-      <Badge
-        variant="outline"
-        className={collabStatusClassName(collaboration.status)}
-      >
-        {t(`collab.status.${collaboration.status}`)}
-      </Badge>
       {collaboration.role ? (
         <Badge variant="secondary">
           {t(`collab.role.${collaboration.role}`)}
-        </Badge>
-      ) : null}
-      {collaboration.unsyncedChanges > 0 ? (
-        <Badge variant="outline">
-          {t("collab.status.unsynced", {
-            count: collaboration.unsyncedChanges,
-          })}
         </Badge>
       ) : null}
       <Badge variant="outline" className="gap-1">
