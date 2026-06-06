@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -55,7 +56,7 @@ func main() {
 
 	select {
 	case err := <-serverErrors:
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			e.Logger.Fatal(err)
 		}
 	case <-rootCtx.Done():
