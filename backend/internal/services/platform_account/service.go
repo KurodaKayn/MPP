@@ -75,6 +75,9 @@ func (s *Service) UseRedis(client *redis.Client) {
 func (s *Service) ApplySavedCredentialsToPublication(userID uuid.UUID, pub *models.ProjectPlatformPublication) error {
 	account, err := s.ResolvePublicationAccount(userID, pub)
 	if err != nil {
+		if errors.Is(err, ErrInvalidPlatformAccount) && publicationHasEmbeddedCredentials(pub) {
+			return nil
+		}
 		return err
 	}
 	if err := s.applySavedWechatCredentialsToPublication(account, pub); err != nil {
@@ -84,6 +87,27 @@ func (s *Service) ApplySavedCredentialsToPublication(userID uuid.UUID, pub *mode
 		return err
 	}
 	return nil
+}
+
+func publicationHasEmbeddedCredentials(pub *models.ProjectPlatformPublication) bool {
+	if pub == nil || len(pub.Config) == 0 {
+		return false
+	}
+	config := map[string]string{}
+	if err := json.Unmarshal(pub.Config, &config); err != nil {
+		return false
+	}
+	switch pub.Platform {
+	case wechatPlatform:
+		return strings.TrimSpace(config["app_id"]) != "" && strings.TrimSpace(config["app_secret"]) != ""
+	case xPlatform:
+		return strings.TrimSpace(config["api_key"]) != "" &&
+			strings.TrimSpace(config["api_secret"]) != "" &&
+			strings.TrimSpace(config["access_token"]) != "" &&
+			strings.TrimSpace(config["access_token_secret"]) != ""
+	default:
+		return false
+	}
 }
 
 func (s *Service) WorkspaceIDForUser(userID uuid.UUID, workspaceID uuid.UUID) uuid.UUID {

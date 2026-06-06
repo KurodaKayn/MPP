@@ -154,6 +154,39 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	assert.Equal(t, "Title", config["title"])
 }
 
+func TestPublishProjectAllowsEmbeddedWechatCredentialsWithoutSavedAccount(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &testsupport.FakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"app_id":"wx","app_secret":"secret","title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.JSONEq(t, `{"app_id":"wx","app_secret":"secret","title":"Title"}`, string(fakePublisher.Config))
+}
+
 func TestPublishProjectPresignsReadyMediaRefsWithoutPersistingSignedURLs(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	require.NoError(t, db.AutoMigrate(&models.MediaAsset{}))
