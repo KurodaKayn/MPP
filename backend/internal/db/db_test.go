@@ -328,6 +328,56 @@ func TestPostgresDSNFromEnvRejectsInvalidSSLMode(t *testing.T) {
 	require.Contains(t, err.Error(), dbSSLModeEnv)
 }
 
+func TestPostgresReadReplicaDSNFromEnvDisabledWithoutHost(t *testing.T) {
+	setDatabaseConnectionEnv(t)
+	t.Setenv(dbReaderHostEnv, "")
+
+	dsn, enabled, err := postgresReadReplicaDSNFromEnv()
+
+	require.NoError(t, err)
+	require.False(t, enabled)
+	require.Empty(t, dsn)
+}
+
+func TestPostgresReadReplicaDSNFromEnvFallsBackToWriterFields(t *testing.T) {
+	setDatabaseConnectionEnv(t)
+	t.Setenv(dbSSLModeEnv, "require")
+	t.Setenv(dbReaderHostEnv, "reader-db")
+
+	dsn, enabled, err := postgresReadReplicaDSNFromEnv()
+
+	require.NoError(t, err)
+	require.True(t, enabled)
+	require.Contains(t, dsn, "host='reader-db'")
+	require.Contains(t, dsn, "user='postgres'")
+	require.Contains(t, dsn, "dbname='poster_db'")
+	require.Contains(t, dsn, "port='5432'")
+	require.Contains(t, dsn, "sslmode='require'")
+}
+
+func TestPostgresReadReplicaDSNFromEnvUsesReaderOverrides(t *testing.T) {
+	setDatabaseConnectionEnv(t)
+	t.Setenv(dbReaderHostEnv, "reader-db")
+	t.Setenv(dbReaderUserEnv, "reader")
+	t.Setenv(dbReaderPasswordEnv, "reader-password")
+	t.Setenv(dbReaderNameEnv, "reader_db")
+	t.Setenv(dbReaderPortEnv, "6543")
+	t.Setenv(dbReaderSSLModeEnv, "verify-ca")
+	t.Setenv(dbReaderSSLRootEnv, "/reader/ca.crt")
+
+	dsn, enabled, err := postgresReadReplicaDSNFromEnv()
+
+	require.NoError(t, err)
+	require.True(t, enabled)
+	require.Contains(t, dsn, "host='reader-db'")
+	require.Contains(t, dsn, "user='reader'")
+	require.Contains(t, dsn, "password='reader-password'")
+	require.Contains(t, dsn, "dbname='reader_db'")
+	require.Contains(t, dsn, "port='6543'")
+	require.Contains(t, dsn, "sslmode='verify-ca'")
+	require.Contains(t, dsn, "sslrootcert='/reader/ca.crt'")
+}
+
 func TestConfigureConnectionPoolAppliesMaxOpenConns(t *testing.T) {
 	clearConnectionPoolEnv(t)
 	t.Setenv(dbMaxOpenConnsEnv, "3")
