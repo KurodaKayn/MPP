@@ -513,6 +513,7 @@
         "collaborator_removed": "移除协作者",
         "publish_requested": "请求发布",
         "publish_queued": "发布已入队",
+        "share_link_accepted": "接受分享链接",
         "share_link_created": "创建分享链接",
         "share_link_revoked": "撤销分享链接",
         "version_restored": "恢复版本"
@@ -526,6 +527,16 @@
         "active": "生效中",
         "revoked": "已撤销"
       }
+    },
+    "shareProject": {
+      "badge": "项目邀请",
+      "title": "打开共享项目",
+      "description": "接受邀请后，此项目会加入你的控制台。",
+      "accepted": "项目访问权限已开通",
+      "continue": "继续",
+      "retry": "重试",
+      "retryLater": "请稍后重试。",
+      "errorDescription": "无法接受此邀请。链接可能已过期或被撤销。"
     },
     "prepublish": {
       "title": "预发布",

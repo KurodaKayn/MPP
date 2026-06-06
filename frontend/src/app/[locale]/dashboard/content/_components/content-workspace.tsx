@@ -5,6 +5,7 @@ import { ContentEditor } from "@/components/dashboard/content/content-editor";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectCollabConnection } from "@/features/collab-editor/use-collab-document";
+import { useState } from "react";
 import { DashboardErrorCard } from "../../_components/dashboard-error-card";
 import { WorkspaceSwitcher } from "../../_components/workspace-switcher";
 import {
@@ -31,6 +32,7 @@ type ContentWorkspaceProps = {
 
 export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
   const { session } = useAuth();
+  const [collabReconnectKey, setCollabReconnectKey] = useState(0);
   const workspaceSelection = useDashboardWorkspaceSelection({
     enabled: !projectId,
   });
@@ -45,6 +47,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
   const { t: tDashboard } = useTranslation(locale, "dashboard");
   const projectCollaboration = useProjectCollabConnection({
     projectId,
+    reconnectKey: collabReconnectKey,
     userName: session?.username ?? tDashboard("collab.userFallback"),
   });
   const selectedWorkspace = workspaceSelection.selectedWorkspace;
@@ -128,7 +131,10 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           {projectId ? (
             <ProjectCollaborationPanel
               canEdit={editor.canEdit}
-              onVersionRestore={editor.restoreVersionContent}
+              onVersionRestore={(project) => {
+                editor.restoreVersionContent(project);
+                setCollabReconnectKey((current) => current + 1);
+              }}
               projectId={projectId}
               projectRole={header.projectRole}
             />

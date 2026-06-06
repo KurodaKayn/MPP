@@ -513,6 +513,7 @@
         "collaborator_removed": "Collaborator removed",
         "publish_requested": "Publish requested",
         "publish_queued": "Publish queued",
+        "share_link_accepted": "Share link accepted",
         "share_link_created": "Share link created",
         "share_link_revoked": "Share link revoked",
         "version_restored": "Version restored"
@@ -526,6 +527,16 @@
         "active": "Active",
         "revoked": "Revoked"
       }
+    },
+    "shareProject": {
+      "badge": "Project invitation",
+      "title": "Open shared project",
+      "description": "Accepting the invitation will add this project to your dashboard.",
+      "accepted": "Project access granted",
+      "continue": "Continue",
+      "retry": "Try again",
+      "retryLater": "Please try again later.",
+      "errorDescription": "This invitation could not be accepted. It may have expired or been revoked."
     },
     "prepublish": {
       "title": "Pre-publish",
