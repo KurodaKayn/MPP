@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"sync"
@@ -209,7 +210,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 		"status":    status,
 		"remote_id": remoteID,
 	}); err != nil {
-		return nil, err
+		log.Printf("failed to record project publish activity for project %s platform %s: %v", projectID, platform, err)
 	}
 
 	return response, nil
