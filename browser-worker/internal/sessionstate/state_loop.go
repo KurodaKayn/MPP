@@ -16,12 +16,11 @@ func StartLoop(ctx context.Context, workerSession *session.WorkerSession) contex
 		defer ticker.Stop()
 
 		for {
-			state, err := DetectAndSave(loopCtx, workerSession)
-			if err != nil {
+			if _, err := DetectAndSave(loopCtx, workerSession); err != nil {
 				if loopCtx.Err() != nil {
 					return
 				}
-				state = transientReadState(workerSession, err)
+				state := transientReadState(workerSession, err)
 				_ = workerSession.StateStore.SaveLiveSession(loopCtx, workerSession, state)
 			}
 			_ = workerSession.StateStore.RefreshHeartbeat(loopCtx, workerSession)

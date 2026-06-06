@@ -84,7 +84,7 @@ func scrapeMetrics(t *testing.T, e *echo.Echo) string {
 func assertMetricLineContains(t *testing.T, metrics, name string, labels []string) {
 	t.Helper()
 
-	for _, line := range strings.Split(metrics, "\n") {
+	for line := range strings.SplitSeq(metrics, "\n") {
 		if !strings.HasPrefix(line, name) {
 			continue
 		}
