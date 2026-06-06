@@ -136,6 +136,8 @@
     "ariaLabel": "Content Editor",
     "selectImageError": "Please select image files",
     "imageSizeError": "Image size cannot exceed 8MB",
+    "imagePreviewError": "Could not load image preview",
+    "imageUploadError": "Image upload failed",
     "linkPrompt": "Link Address",
     "linkError": "Please enter a valid link address",
     "placeholder": "Start writing here..."

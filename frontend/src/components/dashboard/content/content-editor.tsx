@@ -35,6 +35,7 @@ type ContentEditorProps = {
   content: ContentValue;
   onTitleChange: (title: string) => void;
   onContentChange: (content: ContentValue) => void;
+  projectId?: string;
   viewSwitcher?: React.ReactNode;
 };
 
@@ -53,6 +54,7 @@ export function ContentEditor({
   content,
   onTitleChange,
   onContentChange,
+  projectId,
   viewSwitcher,
 }: ContentEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -64,6 +66,7 @@ export function ContentEditor({
       content,
       editable: canEdit,
       onContentChange,
+      projectId,
     });
   const canEditContent = canEdit && (!collaboration || collaboration.canEdit);
   const blockLabel = getCurrentBlockLabel(editor, t);

@@ -1,4 +1,5 @@
 import type { ContentValue } from "@/lib/content/types";
+import { serializeMediaAssetRefs } from "./content-editor-media";
 
 const EMPTY_DOCUMENT_HTML = "<p></p>";
 
@@ -25,6 +26,10 @@ export function normalizeStoredHtml(html: string) {
     if (image?.getAttribute("src")) {
       const nextImage = documentFragment.createElement("img");
       nextImage.setAttribute("src", image.getAttribute("src") ?? "");
+      const mediaAssetId = image.getAttribute("data-mpp-media-id");
+      if (mediaAssetId) {
+        nextImage.setAttribute("data-mpp-media-id", mediaAssetId);
+      }
       nextImage.setAttribute(
         "alt",
         image.getAttribute("alt") ?? caption ?? "Image",
@@ -102,7 +107,7 @@ export function sanitizeClipboardHtml(html: string) {
   documentFragment.querySelectorAll("img").forEach((image) => {
     const src = image.getAttribute("src") ?? "";
 
-    if (!/^(https?:|data:image\/|blob:)/i.test(src)) {
+    if (!/^(https?:|data:image\/|blob:|mpp:\/\/media\/)/i.test(src)) {
       image.remove();
     }
   });
@@ -111,20 +116,28 @@ export function sanitizeClipboardHtml(html: string) {
 }
 
 export function contentValueFromHtml(html: string): ContentValue {
+  const storedHtml = serializeMediaAssetRefs(html);
+
   if (!canUseDomParser()) {
     return {
       firstImageSrc: "",
-      html,
+      html: storedHtml,
       text: "",
     };
   }
 
-  const documentFragment = new DOMParser().parseFromString(html, "text/html");
+  const documentFragment = new DOMParser().parseFromString(
+    storedHtml,
+    "text/html",
+  );
 
   return {
     firstImageSrc:
       documentFragment.querySelector("img")?.getAttribute("src") ?? "",
-    html,
-    text: documentFragment.body.innerText.trim(),
+    html: storedHtml,
+    text:
+      documentFragment.body.innerText?.trim() ||
+      documentFragment.body.textContent?.trim() ||
+      "",
   };
 }
