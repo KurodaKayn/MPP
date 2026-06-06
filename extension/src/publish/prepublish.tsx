@@ -2,6 +2,7 @@ import * as React from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  ExternalLink,
   FileText,
   Play,
   RefreshCw,
@@ -52,6 +53,7 @@ export interface PrepublishWorkbenchProps {
   onProjectSelect: (projectId: string) => void;
   onPlatformToggle: (platform: PlatformKey) => void;
   onRetry: () => void;
+  onOpenLogin?: () => void;
   onStartHandoff?: (projectId: string, platforms: PlatformKey[]) => void;
   startingHandoff?: boolean;
   startError?: string;
@@ -87,6 +89,52 @@ function enabledPlatformsForProject(
       .filter((platform) => platform.enabled)
       .map((platform) => platform.platform) ?? [],
   );
+}
+
+function getWorkbenchStatusLabel(
+  status: PrepublishViewState["status"],
+): string {
+  if (status === "idle") {
+    return "sign in";
+  }
+
+  if (status === "error") {
+    return "attention";
+  }
+
+  if (status === "loaded") {
+    return "ready";
+  }
+
+  return status;
+}
+
+function getWorkbenchStatusVariant(
+  status: PrepublishViewState["status"],
+): React.ComponentProps<typeof Badge>["variant"] {
+  if (status === "loaded") {
+    return "success";
+  }
+
+  if (status === "loading") {
+    return "info";
+  }
+
+  if (status === "error") {
+    return "warning";
+  }
+
+  return "secondary";
+}
+
+function formatSelectedPlatformCount(count: number): string {
+  return `${count} ${count === 1 ? "platform" : "platforms"} selected`;
+}
+
+function getPlatformAvailabilityLabel(
+  platform: ExtensionPrepublishPlatform,
+): string {
+  return platform.enabled ? "ready" : "unavailable";
 }
 
 export function usePrepublishWorkbench(
@@ -263,11 +311,8 @@ function PlatformSelection({
                 {platform.platform}
               </span>
               <Badge variant={platform.enabled ? "success" : "secondary"}>
-                {platform.enabled ? platform.status : "disabled"}
+                {getPlatformAvailabilityLabel(platform)}
               </Badge>
-            </span>
-            <span className="mt-1 block truncate text-xs text-muted-foreground">
-              {platform.adapter_key}
             </span>
             {platform.preview ? (
               <span className="mt-2 block text-sm text-muted-foreground">
@@ -322,10 +367,12 @@ function LoadedWorkbench({
               {selectedProject.title}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {selectedPlatforms.size} platform selected
+              {formatSelectedPlatformCount(selectedPlatformList.length)}
             </p>
           </div>
-          <Badge variant="info">{selectedProject.status}</Badge>
+          <Badge variant={canStart ? "info" : "secondary"}>
+            {canStart ? "ready" : "choose platform"}
+          </Badge>
         </div>
         <PlatformSelection
           platforms={selectedProject.platforms}
@@ -338,6 +385,11 @@ function LoadedWorkbench({
             <AlertDescription>{startError}</AlertDescription>
           </Alert>
         ) : null}
+        {!selectedPlatformList.length ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Select at least one platform.
+          </p>
+        ) : null}
         <div className="mt-3 flex justify-end">
           <Button
             type="button"
@@ -347,7 +399,7 @@ function LoadedWorkbench({
             }
           >
             <Play data-icon="inline-start" />
-            {startingHandoff ? "Starting Handoff" : "Start Handoff"}
+            {startingHandoff ? "Starting Publishing" : "Start Publishing"}
           </Button>
         </div>
       </div>
@@ -356,7 +408,7 @@ function LoadedWorkbench({
 }
 
 export function PrepublishWorkbenchCard(props: PrepublishWorkbenchProps) {
-  const { state, onRetry } = props;
+  const { state, onRetry, onOpenLogin } = props;
 
   return (
     <Card>
@@ -365,26 +417,40 @@ export function PrepublishWorkbenchCard(props: PrepublishWorkbenchProps) {
           <div className="min-w-0">
             <CardTitle>Pre-Publish Drafts</CardTitle>
             <CardDescription>
-              Prepared content available for extension publishing.
+              Choose a draft and platform to prepare.
             </CardDescription>
           </div>
-          <Badge variant={state.status === "loaded" ? "success" : "secondary"}>
-            {state.status === "loaded" ? "ready" : state.status}
+          <Badge variant={getWorkbenchStatusVariant(state.status)}>
+            {getWorkbenchStatusLabel(state.status)}
           </Badge>
         </div>
       </CardHeader>
       <CardContent>
         {state.status === "idle" ? (
-          <p className="text-sm text-muted-foreground">
-            Sign in to load drafts.
-          </p>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              Sign in to MPP to load drafts.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {onOpenLogin ? (
+                <Button onClick={onOpenLogin}>
+                  <ExternalLink data-icon="inline-start" />
+                  Open MPP
+                </Button>
+              ) : null}
+              <Button variant="outline" onClick={onRetry}>
+                <RefreshCw data-icon="inline-start" />
+                Retry
+              </Button>
+            </div>
+          </div>
         ) : null}
         {state.status === "loading" ? (
           <p className="text-sm text-muted-foreground">Loading drafts.</p>
         ) : null}
         {state.status === "empty" ? (
           <p className="text-sm text-muted-foreground">
-            No pre-publish drafts.
+            No pre-publish drafts yet.
           </p>
         ) : null}
         {state.status === "error" ? (

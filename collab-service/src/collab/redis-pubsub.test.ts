@@ -2,7 +2,11 @@ import { Document } from "@hocuspocus/server";
 import { beforeEach, describe, expect, it } from "vitest";
 import { encodeStateAsUpdate } from "yjs";
 
-import { RedisCollabPubSub } from "./redis-pubsub.js";
+import { loadConfig } from "../config.js";
+import {
+  redisClientOptionsFromConfig,
+  RedisCollabPubSub,
+} from "./redis-pubsub.js";
 
 type MessageHandler = (message: string) => void;
 
@@ -68,5 +72,53 @@ describe("RedisCollabPubSub", () => {
     const remoteUpdate = encodeStateAsUpdate(target);
     expect(secondInstance.isRemoteUpdate(remoteUpdate)).toBe(true);
     expect(secondInstance.isRemoteUpdate(remoteUpdate)).toBe(false);
+  });
+});
+
+describe("redisClientOptionsFromConfig", () => {
+  it("uses plaintext Redis by default", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      REDIS_ADDR: "redis.example.invalid:6379",
+    });
+
+    const options = redisClientOptionsFromConfig(config);
+
+    expect(options.url).toBe("redis://redis.example.invalid:6379");
+  });
+
+  it("uses rediss when REDIS_TLS is enabled", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      REDIS_ADDR: "redis.example.invalid:6379",
+      REDIS_TLS: "true",
+    });
+
+    const options = redisClientOptionsFromConfig(config);
+
+    expect(options.url).toBe("rediss://redis.example.invalid:6379");
+  });
+
+  it("upgrades explicit redis URLs when REDIS_TLS is enabled", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      REDIS_ADDR: "redis://redis.example.invalid:6379",
+      REDIS_TLS: "true",
+    });
+
+    const options = redisClientOptionsFromConfig(config);
+
+    expect(options.url).toBe("rediss://redis.example.invalid:6379");
+  });
+
+  it("preserves explicit rediss URLs", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      REDIS_ADDR: "rediss://redis.example.invalid:6379",
+    });
+
+    const options = redisClientOptionsFromConfig(config);
+
+    expect(options.url).toBe("rediss://redis.example.invalid:6379");
   });
 });

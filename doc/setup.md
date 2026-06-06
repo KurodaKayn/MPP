@@ -6,6 +6,7 @@ For development workflows, see:
 
 - [Docker development setup](setup-dev.md)
 - [Standalone local development setup](setup-standalone.md)
+- [Kubernetes production setup](setup-kubernetes.md)
 
 ## Quick Start
 

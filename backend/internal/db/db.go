@@ -32,10 +32,13 @@ const (
 	dbMaxIdleConnsEnv    = "DB_MAX_IDLE_CONNS"
 	dbConnMaxLifetimeEnv = "DB_CONN_MAX_LIFETIME"
 	dbConnMaxIdleTimeEnv = "DB_CONN_MAX_IDLE_TIME"
+	dbSSLModeEnv         = "DB_SSLMODE"
+	dbSSLRootCertEnv     = "DB_SSLROOTCERT"
 	defaultMaxOpenConns  = 10
 	defaultMaxIdleConns  = 5
 	defaultConnMaxLife   = 30 * time.Minute
 	defaultConnMaxIdle   = 5 * time.Minute
+	defaultDBSSLMode     = "disable"
 )
 
 type connectionPoolConfig struct {
@@ -46,13 +49,10 @@ type connectionPoolConfig struct {
 }
 
 func InitDB() {
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Shanghai",
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_USER"),
-		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_NAME"),
-		os.Getenv("DB_PORT"),
-	)
+	dsn, err := postgresDSNFromEnv()
+	if err != nil {
+		log.Fatal("Failed to configure database connection:", err)
+	}
 	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
@@ -73,6 +73,49 @@ func InitDB() {
 			log.Fatal("Failed to seed database:", err)
 		}
 	}
+}
+
+func postgresDSNFromEnv() (string, error) {
+	sslMode, err := postgresSSLModeFromEnv()
+	if err != nil {
+		return "", err
+	}
+	parts := []string{
+		postgresDSNParam("host", os.Getenv("DB_HOST")),
+		postgresDSNParam("user", os.Getenv("DB_USER")),
+		postgresDSNParam("password", os.Getenv("DB_PASSWORD")),
+		postgresDSNParam("dbname", os.Getenv("DB_NAME")),
+		postgresDSNParam("port", os.Getenv("DB_PORT")),
+		postgresDSNParam("sslmode", sslMode),
+		postgresDSNParam("TimeZone", "Asia/Shanghai"),
+	}
+	if sslRootCert := strings.TrimSpace(os.Getenv(dbSSLRootCertEnv)); sslRootCert != "" {
+		parts = append(parts, postgresDSNParam("sslrootcert", sslRootCert))
+	}
+	return strings.Join(parts, " "), nil
+}
+
+func postgresSSLModeFromEnv() (string, error) {
+	sslMode := strings.ToLower(strings.TrimSpace(os.Getenv(dbSSLModeEnv)))
+	if sslMode == "" {
+		return defaultDBSSLMode, nil
+	}
+	switch sslMode {
+	case "disable", "allow", "prefer", "require", "verify-ca", "verify-full":
+		return sslMode, nil
+	default:
+		return "", fmt.Errorf("invalid %s %q: expected disable, allow, prefer, require, verify-ca, or verify-full", dbSSLModeEnv, sslMode)
+	}
+}
+
+func postgresDSNParam(key string, value string) string {
+	return key + "=" + quotePostgresDSNValue(value)
+}
+
+func quotePostgresDSNValue(value string) string {
+	escaped := strings.ReplaceAll(value, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
+	return "'" + escaped + "'"
 }
 
 func configureConnectionPool(database *gorm.DB) error {

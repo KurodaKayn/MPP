@@ -148,10 +148,10 @@ function isPathSuffix(dir, suffix) {
 }
 
 function validateAppBaselineOverlay() {
-  const placeholderValues = findLines(/replace-me/);
+  const placeholderValues = findLines(/replace-me|replace-with-/);
   if (placeholderValues.length > 0) {
     addError(
-      `validation overlay still contains replace-me placeholders: ${placeholderValues.join("; ")}`,
+      `validation overlay still contains placeholders: ${placeholderValues.join("; ")}`,
     );
   }
 
@@ -179,7 +179,8 @@ function validateAppBaselineOverlay() {
   }
 
   const requiredConfig = new Map([
-    ["DB_HOST", "postgres"],
+    ["DB_HOST", "postgres.example.invalid"],
+    ["DB_SSLMODE", "verify-full"],
     ["REDIS_ADDR", "redis:6379"],
     ["COLLAB_WEBSOCKET_URL_BASE", "wss://mpp.example.invalid"],
     ["LLM_PROVIDER_URL", "https://llm.example.invalid/v1"],
@@ -192,6 +193,15 @@ function validateAppBaselineOverlay() {
       `validation overlay mpp-app-config ${key} is not overridden`,
     );
   }
+
+  requireMatch(
+    /^\s*-\s*host:\s*mpp\.example\.invalid\s*$/m,
+    "validation overlay Ingress host is not overridden",
+  );
+  requireMatch(
+    /^\s*-\s*mpp\.example\.invalid\s*$/m,
+    "validation overlay Ingress TLS host is not overridden",
+  );
 }
 
 function escapeRegExp(value) {

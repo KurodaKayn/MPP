@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { Document } from "@hocuspocus/server";
 import {
@@ -13,6 +14,7 @@ import {
 } from "../collab/project-document.js";
 
 import type { PoolConfig, QueryResult } from "pg";
+import type { ConnectionOptions } from "node:tls";
 import type { CollabConfig } from "../config.js";
 import type { Metrics } from "../metrics.js";
 
@@ -484,6 +486,19 @@ export function createPostgresDocumentPersistence(
   config: CollabConfig,
   metrics?: Pick<Metrics, "recordUpdateFlush">,
 ): DocumentPersistence {
+  return new PostgresDocumentPersistence(
+    new Pool(postgresPoolConfigFromConfig(config)),
+    config.COLLAB_UPDATE_FLUSH_MS,
+    config.COLLAB_UPDATE_FLUSH_MAX_COUNT,
+    config.COLLAB_UPDATE_RETENTION_DAYS,
+    config.COLLAB_UPDATE_FLUSH_RETRY_MAX_ATTEMPTS,
+    config.COLLAB_UPDATE_FLUSH_RETRY_MAX_MS,
+    console,
+    metrics,
+  );
+}
+
+export function postgresPoolConfigFromConfig(config: CollabConfig): PoolConfig {
   const poolConfig: PoolConfig = config.DATABASE_URL
     ? { connectionString: config.DATABASE_URL }
     : {
@@ -493,15 +508,43 @@ export function createPostgresDocumentPersistence(
         password: config.DB_PASSWORD,
         database: config.DB_NAME,
       };
+  const ssl = postgresSSLConfigFromConfig(config);
+  if (ssl !== undefined) {
+    poolConfig.ssl = ssl;
+  }
+  return poolConfig;
+}
 
-  return new PostgresDocumentPersistence(
-    new Pool(poolConfig),
-    config.COLLAB_UPDATE_FLUSH_MS,
-    config.COLLAB_UPDATE_FLUSH_MAX_COUNT,
-    config.COLLAB_UPDATE_RETENTION_DAYS,
-    config.COLLAB_UPDATE_FLUSH_RETRY_MAX_ATTEMPTS,
-    config.COLLAB_UPDATE_FLUSH_RETRY_MAX_MS,
-    console,
-    metrics,
-  );
+function postgresSSLConfigFromConfig(
+  config: CollabConfig,
+): PoolConfig["ssl"] | undefined {
+  switch (config.DB_SSLMODE) {
+    case "disable":
+    case "allow":
+    case "prefer":
+      return undefined;
+    case "require":
+      return { rejectUnauthorized: false };
+    case "verify-ca":
+      return {
+        ...postgresSSLCAConfig(config),
+        rejectUnauthorized: true,
+        checkServerIdentity: () => undefined,
+      } satisfies ConnectionOptions;
+    case "verify-full":
+      return {
+        ...postgresSSLCAConfig(config),
+        rejectUnauthorized: true,
+      } satisfies ConnectionOptions;
+  }
+}
+
+function postgresSSLCAConfig(
+  config: CollabConfig,
+): Pick<ConnectionOptions, "ca"> {
+  const sslRootCert = config.DB_SSLROOTCERT?.trim();
+  if (!sslRootCert) {
+    return {};
+  }
+  return { ca: readFileSync(sslRootCert, "utf8") };
 }
