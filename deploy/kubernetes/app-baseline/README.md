@@ -7,7 +7,9 @@ applying it to a real cluster.
 Required overlay inputs:
 
 - Registry-qualified immutable images for every
-  `registry.example.invalid/...:replace-me` image.
+  `registry.example.invalid/...:replace-me` image. The repository publishes
+  GHCR images with `sha-<full-git-sha>` tags; use those immutable tags in
+  production overlays.
 - A reachable PostgreSQL endpoint through `DB_HOST`/`DB_PORT` or an in-cluster Service.
 - PostgreSQL TLS policy through `DB_SSLMODE`; the baseline defaults to
   `verify-full` for managed production databases. Set `DB_SSLROOTCERT` when a
@@ -32,6 +34,10 @@ Required overlay inputs:
 The CI validation overlay under `deploy/kubernetes/validation/app-baseline`
 uses fake values to verify manifest shape without committing real secrets or
 pretending that production data services and image publishing already exist.
+
+The `mpp-backend` image intentionally serves both the backend API and
+publish-worker Deployments; keep those two image references aligned when
+patching an environment overlay.
 
 The optional data service packages under `deploy/kubernetes/data-services`
 provide either stable DNS aliases for managed PostgreSQL and Redis or minimal

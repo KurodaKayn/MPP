@@ -55,6 +55,34 @@ The overlay must patch:
 - `LOKI_WRITE_URL` in the observability package when Loki is not available at
   the included in-cluster service DNS name.
 
+## Images
+
+The `Container Images` GitHub Actions workflow publishes production images to
+GitHub Container Registry on pushes to `main`, release tags matching `v*`, and
+manual dispatches.
+
+Published images use this naming scheme:
+
+```text
+ghcr.io/kurodakayn/mpp-frontend
+ghcr.io/kurodakayn/mpp-backend
+ghcr.io/kurodakayn/mpp-browser-worker
+ghcr.io/kurodakayn/mpp-browser-runtime
+ghcr.io/kurodakayn/mpp-ai-service
+ghcr.io/kurodakayn/mpp-content-pipeline-service
+ghcr.io/kurodakayn/mpp-collab-service
+```
+
+Every image receives an immutable `sha-<full-git-sha>` tag. Pushes to `main`
+also receive a `main` tag, and release tag pushes receive the matching release
+tag. Production overlays should pin the `sha-*` tags for app images and set
+`BROWSER_RUNTIME_IMAGE` to the matching browser runtime image tag. The
+`mpp-backend` image contains both the backend API and publish-worker binaries;
+the Deployment command selects the runtime role.
+
+Set the repository variable `FRONTEND_BASE_URL` before publishing images when
+the frontend build should use a public origin other than the validation default.
+
 ## Secrets
 
 Create `mpp-app-secrets` in `mpp-system` with at least:
