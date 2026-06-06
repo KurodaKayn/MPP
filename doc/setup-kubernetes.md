@@ -69,10 +69,12 @@ or sealed-secret workflow for production; do not commit real Secret values.
 
 Production deployments should use managed PostgreSQL and Redis.
 
-For managed PostgreSQL, keep `DB_SSLMODE=verify-full`. If the provider requires
-a custom CA bundle, mount it into app Pods and set `DB_SSLROOTCERT` to the
-mounted file path. For self-hosted PostgreSQL, either configure TLS on the
-StatefulSet or patch `DB_SSLMODE=disable`.
+For managed PostgreSQL, keep `DB_SSLMODE=verify-full` and set `DB_HOST` to the
+provider hostname, not the `postgres` in-cluster alias, so certificate hostname
+verification succeeds. If the provider requires a custom CA bundle, mount it
+into app Pods and set `DB_SSLROOTCERT` to the mounted file path. For self-hosted
+PostgreSQL, either configure TLS on the StatefulSet or patch
+`DB_SSLMODE=disable`.
 
 For managed Redis, set `REDIS_TLS=true` when the provider requires TLS.
 
