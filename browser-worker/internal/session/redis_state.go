@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -62,7 +63,7 @@ type redisLiveSession struct {
 func NewRedisStateStoreFromEnv(ctx context.Context) (*RedisStateStore, error) {
 	addr := strings.TrimSpace(os.Getenv(redisAddrEnv))
 	if addr == "" {
-		return nil, nil
+		return &RedisStateStore{}, nil
 	}
 
 	db, err := redisDBFromEnv()
@@ -136,7 +137,7 @@ func (s *RedisStateStore) SaveLiveSession(ctx context.Context, session *WorkerSe
 
 func (s *RedisStateStore) liveSessionTenantID(ctx context.Context, sessionID string) (string, error) {
 	raw, err := s.client.Get(ctx, browserSessionRedisKey(sessionID)).Bytes()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return "", nil
 	}
 	if err != nil {
