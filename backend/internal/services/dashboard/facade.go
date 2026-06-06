@@ -73,16 +73,17 @@ func (s *DashboardService) WithContext(ctx context.Context) *DashboardService {
 	if ctx == nil {
 		return s
 	}
+	draftCompiler := s.ServiceDraftCompiler()
 	scoped := *s
 	scoped.db = s.db.WithContext(ctx)
-	scoped.Project.Service = s.Project.WithContext(ctx)
-	scoped.Workspace.Service = workspacesvc.NewService(scoped.db, scoped.Project.Service)
-	scoped.Prepublish.Service = prepublishsvc.NewService(scoped.db, scoped.Project.Service, s.ServiceDraftCompiler())
-	scoped.Extension.Service = extensionsvc.NewService(scoped.db)
-	scoped.MediaAsset.Service = s.MediaAsset.WithContext(ctx)
-	scoped.Stats.Service = statssvc.NewServiceWithRouter(scoped.db, scoped.Project.Service, scoped.dbRouter)
-	scoped.AccountSettings.Service = s.AccountSettings.WithContext(ctx)
-	scoped.Publisher.Service = s.Publisher.WithContext(ctx)
+	scoped.Project = &Project{Service: s.Project.WithContext(ctx)}
+	scoped.Workspace = &Workspace{Service: workspacesvc.NewService(scoped.db, scoped.Project.Service)}
+	scoped.Prepublish = &Prepublish{Service: prepublishsvc.NewService(scoped.db, scoped.Project.Service, draftCompiler)}
+	scoped.Extension = &Extension{Service: extensionsvc.NewService(scoped.db)}
+	scoped.MediaAsset = &MediaAsset{Service: s.MediaAsset.WithContext(ctx)}
+	scoped.Stats = &Stats{Service: statssvc.NewServiceWithRouter(scoped.db, scoped.Project.Service, scoped.dbRouter)}
+	scoped.AccountSettings = &AccountSettings{Service: s.AccountSettings.WithContext(ctx)}
+	scoped.Publisher = &Publisher{Service: s.Publisher.WithContext(ctx)}
 	return &scoped
 }
 
