@@ -77,8 +77,12 @@ module KubernetesSmoke
       @io.puts "  INFO #{message}" if @verbose
     end
 
-    def command(command)
-      info("$ #{command.join(' ')}")
+    def command(command, dry_run: false)
+      if dry_run
+        @io.puts "  DRY-RUN #{command.join(' ')}"
+      else
+        info("$ #{command.join(' ')}")
+      end
     end
 
     def summary

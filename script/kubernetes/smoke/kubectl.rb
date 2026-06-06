@@ -4,6 +4,8 @@ require "json"
 require "open3"
 require "securerandom"
 
+require_relative "config"
+
 module KubernetesSmoke
   class Kubectl
     class CommandError < StandardError
@@ -25,8 +27,8 @@ module KubernetesSmoke
 
     def run(*args, input: nil, allow_failure: false)
       command = ["kubectl", *args.flatten.compact.map(&:to_s)]
-      @reporter.command(command)
-      return "" if @dry_run
+      @reporter.command(command, dry_run: @dry_run)
+      return dry_run_stdout(command) if @dry_run
 
       stdout, stderr, status = Open3.capture3(*command, stdin_data: input)
       if !status.success? && !allow_failure
@@ -148,6 +150,145 @@ module KubernetesSmoke
         "--wait=false",
         allow_failure: true,
       )
+    end
+
+    private
+
+    def dry_run_stdout(command)
+      args = command.drop(1)
+      case args.first
+      when "config"
+        "dry-run-context\n"
+      when "version"
+        json_response("clientVersion" => { "gitVersion" => "dry-run" })
+      when "get"
+        dry_run_get(args)
+      when "rollout"
+        "dry-run rollout ok\n"
+      when "auth"
+        "yes\n"
+      when "exec", "run"
+        '{"status":"ready"}'
+      else
+        ""
+      end
+    end
+
+    def dry_run_get(args)
+      kind = args[1]
+      name = args[2] unless args[2].to_s.start_with?("-")
+      selector = option_value(args, "-l")
+
+      case kind
+      when "namespace", "namespaces"
+        json_response("metadata" => { "name" => name, "labels" => {} })
+      when "serviceaccount", "serviceaccounts"
+        json_response("metadata" => { "name" => name, "labels" => {} })
+      when "deployments", "deployment"
+        json_response("items" => dry_run_deployments)
+      when "pods", "pod"
+        json_response("items" => dry_run_pods(selector))
+      when "endpoints", "endpoint"
+        json_response(
+          "metadata" => { "name" => name },
+          "subsets" => [{ "addresses" => [{ "ip" => "10.0.0.10" }] }],
+        )
+      when "configmap", "configmaps"
+        json_response("metadata" => { "name" => name }, "data" => dry_run_config_map)
+      when "secret", "secrets"
+        json_response("metadata" => { "name" => name }, "data" => dry_run_secret)
+      when "networkpolicy", "networkpolicies"
+        json_response(
+          "items" => [
+            { "metadata" => { "name" => "browser-runtime-default-deny" } },
+            { "metadata" => { "name" => "browser-runtime-private-access" } },
+          ],
+        )
+      else
+        json_response({})
+      end
+    end
+
+    def dry_run_deployments
+      Config::DEFAULT_DEPLOYMENTS.map do |deployment|
+        {
+          "metadata" => { "name" => deployment },
+          "spec" => {
+            "template" => {
+              "spec" => {
+                "containers" => [
+                  {
+                    "name" => deployment,
+                    "image" => "ghcr.io/kurodakayn/mpp-#{deployment}:sha-dryrun",
+                  },
+                ],
+              },
+            },
+          },
+        }
+      end
+    end
+
+    def dry_run_pods(selector)
+      if selector.to_s.include?("app.kubernetes.io/component=browser-runtime")
+        [
+          {
+            "metadata" => {
+              "name" => "mpp-browser-session-dry-run",
+              "labels" => {
+                "mpp.kurodakayn.dev/runtime-driver" => "kubernetes",
+                "mpp.kurodakayn.dev/session-id" => "dry-run-session",
+                "mpp.kurodakayn.dev/session-owner-hash" => "dry-run-owner",
+              },
+              "annotations" => {
+                "mpp.kurodakayn.dev/expires-at" => "2099-01-01T00:00:00Z",
+              },
+            },
+            "status" => { "phase" => "Running" },
+          },
+        ]
+      else
+        [
+          {
+            "metadata" => { "name" => "mpp-app-dry-run" },
+            "status" => {
+              "phase" => "Running",
+              "conditions" => [{ "type" => "Ready", "status" => "True" }],
+            },
+          },
+        ]
+      end
+    end
+
+    def dry_run_config_map
+      {
+        "BACKEND_API_BASE_URL" => "http://backend:8080",
+        "BROWSER_WORKER_URL" => "http://browser-worker:8081",
+        "AI_SERVICE_URL" => "http://ai-service:8000",
+        "CONTENT_PIPELINE_HOST" => "content-pipeline-service",
+        "CONTENT_PIPELINE_PORT" => "50051",
+        "COLLAB_INTERNAL_URL" => "http://collab-service:8090",
+        "COLLAB_WEBSOCKET_URL_BASE" => "wss://mpp.example.com",
+        "DB_HOST" => "postgres.example.com",
+        "DB_SSLMODE" => "verify-full",
+        "REDIS_ADDR" => "redis.example.com:6379",
+        "REDIS_TLS" => "true",
+      }
+    end
+
+    def dry_run_secret
+      Config::REQUIRED_SECRET_KEYS.to_h { |key| [key, "encoded-value"] }
+    end
+
+    def option_value(args, option)
+      index = args.index(option)
+      return nil unless index
+
+      args[index + 1]
+    end
+
+    def json_response(value)
+      "#{JSON.generate(value)}\n"
     end
   end
 end

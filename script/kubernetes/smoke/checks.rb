@@ -126,7 +126,7 @@ module KubernetesSmoke
         check("mpp-app-secrets keys") do
           secret = @kubectl.resource("secret", "mpp-app-secrets", namespace: @config.app_namespace)
           data = dig(secret, "data") || {}
-          missing = Config::REQUIRED_SECRET_KEYS.reject { |key| data[key].to_s.empty? }
+          missing = Config::REQUIRED_SECRET_KEYS.select { |key| data[key].to_s.empty? }
           assert(missing.empty?, "missing or empty keys: #{missing.join(', ')}")
           "#{Config::REQUIRED_SECRET_KEYS.length} required keys present"
         end
@@ -302,7 +302,7 @@ module KubernetesSmoke
       end
 
       def browser_session_probe
-        check("remote browser session lifecycle", required: false) do
+        check("remote browser session lifecycle") do
           session_id = nil
           start = api_post("/api/user/dashboard/settings/platforms/#{@config.browser_platform}/browser-session")
           assert_status(start, [200, 201], "browser session start")
