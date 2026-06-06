@@ -23,6 +23,7 @@ import {
 } from "@/components/dashboard/content/editor/content-editor-utils";
 import {
   collectMediaAssetIds,
+  createLocalMediaId,
   hydrateMediaAssetRefs,
   serializeMediaAssetRefs,
 } from "@/components/dashboard/content/editor/content-editor-media";
@@ -32,11 +33,7 @@ import {
   type CollabUserProfile,
 } from "@/features/collab-editor/collab-provider";
 import type { ContentValue } from "@/lib/content/types";
-import {
-  completeMediaUpload,
-  createProjectMediaUpload,
-  resolveMediaAssets,
-} from "@/lib/dashboard/api";
+import { resolveMediaAssets } from "@/lib/dashboard/api";
 import styles from "./content-editor.module.css";
 
 const COLLAB_CONTENT_SYNC_DEBOUNCE_MS = 250;
@@ -61,7 +58,6 @@ export function useContentTipTapEditor({
   content,
   editable = true,
   onContentChange,
-  projectId,
 }: UseContentTipTapEditorOptions) {
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
@@ -74,6 +70,9 @@ export function useContentTipTapEditor({
   const canEdit = editable && (!collaboration || collaboration.canEdit);
   const lastEmittedHtmlRef = useRef("");
   const onContentChangeRef = useRef(onContentChange);
+  const pendingLocalMediaRef = useRef<
+    Map<string, { file: File; previewURL: string }>
+  >(new Map());
   const pendingContentUpdateRef = useRef<ReturnType<
     typeof globalThis.setTimeout
   > | null>(null);
@@ -232,6 +231,10 @@ export function useContentTipTapEditor({
         globalThis.clearTimeout(pendingContentUpdateRef.current);
         pendingContentUpdateRef.current = null;
       }
+      pendingLocalMediaRef.current.forEach((media) => {
+        URL.revokeObjectURL(media.previewURL);
+      });
+      pendingLocalMediaRef.current.clear();
     };
   }, []);
 
@@ -323,91 +326,34 @@ export function useContentTipTapEditor({
     }
 
     imageFiles.forEach((file) => {
-      if (projectId) {
-        void uploadAndInsertImage(file, projectId, activeEditor);
-        return;
-      }
-
-      const reader = new FileReader();
-
-      reader.onload = () => {
-        if (typeof reader.result !== "string") {
-          return;
-        }
-
-        activeEditor
-          .chain()
-          .focus()
-          .setImage({
-            alt: file.name || t("toolbar.insertImage"),
-            src: reader.result,
-          })
-          .run();
-      };
-
-      reader.readAsDataURL(file);
+      insertLocalImageFile(file, activeEditor);
     });
 
     return true;
   }
 
-  async function uploadAndInsertImage(
-    file: File,
-    activeProjectId: string,
-    activeEditor: Editor,
-  ) {
+  function insertLocalImageFile(file: File, activeEditor: Editor) {
     if (activeEditor.isDestroyed) {
       return;
     }
 
-    try {
-      const upload = await createProjectMediaUpload(activeProjectId, {
-        filename: file.name || "image",
-        mime_type: file.type,
-        size_bytes: file.size,
-        usage: "editor_image",
-      });
+    const localMediaId = createLocalMediaId();
+    const previewURL = URL.createObjectURL(file);
+    pendingLocalMediaRef.current.set(localMediaId, { file, previewURL });
 
-      const uploadResponse = await fetch(upload.upload_url, {
-        body: file,
-        headers: upload.headers,
-        method: "PUT",
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed (${uploadResponse.status})`);
-      }
-
-      const completed = await completeMediaUpload(upload.asset_id);
-      const resolved = await resolveMediaAssets([completed.asset_id]);
-      const previewUrl =
-        resolved.items.find((asset) => asset.asset_id === completed.asset_id)
-          ?.url ?? completed.object_ref;
-
-      if (activeEditor.isDestroyed) {
-        return;
-      }
-
-      activeEditor
-        .chain()
-        .focus()
-        .insertContent({
-          attrs: {
-            alt: file.name || t("toolbar.insertImage"),
-            mppMediaId: completed.asset_id,
-            src: previewUrl,
-          },
-          type: "image",
-        })
-        .run();
-    } catch (requestError) {
-      toast.error(t("editor.imageUploadError"), {
-        description:
-          requestError instanceof Error
-            ? requestError.message
-            : t("common.retryLater"),
-      });
-    }
+    activeEditor
+      .chain()
+      .focus()
+      .insertContent({
+        attrs: {
+          alt: file.name || t("toolbar.insertImage"),
+          mppLocalMediaId: localMediaId,
+          mppUploadStatus: "pending",
+          src: previewURL,
+        },
+        type: "image",
+      })
+      .run();
   }
 
   function handleImageSelect(event: ChangeEvent<HTMLInputElement>) {
