@@ -73,6 +73,9 @@ func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, r
 	if err := s.applyCompiledPrepublishDrafts(project.ID, platforms, compiledDrafts); err != nil {
 		return nil, err
 	}
+	if err := s.projects.RefreshProjectMediaUsages(projectID); err != nil {
+		return nil, err
+	}
 
 	return s.projects.GetProjectPublications(projectID, &userID, true)
 }
@@ -114,6 +117,7 @@ func (s *Service) markPrepublishSyncing(projectID uuid.UUID, platforms []string)
 				models.PublicationStatusPublishing,
 			}).
 			Updates(map[string]any{
+				"draft_status":  models.PublicationDraftStatusSyncing,
 				"error_message": "",
 				"status":        models.PublicationStatusSyncing,
 			}).Error; err != nil {
@@ -152,6 +156,7 @@ func (s *Service) ensurePrepublishPublications(project *models.Project, platform
 					Platform:       platform,
 					Enabled:        true,
 					Status:         status,
+					SyncRequired:   true,
 					Config:         config,
 					AdaptedContent: adaptedContent,
 				}
@@ -164,8 +169,11 @@ func (s *Service) ensurePrepublishPublications(project *models.Project, platform
 
 			if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
 				if err := tx.Model(&publication).Updates(map[string]any{
-					"enabled": true,
-					"status":  models.PublicationStatusDraft,
+					"draft_status":  models.PublicationDraftStatusUnsynced,
+					"enabled":       true,
+					"review_status": models.PublicationReviewStatusDraft,
+					"status":        models.PublicationStatusDraft,
+					"sync_required": true,
 				}).Error; err != nil {
 					return err
 				}
@@ -204,14 +212,17 @@ func (s *Service) applyCompiledPrepublishDrafts(projectID uuid.UUID, platforms [
 
 			if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]any{
 				"adapted_content": sanitizedContent,
+				"draft_status":    models.PublicationDraftStatusReady,
 				"enabled":         true,
 				"error_message":   "",
 				"last_attempt_at": nil,
 				"published_at":    nil,
 				"publish_url":     "",
 				"remote_id":       "",
+				"review_status":   models.PublicationReviewStatusDraft,
 				"retry_count":     0,
 				"status":          models.PublicationStatusDraft,
+				"sync_required":   false,
 			}); err != nil {
 				return err
 			}
@@ -227,8 +238,10 @@ func (s *Service) markPrepublishCompileFailure(projectID uuid.UUID, platforms []
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		for _, platform := range platforms {
 			if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]any{
+				"draft_status":  models.PublicationDraftStatusStale,
 				"error_message": publishsvc.SanitizeUserFacingErrorMessage(err.Error()),
 				"status":        models.PublicationStatusFailed,
+				"sync_required": true,
 			}); err != nil {
 				return err
 			}
@@ -283,15 +296,21 @@ func (s *Service) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.
 
 	if err := s.db.Model(&publication).Updates(map[string]any{
 		"adapted_content": datatypes.JSON(adaptedContent),
+		"draft_status":    models.PublicationDraftStatusReady,
 		"enabled":         true,
 		"error_message":   "",
 		"last_attempt_at": nil,
 		"published_at":    nil,
 		"publish_url":     "",
 		"remote_id":       "",
+		"review_status":   models.PublicationReviewStatusDraft,
 		"retry_count":     0,
 		"status":          models.PublicationStatusAdapted,
+		"sync_required":   false,
 	}).Error; err != nil {
+		return nil, err
+	}
+	if err := s.projects.RefreshProjectMediaUsages(projectID); err != nil {
 		return nil, err
 	}
 

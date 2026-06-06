@@ -239,6 +239,150 @@ func (h *UserDashboardHandler) CreateProject(c echo.Context) error {
 	return c.JSON(http.StatusCreated, resp)
 }
 
+func (h *UserDashboardHandler) ListContentTemplates(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	workspaceID, err := workspaceIDFromQuery(c)
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	resp, err := h.serviceFor(c).ListContentTemplates(userID, workspaceID)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) CreateContentTemplate(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	workspaceID, err := workspaceIDFromQuery(c)
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	req := new(dto.CreateContentTemplateRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+	template, err := h.serviceFor(c).CreateContentTemplate(userID, workspaceID, *req)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, template)
+}
+
+func (h *UserDashboardHandler) ListBrandProfiles(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	workspaceID, err := workspaceIDFromQuery(c)
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	resp, err := h.serviceFor(c).ListBrandProfiles(userID, workspaceID)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) CreateBrandProfile(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	workspaceID, err := workspaceIDFromQuery(c)
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	req := new(dto.CreateBrandProfileRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+	profile, err := h.serviceFor(c).CreateBrandProfile(userID, workspaceID, *req)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, profile)
+}
+
+func (h *UserDashboardHandler) ListWorkspaceContentTemplates(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	resp, err := h.serviceFor(c).ListContentTemplates(userID, workspaceID)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) CreateWorkspaceContentTemplate(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	req := new(dto.CreateContentTemplateRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+	template, err := h.serviceFor(c).CreateContentTemplate(userID, workspaceID, *req)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, template)
+}
+
+func (h *UserDashboardHandler) ListWorkspaceBrandProfiles(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	resp, err := h.serviceFor(c).ListBrandProfiles(userID, workspaceID)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func (h *UserDashboardHandler) CreateWorkspaceBrandProfile(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	req := new(dto.CreateBrandProfileRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+	profile, err := h.serviceFor(c).CreateBrandProfile(userID, workspaceID, *req)
+	if err != nil {
+		return sendProjectExperienceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, profile)
+}
+
 func workspaceIDFromQuery(c echo.Context) (uuid.UUID, error) {
 	raw := strings.TrimSpace(c.QueryParam("workspace_id"))
 	if raw == "" {
