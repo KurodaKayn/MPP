@@ -8,7 +8,10 @@ import {
 } from "../../src/backend/client";
 import { backendConfig } from "../../src/backend/config";
 import type { ExtensionExecutionEvent } from "../../src/types/events";
-import type { StoredHandoff } from "../../src/types/handoff";
+import type {
+  ExtensionPublishPlatformHandoff,
+  StoredHandoff,
+} from "../../src/types/handoff";
 import type {
   BackgroundMessage,
   HandoffResponse,
@@ -66,7 +69,7 @@ function useMonitorState() {
 }
 
 function PublishMonitor() {
-  const { state, error, setError, load } = useMonitorState();
+  const { state, loading, error, setError, load } = useMonitorState();
   const { state: sessionState, refresh: refreshSession } = useExtensionSession(
     backendClient.getSession,
   );
@@ -84,6 +87,30 @@ function PublishMonitor() {
       refreshSession(),
       prepublishWorkbench.onRetry(),
     ]);
+  };
+
+  const clear = async () => {
+    await sendBackgroundMessage({ type: "monitor.clear" });
+    await load();
+  };
+
+  const removeOrigin = async (origin: string) => {
+    await sendBackgroundMessage({ type: "origin.remove", origin });
+    await load();
+  };
+
+  const reopenPlatform = async (platform: ExtensionPublishPlatformHandoff) => {
+    try {
+      await browser.tabs.create({
+        active: true,
+        url: platform.inject_url,
+      });
+      setError("");
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error ? nextError.message : String(nextError),
+      );
+    }
   };
 
   const openLogin = async () => {
@@ -138,9 +165,16 @@ function PublishMonitor() {
       prepublishWorkbench={prepublishWorkbench}
       startingHandoff={startingHandoff}
       handoffStartError={handoffStartError}
+      sessionState={sessionState}
+      trustedOrigins={state?.trusted_origins ?? []}
+      settingsLoading={loading}
       onRefresh={refreshAll}
       onOpenLogin={openLogin}
+      onRefreshSession={refreshSession}
       onStartHandoff={startSelectedHandoff}
+      onReopenPlatform={reopenPlatform}
+      onRemoveOrigin={removeOrigin}
+      onClearExecutionState={clear}
     />
   );
 }
