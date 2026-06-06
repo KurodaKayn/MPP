@@ -22,9 +22,11 @@ import {
   sanitizeClipboardHtml,
 } from "@/components/dashboard/content/editor/content-editor-utils";
 import {
+  collectLocalMediaIds,
   collectMediaAssetIds,
   createLocalMediaId,
   hydrateMediaAssetRefs,
+  replaceLocalMediaRefs,
   serializeMediaAssetRefs,
 } from "@/components/dashboard/content/editor/content-editor-media";
 import {
@@ -33,7 +35,11 @@ import {
   type CollabUserProfile,
 } from "@/features/collab-editor/collab-provider";
 import type { ContentValue } from "@/lib/content/types";
-import { resolveMediaAssets } from "@/lib/dashboard/api";
+import {
+  completeMediaUpload,
+  createProjectMediaUpload,
+  resolveMediaAssets,
+} from "@/lib/dashboard/api";
 import styles from "./content-editor.module.css";
 
 const COLLAB_CONTENT_SYNC_DEBOUNCE_MS = 250;
@@ -58,6 +64,7 @@ export function useContentTipTapEditor({
   content,
   editable = true,
   onContentChange,
+  projectId,
 }: UseContentTipTapEditorOptions) {
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
@@ -356,6 +363,71 @@ export function useContentTipTapEditor({
       .run();
   }
 
+  async function prepareContentForSave() {
+    if (!editor || editor.isDestroyed) {
+      return content;
+    }
+
+    const localMediaIds = collectLocalMediaIds(editor.getHTML());
+
+    if (localMediaIds.length === 0) {
+      return contentValueFromHtml(editor.getHTML());
+    }
+
+    if (!projectId) {
+      throw new Error(t("editor.imageUploadError"));
+    }
+
+    const completedRefs = [];
+
+    for (const localMediaId of localMediaIds) {
+      const pendingMedia = pendingLocalMediaRef.current.get(localMediaId);
+
+      if (!pendingMedia) {
+        throw new Error(t("editor.imageUploadError"));
+      }
+
+      const upload = await createProjectMediaUpload(projectId, {
+        filename: pendingMedia.file.name || "image",
+        mime_type: pendingMedia.file.type,
+        size_bytes: pendingMedia.file.size,
+        usage: "editor_image",
+      });
+      const uploadResponse = await fetch(upload.upload_url, {
+        body: pendingMedia.file,
+        headers: upload.headers,
+        method: "PUT",
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed (${uploadResponse.status})`);
+      }
+
+      const completed = await completeMediaUpload(upload.asset_id);
+      completedRefs.push({
+        assetId: completed.asset_id,
+        localMediaId,
+      });
+      URL.revokeObjectURL(pendingMedia.previewURL);
+      pendingLocalMediaRef.current.delete(localMediaId);
+    }
+
+    const savedHtml = replaceLocalMediaRefs(editor.getHTML(), completedRefs);
+    const preparedContent = contentValueFromHtml(savedHtml);
+    const resolved = await resolveMediaAssets(
+      completedRefs.map((ref) => ref.assetId),
+    );
+    const previewHtml = normalizeStoredHtml(
+      hydrateMediaAssetRefs(savedHtml, resolved.items),
+    );
+
+    lastEmittedHtmlRef.current = serializeMediaAssetRefs(previewHtml);
+    editor.commands.setContent(previewHtml, { emitUpdate: false });
+    onContentChangeRef.current(preparedContent);
+
+    return preparedContent;
+  }
+
   function handleImageSelect(event: ChangeEvent<HTMLInputElement>) {
     const files = getImageFiles(event.target.files);
     event.target.value = "";
@@ -406,6 +478,7 @@ export function useContentTipTapEditor({
     editor,
     handleImageSelect,
     imageCount: countImages(editor),
+    prepareContentForSave,
     setLink,
   };
 }
