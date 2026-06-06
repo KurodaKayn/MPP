@@ -340,10 +340,10 @@ jobs:
         with:
           version: v1.33.9
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
         with:
-          node-version: 24
+          ruby-version: "3.3"
 
       - name: Build Kubernetes manifest packages
         shell: bash
@@ -355,7 +355,7 @@ jobs:
             rendered="$(mktemp)"
             echo "::group::kubectl kustomize $dir"
             kubectl kustomize "$dir" > "$rendered"
-            node script/kubernetes/validate-rendered-manifests.mjs "$dir" "$rendered"
+            ruby script/kubernetes/validate-rendered-manifests.rb "$dir" "$rendered"
             echo "::endgroup::"
           done
 

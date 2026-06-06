@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -53,7 +54,7 @@ func (r *Router) Reader(ctx context.Context, consistency ReadConsistency) *gorm.
 	}
 	switch consistency {
 	case EventualRead, AnalyticsRead:
-		if r.reader != nil {
+		if r.reader != nil && !stickyWriterActive(ctx, time.Now()) {
 			return dbWithContext(r.reader, ctx)
 		}
 	}
