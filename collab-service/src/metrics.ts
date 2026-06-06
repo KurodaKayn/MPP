@@ -1,4 +1,10 @@
-import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from "prom-client";
+import {
+  collectDefaultMetrics,
+  Counter,
+  Gauge,
+  Histogram,
+  Registry,
+} from "prom-client";
 
 export interface Metrics {
   activeConnections: Gauge<string>;

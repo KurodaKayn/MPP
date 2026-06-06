@@ -138,8 +138,18 @@ export function createRedisCollabPubSub(
     },
   };
   return new RedisCollabPubSub(
-    createClient({ database: config.REDIS_DB, password: config.REDIS_PASSWORD || undefined, socket: socketOptions, url }),
-    createClient({ database: config.REDIS_DB, password: config.REDIS_PASSWORD || undefined, socket: socketOptions, url }),
+    createClient({
+      database: config.REDIS_DB,
+      password: config.REDIS_PASSWORD || undefined,
+      socket: socketOptions,
+      url,
+    }),
+    createClient({
+      database: config.REDIS_DB,
+      password: config.REDIS_PASSWORD || undefined,
+      socket: socketOptions,
+      url,
+    }),
     config.COLLAB_REDIS_CHANNEL_PREFIX,
     logger,
   );
