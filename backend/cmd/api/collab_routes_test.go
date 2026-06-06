@@ -23,12 +23,13 @@ func TestCollabRoutesIncludeDocumentRoutes(t *testing.T) {
 	}
 
 	expectedRoutes := map[string]bool{
-		http.MethodGet + " /api/collab/documents":                            false,
-		http.MethodGet + " /api/collab/documents/:id":                        false,
-		http.MethodPatch + " /api/collab/documents/:id":                      false,
-		http.MethodPost + " /api/collab/documents":                           false,
-		http.MethodPost + " /api/collab/documents/:id/session":               false,
-		http.MethodPost + " /api/user/dashboard/projects/:id/collab/session": false,
+		http.MethodGet + " /api/collab/documents":                                  false,
+		http.MethodGet + " /api/collab/documents/:id":                              false,
+		http.MethodPatch + " /api/collab/documents/:id":                            false,
+		http.MethodPost + " /api/collab/documents":                                 false,
+		http.MethodPost + " /api/collab/documents/:id/session":                     false,
+		http.MethodPost + " /api/user/dashboard/projects/:id/collab/session":       false,
+		http.MethodPost + " /api/user/dashboard/project-share-links/:token/accept": false,
 	}
 	for _, route := range server.Routes() {
 		key := route.Method + " " + route.Path
