@@ -472,7 +472,7 @@
     },
     "collaboration": {
       "title": "协作体验",
-      "description": "查看评论、项目活动、保存版本和可选查看链接。",
+      "description": "查看评论、项目活动、保存版本和可选分享链接。",
       "refresh": "刷新",
       "comments": "评论",
       "activity": "活动",
@@ -493,13 +493,30 @@
       "versionRestored": "版本已恢复",
       "versionTitle": "版本 {{number}}",
       "createViewerLink": "创建查看链接",
-      "shareLinkCreated": "查看链接已创建并复制",
-      "shareLinkCopyFailed": "查看链接已创建，但无法复制",
+      "createShareLink": "创建分享链接",
+      "shareLinkCreated": "分享链接已创建并复制",
+      "shareLinkCopyFailed": "分享链接已创建，但无法复制",
       "shareLinkCopyUnavailable": "当前浏览器无法访问剪贴板。",
       "shareLinkFailed": "无法创建分享链接",
-      "shareLinkTitle": "查看分享链接",
+      "shareLinkTitle": "分享链接",
+      "shareLinkSubtitle": "{{role}} · {{status}}",
+      "shareLinkRole": {
+        "viewer": "查看访客",
+        "editor": "编辑访客"
+      },
+      "shareLinkRoleHelp": {
+        "viewer": "只能只读打开这个项目。",
+        "editor": "可以打开并编辑这个项目。"
+      },
+      "shareLinkModalRole": "链接角色：",
       "revokeShareLink": "撤销",
       "revokeShareLinkFailed": "无法撤销分享链接",
+      "shareLinkModalDesc": "你可以复制并分享此链接给需要访问该项目的访客。",
+      "copy": "复制",
+      "copied": "已复制",
+      "close": "关闭",
+      "shareLinkCopied": "分享链接已复制到剪贴板",
+      "historyLinkNoUrlDesc": "因安全策略，历史分享链接不直接保存。如果需要，请重新创建一个新的分享链接。",
       "unknownActor": "未知用户",
       "unknownTarget": "未知成员",
       "commentStatus": {

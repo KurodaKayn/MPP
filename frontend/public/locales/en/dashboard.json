@@ -472,7 +472,7 @@
     },
     "collaboration": {
       "title": "Collaboration Experience",
-      "description": "Review comments, project activity, saved versions, and optional viewer links.",
+      "description": "Review comments, project activity, saved versions, and optional share links.",
       "refresh": "Refresh",
       "comments": "Comments",
       "activity": "Activity",
@@ -493,13 +493,30 @@
       "versionRestored": "Version restored",
       "versionTitle": "Version {{number}}",
       "createViewerLink": "Create viewer link",
-      "shareLinkCreated": "Viewer link created and copied",
-      "shareLinkCopyFailed": "Viewer link created, but could not be copied",
+      "createShareLink": "Create share link",
+      "shareLinkCreated": "Share link created and copied",
+      "shareLinkCopyFailed": "Share link created, but could not be copied",
       "shareLinkCopyUnavailable": "Clipboard access is unavailable in this browser.",
       "shareLinkFailed": "Unable to create share link",
-      "shareLinkTitle": "Viewer share link",
+      "shareLinkTitle": "Share link",
+      "shareLinkSubtitle": "{{role}} · {{status}}",
+      "shareLinkRole": {
+        "viewer": "Viewer guest",
+        "editor": "Editor guest"
+      },
+      "shareLinkRoleHelp": {
+        "viewer": "Can open this project read-only.",
+        "editor": "Can open and edit this project."
+      },
+      "shareLinkModalRole": "Link role:",
       "revokeShareLink": "Revoke",
       "revokeShareLinkFailed": "Unable to revoke share link",
+      "shareLinkModalDesc": "You can copy and share this link with guests who should access this project.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "close": "Close",
+      "shareLinkCopied": "Share link copied to clipboard",
+      "historyLinkNoUrlDesc": "For security reasons, historical share links are not saved. If needed, please create a new share link.",
       "unknownActor": "Unknown user",
       "unknownTarget": "Unknown member",
       "commentStatus": {
