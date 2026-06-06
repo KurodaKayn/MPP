@@ -35,3 +35,31 @@ spec:
           annotations:
             summary: Browser runtime cleanup lag is high
             description: The oldest runtime cleaned in recent TTL cleanup was more than five minutes past its expiration time.
+    - name: mpp.service-readiness
+      rules:
+        - alert: MPPServiceReadinessFailures
+          expr: sum by (service) (rate(mpp_http_requests_total{route=~"/ready|/api/ready",status=~"5.."}[5m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: MPP service readiness checks are failing
+            description: A Kubernetes readiness endpoint has returned 5xx responses for at least 10 minutes.
+        - alert: MPPRedisDependentServiceReadinessFailures
+          expr: sum by (service) (rate(mpp_http_requests_total{service=~"backend|publish-worker|browser-worker",route="/ready",status="503"}[5m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Redis-dependent service readiness checks are failing
+            description: A service that requires Redis for production operation is returning readiness failures.
+    - name: mpp.publish-worker
+      rules:
+        - alert: MPPPublishWorkerJobFailures
+          expr: sum by (platform) (rate(mpp_publish_jobs_total{service="publish-worker",result="error"}[15m])) > 0.05
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Publish worker job failure rate is high
+            description: publish-worker is returning failed publish job attempts at a sustained rate.

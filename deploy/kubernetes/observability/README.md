@@ -10,7 +10,8 @@ It provides:
 - PodMonitor resources for HTTP service metrics, content-pipeline metrics, and
   Alloy self metrics.
 - PrometheusRule alerts for browser runtime startup failures, cleanup failures,
-  and cleanup lag.
+  cleanup lag, service readiness failures, Redis-dependent readiness failures,
+  and publish-worker job failures.
 
 Required overlay inputs:
 
