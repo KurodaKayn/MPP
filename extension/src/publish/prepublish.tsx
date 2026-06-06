@@ -2,6 +2,7 @@ import * as React from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  ExternalLink,
   FileText,
   Play,
   RefreshCw,
@@ -52,6 +53,7 @@ export interface PrepublishWorkbenchProps {
   onProjectSelect: (projectId: string) => void;
   onPlatformToggle: (platform: PlatformKey) => void;
   onRetry: () => void;
+  onOpenLogin?: () => void;
   onStartHandoff?: (projectId: string, platforms: PlatformKey[]) => void;
   startingHandoff?: boolean;
   startError?: string;
@@ -266,9 +268,6 @@ function PlatformSelection({
                 {platform.enabled ? platform.status : "disabled"}
               </Badge>
             </span>
-            <span className="mt-1 block truncate text-xs text-muted-foreground">
-              {platform.adapter_key}
-            </span>
             {platform.preview ? (
               <span className="mt-2 block text-sm text-muted-foreground">
                 {platform.preview}
@@ -347,7 +346,7 @@ function LoadedWorkbench({
             }
           >
             <Play data-icon="inline-start" />
-            {startingHandoff ? "Starting Handoff" : "Start Handoff"}
+            {startingHandoff ? "Starting Publishing" : "Start Publishing"}
           </Button>
         </div>
       </div>
@@ -356,7 +355,7 @@ function LoadedWorkbench({
 }
 
 export function PrepublishWorkbenchCard(props: PrepublishWorkbenchProps) {
-  const { state, onRetry } = props;
+  const { state, onRetry, onOpenLogin } = props;
 
   return (
     <Card>
@@ -375,9 +374,23 @@ export function PrepublishWorkbenchCard(props: PrepublishWorkbenchProps) {
       </CardHeader>
       <CardContent>
         {state.status === "idle" ? (
-          <p className="text-sm text-muted-foreground">
-            Sign in to load drafts.
-          </p>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              Sign in to MPP to load pre-publish drafts.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {onOpenLogin ? (
+                <Button onClick={onOpenLogin}>
+                  <ExternalLink data-icon="inline-start" />
+                  Open MPP
+                </Button>
+              ) : null}
+              <Button variant="outline" onClick={onRetry}>
+                <RefreshCw data-icon="inline-start" />
+                Retry
+              </Button>
+            </div>
+          </div>
         ) : null}
         {state.status === "loading" ? (
           <p className="text-sm text-muted-foreground">Loading drafts.</p>
