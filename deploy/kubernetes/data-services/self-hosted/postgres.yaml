@@ -1,4 +1,17 @@
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: postgres
+    app.kubernetes.io/part-of: mpp
+data:
+  001_enable_pg_stat_statements.sql: |
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: postgres
@@ -52,6 +65,11 @@ spec:
         - name: postgres
           image: docker.io/library/postgres:17
           imagePullPolicy: IfNotPresent
+          args:
+            - -c
+            - shared_preload_libraries=pg_stat_statements
+            - -c
+            - pg_stat_statements.track=all
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -102,6 +120,13 @@ spec:
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
+            - name: postgres-initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: postgres-initdb
+          configMap:
+            name: postgres-initdb
   volumeClaimTemplates:
     - metadata:
         name: postgres-data
