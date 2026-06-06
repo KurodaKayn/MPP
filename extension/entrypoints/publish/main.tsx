@@ -1,7 +1,10 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "../../src/styles.css";
-import { getStoredExtensionAuthToken } from "../../src/backend/auth";
+import {
+  clearStoredExtensionAuthTokens,
+  getStoredExtensionAuthToken,
+} from "../../src/backend/auth";
 import {
   createBackendClient,
   normalizeBackendError,
@@ -94,6 +97,19 @@ function PublishMonitor() {
     await load();
   };
 
+  const signOut = async () => {
+    try {
+      await clearStoredExtensionAuthTokens();
+      setHandoffStartError("");
+      await Promise.all([refreshSession(), load()]);
+      setError("");
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error ? nextError.message : String(nextError),
+      );
+    }
+  };
+
   const removeOrigin = async (origin: string) => {
     await sendBackgroundMessage({ type: "origin.remove", origin });
     await load();
@@ -175,6 +191,7 @@ function PublishMonitor() {
       onReopenPlatform={reopenPlatform}
       onRemoveOrigin={removeOrigin}
       onClearExecutionState={clear}
+      onSignOut={signOut}
     />
   );
 }

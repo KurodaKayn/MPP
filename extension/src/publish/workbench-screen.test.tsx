@@ -120,6 +120,7 @@ describe("PublishWorkbenchScreen", () => {
         onReopenPlatform={vi.fn()}
         onRemoveOrigin={vi.fn()}
         onClearExecutionState={vi.fn()}
+        onSignOut={vi.fn()}
       />,
     );
 
@@ -145,6 +146,7 @@ describe("PublishWorkbenchScreen", () => {
     const reopenPlatform = vi.fn();
     const removeOrigin = vi.fn();
     const clearExecutionState = vi.fn();
+    const signOut = vi.fn();
 
     render(
       <PublishWorkbenchScreen
@@ -170,6 +172,7 @@ describe("PublishWorkbenchScreen", () => {
         onReopenPlatform={reopenPlatform}
         onRemoveOrigin={removeOrigin}
         onClearExecutionState={clearExecutionState}
+        onSignOut={signOut}
       />,
     );
 
@@ -207,5 +210,39 @@ describe("PublishWorkbenchScreen", () => {
     expect(reopenPlatform).toHaveBeenCalledWith(
       expect.objectContaining({ platform: "douyin" }),
     );
+  });
+
+  it("signs out from settings without clearing execution state", () => {
+    const signOut = vi.fn();
+    const clearExecutionState = vi.fn();
+
+    render(
+      <PublishWorkbenchScreen
+        error=""
+        version="0.0.1"
+        handoff={createHandoff()}
+        events={[createEvent()]}
+        prepublishWorkbench={createWorkbenchProps()}
+        startingHandoff={false}
+        handoffStartError=""
+        sessionState={createSessionState()}
+        trustedOrigins={[]}
+        settingsLoading={false}
+        onRefresh={vi.fn()}
+        onOpenLogin={vi.fn()}
+        onRefreshSession={vi.fn()}
+        onStartHandoff={vi.fn()}
+        onReopenPlatform={vi.fn()}
+        onRemoveOrigin={vi.fn()}
+        onClearExecutionState={clearExecutionState}
+        onSignOut={signOut}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /open settings/i }));
+    fireEvent.click(screen.getByRole("button", { name: /sign out/i }));
+
+    expect(signOut).toHaveBeenCalledOnce();
+    expect(clearExecutionState).not.toHaveBeenCalled();
   });
 });
