@@ -159,23 +159,46 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(`CREATE TABLE platform_accounts (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
+		workspace_id TEXT,
+		owner_user_id TEXT,
+		connected_by_user_id TEXT,
 		platform TEXT NOT NULL,
 		username TEXT NOT NULL,
+		display_name TEXT NOT NULL DEFAULT '',
+		platform_user_id TEXT NOT NULL DEFAULT '',
+		share_scope TEXT NOT NULL DEFAULT 'private',
 		status TEXT NOT NULL DEFAULT 'untested',
+		health_status TEXT NOT NULL DEFAULT 'unknown',
+		credential_secret_ref TEXT NOT NULL DEFAULT '',
 		credentials TEXT NOT NULL DEFAULT '{}',
 		metadata TEXT NOT NULL DEFAULT '{}',
 		cookies TEXT NOT NULL DEFAULT '[]',
 		config TEXT NOT NULL DEFAULT '{}',
 		avatar_url TEXT,
+		last_connected_at DATETIME,
+		last_verified_at DATETIME,
 		last_tested_at DATETIME,
 		last_test_error TEXT,
+		expires_at DATETIME,
 		created_at DATETIME,
 		updated_at DATETIME
+	)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE platform_account_grants (
+		id TEXT PRIMARY KEY,
+		platform_account_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
+		grantee_user_id TEXT,
+		project_id TEXT,
+		role TEXT NOT NULL,
+		created_by TEXT NOT NULL,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL
 	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE project_platform_publications (
 		id TEXT PRIMARY KEY,
 		project_id TEXT NOT NULL,
 		platform TEXT NOT NULL,
+		platform_account_id TEXT,
 		enabled BOOLEAN NOT NULL DEFAULT 1,
 		status TEXT NOT NULL,
 		config TEXT NOT NULL DEFAULT '{}',
@@ -214,6 +237,31 @@ func newPublishTestService(db *gorm.DB) *Service {
 	return NewService(db, platformaccount.NewService(db))
 }
 
+func createConnectedQueueAccount(t *testing.T, db *gorm.DB, userID uuid.UUID, platform string) models.PlatformAccount {
+	t.Helper()
+
+	workspaceID := models.PersonalWorkspaceID(userID)
+	account := models.PlatformAccount{
+		UserID:       userID,
+		WorkspaceID:  &workspaceID,
+		Platform:     platform,
+		Username:     platform,
+		DisplayName:  platform,
+		ShareScope:   models.PlatformAccountSharePrivate,
+		Status:       models.PlatformAccountStatusConnected,
+		HealthStatus: models.PlatformAccountHealthHealthy,
+		Credentials:  datatypes.JSON(`{"app_id":"wx","app_secret":"secret"}`),
+		Metadata:     datatypes.JSON(`{}`),
+		Cookies:      datatypes.JSON(`[]`),
+		Config:       datatypes.JSON(`{}`),
+	}
+	ownerID := userID
+	account.OwnerUserID = &ownerID
+	account.ConnectedByUserID = &ownerID
+	require.NoError(t, db.Create(&account).Error)
+	return account
+}
+
 func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
 	service := newPublishTestService(db)
@@ -232,6 +280,7 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
 	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "wechat",
@@ -280,6 +329,14 @@ func TestEnqueuePublishProjectAllowsProjectEditor(t *testing.T) {
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	account := createConnectedQueueAccount(t, db, owner.ID, "wechat")
+	require.NoError(t, db.Create(&models.PlatformAccountGrant{
+		PlatformAccountID: account.ID,
+		WorkspaceID:       *account.WorkspaceID,
+		GranteeUserID:     &editor.ID,
+		Role:              models.PlatformAccountGrantRolePublisher,
+		CreatedBy:         owner.ID,
+	}).Error)
 	require.NoError(t, db.Create(&models.ProjectCollaborator{
 		ProjectID: project.ID,
 		UserID:    editor.ID,
@@ -319,6 +376,7 @@ func TestEnqueuePublishProjectRejectsProjectViewer(t *testing.T) {
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, owner.ID, "wechat")
 	require.NoError(t, db.Create(&models.ProjectCollaborator{
 		ProjectID: project.ID,
 		UserID:    viewer.ID,
@@ -359,6 +417,7 @@ func TestEnqueuePublishProjectReplaysDuplicateWhenLockWinsBeforeQueuedEvent(t *t
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
 	publication := models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "wechat",
@@ -413,6 +472,7 @@ func TestEnqueuePublishProjectReplaysOriginalJobEventsAfterPublicationChanges(t 
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
 	publication := models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "wechat",
@@ -489,6 +549,7 @@ func TestEnqueuePublishProjectDoesNotReplayFailedEnqueueAsQueued(t *testing.T) {
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
 	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "wechat",
@@ -532,6 +593,7 @@ func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
 	lastAttemptAt := time.Now().UTC()
 	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
@@ -566,6 +628,7 @@ func TestEnqueuePublishProjectRequiresPrepublishSyncForSyncingPublication(t *tes
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
 	publication := models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "wechat",
@@ -606,6 +669,7 @@ func TestEnqueuePublishProjectRejectsPublicationChangedToSyncingAfterLock(t *tes
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
 	publication := models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "wechat",
@@ -652,6 +716,7 @@ func TestProcessPublishJobPublishesAndReleasesLock(t *testing.T) {
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
 	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "wechat",
@@ -699,6 +764,7 @@ func TestProcessPublishJobReacquiresExpiredLock(t *testing.T) {
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
 	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "wechat",
@@ -742,6 +808,7 @@ func TestProcessPublishJobReturnsErrorForFailedPublication(t *testing.T) {
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
 	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "wechat",
