@@ -132,6 +132,7 @@ const (
 	ProjectActivityCollaboratorRemoved     = string(contracts.ProjectActivityTypeCollaboratorRemoved)
 	ProjectActivityPublishRequested        = string(contracts.ProjectActivityTypePublishRequested)
 	ProjectActivityPublishQueued           = string(contracts.ProjectActivityTypePublishQueued)
+	ProjectActivityPublishCompleted        = string(contracts.ProjectActivityTypePublishCompleted)
 	ProjectActivityShareLinkAccepted       = string(contracts.ProjectActivityTypeShareLinkAccepted)
 	ProjectActivityShareLinkCreated        = string(contracts.ProjectActivityTypeShareLinkCreated)
 	ProjectActivityShareLinkRevoked        = string(contracts.ProjectActivityTypeShareLinkRevoked)

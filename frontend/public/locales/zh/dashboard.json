@@ -515,6 +515,7 @@
         "collaborator_removed": "移除协作者",
         "publish_requested": "请求发布",
         "publish_queued": "发布已入队",
+        "publish_completed": "发布已完成",
         "share_link_accepted": "接受分享链接",
         "share_link_created": "创建分享链接",
         "share_link_revoked": "撤销分享链接",

@@ -515,6 +515,7 @@
         "collaborator_removed": "Collaborator removed",
         "publish_requested": "Publish requested",
         "publish_queued": "Publish queued",
+        "publish_completed": "Publish completed",
         "share_link_accepted": "Share link accepted",
         "share_link_created": "Share link created",
         "share_link_revoked": "Share link revoked",

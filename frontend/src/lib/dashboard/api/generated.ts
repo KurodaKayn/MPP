@@ -100,6 +100,7 @@ export interface components {
       | "collaborator_removed"
       | "publish_requested"
       | "publish_queued"
+      | "publish_completed"
       | "share_link_accepted"
       | "share_link_created"
       | "share_link_revoked"
