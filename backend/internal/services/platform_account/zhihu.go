@@ -13,8 +13,13 @@ import (
 const zhihuPlatform = "zhihu"
 
 func (s *Service) GetZhihuAccount(userID uuid.UUID) (*dto.ZhihuAccountResponse, error) {
+	return s.GetWorkspaceZhihuAccount(userID, uuid.Nil)
+}
+
+func (s *Service) GetWorkspaceZhihuAccount(userID uuid.UUID, workspaceID uuid.UUID) (*dto.ZhihuAccountResponse, error) {
 	var account models.PlatformAccount
-	err := s.db.Where("user_id = ? AND platform = ?", userID, zhihuPlatform).First(&account).Error
+	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
+	err := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, zhihuPlatform).Order("updated_at DESC").First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		resp := emptyZhihuAccountResponse()
 		return &resp, nil

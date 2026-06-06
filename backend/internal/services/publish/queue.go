@@ -16,6 +16,7 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 )
 
 const (
@@ -510,6 +511,14 @@ func (s *Service) preparePublishJob(ctx context.Context, projectID uuid.UUID, pl
 	}
 	if pub.Status == models.PublicationStatusSyncing || (!publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusPublishing) {
 		return models.Project{}, models.ProjectPlatformPublication{}, ErrPublicationRequiresSync
+	}
+	if s.accounts != nil {
+		if _, err := s.accounts.ResolvePublicationAccount(userID, &pub); err != nil {
+			if errors.Is(err, platformaccount.ErrPlatformAccountForbidden) {
+				return models.Project{}, models.ProjectPlatformPublication{}, ErrForbidden
+			}
+			return models.Project{}, models.ProjectPlatformPublication{}, err
+		}
 	}
 
 	return project, pub, nil

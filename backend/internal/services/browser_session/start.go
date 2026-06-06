@@ -19,12 +19,19 @@ func (s *BrowserSessionService) StartSession(ctx context.Context, userID uuid.UU
 }
 
 func (s *BrowserSessionService) StartSessionForTenant(ctx context.Context, userID uuid.UUID, tenantID string, platform string) (*dto.StartBrowserSessionResponse, error) {
+	return s.StartSessionForWorkspace(ctx, userID, tenantID, uuid.Nil, uuid.Nil, platform)
+}
+
+func (s *BrowserSessionService) StartSessionForWorkspace(ctx context.Context, userID uuid.UUID, tenantID string, workspaceID uuid.UUID, accountID uuid.UUID, platform string) (*dto.StartBrowserSessionResponse, error) {
 	adapter, ok := s.adapters[platform]
 	if !ok {
 		return nil, ErrPlatformNotSupported
 	}
 
 	tenantID = normalizeBrowserSessionTenantID(tenantID)
+	if workspaceID == uuid.Nil {
+		workspaceID = models.PersonalWorkspaceID(userID)
+	}
 	now := time.Now()
 	sessionID := uuid.New()
 	expiresAt := now.Add(browserSessionTTL)
@@ -80,12 +87,16 @@ func (s *BrowserSessionService) StartSessionForTenant(ctx context.Context, userI
 	session := &models.RemoteBrowserSession{
 		ID:                    sessionID,
 		UserID:                userID,
+		WorkspaceID:           &workspaceID,
 		Platform:              platform,
 		Status:                models.BrowserSessionStatusPending,
 		ConnectTokenHash:      tokenHash,
 		ConnectTokenExpiresAt: StreamTokenExpiresAt(expiresAt, now),
 		CreatedAt:             now,
 		ExpiresAt:             expiresAt,
+	}
+	if accountID != uuid.Nil {
+		session.PlatformAccountID = &accountID
 	}
 
 	if err := s.db.Create(session).Error; err != nil {
@@ -120,7 +131,7 @@ func (s *BrowserSessionService) StartSessionForTenant(ctx context.Context, userI
 		TTLSeconds:      900, // 15 mins
 	}
 	if s.cookieStore != nil {
-		cookies, err := s.cookieStore.Load(ctx, userID, platform)
+		cookies, err := s.cookieStore.LoadForAccount(ctx, userID, accountID, platform)
 		if err != nil && !errors.Is(err, publisher.ErrCookieNotFound) && !errors.Is(err, publisher.ErrCookieValidationFailed) {
 			_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed)
 			_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, "")
