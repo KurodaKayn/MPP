@@ -184,7 +184,18 @@ function isSafeHtmlUrl(attributeName: string, value: string) {
 function normalizeHtmlUrlForSafety(value: string) {
   const textArea = document.createElement("textarea");
   textArea.innerHTML = value.trim();
-  return textArea.value.replace(/[\u0000-\u001f\u007f\s]+/g, "").toLowerCase();
+  let normalizedValue = "";
+
+  for (const character of textArea.value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint <= 0x1f || codePoint === 0x7f || /\s/.test(character)) {
+      continue;
+    }
+
+    normalizedValue += character;
+  }
+
+  return normalizedValue.toLowerCase();
 }
 
 function isSafeDataImageUrl(value: string) {

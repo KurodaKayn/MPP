@@ -17,6 +17,7 @@ describe("content editor HTML sanitization", () => {
       <script>alert(1)</script>
       <img src="javascript:alert(1)" onerror="alert(1)" alt="cover">
       <a href="java&#x0A;script:alert(1)">bad link</a>
+      <a data-testid="tab-link" href="java&#x09;script:alert(1)">tab link</a>
       <svg onload="alert(1)"><circle /></svg>
     `);
     const documentFragment = parseHTML(sanitized);
@@ -35,6 +36,11 @@ describe("content editor HTML sanitization", () => {
     expect(documentFragment.querySelector("a")?.getAttribute("href")).toBe(
       null,
     );
+    expect(
+      documentFragment
+        .querySelector('[data-testid="tab-link"]')
+        ?.getAttribute("href"),
+    ).toBe(null);
   });
 
   it("keeps safe links and media refs", () => {
