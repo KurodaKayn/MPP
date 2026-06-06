@@ -425,8 +425,19 @@ func recordProjectActivity(tx *gorm.DB, projectID uuid.UUID, actorUserID uuid.UU
 }
 
 func createProjectVersion(tx *gorm.DB, project models.Project, userID uuid.UUID, source string) error {
-	var count int64
-	if err := tx.Model(&models.ProjectVersion{}).Where("project_id = ?", project.ID).Count(&count).Error; err != nil {
+	if err := tx.
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Select("id").
+		First(&models.Project{}, "id = ?", project.ID).Error; err != nil {
+		return err
+	}
+
+	var latestVersionNumber int
+	if err := tx.
+		Model(&models.ProjectVersion{}).
+		Select("COALESCE(MAX(version_number), 0)").
+		Where("project_id = ?", project.ID).
+		Scan(&latestVersionNumber).Error; err != nil {
 		return err
 	}
 	collabSeq := int64(0)
@@ -439,7 +450,7 @@ func createProjectVersion(tx *gorm.DB, project models.Project, userID uuid.UUID,
 	return tx.Create(&models.ProjectVersion{
 		ProjectID:        project.ID,
 		CreatedBy:        userID,
-		VersionNumber:    int(count) + 1,
+		VersionNumber:    latestVersionNumber + 1,
 		Title:            project.Title,
 		SourceContent:    project.SourceContent,
 		CollabDocumentID: project.CollabDocumentID,
