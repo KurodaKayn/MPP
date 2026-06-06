@@ -1,8 +1,12 @@
 package workspace
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -40,14 +44,6 @@ func normalizeWorkspaceMemberRole(role string) (string, error) {
 	default:
 		return "", ErrInvalidWorkspaceMember
 	}
-}
-
-func canManageWorkspaceRole(role string) bool {
-	return role == models.WorkspaceRoleOwner || role == models.WorkspaceRoleAdmin
-}
-
-func canCreateWorkspaceProjectRole(role string) bool {
-	return role == models.WorkspaceRoleOwner || role == models.WorkspaceRoleAdmin || role == models.WorkspaceRoleMember
 }
 
 func normalizeWorkspaceActivityLimit(limit int) int {
@@ -113,19 +109,63 @@ func (s *Service) workspaceAccessRole(workspaceID uuid.UUID, userID uuid.UUID) (
 }
 
 func (s *Service) requireWorkspaceManager(workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
-	role, err := s.workspaceAccessRole(workspaceID, userID)
-	if err != nil {
-		return "", err
+	return s.RequirePermission(workspaceID, userID, PermissionManageMembers)
+}
+
+func (s *Service) EnsurePersonalWorkspace(userID uuid.UUID) (*dto.Workspace, error) {
+	if userID == uuid.Nil {
+		return nil, ErrInvalidWorkspace
 	}
-	if !canManageWorkspaceRole(role) {
-		return "", ErrForbidden
+
+	workspaceID := models.PersonalWorkspaceID(userID)
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := ensurePersonalWorkspaceWithDB(tx, userID); err != nil {
+			return err
+		}
+		return tx.Model(&models.Project{}).
+			Where("user_id = ? AND (workspace_id IS NULL OR workspace_id = ?)", userID, uuid.Nil).
+			Update("workspace_id", workspaceID).Error
+	}); err != nil {
+		return nil, err
 	}
-	return role, nil
+	return s.GetWorkspace(workspaceID, userID)
+}
+
+func ensurePersonalWorkspaceWithDB(tx *gorm.DB, ownerUserID uuid.UUID) error {
+	workspaceID := models.PersonalWorkspaceID(ownerUserID)
+	workspace := models.Workspace{
+		ID:          workspaceID,
+		OwnerUserID: ownerUserID,
+		Name:        models.PersonalWorkspaceName,
+		Slug:        models.PersonalWorkspaceSlug(ownerUserID),
+		Status:      models.WorkspaceStatusActive,
+	}
+	if err := tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoNothing: true,
+	}).Create(&workspace).Error; err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	member := models.WorkspaceMember{
+		WorkspaceID: workspaceID,
+		UserID:      ownerUserID,
+		Role:        models.WorkspaceRoleOwner,
+		JoinedAt:    &now,
+	}
+	return tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "workspace_id"}, {Name: "user_id"}},
+		DoNothing: true,
+	}).Create(&member).Error
 }
 
 func (s *Service) ListWorkspaces(userID uuid.UUID) (*dto.WorkspacesResponse, error) {
 	if userID == uuid.Nil {
 		return nil, ErrInvalidWorkspace
+	}
+	if _, err := s.EnsurePersonalWorkspace(userID); err != nil {
+		return nil, err
 	}
 
 	memberWorkspaceIDs := s.db.
@@ -173,12 +213,8 @@ func (s *Service) ListWorkspaceProjects(workspaceID uuid.UUID, actorUserID uuid.
 }
 
 func (s *Service) CreateWorkspaceProject(workspaceID uuid.UUID, actorUserID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
-	role, err := s.workspaceAccessRole(workspaceID, actorUserID)
-	if err != nil {
+	if _, err := s.RequirePermission(workspaceID, actorUserID, PermissionProjectCreate); err != nil {
 		return nil, err
-	}
-	if !canCreateWorkspaceProjectRole(role) {
-		return nil, ErrForbidden
 	}
 
 	return s.projects.CreateProjectWithWorkspace(actorUserID, &workspaceID, req)
@@ -407,6 +443,170 @@ func (s *Service) AddWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUI
 	return s.getWorkspaceMember(workspaceID, user.ID)
 }
 
+func (s *Service) CreateWorkspaceInvite(workspaceID uuid.UUID, actorUserID uuid.UUID, req dto.CreateWorkspaceInviteRequest) (*dto.WorkspaceInviteWithToken, error) {
+	if _, err := s.RequirePermission(workspaceID, actorUserID, PermissionManageMembers); err != nil {
+		return nil, err
+	}
+	role, err := normalizeWorkspaceMemberRole(req.Role)
+	if err != nil {
+		return nil, err
+	}
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if email == "" || !strings.Contains(email, "@") {
+		return nil, ErrInvalidWorkspaceInvite
+	}
+	expiresAt := time.Now().UTC().Add(7 * 24 * time.Hour)
+	if req.ExpiresAt != nil {
+		expiresAt = req.ExpiresAt.UTC()
+	}
+	if !expiresAt.After(time.Now().UTC()) {
+		return nil, ErrInvalidWorkspaceInvite
+	}
+	token, tokenHash, err := newWorkspaceInviteToken()
+	if err != nil {
+		return nil, err
+	}
+
+	invite := models.WorkspaceInvite{
+		WorkspaceID: workspaceID,
+		Email:       email,
+		Role:        role,
+		InvitedBy:   actorUserID,
+		Status:      models.WorkspaceInviteStatusPending,
+		TokenHash:   tokenHash,
+		ExpiresAt:   expiresAt,
+	}
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&invite).Error; err != nil {
+			return err
+		}
+		return s.recordWorkspaceActivity(tx, workspaceID, actorUserID, models.WorkspaceActivityInviteCreated, nil, map[string]any{
+			"email": email,
+			"role":  role,
+		})
+	}); err != nil {
+		return nil, err
+	}
+
+	item := workspaceInviteFromModel(invite)
+	return &dto.WorkspaceInviteWithToken{WorkspaceInvite: item, Token: token}, nil
+}
+
+func (s *Service) ListWorkspaceInvites(workspaceID uuid.UUID, actorUserID uuid.UUID) (*dto.WorkspaceInvitesResponse, error) {
+	if _, err := s.RequirePermission(workspaceID, actorUserID, PermissionManageMembers); err != nil {
+		return nil, err
+	}
+	if err := s.expireWorkspaceInvites(workspaceID); err != nil {
+		return nil, err
+	}
+
+	var invites []models.WorkspaceInvite
+	if err := s.db.
+		Where("workspace_id = ?", workspaceID).
+		Order("created_at DESC").
+		Find(&invites).Error; err != nil {
+		return nil, err
+	}
+	items := make([]dto.WorkspaceInvite, 0, len(invites))
+	for _, invite := range invites {
+		items = append(items, workspaceInviteFromModel(invite))
+	}
+	return &dto.WorkspaceInvitesResponse{Items: items}, nil
+}
+
+func (s *Service) AcceptWorkspaceInvite(actorUserID uuid.UUID, req dto.AcceptWorkspaceInviteRequest) (*dto.WorkspaceMember, error) {
+	if actorUserID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceInvite
+	}
+	tokenHash := hashWorkspaceInviteToken(strings.TrimSpace(req.Token))
+	if tokenHash == "" {
+		return nil, ErrInvalidWorkspaceInvite
+	}
+
+	var member models.WorkspaceMember
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		var invite models.WorkspaceInvite
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			First(&invite, "token_hash = ?", tokenHash).Error; err != nil {
+			return err
+		}
+		if invite.Status != models.WorkspaceInviteStatusPending {
+			return ErrInvalidWorkspaceInvite
+		}
+		now := time.Now().UTC()
+		if !invite.ExpiresAt.After(now) {
+			return tx.Model(&invite).Update("status", models.WorkspaceInviteStatusExpired).Error
+		}
+		var user models.User
+		if err := tx.Select("id", "email").First(&user, "id = ?", actorUserID).Error; err != nil {
+			return err
+		}
+		if !strings.EqualFold(user.Email, invite.Email) {
+			return ErrForbidden
+		}
+		member = models.WorkspaceMember{
+			WorkspaceID: invite.WorkspaceID,
+			UserID:      actorUserID,
+			Role:        invite.Role,
+			InvitedBy:   &invite.InvitedBy,
+			JoinedAt:    &now,
+		}
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "workspace_id"}, {Name: "user_id"}},
+			DoUpdates: clause.Assignments(map[string]any{
+				"role":       invite.Role,
+				"invited_by": invite.InvitedBy,
+				"joined_at":  now,
+			}),
+		}).Create(&member).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&invite).Updates(map[string]any{
+			"accepted_by": actorUserID,
+			"accepted_at": &now,
+			"status":      models.WorkspaceInviteStatusAccepted,
+		}).Error; err != nil {
+			return err
+		}
+		return s.recordWorkspaceActivity(tx, invite.WorkspaceID, actorUserID, models.WorkspaceActivityInviteAccepted, &actorUserID, map[string]any{
+			"email": invite.Email,
+			"role":  invite.Role,
+		})
+	}); err != nil {
+		return nil, err
+	}
+	return s.getWorkspaceMember(member.WorkspaceID, actorUserID)
+}
+
+func (s *Service) RevokeWorkspaceInvite(workspaceID uuid.UUID, actorUserID uuid.UUID, inviteID uuid.UUID) error {
+	if _, err := s.RequirePermission(workspaceID, actorUserID, PermissionManageMembers); err != nil {
+		return err
+	}
+	if inviteID == uuid.Nil {
+		return ErrInvalidWorkspaceInvite
+	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var invite models.WorkspaceInvite
+		if err := tx.First(&invite, "id = ? AND workspace_id = ?", inviteID, workspaceID).Error; err != nil {
+			return err
+		}
+		if invite.Status != models.WorkspaceInviteStatusPending {
+			return ErrInvalidWorkspaceInvite
+		}
+		now := time.Now().UTC()
+		if err := tx.Model(&invite).Updates(map[string]any{
+			"status":     models.WorkspaceInviteStatusRevoked,
+			"revoked_at": &now,
+		}).Error; err != nil {
+			return err
+		}
+		return s.recordWorkspaceActivity(tx, workspaceID, actorUserID, models.WorkspaceActivityInviteRevoked, nil, map[string]any{
+			"email": invite.Email,
+			"role":  invite.Role,
+		})
+	})
+}
+
 func (s *Service) UpdateWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUID, targetUserID uuid.UUID, req dto.UpdateWorkspaceMemberRequest) (*dto.WorkspaceMember, error) {
 	if _, err := s.requireWorkspaceManager(workspaceID, actorUserID); err != nil {
 		return nil, err
@@ -570,6 +770,47 @@ func workspaceMemberFromModel(member models.WorkspaceMember) dto.WorkspaceMember
 		JoinedAt:    member.JoinedAt,
 		CreatedAt:   member.CreatedAt,
 	}
+}
+
+func workspaceInviteFromModel(invite models.WorkspaceInvite) dto.WorkspaceInvite {
+	return dto.WorkspaceInvite{
+		ID:          invite.ID,
+		WorkspaceID: invite.WorkspaceID,
+		Email:       invite.Email,
+		Role:        invite.Role,
+		InvitedBy:   invite.InvitedBy,
+		AcceptedBy:  invite.AcceptedBy,
+		Status:      invite.Status,
+		ExpiresAt:   invite.ExpiresAt,
+		AcceptedAt:  invite.AcceptedAt,
+		RevokedAt:   invite.RevokedAt,
+		CreatedAt:   invite.CreatedAt,
+		UpdatedAt:   invite.UpdatedAt,
+	}
+}
+
+func newWorkspaceInviteToken() (string, string, error) {
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", "", fmt.Errorf("create workspace invite token: %w", err)
+	}
+	token := base64.RawURLEncoding.EncodeToString(raw[:])
+	return token, hashWorkspaceInviteToken(token), nil
+}
+
+func hashWorkspaceInviteToken(token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(token))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func (s *Service) expireWorkspaceInvites(workspaceID uuid.UUID) error {
+	return s.db.Model(&models.WorkspaceInvite{}).
+		Where("workspace_id = ? AND status = ? AND expires_at <= ?", workspaceID, models.WorkspaceInviteStatusPending, time.Now().UTC()).
+		Update("status", models.WorkspaceInviteStatusExpired).Error
 }
 
 func workspaceActivityFromModel(activity models.WorkspaceActivity) dto.WorkspaceActivity {

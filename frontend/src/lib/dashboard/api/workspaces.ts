@@ -1,8 +1,10 @@
 import { fetchDashboard, fetchDashboardNoContent } from "./client";
 import type {
+  AcceptWorkspaceInviteInput,
   AddWorkspaceMemberInput,
   CreateProjectInput,
   CreateWorkspaceInput,
+  CreateWorkspaceInviteInput,
   ListWorkspaceProjectsOptions,
   PaginatedProjects,
   ProjectListItem,
@@ -10,6 +12,8 @@ import type {
   UpdateWorkspaceMemberInput,
   Workspace,
   WorkspaceActivitiesResponse,
+  WorkspaceInvitesResponse,
+  WorkspaceInviteWithToken,
   WorkspaceMember,
   WorkspaceMembersResponse,
   WorkspacesResponse,
@@ -83,6 +87,12 @@ export function getWorkspaceMembers(workspaceId: string) {
   );
 }
 
+export function getWorkspaceInvites(workspaceId: string) {
+  return fetchDashboard<WorkspaceInvitesResponse>(
+    `/api/workspaces/${workspaceId}/invites`,
+  );
+}
+
 export function getWorkspaceActivities(workspaceId: string, limit = 20) {
   const params = new URLSearchParams({
     limit: String(limit),
@@ -106,6 +116,26 @@ export function addWorkspaceMember(
   );
 }
 
+export function createWorkspaceInvite(
+  workspaceId: string,
+  input: CreateWorkspaceInviteInput,
+) {
+  return fetchDashboard<WorkspaceInviteWithToken>(
+    `/api/workspaces/${workspaceId}/invites`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
+}
+
+export function acceptWorkspaceInvite(input: AcceptWorkspaceInviteInput) {
+  return fetchDashboard<WorkspaceMember>("/api/workspaces/invites/accept", {
+    body: JSON.stringify(input),
+    method: "POST",
+  });
+}
+
 export function updateWorkspaceMember(
   workspaceId: string,
   userId: string,
@@ -123,6 +153,13 @@ export function updateWorkspaceMember(
 export function removeWorkspaceMember(workspaceId: string, userId: string) {
   return fetchDashboardNoContent(
     `/api/workspaces/${workspaceId}/members/${userId}`,
+    { method: "DELETE" },
+  );
+}
+
+export function revokeWorkspaceInvite(workspaceId: string, inviteId: string) {
+  return fetchDashboardNoContent(
+    `/api/workspaces/${workspaceId}/invites/${inviteId}`,
     { method: "DELETE" },
   );
 }

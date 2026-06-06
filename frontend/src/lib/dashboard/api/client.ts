@@ -9,6 +9,34 @@ type ApiErrorResponse = {
   };
 };
 
+const selectedWorkspaceStorageKey = "mpp.dashboard.selectedWorkspaceId";
+
+function getStoredWorkspaceId() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  try {
+    return window.localStorage.getItem(selectedWorkspaceStorageKey)?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function pathWithWorkspaceContext(path: string, workspaceId: string) {
+  if (!workspaceId || !path.startsWith("/api/user/dashboard")) {
+    return path;
+  }
+
+  const [pathname, query = ""] = path.split("?", 2);
+  const params = new URLSearchParams(query);
+  if (!params.has("workspace_id")) {
+    params.set("workspace_id", workspaceId);
+  }
+  const nextQuery = params.toString();
+  return nextQuery ? `${pathname}?${nextQuery}` : pathname;
+}
+
 async function getDashboardErrorMessage(response: Response) {
   const fallback = `Request failed (${response.status})`;
 
@@ -49,8 +77,12 @@ export async function fetchDashboard<T>(
   if (init?.body) {
     headers.set("Content-Type", "application/json");
   }
+  const workspaceId = getStoredWorkspaceId();
+  if (workspaceId) {
+    headers.set("X-Workspace-ID", workspaceId);
+  }
 
-  const response = await fetch(path, {
+  const response = await fetch(pathWithWorkspaceContext(path, workspaceId), {
     ...init,
     credentials: "same-origin",
     headers,
@@ -74,8 +106,12 @@ export async function fetchDashboardNoContent(
   if (init?.body) {
     headers.set("Content-Type", "application/json");
   }
+  const workspaceId = getStoredWorkspaceId();
+  if (workspaceId) {
+    headers.set("X-Workspace-ID", workspaceId);
+  }
 
-  const response = await fetch(path, {
+  const response = await fetch(pathWithWorkspaceContext(path, workspaceId), {
     ...init,
     credentials: "same-origin",
     headers,
@@ -95,8 +131,12 @@ export async function streamDashboardText(
     Accept: "text/markdown, text/plain, application/json",
     "Content-Type": "application/json",
   });
+  const workspaceId = getStoredWorkspaceId();
+  if (workspaceId) {
+    headers.set("X-Workspace-ID", workspaceId);
+  }
 
-  const response = await fetch(path, {
+  const response = await fetch(pathWithWorkspaceContext(path, workspaceId), {
     body: JSON.stringify(body),
     credentials: "same-origin",
     headers,

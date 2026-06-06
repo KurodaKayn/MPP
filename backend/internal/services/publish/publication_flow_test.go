@@ -401,7 +401,7 @@ func TestPublishProjectRequiresPrepublishSyncForSyncingPublication(t *testing.T)
 	assert.Nil(t, saved.LastAttemptAt)
 }
 
-func TestPublishProjectRejectsProjectEditor(t *testing.T) {
+func TestPublishProjectAllowsProjectEditor(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 	fakePublisher := &testsupport.FakePlatformPublisher{}
@@ -435,6 +435,46 @@ func TestPublishProjectRejectsProjectEditor(t *testing.T) {
 	}).Error)
 
 	result, err := s.PublishProject(project.ID, "wechat", &editor.ID, uuid.Nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.JSONEq(t, `{"title":"Title"}`, string(fakePublisher.Config))
+}
+
+func TestPublishProjectRejectsProjectViewer(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &testsupport.FakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	viewer := models.User{Username: "viewer", Email: "viewer@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&viewer).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    viewer.ID,
+		Role:      models.ProjectRoleViewer,
+		CreatedBy: owner.ID,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &viewer.ID, uuid.Nil)
 
 	require.ErrorIs(t, err, services.ErrForbidden)
 	require.Nil(t, result)
@@ -653,7 +693,7 @@ func TestCreateXPostIntentRequiresPrepublishSyncForPendingPublication(t *testing
 	assert.JSONEq(t, `{}`, string(saved.AdaptedContent))
 }
 
-func TestCreateXPostIntentRejectsProjectEditor(t *testing.T) {
+func TestCreateXPostIntentAllowsProjectEditor(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
 
@@ -685,6 +725,47 @@ func TestCreateXPostIntentRejectsProjectEditor(t *testing.T) {
 	require.NoError(t, db.Create(&pub).Error)
 
 	result, err := s.CreateXPostIntent(project.ID, &editor.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
+	assert.NotEmpty(t, saved.PublishURL)
+}
+
+func TestCreateXPostIntentRejectsProjectViewer(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	viewer := models.User{Username: "viewer", Email: "viewer@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&viewer).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "manual x",
+		SourceContent: "<p>source content</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    viewer.ID,
+		Role:      models.ProjectRoleViewer,
+		CreatedBy: owner.ID,
+	}).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"text":"hello x"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	result, err := s.CreateXPostIntent(project.ID, &viewer.ID)
 
 	require.ErrorIs(t, err, services.ErrForbidden)
 	require.Nil(t, result)

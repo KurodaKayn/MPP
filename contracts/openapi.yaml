@@ -247,12 +247,18 @@ components:
         - member_added
         - member_role_changed
         - member_removed
+        - invite_created
+        - invite_accepted
+        - invite_revoked
       x-enum-varnames:
         - WorkspaceActivityTypeWorkspaceCreated
         - WorkspaceActivityTypeWorkspaceUpdated
         - WorkspaceActivityTypeMemberAdded
         - WorkspaceActivityTypeMemberRoleChanged
         - WorkspaceActivityTypeMemberRemoved
+        - WorkspaceActivityTypeInviteCreated
+        - WorkspaceActivityTypeInviteAccepted
+        - WorkspaceActivityTypeInviteRevoked
 
     PublicationStatus:
       type: string
@@ -1340,6 +1346,32 @@ components:
         role:
           $ref: "#/components/schemas/WorkspaceMemberRequestRole"
 
+    CreateWorkspaceInviteRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - role
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/WorkspaceMemberRequestRole"
+        expires_at:
+          type: string
+          format: date-time
+
+    AcceptWorkspaceInviteRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          minLength: 1
+
     UpdateWorkspaceMemberRequest:
       type: object
       additionalProperties: false
@@ -1437,6 +1469,82 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceMember"
+
+    WorkspaceInvite:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspace_id
+        - email
+        - role
+        - invited_by
+        - status
+        - expires_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/WorkspaceRole"
+        invited_by:
+          type: string
+          format: uuid
+        accepted_by:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - pending
+            - accepted
+            - expired
+            - revoked
+        expires_at:
+          type: string
+          format: date-time
+        accepted_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorkspaceInviteWithToken:
+      allOf:
+        - $ref: "#/components/schemas/WorkspaceInvite"
+        - type: object
+          additionalProperties: false
+          required:
+            - token
+          properties:
+            token:
+              type: string
+
+    WorkspaceInvitesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceInvite"
 
     WorkspaceActivity:
       type: object
