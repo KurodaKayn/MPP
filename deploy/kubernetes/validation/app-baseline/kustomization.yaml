@@ -1,0 +1,48 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../browser-runtime-control
+  - ../../app-baseline
+  - external-services.yaml
+
+patches:
+  - path: runtime-image-patch.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: mpp-app-config
+    namespace: mpp-system
+    behavior: merge
+    literals:
+      - DB_HOST=postgres
+      - REDIS_ADDR=redis:6379
+      - COLLAB_WEBSOCKET_URL_BASE=wss://mpp.example.invalid
+      - LLM_PROVIDER_URL=https://llm.example.invalid/v1
+      - LLM_MODEL=validation-model
+
+secretGenerator:
+  - name: mpp-app-secrets
+    namespace: mpp-system
+    literals:
+      - JWT_SECRET=validation-jwt-secret
+      - DB_PASSWORD=validation-db-password
+      - REDIS_PASSWORD=
+      - COLLAB_TOKEN_SECRET=validation-collab-secret
+      - COOKIE_ENCRYPTION_KEY=12345678901234567890123456789012
+      - LLM_PROVIDER_KEY=validation-llm-key
+
+images:
+  - name: registry.example.invalid/kurodakayn/mpp-frontend
+    newTag: validation
+  - name: registry.example.invalid/kurodakayn/mpp-backend
+    newTag: validation
+  - name: registry.example.invalid/kurodakayn/mpp-browser-worker
+    newTag: validation
+  - name: registry.example.invalid/kurodakayn/mpp-ai-service
+    newTag: validation
+  - name: registry.example.invalid/kurodakayn/mpp-content-pipeline-service
+    newTag: validation
+  - name: registry.example.invalid/kurodakayn/mpp-collab-service
+    newTag: validation
