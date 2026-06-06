@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -144,7 +143,6 @@ func (s *Service) recordAccountNeedsReauthNotification(userID uuid.UUID, workspa
 	if userID == uuid.Nil || workspaceID == uuid.Nil || account.ID == uuid.Nil {
 		return nil
 	}
-	metadata := datatypes.JSON([]byte(`{}`))
 	payload := map[string]any{
 		"platform":            account.Platform,
 		"platform_account_id": account.ID.String(),
@@ -154,9 +152,8 @@ func (s *Service) recordAccountNeedsReauthNotification(userID uuid.UUID, workspa
 	if projectID != uuid.Nil {
 		payload["project_id"] = projectID.String()
 	}
-	if encoded, err := json.Marshal(payload); err == nil {
-		metadata = datatypes.JSON(encoded)
-	} else {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
 		return err
 	}
 	resourceID := account.ID
@@ -167,7 +164,7 @@ func (s *Service) recordAccountNeedsReauthNotification(userID uuid.UUID, workspa
 		ResourceType:    "platform_account",
 		ResourceID:      &resourceID,
 		Status:          models.NotificationStatusUnread,
-		Metadata:        metadata,
+		Metadata:        datatypes.JSON(encoded),
 	}).Error
 }
 
@@ -264,16 +261,5 @@ func healthStatusForStatus(status string) string {
 		return models.PlatformAccountHealthNeedsReauth
 	default:
 		return models.PlatformAccountHealthUnknown
-	}
-}
-
-func accountConnectedUpdates(userID uuid.UUID, status string) map[string]any {
-	now := time.Now().UTC()
-	return map[string]any{
-		"connected_by_user_id": userID,
-		"last_connected_at":    &now,
-		"last_verified_at":     &now,
-		"health_status":        healthStatusForStatus(status),
-		"status":               status,
 	}
 }
