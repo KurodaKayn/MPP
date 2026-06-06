@@ -3,11 +3,12 @@ package project_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
-	"github.com/stretchr/testify/require"
 )
 
 func TestProjectCollaborationExperienceCommentsAndActivities(t *testing.T) {

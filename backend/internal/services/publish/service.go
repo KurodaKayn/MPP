@@ -204,7 +204,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	if err := s.db.Model(&pub).Updates(updates).Error; err != nil {
 		return nil, err
 	}
-	if err := s.recordProjectPublishActivity(projectID, *scopeUserID, models.ProjectActivityPublishQueued, map[string]interface{}{
+	if err := s.recordProjectPublishActivity(projectID, *scopeUserID, models.ProjectActivityPublishQueued, map[string]any{
 		"platform":  platform,
 		"status":    status,
 		"remote_id": remoteID,

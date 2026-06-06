@@ -115,7 +115,7 @@ func (s *Service) UpdateProjectCollaborator(projectID uuid.UUID, actorUserID uui
 		if err := tx.Model(&collaborator).Update("role", role).Error; err != nil {
 			return err
 		}
-		return recordProjectActivity(tx, projectID, actorUserID, &targetUserID, models.ProjectActivityCollaboratorRoleChanged, map[string]interface{}{
+		return recordProjectActivity(tx, projectID, actorUserID, &targetUserID, models.ProjectActivityCollaboratorRoleChanged, map[string]any{
 			"previous_role": previousRole,
 			"role":          role,
 		})

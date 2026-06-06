@@ -299,17 +299,17 @@ type ProjectCollaboratorsResponse struct {
 }
 
 type ProjectActivity struct {
-	ID             uuid.UUID              `json:"id"`
-	ProjectID      uuid.UUID              `json:"project_id"`
-	ActorUserID    uuid.UUID              `json:"actor_user_id"`
-	ActorUsername  string                 `json:"actor_username"`
-	ActorEmail     string                 `json:"actor_email"`
-	TargetUserID   *uuid.UUID             `json:"target_user_id,omitempty"`
-	TargetUsername string                 `json:"target_username,omitempty"`
-	TargetEmail    string                 `json:"target_email,omitempty"`
-	EventType      string                 `json:"event_type"`
-	Metadata       map[string]interface{} `json:"metadata"`
-	CreatedAt      time.Time              `json:"created_at"`
+	ID             uuid.UUID      `json:"id"`
+	ProjectID      uuid.UUID      `json:"project_id"`
+	ActorUserID    uuid.UUID      `json:"actor_user_id"`
+	ActorUsername  string         `json:"actor_username"`
+	ActorEmail     string         `json:"actor_email"`
+	TargetUserID   *uuid.UUID     `json:"target_user_id,omitempty"`
+	TargetUsername string         `json:"target_username,omitempty"`
+	TargetEmail    string         `json:"target_email,omitempty"`
+	EventType      string         `json:"event_type"`
+	Metadata       map[string]any `json:"metadata"`
+	CreatedAt      time.Time      `json:"created_at"`
 }
 
 type ProjectActivitiesResponse struct {
@@ -317,9 +317,9 @@ type ProjectActivitiesResponse struct {
 }
 
 type CreateProjectCommentRequest struct {
-	Body       string                 `json:"body"`
-	AnchorText string                 `json:"anchor_text,omitempty"`
-	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+	Body       string         `json:"body"`
+	AnchorText string         `json:"anchor_text,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
 }
 
 type UpdateProjectCommentRequest struct {
@@ -327,17 +327,17 @@ type UpdateProjectCommentRequest struct {
 }
 
 type ProjectComment struct {
-	ID             uuid.UUID              `json:"id"`
-	ProjectID      uuid.UUID              `json:"project_id"`
-	AuthorID       uuid.UUID              `json:"author_id"`
-	AuthorUsername string                 `json:"author_username"`
-	AuthorEmail    string                 `json:"author_email"`
-	Body           string                 `json:"body"`
-	AnchorText     string                 `json:"anchor_text,omitempty"`
-	Status         string                 `json:"status"`
-	Metadata       map[string]interface{} `json:"metadata"`
-	CreatedAt      time.Time              `json:"created_at"`
-	ResolvedAt     *time.Time             `json:"resolved_at,omitempty"`
+	ID             uuid.UUID      `json:"id"`
+	ProjectID      uuid.UUID      `json:"project_id"`
+	AuthorID       uuid.UUID      `json:"author_id"`
+	AuthorUsername string         `json:"author_username"`
+	AuthorEmail    string         `json:"author_email"`
+	Body           string         `json:"body"`
+	AnchorText     string         `json:"anchor_text,omitempty"`
+	Status         string         `json:"status"`
+	Metadata       map[string]any `json:"metadata"`
+	CreatedAt      time.Time      `json:"created_at"`
+	ResolvedAt     *time.Time     `json:"resolved_at,omitempty"`
 }
 
 type ProjectCommentsResponse struct {

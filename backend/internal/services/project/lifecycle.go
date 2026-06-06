@@ -159,7 +159,7 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 		if err := createProjectVersion(tx, project, userID, "project_update"); err != nil {
 			return err
 		}
-		if err := recordProjectActivity(tx, project.ID, userID, nil, models.ProjectActivityContentSaved, map[string]interface{}{
+		if err := recordProjectActivity(tx, project.ID, userID, nil, models.ProjectActivityContentSaved, map[string]any{
 			"title": project.Title,
 		}); err != nil {
 			return err
