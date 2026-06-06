@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -40,6 +41,47 @@ func TestRouterFallsBackToWriterWithoutReader(t *testing.T) {
 	var count int64
 	require.NoError(t, router.Reader(context.Background(), EventualRead).Model(&models.User{}).Count(&count).Error)
 	require.Equal(t, int64(1), count)
+}
+
+func TestRouterUsesWriterForStickyEventualReads(t *testing.T) {
+	writer := newRouterTestDB(t)
+	reader := newRouterTestDB(t)
+
+	require.NoError(t, writer.Create(&models.User{Username: "writer", Email: "writer@example.com", PasswordHash: "hash"}).Error)
+	require.NoError(t, reader.Create(&models.User{Username: "reader-a", Email: "reader-a@example.com", PasswordHash: "hash"}).Error)
+	require.NoError(t, reader.Create(&models.User{Username: "reader-b", Email: "reader-b@example.com", PasswordHash: "hash"}).Error)
+
+	router := NewRouter(writer, WithReader(reader))
+	ctx := WithStickyWriter(context.Background(), time.Now().Add(time.Second))
+
+	var count int64
+	require.NoError(t, router.Reader(ctx, EventualRead).Model(&models.User{}).Count(&count).Error)
+	require.Equal(t, int64(1), count)
+}
+
+func TestRouterUsesReaderAfterStickyWriterExpires(t *testing.T) {
+	writer := newRouterTestDB(t)
+	reader := newRouterTestDB(t)
+
+	require.NoError(t, writer.Create(&models.User{Username: "writer", Email: "writer@example.com", PasswordHash: "hash"}).Error)
+	require.NoError(t, reader.Create(&models.User{Username: "reader-a", Email: "reader-a@example.com", PasswordHash: "hash"}).Error)
+	require.NoError(t, reader.Create(&models.User{Username: "reader-b", Email: "reader-b@example.com", PasswordHash: "hash"}).Error)
+
+	router := NewRouter(writer, WithReader(reader))
+	ctx := WithStickyWriter(context.Background(), time.Now().Add(-time.Second))
+
+	var count int64
+	require.NoError(t, router.Reader(ctx, EventualRead).Model(&models.User{}).Count(&count).Error)
+	require.Equal(t, int64(2), count)
+}
+
+func TestStickyWriterUntilReturnsContextDeadline(t *testing.T) {
+	until := time.Now().Add(time.Minute).UTC()
+	ctx := WithStickyWriter(context.Background(), until)
+
+	got, ok := StickyWriterUntil(ctx)
+	require.True(t, ok)
+	require.True(t, got.Equal(until))
 }
 
 func newRouterTestDB(t *testing.T) *gorm.DB {

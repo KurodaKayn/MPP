@@ -98,7 +98,7 @@ func (s *Service) CreateProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid
 
 func (s *Service) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUID) (*dto.ProjectDetail, error) {
 	var project models.Project
-	if err := s.db.
+	if err := s.projectDetailReadDB(scopeUserID).
 		Preload("Publications", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, project_id, platform, enabled, status, publish_url").Order("platform asc")
 		}).
@@ -118,6 +118,13 @@ func (s *Service) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUID) (*dto.
 	}
 
 	return projectDetailFromModel(project, role, accessSource), nil
+}
+
+func (s *Service) projectDetailReadDB(scopeUserID *uuid.UUID) *gorm.DB {
+	if scopeUserID != nil {
+		return s.strongReadDB()
+	}
+	return s.eventualReadDB()
 }
 
 func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.UpdateProjectRequest) (*dto.ProjectDetail, error) {

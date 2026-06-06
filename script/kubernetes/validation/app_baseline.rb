@@ -35,6 +35,17 @@ module KubernetesValidation
       "REDIS_TLS",
     ].freeze
 
+    SECRET_KEYS = [
+      "JWT_SECRET",
+      "DB_PASSWORD",
+      "COLLAB_TOKEN_SECRET",
+      "COOKIE_ENCRYPTION_KEY",
+      "LLM_PROVIDER_KEY",
+      "AI_SERVICE_INTERNAL_TOKEN",
+      "BROWSER_WORKER_INTERNAL_TOKEN",
+      "CONTENT_PIPELINE_INTERNAL_TOKEN",
+    ].freeze
+
     module_function
 
     def validate_overlay(context)
@@ -45,15 +56,7 @@ module KubernetesValidation
 
       secret = context.require_document("Secret", "mpp-app-secrets")
       if secret
-        [
-          "JWT_SECRET",
-          "DB_PASSWORD",
-          "COLLAB_TOKEN_SECRET",
-          "COOKIE_ENCRYPTION_KEY",
-          "LLM_PROVIDER_KEY",
-          "BROWSER_WORKER_INTERNAL_TOKEN",
-          "AI_SERVICE_INTERNAL_TOKEN",
-        ].each do |key|
+        SECRET_KEYS.each do |key|
           unless secret.data.key?(key)
             context.add_error("validation overlay mpp-app-secrets is missing #{key}")
           end
@@ -92,7 +95,7 @@ module KubernetesValidation
     def validate_workloads(context)
       EXPECTED_DEPLOYMENTS.each { |deployment| validate_deployment(context, deployment) }
 
-      ["frontend", "backend", "publish-worker", "browser-worker", "ai-service", "collab-service"].each do |deployment|
+      EXPECTED_DEPLOYMENTS.each do |deployment|
         document = context.require_document("Deployment", deployment, "mpp-system")
         next unless document
 
@@ -108,11 +111,13 @@ module KubernetesValidation
         "COLLAB_TOKEN_SECRET",
         "BROWSER_WORKER_INTERNAL_TOKEN",
         "AI_SERVICE_INTERNAL_TOKEN",
+        "CONTENT_PIPELINE_INTERNAL_TOKEN",
       ]
       require_secret_refs(context, "backend", backend_secret_keys)
       require_secret_refs(context, "publish-worker", backend_secret_keys)
       require_secret_refs(context, "browser-worker", ["REDIS_PASSWORD", "BROWSER_WORKER_INTERNAL_TOKEN"])
       require_secret_refs(context, "ai-service", ["LLM_PROVIDER_KEY", "AI_SERVICE_INTERNAL_TOKEN"])
+      require_secret_refs(context, "content-pipeline-service", ["CONTENT_PIPELINE_INTERNAL_TOKEN"])
       require_secret_refs(context, "collab-service", ["COLLAB_TOKEN_SECRET", "DB_PASSWORD", "REDIS_PASSWORD"])
 
       validate_content_pipeline(context)

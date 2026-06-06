@@ -61,6 +61,7 @@ module KubernetesValidation
         "LLM_PROVIDER_KEY",
         "BROWSER_WORKER_INTERNAL_TOKEN",
         "AI_SERVICE_INTERNAL_TOKEN",
+        "CONTENT_PIPELINE_INTERNAL_TOKEN",
       ].each do |key|
         value = secret_value(secret, key)
         if value.empty?

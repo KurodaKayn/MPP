@@ -849,8 +849,9 @@ Secret-to-workload map:
 | `COLLAB_TOKEN_SECRET` | `backend`, `publish-worker`, `collab-service` |
 | `COOKIE_ENCRYPTION_KEY` | `backend`, `publish-worker` |
 | `LLM_PROVIDER_KEY` | `ai-service` |
-| `BROWSER_WORKER_INTERNAL_TOKEN` | `backend`, `publish-worker`, `browser-worker` |
 | `AI_SERVICE_INTERNAL_TOKEN` | `backend`, `publish-worker`, `ai-service` |
+| `BROWSER_WORKER_INTERNAL_TOKEN` | `backend`, `publish-worker`, `browser-worker` |
+| `CONTENT_PIPELINE_INTERNAL_TOKEN` | `backend`, `publish-worker`, `content-pipeline-service` |
 
 ## Scaling
 
