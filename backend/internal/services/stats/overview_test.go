@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
@@ -43,4 +44,31 @@ func TestGetStats(t *testing.T) {
 	assert.Equal(t, int64(1), statsScoped.TotalProjects)
 	assert.Equal(t, int64(1), statsScoped.TotalPublishedPublications)
 	assert.Equal(t, int64(0), statsScoped.TotalFailedPublications)
+}
+
+func TestGetStatsUsesReaderForEventualCounts(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	s := services.NewDashboardServiceWithRouter(writer, dbrouter.NewRouter(writer, dbrouter.WithReader(reader)))
+
+	u1 := models.User{Username: "reader-user"}
+	require.NoError(t, reader.Create(&u1).Error)
+	project := models.Project{UserID: u1.ID, Title: "reader-project", SourceContent: "content", Status: models.ProjectStatusReady}
+	require.NoError(t, reader.Create(&project).Error)
+	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Status:    models.PublicationStatusPublished,
+	}).Error)
+
+	var writerUsers int64
+	require.NoError(t, writer.Model(&models.User{}).Count(&writerUsers).Error)
+	require.Equal(t, int64(0), writerUsers)
+
+	stats, err := s.GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalUsers)
+	assert.Equal(t, int64(1), stats.TotalProjects)
+	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
+	assert.Equal(t, int64(0), stats.TotalFailedPublications)
 }

@@ -10,10 +10,11 @@ import (
 
 func (s *Service) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
 	var stats dto.DashboardStatsResponse
+	readDB := s.eventualReadDB()
 
 	// Users count (Only admin should see total users)
 	if scopeUserID == nil {
-		if err := s.db.Model(&models.User{}).Count(&stats.TotalUsers).Error; err != nil {
+		if err := readDB.Model(&models.User{}).Count(&stats.TotalUsers).Error; err != nil {
 			return nil, err
 		}
 	} else {
@@ -21,7 +22,7 @@ func (s *Service) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse,
 	}
 
 	// Projects count
-	projQuery := s.db.Model(&models.Project{})
+	projQuery := readDB.Model(&models.Project{})
 	if scopeUserID != nil {
 		projQuery = s.projects.ScopeAccessibleProjects(projQuery, *scopeUserID)
 	}
@@ -30,7 +31,7 @@ func (s *Service) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse,
 	}
 
 	// Published publications count
-	pubPubQuery := s.db.Model(&models.ProjectPlatformPublication{}).Where("project_platform_publications.status = ?", models.PublicationStatusPublished)
+	pubPubQuery := readDB.Model(&models.ProjectPlatformPublication{}).Where("project_platform_publications.status = ?", models.PublicationStatusPublished)
 	if scopeUserID != nil {
 		pubPubQuery = pubPubQuery.Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
 			Scopes(func(db *gorm.DB) *gorm.DB {
@@ -42,7 +43,7 @@ func (s *Service) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse,
 	}
 
 	// Failed publications count
-	failPubQuery := s.db.Model(&models.ProjectPlatformPublication{}).Where("project_platform_publications.status = ?", models.PublicationStatusFailed)
+	failPubQuery := readDB.Model(&models.ProjectPlatformPublication{}).Where("project_platform_publications.status = ?", models.PublicationStatusFailed)
 	if scopeUserID != nil {
 		failPubQuery = failPubQuery.Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
 			Scopes(func(db *gorm.DB) *gorm.DB {
@@ -63,13 +64,14 @@ func (s *Service) GetWorkspaceStats(workspaceID uuid.UUID, scopeUserID uuid.UUID
 
 	var stats dto.DashboardStatsResponse
 	stats.TotalUsers = 1
+	readDB := s.eventualReadDB()
 
-	projQuery := s.db.Model(&models.Project{}).Where("workspace_id = ?", workspaceID)
+	projQuery := readDB.Model(&models.Project{}).Where("workspace_id = ?", workspaceID)
 	if err := projQuery.Count(&stats.TotalProjects).Error; err != nil {
 		return nil, err
 	}
 
-	pubQuery := s.db.Model(&models.ProjectPlatformPublication{}).
+	pubQuery := readDB.Model(&models.ProjectPlatformPublication{}).
 		Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
 		Where("projects.workspace_id = ?", workspaceID)
 	if err := pubQuery.Where("project_platform_publications.status = ?", models.PublicationStatusPublished).
@@ -77,7 +79,7 @@ func (s *Service) GetWorkspaceStats(workspaceID uuid.UUID, scopeUserID uuid.UUID
 		return nil, err
 	}
 
-	pubQuery = s.db.Model(&models.ProjectPlatformPublication{}).
+	pubQuery = readDB.Model(&models.ProjectPlatformPublication{}).
 		Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
 		Where("projects.workspace_id = ?", workspaceID)
 	if err := pubQuery.Where("project_platform_publications.status = ?", models.PublicationStatusFailed).
