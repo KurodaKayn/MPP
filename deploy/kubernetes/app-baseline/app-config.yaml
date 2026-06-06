@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mpp-app-config
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/part-of: mpp
+data:
+  APP_ENV: production
+  NODE_ENV: production
+  BACKEND_API_BASE_URL: http://backend:8080
+  BACKEND_REQUIRE_REDIS: "true"
+  BROWSER_WORKER_URL: http://browser-worker:8081
+  AI_SERVICE_URL: http://ai-service:8000
+  LLM_PROVIDER_URL: https://replace-with-llm-provider.example.invalid/v1
+  LLM_MODEL: replace-with-llm-model
+  CONTENT_PIPELINE_HOST: content-pipeline-service
+  CONTENT_PIPELINE_PORT: "50051"
+  CONTENT_PIPELINE_MEDIA_ENABLED: "false"
+  CONTENT_PIPELINE_DRAFTS_ENABLED: "false"
+  COLLAB_INTERNAL_URL: http://collab-service:8090
+  COLLAB_WEBSOCKET_URL_BASE: wss://replace-with-public-host.example.invalid
+  COLLAB_REDIS_SYNC_ENABLED: "true"
+  COLLAB_WS_PATH: /collab/documents/:documentId
+  DB_HOST: replace-with-postgres-host.example.invalid
+  DB_PORT: "5432"
+  DB_USER: postgres
+  DB_NAME: poster_db
+  DB_MAX_OPEN_CONNS: "10"
+  DB_MAX_IDLE_CONNS: "5"
+  DB_CONN_MAX_LIFETIME: 30m
+  DB_CONN_MAX_IDLE_TIME: 5m
+  REDIS_ADDR: replace-with-redis-host.example.invalid:6379
+  REDIS_DB: "0"
+  REDIS_TLS: "false"
