@@ -15,6 +15,10 @@ export interface ExtensionAuthTokenWritableStorage {
   set(values: Record<string, string>): Promise<void>;
 }
 
+export interface ExtensionAuthTokenClearableStorage {
+  remove(keys: string[]): Promise<void>;
+}
+
 export interface WebAuthTokenStorage {
   getItem(key: string): string | null;
 }
@@ -78,4 +82,10 @@ export async function persistExtensionAuthToken(
   });
 
   return true;
+}
+
+export async function clearStoredExtensionAuthTokens(
+  storage: ExtensionAuthTokenClearableStorage = browser.storage.local,
+): Promise<void> {
+  await storage.remove([...extensionAuthTokenStorageKeys]);
 }

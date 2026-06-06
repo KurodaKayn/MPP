@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  clearStoredExtensionAuthTokens,
   getWebAuthTokenFromStorage,
   getStoredExtensionAuthToken,
   persistExtensionAuthToken,
@@ -64,6 +65,23 @@ describe("persistExtensionAuthToken", () => {
     await persistExtensionAuthToken("   ", storage);
 
     expect(storage.set).not.toHaveBeenCalled();
+  });
+});
+
+describe("clearStoredExtensionAuthTokens", () => {
+  it("removes all extension auth token keys from local storage", async () => {
+    const storage = {
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await clearStoredExtensionAuthTokens(storage);
+
+    expect(storage.remove).toHaveBeenCalledWith([
+      "sevenoxcloud.auth_token",
+      "auth_token",
+      "access_token",
+      "mpp.web_auth_token",
+    ]);
   });
 });
 
