@@ -93,6 +93,8 @@ type Project struct {
 	UserID           uuid.UUID  `gorm:"type:uuid;not null;index:idx_projects_user_status_created_at"`
 	WorkspaceID      *uuid.UUID `gorm:"type:uuid;index:idx_projects_workspace_status_created_at"`
 	CollabDocumentID *uuid.UUID `gorm:"type:uuid;uniqueIndex:ux_projects_collab_document"`
+	TemplateID       *uuid.UUID `gorm:"type:uuid;index"`
+	BrandProfileID   *uuid.UUID `gorm:"type:uuid;index"`
 	Title            string     `gorm:"not null"`
 	SourceContent    string     `gorm:"type:text;not null"`
 	Status           string     `gorm:"not null;index:idx_projects_user_status_created_at;index:idx_projects_status_created_at;index:idx_projects_workspace_status_created_at"`
@@ -102,6 +104,8 @@ type Project struct {
 	Collaborators    []ProjectCollaborator        `gorm:"foreignKey:ProjectID"`
 	CollabDocument   *CollabDocument              `gorm:"foreignKey:CollabDocumentID;references:ID;constraint:OnDelete:SET NULL"`
 	Workspace        *Workspace                   `gorm:"foreignKey:WorkspaceID;references:ID;constraint:OnDelete:SET NULL"`
+	Template         *ContentTemplate             `gorm:"foreignKey:TemplateID;references:ID;constraint:OnDelete:SET NULL"`
+	BrandProfile     *BrandProfile                `gorm:"foreignKey:BrandProfileID;references:ID;constraint:OnDelete:SET NULL"`
 }
 
 const (
@@ -114,17 +118,83 @@ const (
 	MediaAssetUsageCoverImage  = "cover_image"
 )
 
+const (
+	ContentTemplateScopeSystem    = "system"
+	ContentTemplateScopeWorkspace = "workspace"
+	ContentTemplateScopePersonal  = "personal"
+)
+
+const (
+	MediaAssetLibraryScopeProject   = "project"
+	MediaAssetLibraryScopeWorkspace = "workspace"
+	MediaAssetLibraryScopePersonal  = "personal"
+)
+
+const (
+	PublicationDraftStatusUnsynced = "unsynced"
+	PublicationDraftStatusSyncing  = "syncing"
+	PublicationDraftStatusReady    = "ready"
+	PublicationDraftStatusStale    = "stale"
+)
+
+const (
+	PublicationReviewStatusDraft            = "draft"
+	PublicationReviewStatusReviewing        = "reviewing"
+	PublicationReviewStatusApproved         = "approved"
+	PublicationReviewStatusChangesRequested = "changes_requested"
+)
+
+type ContentTemplate struct {
+	ID               uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	WorkspaceID      *uuid.UUID     `gorm:"type:uuid;index"`
+	OwnerUserID      *uuid.UUID     `gorm:"type:uuid;index"`
+	Scope            string         `gorm:"not null;index"`
+	Name             string         `gorm:"not null"`
+	Description      string         `gorm:"type:text;not null;default:''"`
+	TitleTemplate    string         `gorm:"not null;default:''"`
+	SourceTemplate   string         `gorm:"type:text;not null;default:''"`
+	DefaultPlatforms datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	PlatformConfig   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	Tags             datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	CreatedAt        time.Time      `gorm:"not null"`
+	UpdatedAt        time.Time      `gorm:"not null"`
+	Workspace        *Workspace     `gorm:"foreignKey:WorkspaceID;references:ID;constraint:OnDelete:CASCADE"`
+	Owner            *User          `gorm:"foreignKey:OwnerUserID;constraint:OnDelete:CASCADE"`
+}
+
+type BrandProfile struct {
+	ID           uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	WorkspaceID  uuid.UUID      `gorm:"type:uuid;not null;index"`
+	CreatedBy    uuid.UUID      `gorm:"type:uuid;not null;index"`
+	Name         string         `gorm:"not null"`
+	Voice        string         `gorm:"type:text;not null;default:''"`
+	Audience     string         `gorm:"type:text;not null;default:''"`
+	BannedWords  datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	CTA          string         `gorm:"type:text;not null;default:''"`
+	LinkStrategy string         `gorm:"type:text;not null;default:''"`
+	DefaultTags  datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	CreatedAt    time.Time      `gorm:"not null"`
+	UpdatedAt    time.Time      `gorm:"not null"`
+	Workspace    Workspace      `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
+	Creator      User           `gorm:"foreignKey:CreatedBy;constraint:OnDelete:CASCADE"`
+}
+
 type MediaAsset struct {
 	ID               uuid.UUID      `gorm:"type:uuid;primaryKey"`
 	UserID           uuid.UUID      `gorm:"type:uuid;not null;index"`
 	WorkspaceID      *uuid.UUID     `gorm:"type:uuid;index"`
 	ProjectID        *uuid.UUID     `gorm:"type:uuid;index"`
+	DerivativeOf     *uuid.UUID     `gorm:"type:uuid;index"`
 	Bucket           string         `gorm:"not null"`
 	ObjectKey        string         `gorm:"not null;uniqueIndex"`
 	OriginalFilename string         `gorm:"not null"`
 	MimeType         string         `gorm:"not null;index"`
 	SizeBytes        int64          `gorm:"not null"`
 	Usage            string         `gorm:"not null;index"`
+	LibraryScope     string         `gorm:"not null;default:'project';index"`
+	Tags             datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	AltText          string         `gorm:"type:text;not null;default:''"`
+	Source           string         `gorm:"not null;default:''"`
 	Status           string         `gorm:"not null;index"`
 	ETag             string         `gorm:"not null;default:''"`
 	ErrorMessage     string         `gorm:"not null;default:''"`
@@ -134,6 +204,21 @@ type MediaAsset struct {
 	User             User           `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	Workspace        *Workspace     `gorm:"foreignKey:WorkspaceID;references:ID;constraint:OnDelete:SET NULL"`
 	Project          *Project       `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:SET NULL"`
+}
+
+type MediaAssetUsage struct {
+	ID            uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	MediaAssetID  uuid.UUID  `gorm:"type:uuid;not null;index:idx_media_asset_usages_asset_resource,priority:1"`
+	WorkspaceID   uuid.UUID  `gorm:"type:uuid;not null;index"`
+	ProjectID     *uuid.UUID `gorm:"type:uuid;index"`
+	PublicationID *uuid.UUID `gorm:"type:uuid;index"`
+	TemplateID    *uuid.UUID `gorm:"type:uuid;index"`
+	ResourceType  string     `gorm:"not null;index:idx_media_asset_usages_asset_resource,priority:2"`
+	ResourceID    uuid.UUID  `gorm:"type:uuid;not null;index:idx_media_asset_usages_asset_resource,priority:3"`
+	UsageKind     string     `gorm:"not null;default:'';index"`
+	CreatedAt     time.Time  `gorm:"not null"`
+	Asset         MediaAsset `gorm:"foreignKey:MediaAssetID;constraint:OnDelete:CASCADE"`
+	Workspace     Workspace  `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
 }
 
 const (
@@ -368,6 +453,9 @@ type ProjectPlatformPublication struct {
 	PlatformAccountID *uuid.UUID     `gorm:"type:uuid;index"`
 	Enabled           bool           `gorm:"not null;default:true"`
 	Status            string         `gorm:"not null;index:idx_publications_platform_status"`
+	DraftStatus       string         `gorm:"not null;default:'unsynced';index"`
+	ReviewStatus      string         `gorm:"not null;default:'draft';index"`
+	SyncRequired      bool           `gorm:"not null;default:false;index"`
 	Config            datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
 	AdaptedContent    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
 	RemoteID          string
@@ -510,12 +598,63 @@ func (m *MediaAsset) BeforeCreate(_ *gorm.DB) (err error) {
 	if m.Status == "" {
 		m.Status = MediaAssetStatusPending
 	}
+	if m.LibraryScope == "" {
+		m.LibraryScope = MediaAssetLibraryScopeProject
+	}
+	if m.Tags == nil {
+		m.Tags = datatypes.JSON([]byte(`[]`))
+	}
+	return
+}
+
+func (t *ContentTemplate) BeforeCreate(_ *gorm.DB) (err error) {
+	if t.ID == uuid.Nil {
+		t.ID = uuid.New()
+	}
+	if t.Scope == "" {
+		t.Scope = ContentTemplateScopePersonal
+	}
+	if t.DefaultPlatforms == nil {
+		t.DefaultPlatforms = datatypes.JSON([]byte(`[]`))
+	}
+	if t.PlatformConfig == nil {
+		t.PlatformConfig = datatypes.JSON([]byte(`{}`))
+	}
+	if t.Tags == nil {
+		t.Tags = datatypes.JSON([]byte(`[]`))
+	}
+	return
+}
+
+func (b *BrandProfile) BeforeCreate(_ *gorm.DB) (err error) {
+	if b.ID == uuid.Nil {
+		b.ID = uuid.New()
+	}
+	if b.BannedWords == nil {
+		b.BannedWords = datatypes.JSON([]byte(`[]`))
+	}
+	if b.DefaultTags == nil {
+		b.DefaultTags = datatypes.JSON([]byte(`[]`))
+	}
+	return
+}
+
+func (u *MediaAssetUsage) BeforeCreate(_ *gorm.DB) (err error) {
+	if u.ID == uuid.Nil {
+		u.ID = uuid.New()
+	}
 	return
 }
 
 func (p *ProjectPlatformPublication) BeforeCreate(_ *gorm.DB) (err error) {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
+	}
+	if p.DraftStatus == "" {
+		p.DraftStatus = PublicationDraftStatusUnsynced
+	}
+	if p.ReviewStatus == "" {
+		p.ReviewStatus = PublicationReviewStatusDraft
 	}
 	return
 }

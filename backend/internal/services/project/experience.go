@@ -212,6 +212,16 @@ func (s *Service) RestoreProjectVersion(projectID uuid.UUID, userID uuid.UUID, v
 		if err := createProjectVersion(tx, project, userID, "version_restore"); err != nil {
 			return err
 		}
+		if err := markProjectDraftsStale(tx, project.ID); err != nil {
+			return err
+		}
+		var publications []models.ProjectPlatformPublication
+		if err := tx.Where("project_id = ?", project.ID).Find(&publications).Error; err != nil {
+			return err
+		}
+		if err := refreshProjectMediaUsages(tx, project, publications); err != nil {
+			return err
+		}
 		return recordProjectActivity(tx, projectID, userID, nil, models.ProjectActivityVersionRestored, map[string]any{
 			"detached_collab_document_id": uuidString(previousCollabDocumentID),
 			"version_id":                  version.ID.String(),
