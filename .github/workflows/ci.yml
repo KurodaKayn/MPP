@@ -339,8 +339,17 @@ jobs:
         with:
           version: v1.33.9
 
-      - name: Build browser runtime controls
-        run: kubectl kustomize deploy/kubernetes/browser-runtime-control
+      - name: Build Kubernetes manifest packages
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          find deploy/kubernetes -name kustomization.yaml -print | sort | while IFS= read -r package; do
+            dir="$(dirname "$package")"
+            echo "::group::kubectl kustomize $dir"
+            kubectl kustomize "$dir" >/tmp/kustomize-rendered.yaml
+            echo "::endgroup::"
+          done
 
   ci-result:
     name: CI result
