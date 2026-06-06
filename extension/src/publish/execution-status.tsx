@@ -76,6 +76,50 @@ export function getLatestPlatformEvent(
   );
 }
 
+function formatPlatformName(platform: string): string {
+  return platform.charAt(0).toUpperCase() + platform.slice(1);
+}
+
+function getLatestUpdateMessage(
+  event: ExtensionExecutionEvent | undefined,
+): string {
+  if (!event) {
+    return "Waiting for platform updates.";
+  }
+
+  const platform = formatPlatformName(event.platform);
+
+  if (event.status === "opening_tabs") {
+    return `Opening ${platform} editor.`;
+  }
+
+  if (event.status === "injecting") {
+    return `Preparing ${platform} draft.`;
+  }
+
+  if (event.status === "user_review") {
+    return `Draft ready for review in ${platform}.`;
+  }
+
+  if (event.status === "failed") {
+    return `${platform} needs attention.`;
+  }
+
+  if (event.status === "expired") {
+    return `${platform} draft expired.`;
+  }
+
+  if (event.status === "submitted" || event.status === "succeeded") {
+    return `${platform} draft flow complete.`;
+  }
+
+  if (event.status === "cancelled") {
+    return `${platform} flow cancelled.`;
+  }
+
+  return `Preparing ${platform}.`;
+}
+
 export function CompactExecutionStatus({
   handoff,
   events,
@@ -104,9 +148,9 @@ export function CompactExecutionStatus({
         </p>
       </div>
       <div className="rounded-lg border border-border bg-card p-3">
-        <p className="text-xs text-muted-foreground">Last event</p>
-        <p className="mt-1 text-lg font-semibold">
-          {getStatusLabel(latestEvent?.status)}
+        <p className="text-xs text-muted-foreground">Latest update</p>
+        <p className="mt-1 text-sm font-medium">
+          {getLatestUpdateMessage(latestEvent)}
         </p>
       </div>
     </div>
