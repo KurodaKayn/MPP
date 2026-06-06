@@ -57,6 +57,32 @@ func TestDownloadAndProcessUsesContentPipelineWhenEnabled(t *testing.T) {
 	require.Equal(t, "data:image/png;base64,aGVsbG8=", fakeClient.request.GetSource().GetDataUrl())
 }
 
+func TestDownloadAndProcessSendsMediaObjectRefsToContentPipeline(t *testing.T) {
+	t.Setenv(contentPipelineMediaEnabledEnv, "true")
+	fakeClient := &fakeContentPipelineMediaClient{
+		response: &contentpipelinepb.ProcessAssetResponse{
+			Asset: &contentpipelinepb.ProcessedAsset{
+				Content: &contentpipelinepb.ProcessedAsset_InlineBytes{
+					InlineBytes: []byte("processed-object-ref"),
+				},
+				MimeType: "image/jpeg",
+			},
+			Status: "processed",
+		},
+	}
+	withContentPipelineMediaClientFactory(t, func(context.Context) (contentpipelinepb.MediaAssetProcessorClient, io.Closer, error) {
+		return fakeClient, noopCloser{}, nil
+	})
+
+	source := "mpp://media/11111111-1111-4111-8111-111111111111"
+	data, err := DownloadAndProcessForPlatform(source, "wechat", "cover")
+
+	require.NoError(t, err)
+	require.Equal(t, []byte("processed-object-ref"), data)
+	require.Equal(t, source, fakeClient.request.GetSource().GetObjectRef())
+	require.Empty(t, fakeClient.request.GetSource().GetUrl())
+}
+
 func TestDownloadAndProcessUsesContentPipelineDefaultsForNonWechatPlatforms(t *testing.T) {
 	t.Setenv(contentPipelineMediaEnabledEnv, "true")
 	fakeClient := &fakeContentPipelineMediaClient{
@@ -95,6 +121,22 @@ func TestDownloadAndProcessFallsBackForTransientContentPipelineErrors(t *testing
 
 	require.NoError(t, err)
 	require.Equal(t, []byte("hello"), data)
+}
+
+func TestDownloadAndProcessDoesNotFallbackForMediaObjectRefs(t *testing.T) {
+	t.Setenv(contentPipelineMediaEnabledEnv, "true")
+	fakeClient := &fakeContentPipelineMediaClient{
+		err: status.Error(codes.Unavailable, "content pipeline unavailable"),
+	}
+	withContentPipelineMediaClientFactory(t, func(context.Context) (contentpipelinepb.MediaAssetProcessorClient, io.Closer, error) {
+		return fakeClient, noopCloser{}, nil
+	})
+
+	data, err := DownloadAndProcess("mpp://media/11111111-1111-4111-8111-111111111111")
+
+	require.Error(t, err)
+	require.Nil(t, data)
+	require.Contains(t, err.Error(), "content pipeline unavailable")
 }
 
 func TestDownloadAndProcessDoesNotFallbackForContentPipelineValidationErrors(t *testing.T) {
