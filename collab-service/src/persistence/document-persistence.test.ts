@@ -6,7 +6,11 @@ import {
   createProjectYDoc,
   projectYDocToProseMirrorJSON,
 } from "../collab/project-document.js";
-import { PostgresDocumentPersistence } from "./document-persistence.js";
+import { loadConfig } from "../config.js";
+import {
+  postgresPoolConfigFromConfig,
+  PostgresDocumentPersistence,
+} from "./document-persistence.js";
 
 interface QueryCall {
   text: string;
@@ -521,5 +525,44 @@ describe("PostgresDocumentPersistence", () => {
     expect(logger.errors[0]?.[0]).toBe(
       "failed to prune compacted collab update batches",
     );
+  });
+});
+
+describe("postgresPoolConfigFromConfig", () => {
+  it("does not configure TLS by default", () => {
+    const config = loadConfig({ NODE_ENV: "test" });
+
+    const poolConfig = postgresPoolConfigFromConfig(config);
+
+    expect(poolConfig).toMatchObject({
+      host: "db",
+      port: 5432,
+      user: "postgres",
+      password: "postgres",
+      database: "poster_db",
+    });
+    expect(poolConfig.ssl).toBeUndefined();
+  });
+
+  it("enables encrypted postgres connections for require mode", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      DB_SSLMODE: "require",
+    });
+
+    const poolConfig = postgresPoolConfigFromConfig(config);
+
+    expect(poolConfig.ssl).toEqual({ rejectUnauthorized: false });
+  });
+
+  it("enables certificate verification for verify-full mode", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      DB_SSLMODE: "verify-full",
+    });
+
+    const poolConfig = postgresPoolConfigFromConfig(config);
+
+    expect(poolConfig.ssl).toEqual({ rejectUnauthorized: true });
   });
 });

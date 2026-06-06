@@ -292,6 +292,42 @@ func TestConnectionPoolConfigFromEnvRejectsInvalidValues(t *testing.T) {
 	}
 }
 
+func TestPostgresDSNFromEnvUsesDefaultSSLMode(t *testing.T) {
+	setDatabaseConnectionEnv(t)
+	t.Setenv(dbSSLModeEnv, "")
+	t.Setenv(dbSSLRootCertEnv, "")
+
+	dsn, err := postgresDSNFromEnv()
+
+	require.NoError(t, err)
+	require.Contains(t, dsn, "host='db'")
+	require.Contains(t, dsn, "sslmode='disable'")
+	require.NotContains(t, dsn, "sslrootcert")
+}
+
+func TestPostgresDSNFromEnvUsesVerifiedTLSSettings(t *testing.T) {
+	setDatabaseConnectionEnv(t)
+	t.Setenv(dbSSLModeEnv, "verify-full")
+	t.Setenv(dbSSLRootCertEnv, "/var/run/secrets/postgres/ca.crt")
+
+	dsn, err := postgresDSNFromEnv()
+
+	require.NoError(t, err)
+	require.Contains(t, dsn, "sslmode='verify-full'")
+	require.Contains(t, dsn, "sslrootcert='/var/run/secrets/postgres/ca.crt'")
+}
+
+func TestPostgresDSNFromEnvRejectsInvalidSSLMode(t *testing.T) {
+	setDatabaseConnectionEnv(t)
+	t.Setenv(dbSSLModeEnv, "plain")
+
+	dsn, err := postgresDSNFromEnv()
+
+	require.Empty(t, dsn)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), dbSSLModeEnv)
+}
+
 func TestConfigureConnectionPoolAppliesMaxOpenConns(t *testing.T) {
 	clearConnectionPoolEnv(t)
 	t.Setenv(dbMaxOpenConnsEnv, "3")
@@ -348,4 +384,13 @@ func clearConnectionPoolEnv(t *testing.T) {
 	t.Setenv(dbMaxIdleConnsEnv, "")
 	t.Setenv(dbConnMaxLifetimeEnv, "")
 	t.Setenv(dbConnMaxIdleTimeEnv, "")
+}
+
+func setDatabaseConnectionEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("DB_HOST", "db")
+	t.Setenv("DB_USER", "postgres")
+	t.Setenv("DB_PASSWORD", "postgres")
+	t.Setenv("DB_NAME", "poster_db")
+	t.Setenv("DB_PORT", "5432")
 }
