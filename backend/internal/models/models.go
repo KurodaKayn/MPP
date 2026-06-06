@@ -208,13 +208,13 @@ type MediaAsset struct {
 
 type MediaAssetUsage struct {
 	ID            uuid.UUID  `gorm:"type:uuid;primaryKey"`
-	MediaAssetID  uuid.UUID  `gorm:"type:uuid;not null;index:idx_media_asset_usages_asset_resource,priority:1"`
+	MediaAssetID  uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:idx_media_asset_usages_asset_resource,priority:1"`
 	WorkspaceID   uuid.UUID  `gorm:"type:uuid;not null;index"`
 	ProjectID     *uuid.UUID `gorm:"type:uuid;index"`
 	PublicationID *uuid.UUID `gorm:"type:uuid;index"`
 	TemplateID    *uuid.UUID `gorm:"type:uuid;index"`
-	ResourceType  string     `gorm:"not null;index:idx_media_asset_usages_asset_resource,priority:2"`
-	ResourceID    uuid.UUID  `gorm:"type:uuid;not null;index:idx_media_asset_usages_asset_resource,priority:3"`
+	ResourceType  string     `gorm:"not null;uniqueIndex:idx_media_asset_usages_asset_resource,priority:2"`
+	ResourceID    uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:idx_media_asset_usages_asset_resource,priority:3"`
 	UsageKind     string     `gorm:"not null;default:'';index"`
 	CreatedAt     time.Time  `gorm:"not null"`
 	Asset         MediaAsset `gorm:"foreignKey:MediaAssetID;constraint:OnDelete:CASCADE"`

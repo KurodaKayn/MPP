@@ -37,6 +37,18 @@ func refreshProjectMediaUsages(tx *gorm.DB, project models.Project, publications
 	return nil
 }
 
+func refreshContentTemplateMediaUsages(tx *gorm.DB, workspaceID uuid.UUID, template models.ContentTemplate) error {
+	if template.ID == uuid.Nil {
+		return ErrInvalidProject
+	}
+	if err := tx.Where("template_id = ?", template.ID).Delete(&models.MediaAssetUsage{}).Error; err != nil {
+		return err
+	}
+
+	refs := collectMediaAssetIDs(template.SourceTemplate, string(template.PlatformConfig))
+	return upsertMediaUsages(tx, workspaceID, nil, nil, &template.ID, "template", template.ID, models.MediaAssetUsageEditorImage, refs)
+}
+
 func (s *Service) RefreshProjectMediaUsages(projectID uuid.UUID) error {
 	if projectID == uuid.Nil {
 		return ErrInvalidProject
@@ -66,7 +78,14 @@ func upsertMediaUsages(tx *gorm.DB, workspaceID uuid.UUID, projectID *uuid.UUID,
 			ResourceID:    resourceID,
 			UsageKind:     usageKind,
 		}
-		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&usage).Error; err != nil {
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "media_asset_id"},
+				{Name: "resource_type"},
+				{Name: "resource_id"},
+			},
+			DoNothing: true,
+		}).Create(&usage).Error; err != nil {
 			return err
 		}
 	}

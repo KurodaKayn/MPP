@@ -401,7 +401,8 @@ func SetupTestDB() *gorm.DB {
 		resource_type TEXT NOT NULL,
 		resource_id TEXT NOT NULL,
 		usage_kind TEXT NOT NULL DEFAULT '',
-		created_at DATETIME NOT NULL
+		created_at DATETIME NOT NULL,
+		UNIQUE(media_asset_id, resource_type, resource_id)
 	)`)
 
 	db.Exec(`CREATE TABLE remote_browser_sessions (
