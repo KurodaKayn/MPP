@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	browsercontainer "github.com/kurodakayn/mpp-browser-worker/internal/container"
+	browserkubernetes "github.com/kurodakayn/mpp-browser-worker/internal/kubernetes"
 	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 )
 
@@ -21,7 +22,7 @@ func NewManagerFromEnv() (browserruntime.Manager, error) {
 	case browserruntime.DriverDocker:
 		return browsercontainer.NewManager()
 	case browserruntime.DriverKubernetes:
-		return nil, fmt.Errorf("browser runtime driver %q is not implemented", driver)
+		return browserkubernetes.NewManagerFromEnv()
 	default:
 		return nil, fmt.Errorf("unsupported browser runtime driver %q", driver)
 	}

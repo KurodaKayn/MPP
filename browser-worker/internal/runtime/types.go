@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 )
 
 const (
@@ -20,6 +21,7 @@ type StartSessionRequest struct {
 	SessionID string
 	UserID    string
 	Platform  string
+	TTL       time.Duration
 }
 
 type SessionReference struct {
