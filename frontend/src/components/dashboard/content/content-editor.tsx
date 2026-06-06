@@ -104,6 +104,10 @@ export function ContentEditor({
           </div>
         ) : null}
 
+        {collaboration ? (
+          <CollaborationHealthNotice collaboration={collaboration} />
+        ) : null}
+
         {collaboration?.role === "viewer" ? (
           <CollaborationReadonlyNotice />
         ) : null}
@@ -156,6 +160,47 @@ export function ContentEditor({
       </Card>
     </TooltipProvider>
   );
+}
+
+function CollaborationHealthNotice({
+  collaboration,
+}: {
+  collaboration: ContentEditorCollaboration;
+}) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "dashboard");
+
+  if (collaboration.status === "offline") {
+    return (
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
+        {t("collab.editor.offline")}
+      </div>
+    );
+  }
+  if (collaboration.status === "unauthorized") {
+    return (
+      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+        {t("collab.editor.unauthorized")}
+      </div>
+    );
+  }
+  if (collaboration.status === "connecting") {
+    return (
+      <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+        {t("collab.editor.connecting")}
+      </div>
+    );
+  }
+  if (collaboration.unsyncedChanges > 0) {
+    return (
+      <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-700 dark:text-blue-300">
+        {t("collab.editor.unsynced", {
+          count: collaboration.unsyncedChanges,
+        })}
+      </div>
+    );
+  }
+  return null;
 }
 
 function CollaborationReadonlyNotice() {

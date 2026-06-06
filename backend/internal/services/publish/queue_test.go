@@ -138,6 +138,15 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 		created_at DATETIME,
 		PRIMARY KEY (project_id, user_id)
 	)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE project_activities (
+		id TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL,
+		actor_user_id TEXT NOT NULL,
+		target_user_id TEXT,
+		event_type TEXT NOT NULL,
+		metadata TEXT NOT NULL DEFAULT '{}',
+		created_at DATETIME NOT NULL
+	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE platform_accounts (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,

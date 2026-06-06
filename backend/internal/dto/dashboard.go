@@ -298,6 +298,106 @@ type ProjectCollaboratorsResponse struct {
 	Items []ProjectCollaborator `json:"items"`
 }
 
+type ProjectActivity struct {
+	ID             uuid.UUID      `json:"id"`
+	ProjectID      uuid.UUID      `json:"project_id"`
+	ActorUserID    uuid.UUID      `json:"actor_user_id"`
+	ActorUsername  string         `json:"actor_username"`
+	ActorEmail     string         `json:"actor_email"`
+	TargetUserID   *uuid.UUID     `json:"target_user_id,omitempty"`
+	TargetUsername string         `json:"target_username,omitempty"`
+	TargetEmail    string         `json:"target_email,omitempty"`
+	EventType      string         `json:"event_type"`
+	Metadata       map[string]any `json:"metadata"`
+	CreatedAt      time.Time      `json:"created_at"`
+}
+
+type ProjectActivitiesResponse struct {
+	Items []ProjectActivity `json:"items"`
+}
+
+type CreateProjectCommentRequest struct {
+	Body       string         `json:"body"`
+	AnchorText string         `json:"anchor_text,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+}
+
+type UpdateProjectCommentRequest struct {
+	Status string `json:"status"`
+}
+
+type ProjectComment struct {
+	ID             uuid.UUID      `json:"id"`
+	ProjectID      uuid.UUID      `json:"project_id"`
+	AuthorID       uuid.UUID      `json:"author_id"`
+	AuthorUsername string         `json:"author_username"`
+	AuthorEmail    string         `json:"author_email"`
+	Body           string         `json:"body"`
+	AnchorText     string         `json:"anchor_text,omitempty"`
+	Status         string         `json:"status"`
+	Metadata       map[string]any `json:"metadata"`
+	CreatedAt      time.Time      `json:"created_at"`
+	ResolvedAt     *time.Time     `json:"resolved_at,omitempty"`
+}
+
+type ProjectCommentsResponse struct {
+	Items []ProjectComment `json:"items"`
+}
+
+type ProjectVersion struct {
+	ID               uuid.UUID  `json:"id"`
+	ProjectID        uuid.UUID  `json:"project_id"`
+	CreatedBy        uuid.UUID  `json:"created_by"`
+	CreatorUsername  string     `json:"creator_username"`
+	CreatorEmail     string     `json:"creator_email"`
+	VersionNumber    int        `json:"version_number"`
+	Title            string     `json:"title"`
+	Source           string     `json:"source"`
+	CollabDocumentID *uuid.UUID `json:"collab_document_id,omitempty"`
+	CollabSeq        int64      `json:"collab_seq"`
+	CreatedAt        time.Time  `json:"created_at"`
+}
+
+type ProjectVersionsResponse struct {
+	Items []ProjectVersion `json:"items"`
+}
+
+type RestoreProjectVersionResponse struct {
+	Project *ProjectDetail `json:"project"`
+	Version ProjectVersion `json:"version"`
+}
+
+type CreateProjectShareLinkRequest struct {
+	Role      string     `json:"role"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+type ProjectShareLink struct {
+	ID        uuid.UUID  `json:"id"`
+	ProjectID uuid.UUID  `json:"project_id"`
+	CreatedBy uuid.UUID  `json:"created_by"`
+	Role      string     `json:"role"`
+	Status    string     `json:"status"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+}
+
+type ProjectShareLinkWithToken struct {
+	ProjectShareLink
+	Token string `json:"token"`
+	URL   string `json:"url"`
+}
+
+type ProjectShareLinksResponse struct {
+	Items []ProjectShareLink `json:"items"`
+}
+
+type AcceptProjectShareLinkResponse struct {
+	Project *ProjectDetail `json:"project"`
+	Role    string         `json:"role"`
+}
+
 type CreateWorkspaceRequest struct {
 	Name string `json:"name"`
 	Slug string `json:"slug,omitempty"`

@@ -498,20 +498,20 @@ Acceptance:
 - [x] Project owner/collaborator overrides still work.
 - [x] Existing personal Projects remain accessible after migration.
 
-### Phase 4: Collaboration Experience
+### Phase 4: Collaboration Experience - Done
 
 Deliverables:
 
-- [ ] Comments/review mode.
-- [ ] Project activity feed for content, publishing, and collaborator changes.
-- [ ] Version history from collab snapshots/update batches.
-- [ ] Better conflict/offline messaging.
-- [ ] Optional share links.
+- [x] Comments/review mode.
+- [x] Project activity feed for content, publishing, and collaborator changes.
+- [x] Version history from collab snapshots/update batches.
+- [x] Better conflict/offline messaging.
+- [x] Optional share links.
 
 Acceptance:
 
-- [ ] Teams can review, edit, and publish Projects with clear accountability.
-- [ ] Users can inspect recent changes and recover prior content.
+- [x] Teams can review, edit, and publish Projects with clear accountability.
+- [x] Users can inspect recent changes and recover prior content.
 
 ### Phase 5: Distributed Readiness
 
@@ -544,7 +544,7 @@ Acceptance:
 | Workspace/team model | Done | Harden edge cases and move toward first-class workspace URLs. |
 | Workspace-scoped project access | Done | Continue hardening route/query policy coverage. |
 | Publishing permission split | Partial | Extend the centralized owner-only policy when explicit publisher roles are introduced. |
-| Comments/activity/version UX | Partial | Workspace activity is available; Project activity, comments, and version recovery remain next. |
+| Comments/activity/version UX | Done | Project comments, activity, version recovery, offline messaging, and optional share-link management are available in the Project editor. |
 | Distributed collab-service | Not Started | Validate Redis pub/sub and multi-instance routing. |
 
 ## 13. Open Decisions
@@ -558,28 +558,29 @@ Acceptance:
 
 ## 14. Recommended Next Slice
 
-Build Project accountability UX.
+Build distributed collaboration readiness.
 
 Reason:
 
-- Workspace navigation, scoped project creation, member management, and
-  workspace audit events are now in place.
-- The remaining collaboration gap is at the Project level: users need to inspect
-  content, collaborator, and publishing changes in the surface where editing
-  happens.
-- Project-level activity creates the foundation for comments/review mode and
-  version recovery from collab snapshots.
+- Project-level accountability, review comments, version recovery, share-link
+  management, and clearer offline messaging are now in the Project editor.
+- The next risk is operational: multiple realtime collaboration instances must
+  preserve awareness, updates, and persistence under scale-out and restart.
+- Redis pub/sub, routing validation, and observability should land before adding
+  broader guest access or publisher roles.
 
 Next useful slice:
 
-1. Add a `project_activities` model and record collaborator, publish, and
-   content sync events.
-2. Expose a manager/editor-readable Project activity API with bounded pagination.
-3. Add an activity panel to the Project editor beside sharing/status controls.
-4. Keep workspace activity focused on membership and workspace administration.
-5. Add focused service, handler, API client, and frontend rendering tests.
-
-Then add comments and version recovery once Project activity is stable.
+1. Add Redis pub/sub or the Hocuspocus Redis extension for multi-instance
+   document synchronization.
+2. Validate Traefik `/collab` WebSocket routing with multiple collab-service
+   instances.
+3. Add a multi-instance collab-service test that edits the same Project from
+   two server instances.
+4. Add Prometheus/Grafana panels for active documents, connection count, update
+   flush latency, and auth denials.
+5. Add restart/load scripts that prove no Yjs update loss during worker
+   replacement.
 
 ## 15. References
 

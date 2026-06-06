@@ -124,6 +124,32 @@ const (
 )
 
 const (
+	ProjectActivityContentSaved            = string(contracts.ProjectActivityTypeContentSaved)
+	ProjectActivityCommentCreated          = string(contracts.ProjectActivityTypeCommentCreated)
+	ProjectActivityCommentResolved         = string(contracts.ProjectActivityTypeCommentResolved)
+	ProjectActivityCollaboratorAdded       = string(contracts.ProjectActivityTypeCollaboratorAdded)
+	ProjectActivityCollaboratorRoleChanged = string(contracts.ProjectActivityTypeCollaboratorRoleChanged)
+	ProjectActivityCollaboratorRemoved     = string(contracts.ProjectActivityTypeCollaboratorRemoved)
+	ProjectActivityPublishRequested        = string(contracts.ProjectActivityTypePublishRequested)
+	ProjectActivityPublishQueued           = string(contracts.ProjectActivityTypePublishQueued)
+	ProjectActivityPublishCompleted        = string(contracts.ProjectActivityTypePublishCompleted)
+	ProjectActivityShareLinkAccepted       = string(contracts.ProjectActivityTypeShareLinkAccepted)
+	ProjectActivityShareLinkCreated        = string(contracts.ProjectActivityTypeShareLinkCreated)
+	ProjectActivityShareLinkRevoked        = string(contracts.ProjectActivityTypeShareLinkRevoked)
+	ProjectActivityVersionRestored         = string(contracts.ProjectActivityTypeVersionRestored)
+)
+
+const (
+	ProjectCommentStatusOpen     = string(contracts.ProjectCommentStatusOpen)
+	ProjectCommentStatusResolved = string(contracts.ProjectCommentStatusResolved)
+)
+
+const (
+	ProjectShareLinkStatusActive  = string(contracts.ProjectShareLinkStatusActive)
+	ProjectShareLinkStatusRevoked = string(contracts.ProjectShareLinkStatusRevoked)
+)
+
+const (
 	ProjectAccessSourceOwner       = "owner"
 	ProjectAccessSourceDirectShare = "direct_share"
 	ProjectAccessSourceWorkspace   = "workspace"
@@ -138,6 +164,62 @@ type ProjectCollaborator struct {
 	Project   Project `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
 	User      User    `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	Creator   User    `gorm:"foreignKey:CreatedBy"`
+}
+
+type ProjectActivity struct {
+	ID           uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	ProjectID    uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_activities_project_created_at,priority:1"`
+	ActorUserID  uuid.UUID      `gorm:"type:uuid;not null;index"`
+	TargetUserID *uuid.UUID     `gorm:"type:uuid;index"`
+	EventType    string         `gorm:"not null;index"`
+	Metadata     datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	CreatedAt    time.Time      `gorm:"not null;index:idx_project_activities_project_created_at,priority:2"`
+	Project      Project        `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	Actor        User           `gorm:"foreignKey:ActorUserID;constraint:OnDelete:CASCADE"`
+	TargetUser   *User          `gorm:"foreignKey:TargetUserID;constraint:OnDelete:SET NULL"`
+}
+
+type ProjectComment struct {
+	ID         uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	ProjectID  uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_comments_project_created_at,priority:1"`
+	AuthorID   uuid.UUID      `gorm:"type:uuid;not null;index"`
+	Body       string         `gorm:"type:text;not null"`
+	AnchorText string         `gorm:"type:text;not null;default:''"`
+	Status     string         `gorm:"not null;default:'open';index"`
+	Metadata   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	CreatedAt  time.Time      `gorm:"not null;index:idx_project_comments_project_created_at,priority:2"`
+	ResolvedAt *time.Time
+	Project    Project `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	Author     User    `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE"`
+}
+
+type ProjectVersion struct {
+	ID               uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	ProjectID        uuid.UUID  `gorm:"type:uuid;not null;index:idx_project_versions_project_created_at,priority:1"`
+	CreatedBy        uuid.UUID  `gorm:"type:uuid;not null;index"`
+	VersionNumber    int        `gorm:"not null"`
+	Title            string     `gorm:"not null"`
+	SourceContent    string     `gorm:"type:text;not null"`
+	CollabDocumentID *uuid.UUID `gorm:"type:uuid;index"`
+	CollabSeq        int64      `gorm:"not null;default:0"`
+	Source           string     `gorm:"not null"`
+	CreatedAt        time.Time  `gorm:"not null;index:idx_project_versions_project_created_at,priority:2"`
+	Project          Project    `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	Creator          User       `gorm:"foreignKey:CreatedBy;constraint:OnDelete:CASCADE"`
+}
+
+type ProjectShareLink struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
+	ProjectID uuid.UUID `gorm:"type:uuid;not null;index"`
+	CreatedBy uuid.UUID `gorm:"type:uuid;not null;index"`
+	TokenHash string    `gorm:"not null;uniqueIndex"`
+	Role      string    `gorm:"not null"`
+	Status    string    `gorm:"not null;default:'active';index"`
+	ExpiresAt *time.Time
+	CreatedAt time.Time `gorm:"not null"`
+	RevokedAt *time.Time
+	Project   Project `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	Creator   User    `gorm:"foreignKey:CreatedBy;constraint:OnDelete:CASCADE"`
 }
 
 const (
@@ -360,6 +442,40 @@ func (w *Workspace) BeforeCreate(_ *gorm.DB) (err error) {
 func (a *WorkspaceActivity) BeforeCreate(_ *gorm.DB) (err error) {
 	if a.ID == uuid.Nil {
 		a.ID = uuid.New()
+	}
+	return
+}
+
+func (a *ProjectActivity) BeforeCreate(_ *gorm.DB) (err error) {
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	return
+}
+
+func (c *ProjectComment) BeforeCreate(_ *gorm.DB) (err error) {
+	if c.ID == uuid.Nil {
+		c.ID = uuid.New()
+	}
+	if c.Status == "" {
+		c.Status = ProjectCommentStatusOpen
+	}
+	return
+}
+
+func (v *ProjectVersion) BeforeCreate(_ *gorm.DB) (err error) {
+	if v.ID == uuid.Nil {
+		v.ID = uuid.New()
+	}
+	return
+}
+
+func (l *ProjectShareLink) BeforeCreate(_ *gorm.DB) (err error) {
+	if l.ID == uuid.Nil {
+		l.ID = uuid.New()
+	}
+	if l.Status == "" {
+		l.Status = ProjectShareLinkStatusActive
 	}
 	return
 }

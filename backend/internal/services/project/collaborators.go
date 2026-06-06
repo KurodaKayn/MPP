@@ -69,16 +69,23 @@ func (s *Service) AddProjectCollaborator(projectID uuid.UUID, actorUserID uuid.U
 		Role:      role,
 		CreatedBy: actorUserID,
 	}
-	if err := s.db.Clauses(clause.OnConflict{
-		Columns: []clause.Column{
-			{Name: "project_id"},
-			{Name: "user_id"},
-		},
-		DoUpdates: clause.Assignments(map[string]any{
-			"role":       role,
-			"created_by": actorUserID,
-		}),
-	}).Create(&collaborator).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "project_id"},
+				{Name: "user_id"},
+			},
+			DoUpdates: clause.Assignments(map[string]any{
+				"role":       role,
+				"created_by": actorUserID,
+			}),
+		}).Create(&collaborator).Error; err != nil {
+			return err
+		}
+		return recordProjectActivity(tx, projectID, actorUserID, &user.ID, models.ProjectActivityCollaboratorAdded, map[string]any{
+			"role": role,
+		})
+	}); err != nil {
 		return nil, err
 	}
 
@@ -103,7 +110,16 @@ func (s *Service) UpdateProjectCollaborator(projectID uuid.UUID, actorUserID uui
 	if err := s.db.Where("project_id = ? AND user_id = ?", projectID, targetUserID).First(&collaborator).Error; err != nil {
 		return nil, err
 	}
-	if err := s.db.Model(&collaborator).Update("role", role).Error; err != nil {
+	previousRole := collaborator.Role
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&collaborator).Update("role", role).Error; err != nil {
+			return err
+		}
+		return recordProjectActivity(tx, projectID, actorUserID, &targetUserID, models.ProjectActivityCollaboratorRoleChanged, map[string]any{
+			"previous_role": previousRole,
+			"role":          role,
+		})
+	}); err != nil {
 		return nil, err
 	}
 
@@ -119,14 +135,16 @@ func (s *Service) RemoveProjectCollaborator(projectID uuid.UUID, actorUserID uui
 		return ErrInvalidProjectCollaborator
 	}
 
-	result := s.db.Delete(&models.ProjectCollaborator{}, "project_id = ? AND user_id = ?", projectID, targetUserID)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Delete(&models.ProjectCollaborator{}, "project_id = ? AND user_id = ?", projectID, targetUserID)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return recordProjectActivity(tx, projectID, actorUserID, &targetUserID, models.ProjectActivityCollaboratorRemoved, nil)
+	})
 }
 
 func (s *Service) resolveProjectCollaboratorUser(req dto.AddProjectCollaboratorRequest) (*models.User, error) {

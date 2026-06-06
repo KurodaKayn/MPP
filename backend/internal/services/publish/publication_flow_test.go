@@ -91,6 +91,26 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, result["status"])
 
+	var completedActivity models.ProjectActivity
+	require.NoError(t, db.First(
+		&completedActivity,
+		"project_id = ? AND actor_user_id = ? AND event_type = ?",
+		project.ID,
+		user.ID,
+		models.ProjectActivityPublishCompleted,
+	).Error)
+	var metadata map[string]string
+	require.NoError(t, json.Unmarshal(completedActivity.Metadata, &metadata))
+	assert.Equal(t, "wechat", metadata["platform"])
+	assert.Equal(t, models.PublicationStatusSucceeded, metadata["status"])
+	assert.Equal(t, "remote-id", metadata["remote_id"])
+
+	var queuedActivities int64
+	require.NoError(t, db.Model(&models.ProjectActivity{}).
+		Where("project_id = ? AND actor_user_id = ? AND event_type = ?", project.ID, user.ID, models.ProjectActivityPublishQueued).
+		Count(&queuedActivities).Error)
+	assert.Zero(t, queuedActivities)
+
 	var config map[string]string
 	require.NoError(t, json.Unmarshal(fakePublisher.Config, &config))
 	assert.Equal(t, "wx-saved", config["app_id"])
