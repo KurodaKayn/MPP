@@ -188,6 +188,41 @@ func (s *Service) ResolveMediaAssets(userID uuid.UUID, req dto.ResolveMediaAsset
 	return &dto.ResolveMediaAssetsResponse{Items: items}, nil
 }
 
+func (s *Service) ResolveMediaObjectRef(req dto.ResolveMediaObjectRefRequest) (*dto.ResolveMediaObjectRefResponse, error) {
+	if err := s.ensureMediaStorage(); err != nil {
+		return nil, err
+	}
+
+	assetID, err := parseMediaObjectRef(req.ObjectRef)
+	if err != nil {
+		return nil, err
+	}
+
+	var asset models.MediaAsset
+	if err := s.db.First(&asset, "id = ?", assetID).Error; err != nil {
+		return nil, err
+	}
+	if asset.Status != models.MediaAssetStatusReady {
+		return nil, ErrMediaAssetNotReady
+	}
+	if strings.TrimSpace(asset.Bucket) == "" || strings.TrimSpace(asset.ObjectKey) == "" {
+		return nil, ErrInvalidMediaAsset
+	}
+
+	presigned, err := s.objectStorage.PresignGetObject(s.requestContext(), objectstorage.GetObjectInput{
+		Bucket:  asset.Bucket,
+		Key:     asset.ObjectKey,
+		Expires: s.storageConfig.DownloadURLTTL,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("presign media object ref: %w", err)
+	}
+	return &dto.ResolveMediaObjectRefResponse{
+		URL:       presigned.URL,
+		ExpiresAt: time.Now().UTC().Add(presigned.Expires),
+	}, nil
+}
+
 func (s *Service) DeleteMediaAsset(assetID uuid.UUID, userID uuid.UUID) error {
 	if err := s.ensureMediaStorage(); err != nil {
 		return err
@@ -339,4 +374,16 @@ func safeMediaFilename(filename string) string {
 
 func mediaAssetObjectRef(assetID uuid.UUID) string {
 	return mediaObjectRefPrefix + assetID.String()
+}
+
+func parseMediaObjectRef(value string) (uuid.UUID, error) {
+	value = strings.TrimSpace(value)
+	if !strings.HasPrefix(value, mediaObjectRefPrefix) {
+		return uuid.Nil, ErrInvalidMediaAsset
+	}
+	assetID, err := uuid.Parse(strings.TrimPrefix(value, mediaObjectRefPrefix))
+	if err != nil || assetID == uuid.Nil {
+		return uuid.Nil, ErrInvalidMediaAsset
+	}
+	return assetID, nil
 }

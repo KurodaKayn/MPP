@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 
@@ -20,12 +21,27 @@ const publishMediaObjectRefPrefix = "mpp://media/"
 
 var publishMediaObjectRefPattern = regexp.MustCompile(`mpp://media/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})`)
 
+const (
+	contentPipelineMediaEnabledEnv     = "CONTENT_PIPELINE_MEDIA_ENABLED"
+	contentPipelineMediaResolverURLEnv = "CONTENT_PIPELINE_MEDIA_RESOLVER_URL"
+	contentPipelineInternalTokenEnv    = "CONTENT_PIPELINE_INTERNAL_TOKEN"
+)
+
 var ErrPublishMediaStorageUnavailable = errors.New("publish media storage unavailable")
 var ErrPublishMediaAssetNotReady = errors.New("publish media asset not ready")
 
 func (s *Service) preparePublicationMediaRefs(ctx context.Context, project models.Project, pub models.ProjectPlatformPublication) (models.ProjectPlatformPublication, error) {
 	refs := collectPublicationMediaRefs(pub.Config, pub.AdaptedContent)
 	if len(refs) == 0 {
+		return pub, nil
+	}
+
+	if s.shouldPreserveMediaObjectRefsForContentPipeline() {
+		for _, assetID := range refs {
+			if _, err := s.publishMediaAssetForProject(ctx, project, assetID); err != nil {
+				return models.ProjectPlatformPublication{}, err
+			}
+		}
 		return pub, nil
 	}
 
@@ -53,33 +69,9 @@ func (s *Service) preparePublicationMediaRefs(ctx context.Context, project model
 }
 
 func (s *Service) presignPublishMediaAsset(ctx context.Context, project models.Project, assetID uuid.UUID) (string, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if s.objectStorage == nil || !s.storageConfig.Enabled || strings.TrimSpace(s.storageConfig.Bucket) == "" || s.storageConfig.DownloadURLTTL <= 0 {
-		return "", ErrPublishMediaStorageUnavailable
-	}
-
-	db := s.db
-	if ctx != nil {
-		db = db.WithContext(ctx)
-	}
-
-	var asset models.MediaAsset
-	if err := db.First(&asset, "id = ?", assetID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", fmt.Errorf("publish media asset not found: %s", assetID)
-		}
+	asset, err := s.publishMediaAssetForProject(ctx, project, assetID)
+	if err != nil {
 		return "", err
-	}
-	if asset.ProjectID == nil || *asset.ProjectID != project.ID {
-		return "", ErrForbidden
-	}
-	if asset.Status != models.MediaAssetStatusReady {
-		return "", fmt.Errorf("%w: %s", ErrPublishMediaAssetNotReady, assetID)
-	}
-	if strings.TrimSpace(asset.Bucket) == "" || strings.TrimSpace(asset.ObjectKey) == "" {
-		return "", fmt.Errorf("publish media asset has no object location: %s", assetID)
 	}
 
 	presigned, err := s.objectStorage.PresignGetObject(ctx, objectstorage.GetObjectInput{
@@ -91,6 +83,47 @@ func (s *Service) presignPublishMediaAsset(ctx context.Context, project models.P
 		return "", fmt.Errorf("presign publish media asset: %w", err)
 	}
 	return presigned.URL, nil
+}
+
+func (s *Service) publishMediaAssetForProject(ctx context.Context, project models.Project, assetID uuid.UUID) (*models.MediaAsset, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if s.objectStorage == nil || !s.storageConfig.Enabled || strings.TrimSpace(s.storageConfig.Bucket) == "" || s.storageConfig.DownloadURLTTL <= 0 {
+		return nil, ErrPublishMediaStorageUnavailable
+	}
+
+	db := s.db
+	if ctx != nil {
+		db = db.WithContext(ctx)
+	}
+
+	var asset models.MediaAsset
+	if err := db.First(&asset, "id = ?", assetID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("publish media asset not found: %s", assetID)
+		}
+		return nil, err
+	}
+	if asset.ProjectID == nil || *asset.ProjectID != project.ID {
+		return nil, ErrForbidden
+	}
+	if asset.Status != models.MediaAssetStatusReady {
+		return nil, fmt.Errorf("%w: %s", ErrPublishMediaAssetNotReady, assetID)
+	}
+	if strings.TrimSpace(asset.Bucket) == "" || strings.TrimSpace(asset.ObjectKey) == "" {
+		return nil, fmt.Errorf("publish media asset has no object location: %s", assetID)
+	}
+
+	return &asset, nil
+}
+
+func (s *Service) shouldPreserveMediaObjectRefsForContentPipeline() bool {
+	if !envBool(contentPipelineMediaEnabledEnv) {
+		return false
+	}
+	return strings.TrimSpace(os.Getenv(contentPipelineMediaResolverURLEnv)) != "" &&
+		strings.TrimSpace(os.Getenv(contentPipelineInternalTokenEnv)) != ""
 }
 
 func collectPublicationMediaRefs(values ...datatypes.JSON) map[string]uuid.UUID {
@@ -155,4 +188,9 @@ func replaceMediaRefsInString(value string, replacements map[string]string) stri
 		value = strings.ReplaceAll(value, ref, replacement)
 	}
 	return value
+}
+
+func envBool(name string) bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv(name)))
+	return value == "1" || value == "true" || value == "yes" || value == "on"
 }

@@ -41,6 +41,8 @@ services:
       COLLAB_WEBSOCKET_URL_BASE: ${COLLAB_WEBSOCKET_URL_BASE:-ws://localhost:8090}
       CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-true}
       CONTENT_PIPELINE_DRAFTS_ENABLED: ${CONTENT_PIPELINE_DRAFTS_ENABLED:-true}
+      CONTENT_PIPELINE_MEDIA_RESOLVER_URL: ${CONTENT_PIPELINE_MEDIA_RESOLVER_URL:-http://backend:8080/internal/media/resolve}
+      CONTENT_PIPELINE_INTERNAL_TOKEN: ${CONTENT_PIPELINE_INTERNAL_TOKEN:-change-me-content-pipeline-internal-token}
       BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-change-me-browser-worker-internal-token}
       AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-change-me-ai-service-internal-token}
     healthcheck:
@@ -73,6 +75,8 @@ services:
       ENABLE_DEV_SEED: "false"
       CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-true}
       CONTENT_PIPELINE_DRAFTS_ENABLED: ${CONTENT_PIPELINE_DRAFTS_ENABLED:-true}
+      CONTENT_PIPELINE_MEDIA_RESOLVER_URL: ${CONTENT_PIPELINE_MEDIA_RESOLVER_URL:-http://backend:8080/internal/media/resolve}
+      CONTENT_PIPELINE_INTERNAL_TOKEN: ${CONTENT_PIPELINE_INTERNAL_TOKEN:-change-me-content-pipeline-internal-token}
       BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-change-me-browser-worker-internal-token}
       AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-change-me-ai-service-internal-token}
     volumes:
@@ -123,6 +127,17 @@ services:
           path: ../ai-service/pyproject.toml
         - action: rebuild
           path: ../ai-service/uv.lock
+
+  content-pipeline-service:
+    build:
+      target: dev
+    environment:
+      CONTENT_PIPELINE_MEDIA_RESOLVER_URL: ${CONTENT_PIPELINE_MEDIA_RESOLVER_URL:-http://backend:8080/internal/media/resolve}
+      CONTENT_PIPELINE_INTERNAL_TOKEN: ${CONTENT_PIPELINE_INTERNAL_TOKEN:-change-me-content-pipeline-internal-token}
+    volumes:
+      - ../content-pipeline-service:/app
+      - content_pipeline_cargo_registry:/usr/local/cargo/registry
+      - content_pipeline_cargo_target:/app/target
 
   collab-service:
     build:

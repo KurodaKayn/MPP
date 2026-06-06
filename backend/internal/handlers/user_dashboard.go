@@ -500,6 +500,19 @@ func (h *UserDashboardHandler) ResolveMediaAssets(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+func (h *UserDashboardHandler) ResolveMediaObjectRef(c echo.Context) error {
+	req := new(dto.ResolveMediaObjectRefRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	resp, err := h.serviceFor(c).ResolveMediaObjectRef(*req)
+	if err != nil {
+		return sendMediaAssetError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
 func (h *UserDashboardHandler) DeleteMediaAsset(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {

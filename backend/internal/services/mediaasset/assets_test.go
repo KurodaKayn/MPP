@@ -116,6 +116,36 @@ func TestResolveMediaAssetsPresignsReadyAssets(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(5*time.Minute), resp.Items[0].ExpiresAt, 2*time.Second)
 }
 
+func TestResolveMediaObjectRefPresignsReadyAsset(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	owner, project := createMediaAssetProject(t, db)
+	upload, err := service.CreateProjectMediaUpload(project.ID, owner.ID, dto.CreateMediaUploadRequest{
+		Filename:  "hero.png",
+		MimeType:  "image/png",
+		SizeBytes: 11,
+		Usage:     models.MediaAssetUsageEditorImage,
+	})
+	require.NoError(t, err)
+	stagingKey := mediaAssetObjectKey(t, db, upload.AssetID)
+	storage.StoreObject(stagingKey, []byte("image-bytes"), objectstorage.ObjectInfo{
+		Key:         stagingKey,
+		ContentType: "image/png",
+		Size:        11,
+		ETag:        "etag-value",
+	})
+	_, err = service.CompleteMediaUpload(upload.AssetID, owner.ID)
+	require.NoError(t, err)
+	finalKey := mediaAssetObjectKey(t, db, upload.AssetID)
+
+	resp, err := service.ResolveMediaObjectRef(dto.ResolveMediaObjectRefRequest{
+		ObjectRef: upload.ObjectRef,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "fake://get/mpp-media/"+finalKey, resp.URL)
+	require.WithinDuration(t, time.Now().Add(5*time.Minute), resp.ExpiresAt, 2*time.Second)
+}
+
 func TestCompleteMediaUploadPromotesStagingObjectToFinalKey(t *testing.T) {
 	db, service, storage := setupMediaAssetService(t)
 	owner, project := createMediaAssetProject(t, db)
