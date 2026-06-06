@@ -29,7 +29,7 @@ var ErrPublicationDisabled = errors.New("publication is disabled")
 var ErrPublicationRequiresSync = errors.New("publication requires prepublish sync")
 var ErrManualPublishUnsupported = errors.New("manual publish is only supported for x")
 
-var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
+var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token|x-amz-credential|x-amz-signature|x-amz-security-token)=([^&"\s]+)`)
 
 type Service struct {
 	db                    *gorm.DB
