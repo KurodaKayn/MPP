@@ -15,7 +15,7 @@ if [ -f .env ] && grep -q '^APP_ENV=development$' .env; then
 fi
 cp -n .env.deploy.example .env
 
-# 启动所有服务
+# 启动所有服务。默认使用 Traefik 自签 HTTPS；生产环境建议选择下面的真实证书方案。
 docker compose up -d
 
 # 查看日志
@@ -27,7 +27,7 @@ docker compose logs -f
 - **Web 工作台**: [http://localhost](http://localhost)
 - **HTTPS 入口**: [https://localhost](https://localhost)
 
-`frontend`、`backend`、`ai-service`、`browser-worker`、PostgreSQL 和 Redis 都作为 Compose 内网服务运行，不再默认暴露到宿主机。如果宿主机的 `80` 或 `443` 端口已被占用，可以在 `docker/.env` 中设置 `TRAEFIK_HTTP_PORT` 或 `TRAEFIK_HTTPS_PORT`，例如 `TRAEFIK_HTTP_PORT=8088`。当前 HTTPS 入口使用 Traefik 默认 TLS 行为，生产环境还需要继续配置真实证书或证书解析器。
+`frontend`、`backend`、`ai-service`、`browser-worker`、PostgreSQL 和 Redis 都作为 Compose 内网服务运行，不再默认暴露到宿主机。如果宿主机的 `80` 或 `443` 端口已被占用，可以在 `docker/.env` 中设置 `TRAEFIK_HTTP_PORT` 或 `TRAEFIK_HTTPS_PORT`，例如 `TRAEFIK_HTTP_PORT=8088`。当前 HTTPS 入口在未选择真实证书方案时使用 Traefik 默认 TLS 行为，生产环境请在 Let’s Encrypt 自动证书和手动证书中选择一种。
 
 Traefik 入口默认启用 IP 级限流，参数来自 `TRAEFIK_RATE_LIMIT_AVERAGE`、`TRAEFIK_RATE_LIMIT_PERIOD` 和 `TRAEFIK_RATE_LIMIT_BURST`，并用 `TRAEFIK_RATE_LIMIT_REDIS_ENDPOINTS` 连接 Redis 保存分布式限流状态。backend 在 `/api/user/dashboard` 用户路由下默认启用 Redis 配额，覆盖通用用户/租户限额、单接口限额，以及 AI、发布任务、browser session 的分钟级和日级配额。应用侧配额只来自 backend 内置的 `rate_limits.yml` 矩阵；环境变量只保留 `APP_RATE_LIMIT_ENABLED` 和 `APP_RATE_LIMIT_KEY_PREFIX`。
 
@@ -35,7 +35,75 @@ Traefik 入口默认启用 IP 级限流，参数来自 `TRAEFIK_RATE_LIMIT_AVERA
 
 ```env
 FRONTEND_BASE_URL=https://your-domain.example
+COLLAB_WEBSOCKET_URL_BASE=wss://your-domain.example
 X_OAUTH2_REDIRECT_URL=https://your-domain.example/api/user/dashboard/settings/x/oauth2/callback
+```
+
+### HTTPS 证书方案
+
+项目把 TLS 证书策略拆成两个 Compose override 文件。基础 `docker-compose.yml` 负责服务拓扑，证书方案由启动命令显式选择。
+
+#### 方案 A：Let’s Encrypt 自动证书
+
+适合公网域名直接解析到当前服务器的部署。前置条件：
+
+- 域名 A/AAAA 记录已指向服务器公网 IP。
+- 服务器公网 `80` 和 `443` 端口可被 Let’s Encrypt 访问。
+- `docker/.env` 已设置真实域名、邮箱和公开地址。
+
+关键环境变量：
+
+```env
+TRAEFIK_CERT_DOMAIN=your-domain.example
+TRAEFIK_ACME_EMAIL=admin@your-domain.example
+TRAEFIK_ACME_CA_SERVER=https://acme-v02.api.letsencrypt.org/directory
+FRONTEND_BASE_URL=https://your-domain.example
+COLLAB_WEBSOCKET_URL_BASE=wss://your-domain.example
+X_OAUTH2_REDIRECT_URL=https://your-domain.example/api/user/dashboard/settings/x/oauth2/callback
+```
+
+启动：
+
+```bash
+cd docker
+docker compose -f docker-compose.yml -f docker-compose.tls-letsencrypt.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.tls-letsencrypt.yml logs -f traefik
+```
+
+如果需要先测试 ACME 流程，临时把 `TRAEFIK_ACME_CA_SERVER` 改成 Let’s Encrypt staging：
+
+```env
+TRAEFIK_ACME_CA_SERVER=https://acme-staging-v02.api.letsencrypt.org/directory
+```
+
+#### 方案 B：手动证书
+
+适合已有证书、内网证书、企业 CA 或 DNS/CDN 侧统一签发证书的部署。把证书文件放到 `docker/traefik/certs/`：
+
+```text
+docker/traefik/certs/fullchain.pem
+docker/traefik/certs/privkey.pem
+```
+
+也可以把证书放在服务器其它目录，并在 `docker/.env` 设置：
+
+```env
+TRAEFIK_MANUAL_CERT_DIR=/absolute/path/to/certs
+```
+
+启动：
+
+```bash
+cd docker
+docker compose -f docker-compose.yml -f docker-compose.tls-manual.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.tls-manual.yml logs -f traefik
+```
+
+替换手动证书后重启 Traefik：
+
+```bash
+cd docker
+docker compose -f docker-compose.yml -f docker-compose.tls-manual.yml restart traefik
 ```
 
 ## 2. 容器 Dev 模式 (热重载)
