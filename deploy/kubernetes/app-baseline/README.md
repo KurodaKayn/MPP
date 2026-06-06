@@ -13,6 +13,10 @@ Required overlay inputs:
 - Public collaboration routing through `COLLAB_WEBSOCKET_URL_BASE`.
 - LLM provider configuration through `LLM_PROVIDER_URL`, `LLM_MODEL`, and
   `LLM_PROVIDER_KEY`.
+- Browser runtime control resources from
+  `deploy/kubernetes/browser-runtime-control`, including the runtime namespace,
+  browser-worker ServiceAccount, RoleBinding, admission policy, and
+  NetworkPolicy.
 - A `mpp-app-secrets` Secret in `mpp-system` with at least `JWT_SECRET`,
   `DB_PASSWORD`, `COLLAB_TOKEN_SECRET`, `COOKIE_ENCRYPTION_KEY`, and
   `LLM_PROVIDER_KEY`.
