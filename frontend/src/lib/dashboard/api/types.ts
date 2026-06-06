@@ -137,6 +137,7 @@ export type ProjectActivityType =
   | "collaborator_removed"
   | "publish_requested"
   | "publish_queued"
+  | "share_link_accepted"
   | "share_link_created"
   | "share_link_revoked"
   | "version_restored";
@@ -220,6 +221,10 @@ export type ProjectShareLinksResponse = {
 export type CreateProjectShareLinkInput = {
   role: ProjectCollaboratorRole;
   expires_at?: string;
+};
+export type AcceptProjectShareLinkResponse = {
+  project: ProjectDetail;
+  role: ProjectRole;
 };
 export type PaginatedProjects = ContractSchema<"PaginationProjects">;
 export type ListWorkspaceProjectsOptions = {

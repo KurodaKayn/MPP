@@ -1,5 +1,6 @@
 import { fetchDashboard, fetchDashboardNoContent } from "./client";
 import type {
+  AcceptProjectShareLinkResponse,
   AddProjectCollaboratorInput,
   CollabDocumentSession,
   CreateProjectCommentInput,
@@ -217,6 +218,13 @@ export function createProjectShareLink(
       body: JSON.stringify(input),
       method: "POST",
     },
+  );
+}
+
+export function acceptProjectShareLink(token: string) {
+  return fetchDashboard<AcceptProjectShareLinkResponse>(
+    `/api/user/dashboard/project-share-links/${encodeURIComponent(token)}/accept`,
+    { method: "POST" },
   );
 }
 
