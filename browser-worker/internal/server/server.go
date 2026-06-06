@@ -70,11 +70,17 @@ func (s *Server) createSession(c echo.Context) error {
 		}
 	}()
 
+	ttl := time.Duration(req.TTLSeconds) * time.Second
+	if ttl <= 0 {
+		ttl = 15 * time.Minute
+	}
+
 	// Start at about:blank so request interception is active before platform navigation.
 	runtimeRef, err := s.runtimes.StartSession(c.Request().Context(), browserruntime.StartSessionRequest{
 		SessionID: req.SessionID.String(),
 		UserID:    req.UserID.String(),
 		Platform:  req.Platform,
+		TTL:       ttl,
 	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to start browser: %v", err))
@@ -117,10 +123,6 @@ func (s *Server) createSession(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to navigate to login page: %v", err))
 	}
 
-	ttl := time.Duration(req.TTLSeconds) * time.Second
-	if ttl <= 0 {
-		ttl = 15 * time.Minute
-	}
 	startedAt := time.Now()
 	expiresAt := startedAt.Add(ttl)
 	ref := uuid.NewString()
