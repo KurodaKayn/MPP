@@ -57,6 +57,10 @@ func TestRuntimePodIncludesSessionMetadataAndResources(t *testing.T) {
 	require.NotNil(t, container.SecurityContext)
 	require.NotNil(t, container.SecurityContext.RunAsNonRoot)
 	assert.True(t, *container.SecurityContext.RunAsNonRoot)
+	require.NotNil(t, container.SecurityContext.RunAsUser)
+	assert.Equal(t, runtimeUserID, *container.SecurityContext.RunAsUser)
+	require.NotNil(t, container.SecurityContext.RunAsGroup)
+	assert.Equal(t, runtimeGroupID, *container.SecurityContext.RunAsGroup)
 	require.NotNil(t, container.SecurityContext.AllowPrivilegeEscalation)
 	assert.False(t, *container.SecurityContext.AllowPrivilegeEscalation)
 }
