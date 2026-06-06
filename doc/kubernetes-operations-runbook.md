@@ -214,7 +214,7 @@ Render and validate manifests:
 ```bash
 rendered="$(mktemp)"
 kubectl kustomize "$MPP_OVERLAY" > "$rendered"
-node script/kubernetes/validate-rendered-manifests.mjs "$MPP_OVERLAY" "$rendered"
+ruby script/kubernetes/validate-rendered-manifests.rb "$MPP_OVERLAY" "$rendered"
 ```
 
 Inspect rendered images:

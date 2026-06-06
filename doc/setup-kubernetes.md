@@ -161,12 +161,19 @@ find deploy/kubernetes -name kustomization.yaml -print | sort | while IFS= read 
   dir="$(dirname "$package")"
   rendered="$(mktemp)"
   kubectl kustomize "$dir" > "$rendered"
-  node script/kubernetes/validate-rendered-manifests.mjs "$dir" "$rendered"
+  ruby script/kubernetes/validate-rendered-manifests.rb "$dir" "$rendered"
 done
 ```
 
-For the final environment overlay, also run your cluster's schema or policy
-validator, such as kubeconform, kubeval, or admission dry-run.
+The repository Ruby validator rejects unresolved app images, `latest` tags,
+missing validation overlay secrets, app workload security-context regressions,
+missing probes or resource requests, broken Service and Ingress wiring, browser
+runtime RBAC or NetworkPolicy drift, missing observability rules, and malformed
+managed or self-hosted data-service packages.
+
+For the final environment overlay, also run your cluster's schema validator or
+admission dry-run. Tools such as kubeconform or kubeval can complement the
+repository policy checks with Kubernetes API schema coverage.
 
 ## Deploy
 
