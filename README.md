@@ -79,4 +79,8 @@ For a module-by-module technology stack breakdown, see [tech-stack.md](doc/tech-
 
 ## Quick Start
 
-See [Setup Guide](doc/setup.md)
+Choose the setup path that matches how you want to run MPP:
+
+- [Production setup](doc/setup.md)
+- [Docker development setup](doc/setup-dev.md)
+- [Standalone local development setup](doc/setup-standalone.md)
