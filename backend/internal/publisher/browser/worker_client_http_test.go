@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHTTPBrowserWorkerClientAbsoluteWorkerURL(t *testing.T) {
@@ -49,6 +50,6 @@ func TestHTTPBrowserWorkerClientSendsInternalBearerToken(t *testing.T) {
 
 	resp, err := client.GetSession(context.Background(), "ref")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "ref", resp.WorkerSessionRef)
 }
