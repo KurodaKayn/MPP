@@ -50,6 +50,8 @@ function createEvent(): ExtensionExecutionEvent {
 
 describe("AccountSettings", () => {
   it("groups session state and actions under account settings", () => {
+    const signOut = vi.fn();
+
     render(
       <AccountSettings
         state={{
@@ -61,12 +63,17 @@ describe("AccountSettings", () => {
         }}
         onOpenLogin={vi.fn()}
         onRetry={vi.fn()}
+        onSignOut={signOut}
       />,
     );
 
     expect(screen.getByText("Account Settings")).toBeInTheDocument();
     expect(screen.getByText("creator")).toBeInTheDocument();
     expect(screen.getByText("connected")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /sign out/i }));
+
+    expect(signOut).toHaveBeenCalledOnce();
   });
 });
 

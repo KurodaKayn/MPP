@@ -35,6 +35,7 @@ export interface PublishWorkbenchScreenProps {
   onReopenPlatform: (platform: ExtensionPublishPlatformHandoff) => void;
   onRemoveOrigin: (origin: string) => void;
   onClearExecutionState: () => void;
+  onSignOut: () => void;
 }
 
 export function PublishWorkbenchScreen({
@@ -55,6 +56,7 @@ export function PublishWorkbenchScreen({
   onReopenPlatform,
   onRemoveOrigin,
   onClearExecutionState,
+  onSignOut,
 }: PublishWorkbenchScreenProps) {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = React.useState(false);
@@ -125,6 +127,7 @@ export function PublishWorkbenchScreen({
               state={sessionState}
               onOpenLogin={onOpenLogin}
               onRetry={onRefreshSession}
+              onSignOut={onSignOut}
             />
 
             <div className="flex justify-end">

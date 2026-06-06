@@ -3,6 +3,7 @@ import {
   AlertCircle,
   CheckCircle2,
   ExternalLink,
+  LogOut,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
@@ -355,10 +356,12 @@ export function AccountSettings({
   state,
   onOpenLogin,
   onRetry,
+  onSignOut,
 }: {
   state: SessionViewState;
   onOpenLogin: () => void;
   onRetry: () => void;
+  onSignOut: () => void;
 }) {
   return (
     <section
@@ -378,6 +381,12 @@ export function AccountSettings({
         onOpenLogin={onOpenLogin}
         onRetry={onRetry}
       />
+      <div className="flex justify-end">
+        <Button variant="outline" onClick={onSignOut}>
+          <LogOut data-icon="inline-start" />
+          Sign Out
+        </Button>
+      </div>
     </section>
   );
 }
