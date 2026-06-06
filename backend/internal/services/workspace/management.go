@@ -46,14 +46,6 @@ func normalizeWorkspaceMemberRole(role string) (string, error) {
 	}
 }
 
-func canManageWorkspaceRole(role string) bool {
-	return RoleHasPermission(role, PermissionManageMembers)
-}
-
-func canCreateWorkspaceProjectRole(role string) bool {
-	return RoleHasPermission(role, PermissionProjectCreate)
-}
-
 func normalizeWorkspaceActivityLimit(limit int) int {
 	if limit < 1 {
 		return defaultWorkspaceActivityLimit
