@@ -494,6 +494,8 @@
       "versionTitle": "版本 {{number}}",
       "createViewerLink": "创建查看链接",
       "shareLinkCreated": "查看链接已创建并复制",
+      "shareLinkCopyFailed": "查看链接已创建，但无法复制",
+      "shareLinkCopyUnavailable": "当前浏览器无法访问剪贴板。",
       "shareLinkFailed": "无法创建分享链接",
       "shareLinkTitle": "查看分享链接",
       "revokeShareLink": "撤销",
