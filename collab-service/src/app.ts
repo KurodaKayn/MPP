@@ -21,6 +21,12 @@ interface CollabDocumentParams {
 
 const DocumentIdSchema = z.string().uuid();
 
+type WebSocketRawMessage =
+  | ArrayBuffer
+  | ArrayBufferView
+  | Buffer
+  | Buffer[];
+
 export interface BuildAppOptions {
   persistence?: DocumentPersistence;
 }
@@ -158,13 +164,23 @@ export async function buildApp(
     config.COLLAB_WS_PATH,
     { websocket: true },
     (socket, request) => {
-      collabServer.handleConnection(
+      const clientConnection = collabServer.handleConnection(
         socket as unknown as WebSocketLike,
         request.raw as unknown as Request,
         {
           documentId: request.params.documentId,
         },
       );
+
+      socket.on("message", (message) => {
+        clientConnection.handleMessage(rawWebSocketMessageToUint8Array(message));
+      });
+      socket.on("close", (code, reason) => {
+        clientConnection.handleClose({
+          code,
+          reason: reason.toString(),
+        });
+      });
     },
   );
 
@@ -175,4 +191,23 @@ export async function buildApp(
   });
 
   return app;
+}
+
+function rawWebSocketMessageToUint8Array(
+  message: WebSocketRawMessage,
+): Uint8Array {
+  if (message instanceof ArrayBuffer) {
+    return new Uint8Array(message);
+  }
+  if (ArrayBuffer.isView(message)) {
+    return new Uint8Array(
+      message.buffer,
+      message.byteOffset,
+      message.byteLength,
+    );
+  }
+  if (Array.isArray(message)) {
+    return Buffer.concat(message);
+  }
+  return Buffer.from(message);
 }
