@@ -10,21 +10,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/dto"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 const projectShareTokenBytes = 32
 
-var ErrInvalidProjectComment = errorsNew("invalid project comment")
-var ErrInvalidProjectShareLink = errorsNew("invalid project share link")
-var ErrInvalidProjectVersion = errorsNew("invalid project version")
+var ErrInvalidProjectComment = projectError("invalid project comment")
+var ErrInvalidProjectShareLink = projectError("invalid project share link")
+var ErrInvalidProjectVersion = projectError("invalid project version")
 
-type errorsNew string
+type projectError string
 
-func (e errorsNew) Error() string { return string(e) }
+func (e projectError) Error() string { return string(e) }
 
 func (s *Service) ListProjectActivities(projectID uuid.UUID, userID uuid.UUID, limit int) (*dto.ProjectActivitiesResponse, error) {
 	if err := s.requireProjectAccess(projectID, userID); err != nil {
@@ -98,7 +99,7 @@ func (s *Service) CreateProjectComment(projectID uuid.UUID, userID uuid.UUID, re
 		if err := tx.Create(&comment).Error; err != nil {
 			return err
 		}
-		return recordProjectActivity(tx, projectID, userID, nil, models.ProjectActivityCommentCreated, map[string]interface{}{
+		return recordProjectActivity(tx, projectID, userID, nil, models.ProjectActivityCommentCreated, map[string]any{
 			"comment_id":  comment.ID.String(),
 			"anchor_text": comment.AnchorText,
 		})
@@ -131,7 +132,7 @@ func (s *Service) UpdateProjectComment(projectID uuid.UUID, userID uuid.UUID, co
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&models.ProjectComment{}).
 			Where("id = ? AND project_id = ?", commentID, projectID).
-			Updates(map[string]interface{}{
+			Updates(map[string]any{
 				"status":      models.ProjectCommentStatusResolved,
 				"resolved_at": &now,
 			})
@@ -141,7 +142,7 @@ func (s *Service) UpdateProjectComment(projectID uuid.UUID, userID uuid.UUID, co
 		if result.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
 		}
-		return recordProjectActivity(tx, projectID, userID, nil, models.ProjectActivityCommentResolved, map[string]interface{}{
+		return recordProjectActivity(tx, projectID, userID, nil, models.ProjectActivityCommentResolved, map[string]any{
 			"comment_id": commentID.String(),
 		})
 	}); err != nil {
@@ -192,7 +193,7 @@ func (s *Service) RestoreProjectVersion(projectID uuid.UUID, userID uuid.UUID, v
 		if !CanEditProjectRole(role) {
 			return ErrForbidden
 		}
-		if err := tx.Model(&project).Updates(map[string]interface{}{
+		if err := tx.Model(&project).Updates(map[string]any{
 			"title":          version.Title,
 			"source_content": version.SourceContent,
 			"status":         models.ProjectStatusReady,
@@ -205,7 +206,7 @@ func (s *Service) RestoreProjectVersion(projectID uuid.UUID, userID uuid.UUID, v
 		if err := createProjectVersion(tx, project, userID, "version_restore"); err != nil {
 			return err
 		}
-		return recordProjectActivity(tx, projectID, userID, nil, models.ProjectActivityVersionRestored, map[string]interface{}{
+		return recordProjectActivity(tx, projectID, userID, nil, models.ProjectActivityVersionRestored, map[string]any{
 			"version_id":     version.ID.String(),
 			"version_number": version.VersionNumber,
 		})
@@ -260,7 +261,7 @@ func (s *Service) CreateProjectShareLink(projectID uuid.UUID, userID uuid.UUID, 
 		if err := tx.Create(&link).Error; err != nil {
 			return err
 		}
-		return recordProjectActivity(tx, projectID, userID, nil, models.ProjectActivityShareLinkCreated, map[string]interface{}{
+		return recordProjectActivity(tx, projectID, userID, nil, models.ProjectActivityShareLinkCreated, map[string]any{
 			"role": role,
 		})
 	}); err != nil {
@@ -285,7 +286,7 @@ func (s *Service) RevokeProjectShareLink(projectID uuid.UUID, userID uuid.UUID, 
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&models.ProjectShareLink{}).
 			Where("id = ? AND project_id = ? AND status = ?", linkID, projectID, models.ProjectShareLinkStatusActive).
-			Updates(map[string]interface{}{
+			Updates(map[string]any{
 				"status":     models.ProjectShareLinkStatusRevoked,
 				"revoked_at": &now,
 			})
@@ -295,7 +296,7 @@ func (s *Service) RevokeProjectShareLink(projectID uuid.UUID, userID uuid.UUID, 
 		if result.RowsAffected == 0 {
 			return gorm.ErrRecordNotFound
 		}
-		return recordProjectActivity(tx, projectID, userID, nil, models.ProjectActivityShareLinkRevoked, map[string]interface{}{
+		return recordProjectActivity(tx, projectID, userID, nil, models.ProjectActivityShareLinkRevoked, map[string]any{
 			"share_link_id": linkID.String(),
 		})
 	})
@@ -326,7 +327,7 @@ func selectUserIdentity(db *gorm.DB) *gorm.DB {
 	return db.Select("id", "username", "email")
 }
 
-func recordProjectActivity(tx *gorm.DB, projectID uuid.UUID, actorUserID uuid.UUID, targetUserID *uuid.UUID, eventType string, metadata map[string]interface{}) error {
+func recordProjectActivity(tx *gorm.DB, projectID uuid.UUID, actorUserID uuid.UUID, targetUserID *uuid.UUID, eventType string, metadata map[string]any) error {
 	if projectID == uuid.Nil || actorUserID == uuid.Nil || strings.TrimSpace(eventType) == "" {
 		return nil
 	}
@@ -367,7 +368,7 @@ func createProjectVersion(tx *gorm.DB, project models.Project, userID uuid.UUID,
 	}).Error
 }
 
-func jsonMap(value map[string]interface{}) (datatypes.JSON, error) {
+func jsonMap(value map[string]any) (datatypes.JSON, error) {
 	if value == nil {
 		return datatypes.JSON([]byte(`{}`)), nil
 	}
@@ -378,10 +379,10 @@ func jsonMap(value map[string]interface{}) (datatypes.JSON, error) {
 	return datatypes.JSON(payload), nil
 }
 
-func mapFromJSON(value datatypes.JSON) map[string]interface{} {
-	var parsed map[string]interface{}
+func mapFromJSON(value datatypes.JSON) map[string]any {
+	var parsed map[string]any
 	if err := json.Unmarshal(value, &parsed); err != nil || parsed == nil {
-		return map[string]interface{}{}
+		return map[string]any{}
 	}
 	return parsed
 }
