@@ -286,10 +286,10 @@ It should not receive broad cluster-admin privileges.
 | K8S-002 | Service Dockerfiles for app services | Image baseline | Done | 100% | DevOps | Service Dockerfiles exist for the main modules. |
 | K8S-003 | HTTP health and readiness endpoints | Operations | Mostly Done | 80% | Backend / Services | Main HTTP services expose readiness; content-pipeline-service still needs a Kubernetes-friendly health strategy. |
 | K8S-004 | Identify Docker coupling points | Architecture | Done | 100% | Architecture | Coupling points are listed in this document. |
-| K8S-005 | Define browser runtime manager interface | Runtime decoupling | Not Started | 0% | Backend | Needed before adding Kubernetes runtime support. |
-| K8S-006 | Extract existing Docker logic into Docker driver | Runtime decoupling | Not Started | 0% | Backend | Existing Docker SDK code should move behind the interface. |
-| K8S-007 | Keep Docker runtime tests after extraction | Runtime quality | Not Started | 0% | Backend | Existing Docker behavior must stay covered. |
-| K8S-008 | Add runtime driver factory and env selection | Runtime decoupling | Not Started | 0% | Backend | Suggested setting: `BROWSER_RUNTIME_DRIVER=docker|kubernetes`. |
+| K8S-005 | Define browser runtime manager interface | Runtime decoupling | Done | 100% | Backend | `browser-worker/internal/runtime` defines the runtime manager interface and session reference. |
+| K8S-006 | Extract existing Docker logic into Docker driver | Runtime decoupling | Done | 100% | Backend | Docker manager now implements the runtime interface while preserving existing Compose behavior. |
+| K8S-007 | Keep Docker runtime tests after extraction | Runtime quality | Done | 100% | Backend | Existing Docker helper tests still pass; runtime boundary tests cover stable references. |
+| K8S-008 | Add runtime driver factory and env selection | Runtime decoupling | Done | 100% | Backend | `BROWSER_RUNTIME_DRIVER` selects Docker by default and rejects unsupported drivers. |
 | K8S-009 | Add Kubernetes runtime driver | Runtime orchestration | Not Started | 0% | Backend | Driver should create, watch, and delete per-session Pods or Jobs. |
 | K8S-010 | Add Kubernetes runtime RBAC | Security | Not Started | 0% | DevOps | Required for browser-worker to manage runtime Pods safely. |
 | K8S-011 | Add browser runtime NetworkPolicy | Security | Not Started | 0% | DevOps | CDP and stream endpoints must remain private. |
