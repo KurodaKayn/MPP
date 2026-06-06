@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -10,8 +11,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 	"github.com/labstack/echo/v4"
+
+	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
 
 func Handler(sm *session.Manager) echo.HandlerFunc {
@@ -35,13 +37,12 @@ func Handler(sm *session.Manager) echo.HandlerFunc {
 			return proxyWebSocket(c, targetURL)
 		}
 
-		proxy := httputil.NewSingleHostReverseProxy(targetURL)
-		proxy.Director = func(req *http.Request) {
-			req.URL.Scheme = targetURL.Scheme
-			req.URL.Host = targetURL.Host
-			req.URL.Path = workerStreamPath(c.Param("*"))
-			req.URL.RawQuery = c.Request().URL.RawQuery
-			req.Host = targetURL.Host
+		proxy := &httputil.ReverseProxy{}
+		proxy.Rewrite = func(req *httputil.ProxyRequest) {
+			req.SetURL(targetURL)
+			req.Out.URL.Path = workerStreamPath(c.Param("*"))
+			req.Out.URL.RawQuery = req.In.URL.RawQuery
+			req.Out.Host = targetURL.Host
 		}
 		proxy.ServeHTTP(c.Response(), c.Request())
 		return nil
@@ -62,7 +63,7 @@ func proxyWebSocket(c echo.Context, target *url.URL) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, "failed to connect to stream target")
 	}
-	defer targetConn.Close()
+	defer func() { _ = targetConn.Close() }()
 
 	targetReq, err := http.NewRequestWithContext(req.Context(), req.Method, target.String(), nil)
 	if err != nil {
@@ -88,7 +89,7 @@ func proxyWebSocket(c echo.Context, target *url.URL) error {
 	if err != nil {
 		return err
 	}
-	defer clientConn.Close()
+	defer func() { _ = clientConn.Close() }()
 
 	errChan := make(chan error, 2)
 	cp := func(dst io.Writer, src io.Reader) {
@@ -103,7 +104,7 @@ func proxyWebSocket(c echo.Context, target *url.URL) error {
 	case <-req.Context().Done():
 		return req.Context().Err()
 	case err := <-errChan:
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			log.Printf("WebSocket worker proxy error: %v", err)
 		}
 		return nil

@@ -14,7 +14,11 @@ import (
 
 func TestPageTargetIDPrefersInitialBlankPage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/json", r.URL.Path)
+		if r.URL.Path != "/json" {
+			t.Errorf("expected /json path, got %q", r.URL.Path)
+			http.Error(w, "unexpected path", http.StatusNotFound)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprint(w, `[
 			{"id":"login-page","type":"page","url":"https://creator.douyin.com/creator-micro/home"},

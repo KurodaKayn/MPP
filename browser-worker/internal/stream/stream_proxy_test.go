@@ -3,14 +3,14 @@ package stream
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEndpointPort(t *testing.T) {
 	port, err := endpointPort("ws://localhost:49152")
-	assert.NoError(t, err)
-	assert.Equal(t, 49152, port)
+	require.NoError(t, err)
+	require.Equal(t, 49152, port)
 
 	_, err = endpointPort("ws://localhost")
-	assert.Error(t, err)
+	require.Error(t, err)
 }

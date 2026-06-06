@@ -3,9 +3,10 @@ package runtimefactory
 import (
 	"testing"
 
-	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 )
 
 func TestDriverFromEnvDefaultsToDocker(t *testing.T) {
@@ -35,11 +36,15 @@ func TestDriverFromEnvRejectsUnsupportedDriver(t *testing.T) {
 	assert.ErrorContains(t, err, "invalid BROWSER_RUNTIME_DRIVER")
 }
 
-func TestNewManagerFromEnvRejectsUnimplementedKubernetesDriver(t *testing.T) {
+func TestNewManagerFromEnvLoadsKubernetesDriverConfig(t *testing.T) {
 	t.Setenv(runtimeDriverEnv, browserruntime.DriverKubernetes)
+	t.Setenv("BROWSER_RUNTIME_KUBERNETES_KUBECONFIG", "")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+	t.Setenv("KUBERNETES_SERVICE_PORT", "")
 
 	manager, err := NewManagerFromEnv()
 
 	assert.Nil(t, manager)
-	assert.ErrorContains(t, err, `browser runtime driver "kubernetes" is not implemented`)
+	assert.ErrorContains(t, err, "failed to load kubernetes config")
 }

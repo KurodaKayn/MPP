@@ -15,6 +15,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+
 	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 )
 
@@ -109,8 +110,8 @@ func (m *Manager) startBrowserContainer(ctx context.Context, sessionID string) (
 
 	containerName := "mpp-session-" + sessionID
 
-	// 1. Clean up ONLY the specific container for this session if it somehow exists
-	m.cli.ContainerRemove(ctx, containerName, types.ContainerRemoveOptions{Force: true})
+	// Clean up only the specific container for this session if it somehow exists.
+	_ = m.cli.ContainerRemove(ctx, containerName, types.ContainerRemoveOptions{Force: true})
 
 	resp, err := m.cli.ContainerCreate(ctx, config, hostConfig, networkingConfig, nil, containerName)
 	if err != nil {
@@ -177,7 +178,9 @@ func (m *Manager) StopContainer(ctx context.Context, id string) error {
 
 func (m *Manager) stopContainer(ctx context.Context, id string) error {
 	log.Printf("Stopping and removing container %s", id)
-	m.cli.ContainerStop(ctx, id, dockercontainer.StopOptions{})
+	if err := m.cli.ContainerStop(ctx, id, dockercontainer.StopOptions{}); err != nil {
+		log.Printf("Failed to stop container %s: %v", id, err)
+	}
 	return m.cli.ContainerRemove(ctx, id, types.ContainerRemoveOptions{Force: true})
 }
 
@@ -187,7 +190,7 @@ func (m *Manager) GetBrowserUUID(ctx context.Context, containerID string) (strin
 	if err != nil {
 		return "", err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	tr := tar.NewReader(reader)
 	_, err = tr.Next() // Get to the first file
