@@ -42,7 +42,7 @@ MPP 当前已经具备多服务雏形：
 
 | 序号 | 架构设计 | 解决的问题 | 项目落点 | 生产价值 | 成本 | 优先级 | 完成状态 | 建议 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Traefik API Gateway | 统一入口、HTTPS、路由、内部服务隐藏 | 应用入口只暴露 `80/443`，隐藏 backend、AI、worker、DB、Redis | 5 | 2 | P0 | 进行中 | 应用入口和服务隐藏已落地；生产真实证书/ACME 仍待配置，Prometheus/Grafana/Loki/Alloy 观测端口仍按环境变量显式暴露 |
+| 1 | Traefik API Gateway | 统一入口、HTTPS、路由、内部服务隐藏 | 应用入口只暴露 `80/443`，隐藏 backend、AI、worker、DB、Redis | 5 | 2 | P0 | 进行中 | 应用入口和服务隐藏已落地；Let’s Encrypt 自动证书与手动证书 Compose override 已落地，生产域名/证书需按环境配置；Prometheus/Grafana/Loki/Alloy 观测端口仍按环境变量显式暴露 |
 | 2 | 网关与应用双层限流 | 防止爬虫、恶意请求、AI 滥用、发布任务刷爆 | Traefik 做 IP 级限流，backend 做用户/租户/接口级配额 | 5 | 2 | P0 | 完成 | SaaS 化关键能力 |
 | 3 | 可观测性基线 | 出问题能定位，能展示系统真实运行状态 | Prometheus 指标、Grafana 面板、Loki 日志、Trace ID | 5 | 3 | P0 | 完成 | backend、publish-worker、ai-service、browser-worker 已有 HTTP 指标和结构化请求日志；这是基线，不是完整分布式 tracing |
 | 4 | 健康检查与优雅关闭 | 支持滚动重启，避免请求中断 | frontend/backend/ai/browser-worker 增加 health/readiness | 5 | 2 | P0 | 完成 | 成本低，生产必备 |
@@ -75,7 +75,7 @@ MPP 当前已经具备多服务雏形：
 
 交付项：
 
-- [x] 引入 Traefik 作为统一入口，只暴露应用入口 `80/443`。（生产真实证书/ACME 仍待部署配置。）
+- [x] 引入 Traefik 作为统一入口，只暴露应用入口 `80/443`。（已提供 Let’s Encrypt 自动证书和手动证书两种 Compose override；生产域名/证书需按环境配置。）
 - [x] backend、ai-service、browser-worker、PostgreSQL、Redis 全部改为内网服务。
 - [x] 增加基础 health/readiness endpoint。（已完成：frontend 已有 `/api/health`、`/api/ready`，backend、ai-service、browser-worker 已有 `/health`、`/ready`；Dockerfile 和生产 Compose 已接入 readiness healthcheck，backend 与 browser-worker 已支持信号驱动的优雅关闭。）
 - [x] 增加请求日志中的 request ID / trace ID。
@@ -127,7 +127,7 @@ MPP 当前已经具备多服务雏形：
 
 | 完成 | 优先级 | 改造项 | 原因 |
 | --- | --- | --- | --- |
-| [x] | P0 | Traefik 统一入口 | 生产部署安全边界和内部服务隐藏已落地；真实证书/ACME 仍需部署配置 |
+| [x] | P0 | Traefik 统一入口 | 生产部署安全边界和内部服务隐藏已落地；Let’s Encrypt 自动证书和手动证书可通过 Compose override 选择 |
 | [x] | P0 | 限流与配额 | 保护 AI、browser session 和发布接口 |
 | [x] | P0 | 可观测性基线 | 出问题能定位，支撑稳定迭代 |
 | [x] | P0 | health/readiness | 支持生产重启、监控和负载均衡；当前已补齐 frontend/backend/ai-service/browser-worker 的基础 health/readiness |

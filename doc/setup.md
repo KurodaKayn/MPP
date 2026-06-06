@@ -1,177 +1,165 @@
-# 项目启动指南
+# Production Setup Guide
 
-## 1. 快速启动 (推荐)
+This guide covers the production-style Docker Compose deployment path. It runs the full stack behind Traefik and exposes only the gateway HTTP and HTTPS ports by default.
 
-使用 Docker Compose 启动所有服务：
+For development workflows, see:
+
+- [Docker development setup](setup-dev.md)
+- [Standalone local development setup](setup-standalone.md)
+
+## Quick Start
+
+Start all services with Docker Compose:
 
 ```bash
-# 进入 docker 目录
 cd docker
 
-# 按网关/部署模式创建环境变量文件。已有 dev .env 时会中止，避免误用开发配置。
+# Create the gateway/deploy environment file. Stop if the existing file is a dev env,
+# because mixing dev and production settings is easy to miss.
 if [ -f .env ] && grep -q '^APP_ENV=development$' .env; then
-  echo "docker/.env 当前是 dev 模式；请先备份或删除它，再复制 .env.deploy.example。" >&2
+  echo "docker/.env is currently a dev env. Back it up or remove it before copying .env.deploy.example." >&2
   exit 1
 fi
 cp -n .env.deploy.example .env
 
-# 启动所有服务
+# Start the stack. Without a TLS override, Traefik uses its default self-signed TLS behavior.
+# For production, choose one of the real certificate options below.
 docker compose up -d
 
-# 查看日志
+# Follow logs.
 docker compose logs -f
 ```
 
-默认 Compose project name 为 `mpp`。该模式会启动 Traefik 作为统一入口，宿主机默认只暴露网关 HTTP/HTTPS 端口：
+The default Compose project name is `mpp`. This mode starts Traefik as the gateway and exposes only gateway ports on the host by default:
 
-- **Web 工作台**: [http://localhost](http://localhost)
-- **HTTPS 入口**: [https://localhost](https://localhost)
+- Web workspace: [http://localhost](http://localhost)
+- HTTPS entrypoint: [https://localhost](https://localhost)
 
-`frontend`、`backend`、`ai-service`、`browser-worker`、PostgreSQL 和 Redis 都作为 Compose 内网服务运行，不再默认暴露到宿主机。如果宿主机的 `80` 或 `443` 端口已被占用，可以在 `docker/.env` 中设置 `TRAEFIK_HTTP_PORT` 或 `TRAEFIK_HTTPS_PORT`，例如 `TRAEFIK_HTTP_PORT=8088`。当前 HTTPS 入口使用 Traefik 默认 TLS 行为，生产环境还需要继续配置真实证书或证书解析器。
+`frontend`, `backend`, `ai-service`, `browser-worker`, `collab-service`, PostgreSQL, and Redis run as internal Compose services. If host ports `80` or `443` are already in use, set `TRAEFIK_HTTP_PORT` or `TRAEFIK_HTTPS_PORT` in `docker/.env`, for example:
 
-Traefik 入口默认启用 IP 级限流，参数来自 `TRAEFIK_RATE_LIMIT_AVERAGE`、`TRAEFIK_RATE_LIMIT_PERIOD` 和 `TRAEFIK_RATE_LIMIT_BURST`，并用 `TRAEFIK_RATE_LIMIT_REDIS_ENDPOINTS` 连接 Redis 保存分布式限流状态。backend 在 `/api/user/dashboard` 用户路由下默认启用 Redis 配额，覆盖通用用户/租户限额、单接口限额，以及 AI、发布任务、browser session 的分钟级和日级配额。应用侧配额只来自 backend 内置的 `rate_limits.yml` 矩阵；环境变量只保留 `APP_RATE_LIMIT_ENABLED` 和 `APP_RATE_LIMIT_KEY_PREFIX`。
+```env
+TRAEFIK_HTTP_PORT=8088
+```
 
-生产或网关部署时，请把 `FRONTEND_BASE_URL` 和 `X_OAUTH2_REDIRECT_URL` 调整为真实公开入口，例如：
+The default HTTPS entrypoint is suitable only as a local smoke test. For production, choose either Let's Encrypt automatic certificates or manual certificates.
+
+## Public URLs
+
+For production or gateway deployments, set public URLs to the real external origin:
 
 ```env
 FRONTEND_BASE_URL=https://your-domain.example
+COLLAB_WEBSOCKET_URL_BASE=wss://your-domain.example
 X_OAUTH2_REDIRECT_URL=https://your-domain.example/api/user/dashboard/settings/x/oauth2/callback
 ```
 
-## 2. 容器 Dev 模式 (热重载)
+## Rate Limits
 
-如果你希望一键拉起开发模式容器，并让代码修改自动生效，在项目根目录执行：
-
-```bash
-if [ -f docker/.env ] && grep -q '^APP_ENV=production$' docker/.env; then
-  echo "docker/.env 当前是 deploy 模式；请先备份或删除它，再复制 docker/.env.dev.example。" >&2
-  exit 1
-fi
-cp -n docker/.env.dev.example docker/.env
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml watch
-```
-
-Dev 模式的 Compose project name 为 `mpp-dev`。
-
-这个模式会启动前端、后端、AI 服务、browser-worker、数据库和 Redis，并保留原有直连端口，避免日常 Docker 开发体验变化：
-
-- 前端使用 `pnpm dev`，源码变化会触发 Next.js 热更新。
-- 前端 `.next` 使用 Docker named volume 保存，Next.js 16 的 Turbopack dev filesystem cache 会写入 `mpp-dev_frontend_next`，用于加速容器重启后的编译。
-- 后端使用 `air`，Go 源码变化会自动重新编译并重启 API。
-- AI 服务使用 `uvicorn --reload`，Python 源码变化会自动重载。
-- 依赖文件变化会触发对应服务重新构建，包括 `package.json`、`pnpm-lock.yaml`、`go.mod`、`go.sum`、`pyproject.toml`、`uv.lock`。
-
-如果前端 dev cache 变得过大，可以查看或清理该 volume：
-
-```bash
-script/docker/dev-cache.sh status
-script/docker/dev-cache.sh clean-frontend-next
-```
-
-`clean-frontend-next` 只删除 `.next` 里的 dev cache，保留 volume 本身；如果需要完全重建前端 `.next` volume，可以执行：
-
-```bash
-script/docker/dev-cache.sh reset-frontend-next
-```
-
-如果希望禁用 Next.js dev filesystem cache，可以在 `docker/.env` 中设置：
+The Traefik gateway enables IP-level rate limiting with:
 
 ```env
-MPP_FRONTEND_TURBOPACK_FS_CACHE=false
+TRAEFIK_RATE_LIMIT_AVERAGE=100
+TRAEFIK_RATE_LIMIT_PERIOD=1s
+TRAEFIK_RATE_LIMIT_BURST=200
+TRAEFIK_RATE_LIMIT_REDIS_ENDPOINTS=redis:6379
 ```
 
-浏览器扩展 dev 服务是可选 profile，不会随默认 dev 模式启动。需要调试 extension 时执行：
+The backend also enables Redis-backed application quotas under `/api/user/dashboard`. These quotas cover general user and tenant limits, per-route limits, AI usage, publish jobs, and browser session limits. Application quota behavior is driven by the backend `rate_limits.yml` matrix; environment variables only keep the global enable flag and key prefix.
+
+## HTTPS Certificates
+
+TLS certificate behavior is selected with Compose override files:
+
+- Base stack: `docker-compose.yml`
+- Let's Encrypt automatic certificates: `docker-compose.tls-letsencrypt.yml`
+- Manual certificates: `docker-compose.tls-manual.yml`
+
+This is configuration-driven deployment rather than a code-level factory pattern. The base Compose file owns the service topology, and each TLS override selects one certificate strategy.
+
+### Option A: Let's Encrypt Automatic Certificates
+
+Use this when a public domain points directly to this server.
+
+Prerequisites:
+
+- The domain A/AAAA record points to the server public IP.
+- Public ports `80` and `443` are reachable by Let's Encrypt.
+- `docker/.env` contains the real domain, ACME email, and public URLs.
+
+Key environment variables:
+
+```env
+TRAEFIK_CERT_DOMAIN=your-domain.example
+TRAEFIK_ACME_EMAIL=admin@your-domain.example
+TRAEFIK_ACME_CA_SERVER=https://acme-v02.api.letsencrypt.org/directory
+FRONTEND_BASE_URL=https://your-domain.example
+COLLAB_WEBSOCKET_URL_BASE=wss://your-domain.example
+X_OAUTH2_REDIRECT_URL=https://your-domain.example/api/user/dashboard/settings/x/oauth2/callback
+```
+
+Start the stack:
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml --profile extension up extension-dev
+cd docker
+docker compose -f docker-compose.yml -f docker-compose.tls-letsencrypt.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.tls-letsencrypt.yml logs -f traefik
 ```
 
-该服务运行 `extension` 目录下的 WXT dev server，默认端口为 `3010`，可通过 `docker/.env` 中的 `EXTENSION_DEV_PORT` 调整。Docker dev 模式会禁用 WXT 的容器内浏览器 runner，浏览器仍需在宿主机加载 `extension/.output/chrome-mv3-dev` 作为 unpacked extension。
+To test the ACME flow first, temporarily use the Let's Encrypt staging directory:
 
-如果只想后台启动 dev 容器（源码热重载仍会生效，但依赖文件变化不会自动触发 Compose rebuild），可以执行：
+```env
+TRAEFIK_ACME_CA_SERVER=https://acme-staging-v02.api.letsencrypt.org/directory
+```
+
+### Option B: Manual Certificates
+
+Use this when certificates are issued by an external provider, internal CA, enterprise CA, or CDN/DNS-side process.
+
+Place certificate files here:
+
+```text
+docker/traefik/certs/fullchain.pem
+docker/traefik/certs/privkey.pem
+```
+
+You can also store certificates outside the repository and point Traefik at that directory:
+
+```env
+TRAEFIK_MANUAL_CERT_DIR=/absolute/path/to/certs
+```
+
+The target directory must contain:
+
+```text
+fullchain.pem
+privkey.pem
+```
+
+Start the stack:
 
 ```bash
-if [ -f docker/.env ] && grep -q '^APP_ENV=production$' docker/.env; then
-  echo "docker/.env 当前是 deploy 模式；请先备份或删除它，再复制 docker/.env.dev.example。" >&2
-  exit 1
-fi
-cp -n docker/.env.dev.example docker/.env
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d
+cd docker
+docker compose -f docker-compose.yml -f docker-compose.tls-manual.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.tls-manual.yml logs -f traefik
 ```
 
-### 访问地址：
-
-- **前端**: [http://localhost:3000](http://localhost:3000)
-- **后端 API**: [http://localhost:8080/ping](http://localhost:8080/ping)
-- **AI 服务**: [http://localhost:8000](http://localhost:8000)
-- **browser-worker**: [http://localhost:8081](http://localhost:8081)
-- **Extension WXT dev**: [http://localhost:3010](http://localhost:3010)（仅 `extension` profile）
-- **PostgreSQL**: `localhost:5432`
-- **Redis**: `localhost:6379`
-
-如果希望在保持上述 dev 直连体验的同时测试 Traefik，可以单独启动 dev 网关探针：
+After replacing manual certificates, restart Traefik:
 
 ```bash
-script/docker/dev-traefik.sh up
+cd docker
+docker compose -f docker-compose.yml -f docker-compose.tls-manual.yml restart traefik
 ```
 
-这只会启动 `traefik` 服务，不会启动或重建 frontend/backend/AI/DB/Redis，也不会移除上面的直连端口。Traefik dev 入口默认是：
+## Environment Variables
 
-- **HTTP 网关**: [http://localhost:8088](http://localhost:8088)
-- **HTTPS 网关**: [https://localhost:8443](https://localhost:8443)
+All production-style Compose environment variables are managed in `docker/.env`.
 
-常用命令：
+- Deploy template: `docker/.env.deploy.example`
+- Default public frontend origin: `https://your-domain.example`
+- AI provider key: `LLM_PROVIDER_KEY`
+- Database connection settings: `DB_*`
+- Backend horizontal scaling: `BACKEND_API_REPLICAS`, defaulting to `2` in the deploy template
+- PostgreSQL connection pool controls: `DB_MAX_OPEN_CONNS`, `DB_MAX_IDLE_CONNS`, `DB_CONN_MAX_LIFETIME`, and `DB_CONN_MAX_IDLE_TIME`
+- Slow query logging threshold: `DB_SLOW_QUERY_THRESHOLD`
 
-```bash
-script/docker/dev-traefik.sh logs
-script/docker/dev-traefik.sh restart
-script/docker/dev-traefik.sh stop
-```
-
-如果需要换端口，可以在命令前设置 `TRAEFIK_HTTP_PORT` 或 `TRAEFIK_HTTPS_PORT`。
-
----
-
-## 3. 本地开发启动
-
-如果你需要进行调试或热更新开发，可以分别启动各服务。
-
-### 前置条件
-
-- 已安装 `pnpm`, `go`, `uv` (Python 管理工具)。
-- 本地已有运行中的 PostgreSQL (17) 和 Redis。
-
-### 前端 (Next.js)
-
-```bash
-cd frontend
-pnpm install
-pnpm dev
-```
-
-### 后端 (Go)
-
-```bash
-cd backend
-go run ./cmd/api
-```
-
-### AI 服务 (Python)
-
-```bash
-cd ai-service
-uv run uvicorn main:app --reload
-```
-
----
-
-## 4. 环境变量配置
-
-- **统一管理**: 所有的环境变量现在都在 `docker/.env` 中进行统一管理。
-- **Dev 模板**: 使用 `docker/.env.dev.example`，默认公开地址是 `http://127.0.0.1:3000`，适合 Docker dev 直连端口。
-- **Deploy 模板**: 使用 `docker/.env.deploy.example`，默认公开地址是 `https://your-domain.example`，适合 Traefik 网关部署。
-- **AI 服务**: 在 `docker/.env` 中设置 `LLM_PROVIDER_KEY`。
-- **后端**: 数据库连接配置 `docker/.env`。
-- **后端横向扩容**: deploy 模板默认 `BACKEND_API_REPLICAS=2`，生产 Compose 会启动多个 `backend` API 副本；dev 模板固定为 1，避免本地 `8080` 端口冲突。
-- **数据库连接数治理**: 使用 `DB_MAX_OPEN_CONNS`、`DB_MAX_IDLE_CONNS`、`DB_CONN_MAX_LIFETIME` 和 `DB_CONN_MAX_IDLE_TIME` 控制每个 backend/publish-worker 进程的 PostgreSQL 连接池。
-- **慢查询治理**: 使用 `DB_SLOW_QUERY_THRESHOLD` 控制 backend 结构化慢查询日志和 `mpp_db_slow_queries_total` 指标阈值。查询计划审计流程见 [database-query-governance.md](database-query-governance.md)。
+For database query plan auditing, see [database-query-governance.md](database-query-governance.md).

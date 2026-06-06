@@ -161,6 +161,29 @@ export type ProjectDetail = ContractSchema<"ProjectDetail">;
 export type ProjectCollaborator = ContractSchema<"ProjectCollaborator">;
 export type ProjectCollaboratorsResponse =
   ContractSchema<"ProjectCollaboratorsResponse">;
+export type ProjectActivityType = ContractSchema<"ProjectActivityType">;
+export type ProjectActivity = ContractSchema<"ProjectActivity">;
+export type ProjectActivitiesResponse =
+  ContractSchema<"ProjectActivitiesResponse">;
+export type ProjectComment = ContractSchema<"ProjectComment">;
+export type ProjectCommentsResponse = ContractSchema<"ProjectCommentsResponse">;
+export type CreateProjectCommentInput =
+  ContractSchema<"CreateProjectCommentRequest">;
+export type UpdateProjectCommentInput =
+  ContractSchema<"UpdateProjectCommentRequest">;
+export type ProjectVersion = ContractSchema<"ProjectVersion">;
+export type ProjectVersionsResponse = ContractSchema<"ProjectVersionsResponse">;
+export type RestoreProjectVersionResponse =
+  ContractSchema<"RestoreProjectVersionResponse">;
+export type ProjectShareLink = ContractSchema<"ProjectShareLink">;
+export type ProjectShareLinkWithToken =
+  ContractSchema<"ProjectShareLinkWithToken">;
+export type ProjectShareLinksResponse =
+  ContractSchema<"ProjectShareLinksResponse">;
+export type CreateProjectShareLinkInput =
+  ContractSchema<"CreateProjectShareLinkRequest">;
+export type AcceptProjectShareLinkResponse =
+  ContractSchema<"AcceptProjectShareLinkResponse">;
 export type PaginatedProjects = ContractSchema<"PaginationProjects">;
 export type ListWorkspaceProjectsOptions = {
   page?: number;

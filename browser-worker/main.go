@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	browsercontainer "github.com/kurodakayn/mpp-browser-worker/internal/container"
 	"github.com/kurodakayn/mpp-browser-worker/internal/observability"
+	"github.com/kurodakayn/mpp-browser-worker/internal/runtimefactory"
 	"github.com/kurodakayn/mpp-browser-worker/internal/server"
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 	"github.com/labstack/echo/v4"
@@ -30,9 +30,9 @@ func main() {
 	e.Use(observabilitySuite.Middleware())
 	e.Use(middleware.Recover())
 
-	containers, err := browsercontainer.NewManager()
+	runtimes, err := runtimefactory.NewManagerFromEnv()
 	if err != nil {
-		log.Fatalf("Failed to initialize Docker manager: %v", err)
+		log.Fatalf("Failed to initialize browser runtime manager: %v", err)
 	}
 
 	sessions := session.NewManager()
@@ -41,7 +41,7 @@ func main() {
 		log.Fatalf("Failed to initialize Redis state store: %v", err)
 	}
 
-	app := server.New(containers, sessions, stateStore)
+	app := server.New(runtimes, sessions, stateStore)
 	ready := atomic.Bool{}
 	ready.Store(true)
 	registerHealthRoutes(e, &ready, stateStore)

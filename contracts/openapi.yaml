@@ -157,6 +157,55 @@ components:
         - ProjectCollaboratorRoleEditor
         - ProjectCollaboratorRoleViewer
 
+    ProjectActivityType:
+      type: string
+      enum:
+        - content_saved
+        - comment_created
+        - comment_resolved
+        - collaborator_added
+        - collaborator_role_changed
+        - collaborator_removed
+        - publish_requested
+        - publish_queued
+        - publish_completed
+        - share_link_accepted
+        - share_link_created
+        - share_link_revoked
+        - version_restored
+      x-enum-varnames:
+        - ProjectActivityTypeContentSaved
+        - ProjectActivityTypeCommentCreated
+        - ProjectActivityTypeCommentResolved
+        - ProjectActivityTypeCollaboratorAdded
+        - ProjectActivityTypeCollaboratorRoleChanged
+        - ProjectActivityTypeCollaboratorRemoved
+        - ProjectActivityTypePublishRequested
+        - ProjectActivityTypePublishQueued
+        - ProjectActivityTypePublishCompleted
+        - ProjectActivityTypeShareLinkAccepted
+        - ProjectActivityTypeShareLinkCreated
+        - ProjectActivityTypeShareLinkRevoked
+        - ProjectActivityTypeVersionRestored
+
+    ProjectCommentStatus:
+      type: string
+      enum:
+        - open
+        - resolved
+      x-enum-varnames:
+        - ProjectCommentStatusOpen
+        - ProjectCommentStatusResolved
+
+    ProjectShareLinkStatus:
+      type: string
+      enum:
+        - active
+        - revoked
+      x-enum-varnames:
+        - ProjectShareLinkStatusActive
+        - ProjectShareLinkStatusRevoked
+
     WorkspaceRole:
       type: string
       enum:
@@ -964,6 +1013,293 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProjectCollaborator"
+
+    ProjectActivity:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - project_id
+        - actor_user_id
+        - actor_username
+        - actor_email
+        - event_type
+        - metadata
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        actor_user_id:
+          type: string
+          format: uuid
+        actor_username:
+          type: string
+        actor_email:
+          type: string
+          format: email
+        target_user_id:
+          type: string
+          format: uuid
+        target_username:
+          type: string
+        target_email:
+          type: string
+          format: email
+        event_type:
+          $ref: "#/components/schemas/ProjectActivityType"
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    ProjectActivitiesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectActivity"
+
+    CreateProjectCommentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - body
+      properties:
+        body:
+          type: string
+          minLength: 1
+        anchor_text:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+
+    UpdateProjectCommentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - resolved
+
+    ProjectComment:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - project_id
+        - author_id
+        - author_username
+        - author_email
+        - body
+        - status
+        - metadata
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        author_id:
+          type: string
+          format: uuid
+        author_username:
+          type: string
+        author_email:
+          type: string
+          format: email
+        body:
+          type: string
+        anchor_text:
+          type: string
+        status:
+          $ref: "#/components/schemas/ProjectCommentStatus"
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+
+    ProjectCommentsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectComment"
+
+    ProjectVersion:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - project_id
+        - created_by
+        - creator_username
+        - creator_email
+        - version_number
+        - title
+        - source
+        - collab_seq
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        creator_username:
+          type: string
+        creator_email:
+          type: string
+          format: email
+        version_number:
+          type: integer
+        title:
+          type: string
+        source:
+          type: string
+        collab_document_id:
+          type: string
+          format: uuid
+        collab_seq:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+
+    ProjectVersionsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectVersion"
+
+    RestoreProjectVersionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - project
+        - version
+      properties:
+        project:
+          $ref: "#/components/schemas/ProjectDetail"
+        version:
+          $ref: "#/components/schemas/ProjectVersion"
+
+    CreateProjectShareLinkRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - role
+      properties:
+        role:
+          $ref: "#/components/schemas/ProjectCollaboratorRole"
+        expires_at:
+          type: string
+          format: date-time
+
+    ProjectShareLink:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - project_id
+        - created_by
+        - role
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        role:
+          $ref: "#/components/schemas/ProjectCollaboratorRole"
+        status:
+          $ref: "#/components/schemas/ProjectShareLinkStatus"
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+
+    ProjectShareLinkWithToken:
+      allOf:
+        - $ref: "#/components/schemas/ProjectShareLink"
+        - type: object
+          additionalProperties: false
+          required:
+            - token
+            - url
+          properties:
+            token:
+              type: string
+            url:
+              type: string
+
+    ProjectShareLinksResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectShareLink"
+
+    AcceptProjectShareLinkResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - project
+        - role
+      properties:
+        project:
+          $ref: "#/components/schemas/ProjectDetail"
+        role:
+          $ref: "#/components/schemas/ProjectRole"
 
     CreateWorkspaceRequest:
       type: object

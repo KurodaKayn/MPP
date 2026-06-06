@@ -232,6 +232,14 @@ export function useContentPageController(
       setTitle(nextTitle);
       setPrepublishDrafts({});
     },
+    restoreVersionContent: (project: {
+      title: string;
+      source_content: string;
+    }) => {
+      setTitle(project.title);
+      setContent(contentValueFromSource(project.source_content));
+      setPrepublishDrafts({});
+    },
     title,
   };
 
