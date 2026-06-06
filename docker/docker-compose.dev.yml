@@ -41,6 +41,7 @@ services:
       COLLAB_WEBSOCKET_URL_BASE: ${COLLAB_WEBSOCKET_URL_BASE:-ws://localhost:8090}
       CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-true}
       CONTENT_PIPELINE_DRAFTS_ENABLED: ${CONTENT_PIPELINE_DRAFTS_ENABLED:-true}
+      BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-change-me-browser-worker-internal-token}
     healthcheck:
       start_period: 120s
     volumes:
@@ -71,6 +72,7 @@ services:
       ENABLE_DEV_SEED: "false"
       CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-true}
       CONTENT_PIPELINE_DRAFTS_ENABLED: ${CONTENT_PIPELINE_DRAFTS_ENABLED:-true}
+      BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-change-me-browser-worker-internal-token}
     volumes:
       - ../backend:/app
       - backend_go_cache:/go/pkg/mod
@@ -86,9 +88,10 @@ services:
     build:
       target: dev
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     environment:
       APP_ENV: development
+      BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-change-me-browser-worker-internal-token}
     volumes:
       - ../browser-worker:/app
       - browser_worker_go_cache:/go/pkg/mod
