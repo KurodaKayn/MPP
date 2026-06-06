@@ -3,7 +3,7 @@ import { applyUpdate } from "yjs";
 import { createHash, randomUUID } from "node:crypto";
 
 import type { Document } from "@hocuspocus/server";
-import type { RedisClientType } from "redis";
+import type { RedisClientOptions } from "redis";
 import type { CollabConfig } from "../config.js";
 
 interface CollabUpdateEnvelope {
@@ -32,7 +32,15 @@ export interface CollabRedisPubSub {
   start(documents: Map<string, Document>): Promise<void>;
 }
 
-type RedisClient = RedisClientType;
+interface RedisClient {
+  connect(): Promise<unknown>;
+  pSubscribe(
+    pattern: string,
+    listener: (message: string) => void,
+  ): Promise<unknown>;
+  publish(channel: string, message: string): Promise<unknown>;
+  quit(): Promise<unknown>;
+}
 
 export class RedisCollabPubSub implements CollabRedisPubSub {
   private documents?: Map<string, Document>;
@@ -131,36 +139,43 @@ export function createRedisCollabPubSub(
   if (!config.COLLAB_REDIS_SYNC_ENABLED) {
     return undefined;
   }
-  const url = redisUrlFromConfig(config);
-  const socketOptions = {
-    reconnectStrategy(retries: number) {
-      return Math.min(100 + retries * 100, 2_000);
-    },
-  };
+  const clientOptions = redisClientOptionsFromConfig(config);
   return new RedisCollabPubSub(
-    createClient({
-      database: config.REDIS_DB,
-      password: config.REDIS_PASSWORD || undefined,
-      socket: socketOptions,
-      url,
-    }),
-    createClient({
-      database: config.REDIS_DB,
-      password: config.REDIS_PASSWORD || undefined,
-      socket: socketOptions,
-      url,
-    }),
+    createClient(clientOptions),
+    createClient(clientOptions),
     config.COLLAB_REDIS_CHANNEL_PREFIX,
     logger,
   );
 }
 
+export function redisClientOptionsFromConfig(
+  config: CollabConfig,
+): RedisClientOptions {
+  return {
+    database: config.REDIS_DB,
+    password: config.REDIS_PASSWORD || undefined,
+    socket: {
+      reconnectStrategy(retries: number) {
+        return Math.min(100 + retries * 100, 2_000);
+      },
+    },
+    url: redisUrlFromConfig(config),
+  };
+}
+
 function redisUrlFromConfig(config: CollabConfig): string {
   const raw = config.REDIS_ADDR.trim();
-  if (raw.startsWith("redis://") || raw.startsWith("rediss://")) {
+  if (raw.startsWith("rediss://")) {
     return raw;
   }
-  return `redis://${raw}`;
+  if (raw.startsWith("redis://")) {
+    if (!config.REDIS_TLS) {
+      return raw;
+    }
+    return `rediss://${raw.slice("redis://".length)}`;
+  }
+  const scheme = config.REDIS_TLS ? "rediss" : "redis";
+  return `${scheme}://${raw}`;
 }
 
 function parseEnvelope(message: string): CollabUpdateEnvelope | undefined {
