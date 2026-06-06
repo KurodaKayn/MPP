@@ -9,6 +9,7 @@ import (
 	"github.com/chromedp/cdproto/fetch"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
+
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
 
@@ -21,7 +22,7 @@ func SetupInterception(ctx context.Context, rules []session.DomainRule) error {
 		return fmt.Errorf("failed to enable fetch interception: %w", err)
 	}
 
-	chromedp.ListenTarget(ctx, func(ev interface{}) {
+	chromedp.ListenTarget(ctx, func(ev any) {
 		switch ev := ev.(type) {
 		case *fetch.EventRequestPaused:
 			go func() {

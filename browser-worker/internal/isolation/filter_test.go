@@ -3,8 +3,9 @@ package isolation
 import (
 	"testing"
 
-	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
 
 func TestIsDomainAllowed(t *testing.T) {

@@ -207,6 +207,12 @@ jobs:
           go-version-file: browser-worker/go.mod
           cache-dependency-path: browser-worker/go.sum
 
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          working-directory: browser-worker
+
       - name: Test
         run: go test ./...
 

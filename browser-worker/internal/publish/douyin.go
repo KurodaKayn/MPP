@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
+
 	"github.com/kurodakayn/mpp-browser-worker/internal/contracts"
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
