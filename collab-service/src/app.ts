@@ -5,6 +5,7 @@ import { z } from "zod";
 import { isInternalTokenAuthorized } from "./auth/internal-token.js";
 import { createCollabAuthenticator } from "./auth/session-token.js";
 import { closeCollabServer, createCollabServer } from "./collab/hocuspocus.js";
+import { createRedisCollabPubSub } from "./collab/redis-pubsub.js";
 import { loadConfig } from "./config.js";
 import { createMetrics } from "./metrics.js";
 import { createPostgresDocumentPersistence } from "./persistence/document-persistence.js";
@@ -36,8 +37,16 @@ export async function buildApp(
   const metrics = createMetrics();
   const authenticator = createCollabAuthenticator(config);
   const persistence =
-    options.persistence ?? createPostgresDocumentPersistence(config);
-  const collabServer = createCollabServer(config, authenticator, persistence);
+    options.persistence ?? createPostgresDocumentPersistence(config, metrics);
+  const redisPubSub = createRedisCollabPubSub(config, console);
+  const collabServer = createCollabServer(
+    config,
+    authenticator,
+    persistence,
+    redisPubSub,
+    metrics,
+  );
+  await redisPubSub?.start(collabServer.documents);
 
   await app.register(websocket);
 
@@ -52,6 +61,7 @@ export async function buildApp(
         status: "ready",
         dependencies: {
           database: "ready",
+          redis_sync: redisPubSub ? "ready" : "disabled",
           redis_addr: config.REDIS_ADDR,
           token_secret_configured: Boolean(config.COLLAB_TOKEN_SECRET),
         },
@@ -160,6 +170,7 @@ export async function buildApp(
 
   app.addHook("onClose", async () => {
     await closeCollabServer(collabServer);
+    await redisPubSub?.close();
     await persistence.close();
   });
 
