@@ -72,7 +72,7 @@ type CollabDocumentUpdateBatch struct {
 	Actor    *User          `gorm:"foreignKey:ActorUserID;references:ID"`
 }
 
-func (d *CollabDocument) BeforeCreate(tx *gorm.DB) (err error) {
+func (d *CollabDocument) BeforeCreate(_ *gorm.DB) (err error) {
 	if d.ID == uuid.Nil {
 		d.ID = uuid.New()
 	}

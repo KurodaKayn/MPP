@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 func (s *BrowserSessionService) StartCleanupWorker(ctx context.Context) {
@@ -37,9 +38,11 @@ func (s *BrowserSessionService) CleanupExpiredSessions(ctx context.Context, now 
 	if s.redisClient == nil {
 		return nil
 	}
-	sessionIDs, err := s.redisClient.ZRangeByScore(ctx, browserSessionCleanupKey, &redis.ZRangeBy{
-		Min: "-inf",
-		Max: fmt.Sprintf("%d", now.UnixMilli()),
+	sessionIDs, err := s.redisClient.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:     browserSessionCleanupKey,
+		Start:   "-inf",
+		Stop:    fmt.Sprintf("%d", now.UnixMilli()),
+		ByScore: true,
 	}).Result()
 	if err != nil {
 		return err
@@ -71,7 +74,7 @@ func (s *BrowserSessionService) cleanupExpiredSession(ctx context.Context, sessi
 	if session.WorkerSessionRef != "" {
 		_ = s.workerClient.StopSession(ctx, session.WorkerSessionRef)
 	}
-	if err := s.db.WithContext(ctx).Model(&session).Updates(map[string]interface{}{
+	if err := s.db.WithContext(ctx).Model(&session).Updates(map[string]any{
 		"status":             models.BrowserSessionStatusExpired,
 		"error_message":      "session expired",
 		"connect_token_hash": "",

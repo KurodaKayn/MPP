@@ -12,13 +12,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/envutil"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/proxy"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
-	"github.com/labstack/echo/v4"
 )
 
 const (
@@ -90,10 +91,10 @@ func (h *BrowserSessionHandler) GetSession(c echo.Context) error {
 
 	resp, err := h.service.GetSession(c.Request().Context(), userID, id)
 	if err != nil {
-		if err == browsersession.ErrSessionNotFound {
+		if errors.Is(err, browsersession.ErrSessionNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
 		}
-		if err == browsersession.ErrSessionGone {
+		if errors.Is(err, browsersession.ErrSessionGone) {
 			return sendError(c, http.StatusGone, "gone", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -130,21 +131,21 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 			}
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 		}
-		defer lease.Release(context.Background())
+		defer func() { _ = lease.Release(context.Background()) }()
 	}
 
 	endpoint, err := h.service.GetStreamEndpoint(c.Request().Context(), userID, id, streamToken, isWebSocket)
 	if err != nil {
-		if err == browsersession.ErrSessionNotFound {
+		if errors.Is(err, browsersession.ErrSessionNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
 		}
-		if err == browsersession.ErrSessionForbidden {
+		if errors.Is(err, browsersession.ErrSessionForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
-		if err == browsersession.ErrStreamTokenGone {
+		if errors.Is(err, browsersession.ErrStreamTokenGone) {
 			return sendError(c, http.StatusGone, "gone", err.Error())
 		}
-		if err == browsersession.ErrInvalidStreamToken {
+		if errors.Is(err, browsersession.ErrInvalidStreamToken) {
 			return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -162,20 +163,23 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 		// Update target path with proxy path before proxying
 		target.Path = joinURLPath(target.Path, proxyPath)
 		target.RawQuery = rawQuery
-		return proxy.ProxyWebSocket(c, target)
+		return proxy.WebSocket(c, target)
 	}
 
-	reverseProxy := httputil.NewSingleHostReverseProxy(target)
-	reverseProxy.Transport = browserStreamTransport
-	reverseProxy.Director = func(req *http.Request) {
-		req.URL.Scheme = target.Scheme
-		req.URL.Host = target.Host
-		req.URL.Path = joinURLPath(target.Path, proxyPath)
-		if req.URL.Path == "" {
-			req.URL.Path = "/"
-		}
-		req.URL.RawQuery = rawQuery
-		req.Host = target.Host
+	reverseProxy := &httputil.ReverseProxy{
+		Transport: browserStreamTransport,
+		Rewrite: func(proxyRequest *httputil.ProxyRequest) {
+			req := proxyRequest.Out
+			req.URL.Scheme = target.Scheme
+			req.URL.Host = target.Host
+			req.URL.Path = joinURLPath(target.Path, proxyPath)
+			if req.URL.Path == "" {
+				req.URL.Path = "/"
+			}
+			req.URL.RawQuery = rawQuery
+			req.Host = target.Host
+			proxyRequest.SetXForwarded()
+		},
 	}
 	reverseProxy.ErrorHandler = browserStreamProxyErrorHandler
 	c.Response().Header().Set("X-MPP-Stream-Reconnect", "true")
@@ -268,7 +272,7 @@ func (h *BrowserSessionHandler) CancelSession(c echo.Context) error {
 	}
 
 	if err := h.service.CancelSession(c.Request().Context(), userID, id); err != nil {
-		if err == browsersession.ErrSessionNotFound {
+		if errors.Is(err, browsersession.ErrSessionNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())

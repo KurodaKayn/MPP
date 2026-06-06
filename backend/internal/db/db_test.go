@@ -7,10 +7,11 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 type recordingQueryObserver struct {

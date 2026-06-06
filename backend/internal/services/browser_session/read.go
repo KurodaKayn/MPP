@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
-	"gorm.io/gorm"
 )
 
 func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID, id uuid.UUID) (*dto.BrowserSessionResponse, error) {
@@ -52,7 +53,7 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 					}
 					session.Status = nextStatus
 					session.ErrorMessage = message
-					_ = s.db.Model(&session).Updates(map[string]interface{}{
+					_ = s.db.Model(&session).Updates(map[string]any{
 						"status":             nextStatus,
 						"error_message":      message,
 						"connect_token_hash": "",
@@ -112,7 +113,7 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 			return nil, err
 		}
 		if s.redisClient == nil {
-			if err := s.db.Model(&session).Updates(map[string]interface{}{
+			if err := s.db.Model(&session).Updates(map[string]any{
 				"connect_token_hash":       tokenHash,
 				"connect_token_expires_at": tokenExpiresAt,
 			}).Error; err != nil {

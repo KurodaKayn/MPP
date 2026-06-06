@@ -10,10 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
 var DB *gorm.DB
@@ -23,7 +24,7 @@ var seedDataSQL string
 
 // Stable app-specific key for the Postgres transaction advisory lock around migrations.
 const migrationAdvisoryLockKey = 776770001
-const devFallbackPasswordHash = "$2a$10$JuGX0AMl3DS3eGm/yRvY2OZLm4QuTuoIgRT4ucmVs/BCwoPYARN4C"
+const devFallbackPasswordHash = "$2a$10$JuGX0AMl3DS3eGm/yRvY2OZLm4QuTuoIgRT4ucmVs/BCwoPYARN4C" //nolint:gosec // Development fallback is a bcrypt hash, not a plaintext password.
 const disabledPasswordHash = "legacy-password-reset-required"
 
 const (
@@ -268,7 +269,7 @@ func backfillPersonalWorkspaces(database *gorm.DB) error {
 }
 
 func prepareUserEmailMigration(database *gorm.DB) error {
-	if database.Dialector.Name() != "postgres" {
+	if database.Name() != "postgres" {
 		return nil
 	}
 	if !database.Migrator().HasTable(&models.User{}) {
@@ -295,7 +296,7 @@ func prepareUserEmailMigration(database *gorm.DB) error {
 }
 
 func prepareUserPasswordHashMigration(database *gorm.DB) error {
-	if database.Dialector.Name() != "postgres" {
+	if database.Name() != "postgres" {
 		return nil
 	}
 	if !database.Migrator().HasTable(&models.User{}) {
@@ -324,7 +325,7 @@ func prepareUserPasswordHashMigration(database *gorm.DB) error {
 }
 
 func withMigrationLock(database *gorm.DB, run func(*gorm.DB) error) error {
-	if database.Dialector.Name() != "postgres" {
+	if database.Name() != "postgres" {
 		return run(database)
 	}
 

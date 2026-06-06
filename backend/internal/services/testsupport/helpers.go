@@ -3,16 +3,17 @@ package testsupport
 import (
 	"context"
 	"fmt"
+	"net/url"
+
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
-	"gorm.io/datatypes"
-	"gorm.io/gorm"
-	"net/url"
-	"time"
 )
 
 type FakeXOAuth2Provider struct {
@@ -42,7 +43,7 @@ type FakeProjectDocumentInitializer struct {
 	SyncProjectSourceContentFunc func(context.Context, uuid.UUID) error
 }
 
-func (f *FakeProjectDocumentInitializer) InitializeProjectDocument(ctx context.Context, documentID uuid.UUID) error {
+func (f *FakeProjectDocumentInitializer) InitializeProjectDocument(_ context.Context, documentID uuid.UUID) error {
 	f.DocumentIDs = append(f.DocumentIDs, documentID)
 	return f.Err
 }
@@ -55,7 +56,7 @@ func (f *FakeProjectDocumentInitializer) SyncProjectSourceContent(ctx context.Co
 	return f.SyncErr
 }
 
-func (f *FakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
+func (f *FakeProjectDraftCompiler) CompileProjectDrafts(_ context.Context, project *models.Project, _ []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error) {
 	f.LastProject = project
 	f.LastPlatforms = append([]string(nil), platforms...)
 	if f.Err != nil {
@@ -66,11 +67,11 @@ func (f *FakeProjectDraftCompiler) CompileProjectDrafts(ctx context.Context, pro
 	for _, platform := range platforms {
 		switch platform {
 		case "wechat":
-			drafts[platform] = []byte(fmt.Sprintf(`{"format":"html","html":%q}`, project.SourceContent))
+			drafts[platform] = fmt.Appendf(nil, `{"format":"html","html":%q}`, project.SourceContent)
 		case "zhihu":
 			drafts[platform] = []byte(`{"format":"markdown","markdown":"## Heading\n\nHello **draft**"}`)
 		case "x":
-			drafts[platform] = []byte(fmt.Sprintf(`{"format":"text","text":%q}`, project.Title+"\n\nHello draft"))
+			drafts[platform] = fmt.Appendf(nil, `{"format":"text","text":%q}`, project.Title+"\n\nHello draft")
 		case "douyin":
 			drafts[platform] = []byte(`{"format":"text","text":"Hello draft"}`)
 		default:
@@ -100,19 +101,19 @@ func (f *FakeXOAuth2Provider) AuthorizationURL(config pkgx.OAuth2Config, state, 
 	return endpoint.String(), nil
 }
 
-func (f *FakeXOAuth2Provider) Exchange(ctx context.Context, config pkgx.OAuth2Config, code, codeVerifier string) (pkgx.OAuth2Token, error) {
+func (f *FakeXOAuth2Provider) Exchange(_ context.Context, _ pkgx.OAuth2Config, code, codeVerifier string) (pkgx.OAuth2Token, error) {
 	f.ExchangeCode = code
 	f.ExchangeVerifier = codeVerifier
 	return f.Token, nil
 }
 
-func (f *FakeXOAuth2Provider) Refresh(ctx context.Context, config pkgx.OAuth2Config, refreshToken string) (pkgx.OAuth2Token, error) {
+func (f *FakeXOAuth2Provider) Refresh(_ context.Context, config pkgx.OAuth2Config, refreshToken string) (pkgx.OAuth2Token, error) {
 	f.RefreshConfig = config
 	f.RefreshToken = refreshToken
 	return f.Token, nil
 }
 
-func (f *FakeXOAuth2Provider) Me(ctx context.Context, accessToken string) (pkgx.User, error) {
+func (f *FakeXOAuth2Provider) Me(_ context.Context, _ string) (pkgx.User, error) {
 	return f.User, nil
 }
 
@@ -370,7 +371,7 @@ type FakePlatformPublisher struct {
 	RemoteURL      string
 }
 
-func (f *FakePlatformPublisher) ValidateConfig(config []byte) error {
+func (f *FakePlatformPublisher) ValidateConfig(_ []byte) error {
 	return nil
 }
 
@@ -383,8 +384,4 @@ func (f *FakePlatformPublisher) Publish(ctx context.Context, pub *models.Project
 		f.RemoteURL = remoteURL
 	}
 	return "remote-id", "https://example.com/published", nil
-}
-
-func PtrTime(value time.Time) *time.Time {
-	return &value
 }

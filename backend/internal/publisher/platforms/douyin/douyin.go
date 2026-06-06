@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
+
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/media"
 	"github.com/kurodakayn/mpp-backend/internal/publisher/browser"
@@ -19,7 +20,7 @@ import (
 
 type DouyinPublisher struct{}
 
-func (d *DouyinPublisher) ValidateConfig(config []byte) error {
+func (d *DouyinPublisher) ValidateConfig(_ []byte) error {
 	// Douyin specific configuration validation (e.g. hashtags, publish time)
 	return nil
 }
@@ -98,7 +99,7 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 		chromedp.Sleep(2*time.Second),
 
 		// 3. 注入本地图片
-		chromedp.ActionFunc(func(ctx context.Context) error {
+		chromedp.ActionFunc(func(_ context.Context) error {
 			fmt.Println("Douyin: Waiting for file input...")
 			return nil
 		}),
@@ -110,7 +111,7 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 		chromedp.Sleep(10*time.Second), // 图片上传解析时间
 
 		// 4. 开始填写文字：标题
-		chromedp.ActionFunc(func(ctx context.Context) error {
+		chromedp.ActionFunc(func(_ context.Context) error {
 			fmt.Println("Douyin: Waiting for title input...")
 			return nil
 		}),

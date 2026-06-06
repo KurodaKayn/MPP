@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
+
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher/browser"
 	"github.com/kurodakayn/mpp-backend/internal/publisher/content"
@@ -15,7 +16,7 @@ import (
 
 type ZhihuPublisher struct{}
 
-func (z *ZhihuPublisher) ValidateConfig(config []byte) error {
+func (z *ZhihuPublisher) ValidateConfig(_ []byte) error {
 	return nil
 }
 
@@ -44,7 +45,7 @@ func (z *ZhihuPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfor
 		chromedp.Navigate("https://zhuanlan.zhihu.com/write"),
 		chromedp.Sleep(5*time.Second),
 		chromedp.Location(&currentURL),
-		chromedp.ActionFunc(func(ctx context.Context) error {
+		chromedp.ActionFunc(func(_ context.Context) error {
 			if strings.Contains(currentURL, "signin") {
 				return fmt.Errorf("登录失效，请更新 Cookie")
 			}

@@ -12,7 +12,12 @@ pre-commit:
     backend-format:
       root: "backend/"
       glob: "*.go"
-      run: gofmt -w {staged_files}
+      run: |
+        for file in {staged_files}; do
+          tmp="$(mktemp)"
+          golangci-lint fmt --stdin < "$file" > "$tmp"
+          mv "$tmp" "$file"
+        done
       stage_fixed: true
 
     browser-worker-format:

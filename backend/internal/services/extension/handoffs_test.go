@@ -1,18 +1,20 @@
 package extension_test
 
 import (
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/google/uuid"
-	"github.com/kurodakayn/mpp-backend/internal/dto"
-	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/services"
-	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
-	"strings"
-	"testing"
-	"time"
+
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 )
 
 func TestGetExtensionSessionReturnsCurrentUser(t *testing.T) {
@@ -224,7 +226,7 @@ func TestRecordExtensionEventAcceptsKnownTokenAndDeduplicatesEventID(t *testing.
 		RemoteID:     "remote-1",
 		PublishURL:   "https://creator.douyin.com/item/1",
 		ErrorMessage: "",
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"adapter": "DYNAMIC_DOUYIN",
 		},
 	}

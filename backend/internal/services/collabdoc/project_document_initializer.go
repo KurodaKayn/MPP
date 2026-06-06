@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 )
 
@@ -61,15 +62,15 @@ func (i *HTTPProjectDocumentInitializer) postInternalProjectDocument(ctx context
 		nil,
 	)
 	if err != nil {
-		return fmt.Errorf("%w: %v", sentinel, err)
+		return fmt.Errorf("%w: %w", sentinel, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+i.tokenSecret)
 
 	resp, err := i.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: %v", sentinel, err)
+		return fmt.Errorf("%w: %w", sentinel, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("%w: returned status %d", sentinel, resp.StatusCode)

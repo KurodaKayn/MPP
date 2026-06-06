@@ -13,18 +13,22 @@ use reqwest::{Client, Response as HttpResponse, Url};
 use tokio::time::timeout;
 use tonic::{Request, Response, Status};
 
+use crate::metrics::{ContentPipelineMetrics, MediaSourceKind};
+
 const MEDIA_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(20);
 const MEDIA_REDIRECT_LIMIT: usize = 3;
 
 #[derive(Debug, Clone)]
 pub(crate) struct MediaAssetProcessorService {
     processor: MediaProcessor,
+    metrics: ContentPipelineMetrics,
 }
 
 impl MediaAssetProcessorService {
-    pub(crate) fn new() -> Result<Self, reqwest::Error> {
+    pub(crate) fn new(metrics: ContentPipelineMetrics) -> Result<Self, reqwest::Error> {
         Ok(Self {
             processor: MediaProcessor::new(),
+            metrics,
         })
     }
 
@@ -50,27 +54,32 @@ impl MediaAssetProcessorService {
             .process_bytes(bytes, declared_mime_type.as_deref(), constraints)
             .map_err(media_error_to_status)
     }
-}
 
-#[tonic::async_trait]
-impl MediaAssetProcessor for MediaAssetProcessorService {
-    async fn process_asset(
+    async fn process_asset_inner(
         &self,
-        request: Request<ProcessAssetRequest>,
-    ) -> Result<Response<ProcessAssetResponse>, Status> {
-        let request = request.into_inner();
+        request: ProcessAssetRequest,
+    ) -> Result<MediaProcessOutcome, Status> {
         let constraints = media_constraints_from_request(&request);
         let source = request
             .source
             .ok_or_else(|| Status::invalid_argument("media source is required"))?;
 
-        let (asset, warnings) = match source.value {
+        let (asset, warnings, source_kind, input_bytes, output_bytes) = match source.value {
             Some(media_source::Value::DataUrl(data_url)) => {
                 let processed = self
                     .processor
                     .process_data_url(&data_url, &constraints)
                     .map_err(media_error_to_status)?;
-                processed_asset_to_proto(processed)
+                let input_bytes = processed.input_byte_size;
+                let output_bytes = processed.byte_size;
+                let (asset, warnings) = processed_asset_to_proto(processed);
+                (
+                    asset,
+                    warnings,
+                    MediaSourceKind::DataUrl,
+                    Some(input_bytes),
+                    Some(output_bytes),
+                )
             }
             Some(media_source::Value::ObjectRef(object_ref)) => (
                 ProcessedAsset {
@@ -82,20 +91,76 @@ impl MediaAssetProcessor for MediaAssetProcessorService {
                     sha256: String::new(),
                 },
                 vec!["object_ref passthrough was not validated".to_string()],
+                MediaSourceKind::ObjectRef,
+                None,
+                None,
             ),
             Some(media_source::Value::Url(url)) => {
                 let processed = self.process_url(&url, &constraints).await?;
-                processed_asset_to_proto(processed)
+                let input_bytes = processed.input_byte_size;
+                let output_bytes = processed.byte_size;
+                let (asset, warnings) = processed_asset_to_proto(processed);
+                (
+                    asset,
+                    warnings,
+                    MediaSourceKind::Url,
+                    Some(input_bytes),
+                    Some(output_bytes),
+                )
             }
             None => return Err(Status::invalid_argument("media source value is required")),
         };
 
-        Ok(Response::new(ProcessAssetResponse {
-            asset: Some(asset),
-            status: "processed".to_string(),
-            warnings,
-        }))
+        Ok(MediaProcessOutcome {
+            response: ProcessAssetResponse {
+                asset: Some(asset),
+                status: "processed".to_string(),
+                warnings,
+            },
+            source_kind,
+            input_bytes,
+            output_bytes,
+        })
     }
+}
+
+#[tonic::async_trait]
+impl MediaAssetProcessor for MediaAssetProcessorService {
+    async fn process_asset(
+        &self,
+        request: Request<ProcessAssetRequest>,
+    ) -> Result<Response<ProcessAssetResponse>, Status> {
+        let started_at = std::time::Instant::now();
+        let request = request.into_inner();
+        let platform = request.platform.clone();
+        let usage = request.usage.clone();
+
+        match self.process_asset_inner(request).await {
+            Ok(outcome) => {
+                self.metrics.record_process_asset_success(
+                    &platform,
+                    &usage,
+                    outcome.source_kind,
+                    outcome.input_bytes,
+                    outcome.output_bytes,
+                    started_at.elapsed(),
+                );
+                Ok(Response::new(outcome.response))
+            }
+            Err(status) => {
+                self.metrics
+                    .record_process_asset_error(&platform, &status, started_at.elapsed());
+                Err(status)
+            }
+        }
+    }
+}
+
+struct MediaProcessOutcome {
+    response: ProcessAssetResponse,
+    source_kind: MediaSourceKind,
+    input_bytes: Option<u64>,
+    output_bytes: Option<u64>,
 }
 
 fn media_constraints_from_request(request: &ProcessAssetRequest) -> MediaConstraints {
