@@ -135,7 +135,7 @@ func TestServerEventualAdminStatsStillUseReaderWithoutStickyCookie(t *testing.T)
 
 func TestServerStickyWriterCookieIsSecureOutsideLocalDevelopment(t *testing.T) {
 	t.Setenv(app.AppEnvEnv, "production")
-	t.Setenv(app.NodeEnvFallbackEnv, "")
+	t.Setenv(app.NodeEnvFallbackEnv, "development")
 
 	server, err := newServer(serverConfig{
 		runtimeConfig: app.RuntimeConfig{
