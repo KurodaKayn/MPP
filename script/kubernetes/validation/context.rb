@@ -165,7 +165,12 @@ module KubernetesValidation
 
     def parse_documents
       split_documents.each_with_index.map do |document, index|
-        object = YAML.safe_load(document, [], [], true)
+        object = YAML.safe_load(
+          document,
+          permitted_classes: [],
+          permitted_symbols: [],
+          aliases: true,
+        )
         next if object.nil?
 
         Document.new(document, object)
