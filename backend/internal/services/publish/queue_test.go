@@ -103,6 +103,15 @@ func (q *testPublishQueue) ReleaseLock(_ context.Context, key, value string) err
 	return nil
 }
 
+type errorReportingPublishQueue struct {
+	*testPublishQueue
+	err error
+}
+
+func (q *errorReportingPublishQueue) Run(context.Context, PublishJobHandler) error {
+	return q.err
+}
+
 func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -752,4 +761,25 @@ func TestRedisPublishQueueEnqueuesAsynqTask(t *testing.T) {
 	var payload PublishJob
 	require.NoError(t, json.Unmarshal(tasks[0].Payload, &payload))
 	require.Equal(t, job, payload)
+}
+
+func TestStartPublishWorkerWithErrorsReportsRunnerFailure(t *testing.T) {
+	expectedErr := errors.New("publish worker stopped")
+	service := NewService(nil, nil)
+	service.queue = &errorReportingPublishQueue{
+		testPublishQueue: newTestPublishQueue(),
+		err:              expectedErr,
+	}
+
+	errs := service.StartPublishWorkerWithErrors(context.Background())
+	if errs == nil {
+		t.Fatal("expected publish worker error channel")
+	}
+
+	select {
+	case err := <-errs:
+		require.ErrorIs(t, err, expectedErr)
+	case <-time.After(time.Second):
+		t.Fatal("expected publish worker error")
+	}
 }
