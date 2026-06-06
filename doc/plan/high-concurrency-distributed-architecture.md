@@ -27,6 +27,8 @@ MPP 当前已经具备多服务雏形：
 - 所有异步任务都要有幂等键、状态机、重试策略和可追踪日志。
 - 所有外部平台调用都要可降级、可重试、可限流、可审计。
 
+数据层专项扩展的进度、Checklist 和 Citus 目标态，统一在 [MPP 数据库读写分离与水平分表渐进式方案](./database-optimization.md) 中维护。
+
 ## 4. 推荐总体架构
 
 ![MPP 高并发与分布式架构演进图](../assets/plan/high-concurrency-distributed-architecture.svg)
@@ -46,7 +48,7 @@ MPP 当前已经具备多服务雏形：
 | 2    | 网关与应用双层限流           | 防止爬虫、恶意请求、AI 滥用、发布任务刷爆 | Traefik 做 IP 级限流，backend 做用户/工作区/接口级配额        | 5        | 2    | P0     | 完成     | 生产保护关键能力                                                                                                                                                                                                              |
 | 3    | 可观测性基线                 | 出问题能定位，能展示系统真实运行状态      | Prometheus 指标、Grafana 面板、Loki 日志、Trace ID            | 5        | 3    | P0     | 完成     | backend、publish-worker、ai-service、browser-worker 已有 HTTP 指标和结构化请求日志；这是基线，不是完整分布式 tracing                                                                                                          |
 | 4    | 健康检查与优雅关闭           | 支持滚动重启，避免请求中断                | frontend/backend/ai/browser-worker 增加 health/readiness      | 5        | 2    | P0     | 完成     | 成本低，生产必备                                                                                                                                                                                                              |
-| 5    | API 服务无状态化与横向扩容   | 支撑更多并发请求                          | backend 不保存本地会话，扩多副本，共享 Redis/Postgres         | 5        | 2    | P1     | 完成     | API 基本无状态并支持 `api/worker/all` 角色，生产 Compose 默认多 backend 副本，数据层专项演进见独立方案                                                                                                                        |
+| 5    | API 服务无状态化与横向扩容   | 支撑更多并发请求                          | backend 不保存本地会话，扩多副本，共享 Redis/Postgres         | 5        | 2    | P1     | 完成     | API 基本无状态并支持 `api/worker/all` 角色，生产 Compose 默认多 backend 副本，数据层专项演进见 [数据库专项方案](./database-optimization.md)                                                                                   |
 | 6    | Redis 队列升级为可靠任务模型 | 发布任务异步化、可重试、可恢复            | 用 Redis Streams 或 Asynq 管理 publish jobs                   | 5        | 3    | P1     | 完成     | 已用 Asynq 替换 Redis List；publish job 具备 ack/retry/worker crash recovery/archive 语义，任务 payload 只保存 durable IDs，不携带 browser session 地址或 token                                                               |
 | 7    | 幂等键与发布状态机           | 防止重复点击、重复消费、重复发布          | publish 请求带 idempotency key，publication 状态机严格流转    | 5        | 3    | P1     | 进行中   | 已有发布锁和基础状态字段，尚缺 idempotency key 和目标状态机                                                                                                                                                                   |
 | 8    | Outbox Pattern               | 数据库更新与事件投递一致性                | publication 状态更新后写 outbox，由 worker 投递任务           | 4        | 4    | P1     | 未开始   | 适合发布流水线，但实现要谨慎                                                                                                                                                                                                  |
@@ -145,6 +147,6 @@ MPP 当前已经具备多服务雏形：
 - 当前保留 Go backend 作为业务核心，不急着拆成多个业务微服务。
 - 优先做 Traefik、限流、可观测性、健康检查、幂等、可靠队列和分布式锁。
 - 随后拆出 publish-worker，强化 browser-worker 资源池，接入对象存储和 CDN。
-- 按需评估 Temporal、Kubernetes、Service Mesh 和多区域容灾；数据层专项扩展按独立方案推进。
+- 按需评估 Temporal、Kubernetes、Service Mesh 和多区域容灾；数据层专项扩展按 [数据库专项方案](./database-optimization.md) 推进。
 
 这条路线能在控制复杂度的同时提升项目的并发承载、稳定性和业务增长承载能力。
