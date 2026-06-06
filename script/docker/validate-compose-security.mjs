@@ -9,6 +9,29 @@ const devCompose = readFileSync(
   "utf8",
 );
 
+function getServiceBlock(source, serviceName) {
+  const lines = source.split(/\r?\n/);
+  const start = lines.findIndex((line) => line === `  ${serviceName}:`);
+  if (start === -1) {
+    return "";
+  }
+
+  const block = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^  [A-Za-z0-9_-]+:/.test(line)) {
+      break;
+    }
+    block.push(line);
+  }
+
+  return block.join("\n");
+}
+
+const contentPipelineBlock = getServiceBlock(
+  compose,
+  "content-pipeline-service",
+);
+
 const checks = [
   [
     "backend receives browser-worker internal token",
@@ -50,11 +73,28 @@ const checks = [
     /ai-service:[\s\S]*?ports:[\s\S]*?-\s+"127\.0\.0\.1:8000:8000"/,
     devCompose,
   ],
+  [
+    "content-pipeline grpc port is not host-published",
+    (source) => source !== "" && !/^\s{4}ports:/m.test(source),
+    contentPipelineBlock,
+  ],
+  [
+    "content-pipeline grpc port is exposed only to compose services",
+    /^\s{4}expose:\s*$/m,
+    contentPipelineBlock,
+  ],
+  [
+    "content-pipeline expose uses the configured grpc port",
+    /^\s{6}-\s+"\$\{CONTENT_PIPELINE_PORT:-50051\}"/m,
+    contentPipelineBlock,
+  ],
 ];
 
 let failed = false;
 for (const [name, pattern, source] of checks) {
-  if (pattern.test(source)) {
+  if (
+    typeof pattern === "function" ? pattern(source) : pattern.test(source)
+  ) {
     console.log(`ok - ${name}`);
     continue;
   }

@@ -224,8 +224,8 @@ services:
       context: ../content-pipeline-service
       dockerfile: Dockerfile
     env_file: .env
-    ports:
-      - "${CONTENT_PIPELINE_PORT:-50051}:${CONTENT_PIPELINE_PORT:-50051}"
+    expose:
+      - "${CONTENT_PIPELINE_PORT:-50051}"
     environment:
       CONTENT_PIPELINE_ADDR: "0.0.0.0:${CONTENT_PIPELINE_PORT:-50051}"
     # Add depends_on if it requires DB or Redis
