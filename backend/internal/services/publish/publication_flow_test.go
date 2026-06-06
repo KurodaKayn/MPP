@@ -203,6 +203,85 @@ func TestPublishProjectPresignsReadyMediaRefsWithoutPersistingSignedURLs(t *test
 	assert.NotContains(t, string(saved.AdaptedContent), expectedURL)
 }
 
+func TestPublishProjectPreservesReadyMediaRefsWhenContentPipelineResolverIsConfigured(t *testing.T) {
+	t.Setenv("CONTENT_PIPELINE_MEDIA_ENABLED", "true")
+	t.Setenv("CONTENT_PIPELINE_MEDIA_RESOLVER_URL", "http://backend:8080/internal/media/resolve")
+	t.Setenv("CONTENT_PIPELINE_INTERNAL_TOKEN", "test-internal-token")
+
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(&models.MediaAsset{}))
+	s := services.NewDashboardService(db)
+	storage := fake.NewClient()
+	s.UseObjectStorage(storage, objectstorage.Config{
+		Enabled:        true,
+		Provider:       objectstorage.ProviderR2,
+		Bucket:         "mpp-media",
+		UploadURLTTL:   10 * time.Minute,
+		DownloadURLTTL: 5 * time.Minute,
+	})
+	fakePublisher := &testsupport.FakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	workspaceID := models.PersonalWorkspaceID(user.ID)
+	project := models.Project{
+		UserID:        user.ID,
+		WorkspaceID:   &workspaceID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	assetID := uuid.New()
+	assetProjectID := project.ID
+	asset := models.MediaAsset{
+		ID:               assetID,
+		UserID:           user.ID,
+		WorkspaceID:      &workspaceID,
+		ProjectID:        &assetProjectID,
+		Bucket:           "mpp-media",
+		ObjectKey:        "workspaces/" + workspaceID.String() + "/projects/" + project.ID.String() + "/assets/" + assetID.String() + "/hero.png",
+		OriginalFilename: "hero.png",
+		MimeType:         "image/png",
+		SizeBytes:        11,
+		Usage:            models.MediaAssetUsageEditorImage,
+		Status:           models.MediaAssetStatusReady,
+	}
+	require.NoError(t, db.Create(&asset).Error)
+	mediaRef := "mpp://media/" + assetID.String()
+	config, err := json.Marshal(map[string]string{
+		"app_id":          "wx",
+		"app_secret":      "secret",
+		"title":           "Title",
+		"cover_image_url": mediaRef,
+	})
+	require.NoError(t, err)
+	adaptedContent, err := json.Marshal(map[string]string{
+		"format": "html",
+		"html":   `<p><img src="` + mediaRef + `" data-mpp-media-id="` + assetID.String() + `"></p>`,
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(config),
+		AdaptedContent: datatypes.JSON(adaptedContent),
+	}).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Contains(t, string(fakePublisher.Config), mediaRef)
+	assert.NotContains(t, string(fakePublisher.Config), "fake://get/")
+	assert.Contains(t, string(fakePublisher.AdaptedContent), mediaRef)
+	assert.NotContains(t, string(fakePublisher.AdaptedContent), "fake://get/")
+}
+
 func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)

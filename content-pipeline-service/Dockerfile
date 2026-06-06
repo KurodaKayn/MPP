@@ -6,6 +6,7 @@ RUN cargo build --release -p content-pipeline-service
 
 FROM rust:1.96.0-bookworm AS dev
 WORKDIR /app
+RUN rustup component add rustfmt clippy
 RUN cargo install cargo-watch
 CMD ["cargo", "watch", "-x", "run -p content-pipeline-service"]
 

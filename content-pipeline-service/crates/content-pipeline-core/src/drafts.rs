@@ -66,6 +66,7 @@ impl DraftCompiler {
         if project.source_content.trim().is_empty() {
             return Err(DraftCompileError::EmptySource);
         }
+        let source_content = normalize_newlines(&project.source_content);
 
         let source_format = normalize_token(&project.source_format);
         if source_format != "html" {
@@ -75,20 +76,20 @@ impl DraftCompiler {
         let platform = normalize_token(&target.platform);
         let profile = resolve_profile(&platform, &target.profile)?;
 
-        let text = html_to_text(&project.source_content);
+        let text = html_to_text(&source_content);
         let source_summary = summarize(&text);
         let (adapted_content_json, summary, warnings) = match platform.as_str() {
             "wechat" => encode(AdaptedContent {
                 schema_version: profile.schema_version,
                 format: profile.format.as_str(),
-                html: Some(project.source_content.as_str()),
+                html: Some(source_content.as_str()),
                 markdown: None,
                 text: None,
                 summary: Some(source_summary.as_str()),
             })
             .map(|value| (value, source_summary.clone(), Vec::new()))?,
             "zhihu" => {
-                let markdown = html_to_markdown(&project.source_content);
+                let markdown = html_to_markdown(&source_content);
                 encode(AdaptedContent {
                     schema_version: profile.schema_version,
                     format: profile.format.as_str(),
@@ -125,7 +126,7 @@ impl DraftCompiler {
                 (adapted_content_json, summary, warnings)
             }
             "douyin" => {
-                let text = text_with_fallback(&text, &project.title, &project.source_content);
+                let text = text_with_fallback(&text, &project.title, &source_content);
                 let summary = summarize(text);
                 let adapted_content_json = encode(AdaptedContent {
                     schema_version: profile.schema_version,
@@ -172,6 +173,10 @@ fn encode(value: AdaptedContent<'_>) -> Result<String, serde_json::Error> {
 fn summarize(value: &str) -> String {
     const MAX_SUMMARY_CHARS: usize = 80;
     value.chars().take(MAX_SUMMARY_CHARS).collect()
+}
+
+fn normalize_newlines(value: &str) -> String {
+    value.replace("\r\n", "\n").replace('\r', "\n")
 }
 
 fn normalize_token(value: &str) -> String {

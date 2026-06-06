@@ -22,6 +22,7 @@ const (
 	contentPipelineHostEnv         = contentpipeline.HostEnv
 	contentPipelinePortEnv         = contentpipeline.PortEnv
 	contentPipelineRequestTimeout  = 20 * time.Second
+	mediaObjectRefPrefix           = "mpp://media/"
 )
 
 var errContentPipelineContract = errors.New("content pipeline contract error")
@@ -94,6 +95,11 @@ func mediaSourceFromURL(sourceURL string) *contentpipelinepb.MediaSource {
 	if strings.HasPrefix(strings.ToLower(sourceURL), "data:") {
 		return &contentpipelinepb.MediaSource{
 			Value: &contentpipelinepb.MediaSource_DataUrl{DataUrl: sourceURL},
+		}
+	}
+	if isMediaObjectRef(sourceURL) {
+		return &contentpipelinepb.MediaSource{
+			Value: &contentpipelinepb.MediaSource_ObjectRef{ObjectRef: sourceURL},
 		}
 	}
 	return &contentpipelinepb.MediaSource{

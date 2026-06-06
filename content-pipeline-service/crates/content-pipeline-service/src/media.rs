@@ -10,6 +10,7 @@ use futures_util::StreamExt;
 use reqwest::header::{CONTENT_TYPE, LOCATION};
 use reqwest::redirect::Policy;
 use reqwest::{Client, Response as HttpResponse, Url};
+use serde::{Deserialize, Serialize};
 use tokio::time::timeout;
 use tonic::{Request, Response, Status};
 
@@ -17,18 +18,34 @@ use crate::metrics::{ContentPipelineMetrics, MediaSourceKind};
 
 const MEDIA_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(20);
 const MEDIA_REDIRECT_LIMIT: usize = 3;
+const OBJECT_REF_RESOLVER_TIMEOUT: Duration = Duration::from_secs(10);
+const OBJECT_REF_RESOLVER_URL_ENV: &str = "CONTENT_PIPELINE_MEDIA_RESOLVER_URL";
+const INTERNAL_TOKEN_ENV: &str = "CONTENT_PIPELINE_INTERNAL_TOKEN";
 
 #[derive(Debug, Clone)]
 pub(crate) struct MediaAssetProcessorService {
     processor: MediaProcessor,
     metrics: ContentPipelineMetrics,
+    object_ref_resolver: Option<ObjectRefResolverConfig>,
+    object_ref_resolver_client: Client,
 }
 
 impl MediaAssetProcessorService {
     pub(crate) fn new(metrics: ContentPipelineMetrics) -> Result<Self, reqwest::Error> {
+        Self::new_with_object_ref_resolver(metrics, ObjectRefResolverConfig::from_env())
+    }
+
+    fn new_with_object_ref_resolver(
+        metrics: ContentPipelineMetrics,
+        object_ref_resolver: Option<ObjectRefResolverConfig>,
+    ) -> Result<Self, reqwest::Error> {
         Ok(Self {
             processor: MediaProcessor::new(),
             metrics,
+            object_ref_resolver,
+            object_ref_resolver_client: Client::builder()
+                .timeout(OBJECT_REF_RESOLVER_TIMEOUT)
+                .build()?,
         })
     }
 
@@ -81,20 +98,25 @@ impl MediaAssetProcessorService {
                     Some(output_bytes),
                 )
             }
-            Some(media_source::Value::ObjectRef(object_ref)) => (
-                ProcessedAsset {
-                    content: Some(processed_asset::Content::ObjectRef(object_ref)),
-                    mime_type: String::new(),
-                    byte_size: 0,
-                    width: 0,
-                    height: 0,
-                    sha256: String::new(),
-                },
-                vec!["object_ref passthrough was not validated".to_string()],
-                MediaSourceKind::ObjectRef,
-                None,
-                None,
-            ),
+            Some(media_source::Value::ObjectRef(object_ref)) => {
+                let resolver = self.object_ref_resolver.as_ref().ok_or_else(|| {
+                    Status::failed_precondition("media object ref resolver is not configured")
+                })?;
+                let resolved_url =
+                    resolve_object_ref_url(&self.object_ref_resolver_client, resolver, &object_ref)
+                        .await?;
+                let processed = self.process_url(&resolved_url, &constraints).await?;
+                let input_bytes = processed.input_byte_size;
+                let output_bytes = processed.byte_size;
+                let (asset, warnings) = processed_asset_to_proto(processed);
+                (
+                    asset,
+                    warnings,
+                    MediaSourceKind::ObjectRef,
+                    Some(input_bytes),
+                    Some(output_bytes),
+                )
+            }
             Some(media_source::Value::Url(url)) => {
                 let processed = self.process_url(&url, &constraints).await?;
                 let input_bytes = processed.input_byte_size;
@@ -122,6 +144,80 @@ impl MediaAssetProcessorService {
             output_bytes,
         })
     }
+}
+
+#[derive(Debug, Clone)]
+struct ObjectRefResolverConfig {
+    url: String,
+    internal_token: String,
+}
+
+impl ObjectRefResolverConfig {
+    fn from_env() -> Option<Self> {
+        let url = std::env::var(OBJECT_REF_RESOLVER_URL_ENV)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())?;
+        let internal_token = std::env::var(INTERNAL_TOKEN_ENV)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())?;
+        Some(Self {
+            url,
+            internal_token,
+        })
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct ResolveObjectRefRequest<'a> {
+    object_ref: &'a str,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResolveObjectRefResponse {
+    url: String,
+}
+
+async fn resolve_object_ref_url(
+    client: &Client,
+    config: &ObjectRefResolverConfig,
+    object_ref: &str,
+) -> Result<String, Status> {
+    if object_ref.trim().is_empty() {
+        return Err(Status::invalid_argument("media object ref is required"));
+    }
+
+    let response = client
+        .post(&config.url)
+        .header("X-MPP-Internal-Token", &config.internal_token)
+        .json(&ResolveObjectRefRequest { object_ref })
+        .send()
+        .await
+        .map_err(|_| Status::unavailable("failed to resolve media object ref"))?;
+    let status = response.status();
+    if !status.is_success() {
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            return Err(Status::failed_precondition(
+                "media object ref resolver rejected internal token",
+            ));
+        }
+        return Err(Status::unavailable(format!(
+            "media object ref resolver returned HTTP {}",
+            status.as_u16()
+        )));
+    }
+
+    let resolved = response
+        .json::<ResolveObjectRefResponse>()
+        .await
+        .map_err(|_| Status::unavailable("invalid media object ref resolver response"))?;
+    if resolved.url.trim().is_empty() {
+        return Err(Status::unavailable(
+            "media object ref resolver returned an empty URL",
+        ));
+    }
+    Ok(resolved.url)
 }
 
 #[tonic::async_trait]
@@ -523,5 +619,112 @@ mod tests {
 
         assert_eq!(constraints.max_bytes, Some(DEFAULT_MAX_BYTES));
         assert_eq!(constraints.preferred_mime_types, vec!["image/png"]);
+    }
+
+    #[tokio::test]
+    async fn resolves_object_ref_with_internal_token() {
+        use std::sync::{Arc, Mutex};
+
+        use axum::Router;
+        use axum::body::Body;
+        use axum::extract::Request;
+        use axum::http::StatusCode;
+        use axum::routing::post;
+
+        let seen = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
+        let seen_request = Arc::clone(&seen);
+        let app = Router::new().route(
+            "/internal/media/resolve",
+            post(move |request: Request<Body>| {
+                let seen_request = Arc::clone(&seen_request);
+                async move {
+                    let token = request
+                        .headers()
+                        .get("X-MPP-Internal-Token")
+                        .and_then(|value| value.to_str().ok())
+                        .unwrap_or_default()
+                        .to_string();
+                    let bytes = axum::body::to_bytes(request.into_body(), 1024)
+                        .await
+                        .expect("request body should be readable");
+                    let body = String::from_utf8(bytes.to_vec())
+                        .expect("request body should be utf8");
+                    seen_request
+                        .lock()
+                        .expect("seen request mutex should not be poisoned")
+                        .push((token, body));
+
+                    (
+                        StatusCode::OK,
+                        [("content-type", "application/json")],
+                        r#"{"url":"https://example.com/media.png","expires_at":"2026-06-06T08:00:00Z"}"#,
+                    )
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test resolver should bind");
+        let addr = listener
+            .local_addr()
+            .expect("test resolver address should be available");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("test resolver should serve");
+        });
+        let config = ObjectRefResolverConfig {
+            url: format!("http://{addr}/internal/media/resolve"),
+            internal_token: "test-internal-token".to_string(),
+        };
+
+        let resolved = resolve_object_ref_url(
+            &Client::new(),
+            &config,
+            "mpp://media/11111111-1111-4111-8111-111111111111",
+        )
+        .await
+        .expect("object ref should resolve");
+
+        assert_eq!(resolved, "https://example.com/media.png");
+        let seen = seen
+            .lock()
+            .expect("seen request mutex should not be poisoned");
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].0, "test-internal-token");
+        assert!(
+            seen[0]
+                .1
+                .contains("mpp://media/11111111-1111-4111-8111-111111111111")
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_object_ref_without_resolver_configuration() {
+        let service = MediaAssetProcessorService::new_with_object_ref_resolver(
+            ContentPipelineMetrics::new().expect("metrics should initialize"),
+            None,
+        )
+        .expect("service should initialize");
+        let request = ProcessAssetRequest {
+            request_id: "request-1".to_string(),
+            platform: "wechat".to_string(),
+            usage: "cover".to_string(),
+            source: Some(
+                content_pipeline_proto::mpp::contentpipeline::v1::MediaSource {
+                    value: Some(media_source::Value::ObjectRef(
+                        "mpp://media/11111111-1111-4111-8111-111111111111".to_string(),
+                    )),
+                },
+            ),
+            constraints: None,
+        };
+
+        let err = match service.process_asset_inner(request).await {
+            Ok(_) => panic!("object_ref should require resolver configuration"),
+            Err(err) => err,
+        };
+
+        assert_eq!(err.code(), tonic::Code::FailedPrecondition);
     }
 }

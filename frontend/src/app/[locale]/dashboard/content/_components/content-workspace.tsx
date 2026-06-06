@@ -58,11 +58,11 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
 
   const isCollabInitialConnectionPending = Boolean(
     projectId &&
-      (!projectCollaboration.provider ||
-        !projectCollaboration.user ||
-        !projectCollaboration.ydoc) &&
-      (projectCollaboration.status === "idle" ||
-        projectCollaboration.status === "connecting"),
+    (!projectCollaboration.provider ||
+      !projectCollaboration.user ||
+      !projectCollaboration.ydoc) &&
+    (projectCollaboration.status === "idle" ||
+      projectCollaboration.status === "connecting"),
   );
 
   if (contentPage.isLoading || isCollabInitialConnectionPending) {

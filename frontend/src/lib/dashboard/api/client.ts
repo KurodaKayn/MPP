@@ -17,7 +17,9 @@ function getStoredWorkspaceId() {
   }
 
   try {
-    return window.localStorage.getItem(selectedWorkspaceStorageKey)?.trim() ?? "";
+    return (
+      window.localStorage.getItem(selectedWorkspaceStorageKey)?.trim() ?? ""
+    );
   } catch {
     return "";
   }

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("jwt", "cookie", "collab", "all")]
+    [ValidateSet("jwt", "cookie", "collab", "pipeline", "all")]
     [string]$Kind = "all"
 )
 
@@ -50,10 +50,14 @@ function Write-AppSecret {
         "collab" {
             Write-Output "COLLAB_TOKEN_SECRET=$(New-HexSecret)"
         }
+        "pipeline" {
+            Write-Output "CONTENT_PIPELINE_INTERNAL_TOKEN=$(New-HexSecret)"
+        }
         "all" {
             Write-AppSecret "jwt"
             Write-AppSecret "cookie"
             Write-AppSecret "collab"
+            Write-AppSecret "pipeline"
         }
     }
 }
