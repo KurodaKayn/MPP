@@ -198,6 +198,10 @@ export type CreateWorkspaceInput = ContractSchema<"CreateWorkspaceRequest">;
 export type UpdateWorkspaceInput = ContractSchema<"UpdateWorkspaceRequest">;
 export type AddWorkspaceMemberInput =
   ContractSchema<"AddWorkspaceMemberRequest">;
+export type CreateWorkspaceInviteInput =
+  ContractSchema<"CreateWorkspaceInviteRequest">;
+export type AcceptWorkspaceInviteInput =
+  ContractSchema<"AcceptWorkspaceInviteRequest">;
 export type UpdateWorkspaceMemberInput =
   ContractSchema<"UpdateWorkspaceMemberRequest">;
 export type Workspace = ContractSchema<"Workspace">;
@@ -205,6 +209,11 @@ export type WorkspacesResponse = ContractSchema<"WorkspacesResponse">;
 export type WorkspaceMember = ContractSchema<"WorkspaceMember">;
 export type WorkspaceMembersResponse =
   ContractSchema<"WorkspaceMembersResponse">;
+export type WorkspaceInvite = ContractSchema<"WorkspaceInvite">;
+export type WorkspaceInviteWithToken =
+  ContractSchema<"WorkspaceInviteWithToken">;
+export type WorkspaceInvitesResponse =
+  ContractSchema<"WorkspaceInvitesResponse">;
 export type WorkspaceActivity = ContractSchema<"WorkspaceActivity">;
 export type WorkspaceActivityType = ContractSchema<"WorkspaceActivityType">;
 export type WorkspaceActivitiesResponse =
