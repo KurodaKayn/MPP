@@ -29,3 +29,7 @@ Required overlay inputs:
 The CI validation overlay under `deploy/kubernetes/validation/app-baseline`
 uses fake values to verify manifest shape without committing real secrets or
 pretending that production data services and image publishing already exist.
+
+The optional data service packages under `deploy/kubernetes/data-services`
+provide either stable DNS aliases for managed PostgreSQL and Redis or minimal
+self-hosted StatefulSets for non-production clusters.
