@@ -190,6 +190,13 @@ Smoke test:
 
 ## Operations
 
+Use the full Kubernetes operations runbook for incident response, planned
+maintenance, and release promotion:
+
+```text
+doc/kubernetes-operations-runbook.md
+```
+
 Rollback an app deployment:
 
 ```bash
