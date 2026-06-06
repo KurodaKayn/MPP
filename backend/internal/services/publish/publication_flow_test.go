@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
+	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -22,6 +23,33 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 )
+
+func createConnectedPublishAccount(t *testing.T, db *gorm.DB, userID uuid.UUID, platform string, credentials datatypes.JSON) models.PlatformAccount {
+	t.Helper()
+	workspaceID := models.PersonalWorkspaceID(userID)
+	if len(credentials) == 0 {
+		credentials = datatypes.JSON(`{}`)
+	}
+	account := models.PlatformAccount{
+		UserID:       userID,
+		WorkspaceID:  &workspaceID,
+		Platform:     platform,
+		Username:     platform,
+		DisplayName:  platform,
+		ShareScope:   models.PlatformAccountSharePrivate,
+		Status:       models.PlatformAccountStatusConnected,
+		HealthStatus: models.PlatformAccountHealthHealthy,
+		Credentials:  credentials,
+		Metadata:     datatypes.JSON(`{}`),
+		Cookies:      datatypes.JSON(`[]`),
+		Config:       datatypes.JSON(`{}`),
+	}
+	ownerID := userID
+	account.OwnerUserID = &ownerID
+	account.ConnectedByUserID = &ownerID
+	require.NoError(t, db.Create(&account).Error)
+	return account
+}
 
 func TestBatchPublishProject(t *testing.T) {
 	db := testsupport.SetupTestDB()
@@ -88,6 +116,12 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 		AppSecret: "saved-secret",
 	})
 	require.NoError(t, err)
+	require.NoError(t, db.Model(&models.PlatformAccount{}).
+		Where("user_id = ? AND platform = ?", user.ID, "wechat").
+		Updates(map[string]any{
+			"status":        models.PlatformAccountStatusConnected,
+			"health_status": models.PlatformAccountHealthHealthy,
+		}).Error)
 
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	require.NoError(t, err)
@@ -120,6 +154,39 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	assert.Equal(t, "Title", config["title"])
 }
 
+func TestPublishProjectAllowsEmbeddedWechatCredentialsWithoutSavedAccount(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &testsupport.FakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"app_id":"wx","app_secret":"secret","title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.JSONEq(t, `{"app_id":"wx","app_secret":"secret","title":"Title"}`, string(fakePublisher.Config))
+}
+
 func TestPublishProjectPresignsReadyMediaRefsWithoutPersistingSignedURLs(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	require.NoError(t, db.AutoMigrate(&models.MediaAsset{}))
@@ -147,6 +214,7 @@ func TestPublishProjectPresignsReadyMediaRefsWithoutPersistingSignedURLs(t *test
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedPublishAccount(t, db, user.ID, "wechat", datatypes.JSON(`{"app_id":"wx","app_secret":"secret"}`))
 	assetID := uuid.New()
 	assetProjectID := project.ID
 	asset := models.MediaAsset{
@@ -299,6 +367,7 @@ func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedPublishAccount(t, db, user.ID, "wechat", datatypes.JSON(`{"app_id":"wx","app_secret":"secret"}`))
 	pub := models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "douyin",
@@ -346,6 +415,7 @@ func TestPublishProjectIgnoresBrowserSessionIDForAsyncPublishing(t *testing.T) {
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedPublishAccount(t, db, user.ID, "wechat", datatypes.JSON(`{"app_id":"wx","app_secret":"secret"}`))
 	pub := models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "wechat",
@@ -403,6 +473,54 @@ func TestPublishProjectRequiresSavedCookiesForBrowserCookiePlatforms(t *testing.
 	require.Error(t, err)
 	require.ErrorIs(t, err, services.ErrInvalidPlatformAccount)
 	assert.Empty(t, fakePublisher.AccountCookies)
+}
+
+func TestPublishProjectBlocksUnhealthyAccountAndCreatesNotification(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	fakePublisher := &testsupport.FakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	workspaceID := models.PersonalWorkspaceID(user.ID)
+	project := models.Project{
+		UserID:        user.ID,
+		WorkspaceID:   &workspaceID,
+		Title:         "p1",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	account := createConnectedPublishAccount(t, db, user.ID, "wechat", datatypes.JSON(`{"app_id":"wx","app_secret":"secret"}`))
+	require.NoError(t, db.Model(&account).Updates(map[string]any{
+		"status":        models.PlatformAccountStatusNeedsReauth,
+		"health_status": models.PlatformAccountHealthNeedsReauth,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:         project.ID,
+		Platform:          "wechat",
+		PlatformAccountID: &account.ID,
+		Enabled:           true,
+		Status:            models.PublicationStatusAdapted,
+		Config:            datatypes.JSON(`{"title":"Title"}`),
+		AdaptedContent:    datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
+
+	require.ErrorIs(t, err, services.ErrInvalidPlatformAccount)
+	require.Nil(t, result)
+	assert.Empty(t, fakePublisher.Config)
+
+	var notification models.Notification
+	require.NoError(t, db.First(&notification, "recipient_user_id = ? AND event_type = ?", user.ID, models.NotificationAccountNeedsReauth).Error)
+	assert.Equal(t, workspaceID, notification.WorkspaceID)
+	assert.Equal(t, models.NotificationStatusUnread, notification.Status)
+	assert.Equal(t, "platform_account", notification.ResourceType)
+	require.NotNil(t, notification.ResourceID)
+	assert.Equal(t, account.ID, *notification.ResourceID)
 }
 
 func TestPublishProjectRequiresPrepublishSyncForPendingPublication(t *testing.T) {
@@ -498,6 +616,14 @@ func TestPublishProjectAllowsProjectEditor(t *testing.T) {
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	account := createConnectedPublishAccount(t, db, owner.ID, "wechat", datatypes.JSON(`{"app_id":"wx","app_secret":"secret"}`))
+	require.NoError(t, db.Create(&models.PlatformAccountGrant{
+		PlatformAccountID: account.ID,
+		WorkspaceID:       *account.WorkspaceID,
+		GranteeUserID:     &editor.ID,
+		Role:              models.PlatformAccountGrantRolePublisher,
+		CreatedBy:         owner.ID,
+	}).Error)
 	require.NoError(t, db.Create(&models.ProjectCollaborator{
 		ProjectID: project.ID,
 		UserID:    editor.ID,
@@ -517,7 +643,11 @@ func TestPublishProjectAllowsProjectEditor(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	assert.JSONEq(t, `{"title":"Title"}`, string(fakePublisher.Config))
+	var config map[string]string
+	require.NoError(t, json.Unmarshal(fakePublisher.Config, &config))
+	assert.Equal(t, "Title", config["title"])
+	assert.Equal(t, "wx", config["app_id"])
+	assert.Equal(t, "secret", config["app_secret"])
 }
 
 func TestPublishProjectRejectsProjectViewer(t *testing.T) {
@@ -538,6 +668,7 @@ func TestPublishProjectRejectsProjectViewer(t *testing.T) {
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	createConnectedPublishAccount(t, db, owner.ID, "wechat", datatypes.JSON(`{"app_id":"wx","app_secret":"secret"}`))
 	require.NoError(t, db.Create(&models.ProjectCollaborator{
 		ProjectID: project.ID,
 		UserID:    viewer.ID,

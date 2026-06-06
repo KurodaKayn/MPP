@@ -86,7 +86,8 @@ func (m *MockBrowserWorkerClient) CaptureSession(_ context.Context, ref string) 
 			{Name: "z_c0", Value: "mock-zhihu-session", Domain: ".zhihu.com", Path: "/", Secure: true, HttpOnly: true},
 		},
 		Account: RemoteAccountProfile{
-			Username: "Mock User",
+			Username:       "Mock User",
+			PlatformUserID: "mock-platform-user",
 		},
 	}, nil
 }

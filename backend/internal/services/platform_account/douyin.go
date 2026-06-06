@@ -13,8 +13,13 @@ import (
 const douyinPlatform = "douyin"
 
 func (s *Service) GetDouyinAccount(userID uuid.UUID) (*dto.DouyinAccountResponse, error) {
+	return s.GetWorkspaceDouyinAccount(userID, uuid.Nil)
+}
+
+func (s *Service) GetWorkspaceDouyinAccount(userID uuid.UUID, workspaceID uuid.UUID) (*dto.DouyinAccountResponse, error) {
 	var account models.PlatformAccount
-	err := s.db.Where("user_id = ? AND platform = ?", userID, douyinPlatform).First(&account).Error
+	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
+	err := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, douyinPlatform).Order("updated_at DESC").First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		resp := emptyDouyinAccountResponse()
 		return &resp, nil

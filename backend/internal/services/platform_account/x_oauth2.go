@@ -44,6 +44,7 @@ type XOAuth2API struct{}
 
 type xOAuth2PendingState struct {
 	UserID       uuid.UUID
+	WorkspaceID  uuid.UUID
 	CodeVerifier string
 	RedirectURI  string
 	ExpiresAt    time.Time
@@ -66,6 +67,10 @@ func (XOAuth2API) Me(ctx context.Context, accessToken string) (pkgx.User, error)
 }
 
 func (s *Service) StartXOAuth2(userID uuid.UUID, redirectURI string) (string, error) {
+	return s.StartWorkspaceXOAuth2(userID, uuid.Nil, redirectURI)
+}
+
+func (s *Service) StartWorkspaceXOAuth2(userID uuid.UUID, workspaceID uuid.UUID, redirectURI string) (string, error) {
 	config, err := xOAuth2ConfigFromEnv(redirectURI)
 	if err != nil {
 		return "", err
@@ -91,6 +96,7 @@ func (s *Service) StartXOAuth2(userID uuid.UUID, redirectURI string) (string, er
 
 	pending := xOAuth2PendingState{
 		UserID:       userID,
+		WorkspaceID:  s.WorkspaceIDForUser(userID, workspaceID),
 		CodeVerifier: codeVerifier,
 		RedirectURI:  strings.TrimSpace(redirectURI),
 		ExpiresAt:    time.Now().Add(xOAuth2StateTTL),
@@ -123,12 +129,13 @@ func (s *Service) CompleteXOAuth2(ctx context.Context, state, code string) (*dto
 		return nil, err
 	}
 
-	return s.saveXOAuth2Account(pending.UserID, token, user)
+	return s.saveXOAuth2Account(pending.UserID, pending.WorkspaceID, token, user)
 }
 
-func (s *Service) saveXOAuth2Account(userID uuid.UUID, token pkgx.OAuth2Token, user pkgx.User) (*dto.XAccountResponse, error) {
+func (s *Service) saveXOAuth2Account(userID uuid.UUID, workspaceID uuid.UUID, token pkgx.OAuth2Token, user pkgx.User) (*dto.XAccountResponse, error) {
 	var account models.PlatformAccount
-	err := s.db.Where("user_id = ? AND platform = ?", userID, xPlatform).First(&account).Error
+	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
+	err := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, xPlatform).Order("updated_at DESC").First(&account).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
@@ -168,31 +175,42 @@ func (s *Service) saveXOAuth2Account(userID uuid.UUID, token pkgx.OAuth2Token, u
 	testedAt := time.Now().UTC()
 	if account.ID == uuid.Nil {
 		account = models.PlatformAccount{
-			UserID:        userID,
-			Platform:      xPlatform,
-			Username:      "X",
-			Credentials:   rawCredentials,
-			Metadata:      metadata,
-			Status:        models.PlatformAccountStatusConnected,
-			LastTestedAt:  &testedAt,
-			LastTestError: "",
+			UserID:          userID,
+			Platform:        xPlatform,
+			Username:        "X",
+			DisplayName:     firstNonEmpty(user.Username, user.Name, "X"),
+			PlatformUserID:  user.ID,
+			Credentials:     rawCredentials,
+			Metadata:        metadata,
+			Status:          models.PlatformAccountStatusConnected,
+			HealthStatus:    models.PlatformAccountHealthHealthy,
+			LastTestedAt:    &testedAt,
+			LastVerifiedAt:  &testedAt,
+			LastConnectedAt: &testedAt,
+			LastTestError:   "",
 		}
+		s.ensureAccountDefaults(&account, userID, workspaceID, xPlatform)
 		err = s.db.Create(&account).Error
 	} else {
 		err = s.db.Model(&account).Updates(map[string]any{
-			"username":        "X",
-			"credentials":     rawCredentials,
-			"metadata":        datatypes.JSON(metadata),
-			"status":          models.PlatformAccountStatusConnected,
-			"last_tested_at":  &testedAt,
-			"last_test_error": "",
+			"username":          "X",
+			"display_name":      firstNonEmpty(user.Username, user.Name, account.DisplayName, "X"),
+			"platform_user_id":  user.ID,
+			"credentials":       rawCredentials,
+			"metadata":          datatypes.JSON(metadata),
+			"status":            models.PlatformAccountStatusConnected,
+			"health_status":     models.PlatformAccountHealthHealthy,
+			"last_tested_at":    &testedAt,
+			"last_verified_at":  &testedAt,
+			"last_connected_at": &testedAt,
+			"last_test_error":   "",
 		}).Error
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	if err := s.db.Where("user_id = ? AND platform = ?", userID, xPlatform).First(&account).Error; err != nil {
+	if err := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, xPlatform).Order("updated_at DESC").First(&account).Error; err != nil {
 		return nil, err
 	}
 	resp, err := accountToXResponse(&account)

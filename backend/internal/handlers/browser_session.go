@@ -59,8 +59,16 @@ func (h *BrowserSessionHandler) StartSession(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
+	workspaceID, err := browserSessionUUIDParam(c, "workspace_id")
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	accountID, err := browserSessionUUIDParam(c, "platform_account_id")
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid platform account UUID")
+	}
 
-	resp, err := h.service.StartSessionForTenant(c.Request().Context(), userID, tenantID, platform)
+	resp, err := h.service.StartSessionForWorkspace(c.Request().Context(), userID, tenantID, workspaceID, accountID, platform)
 	if err != nil {
 		if errors.Is(err, browsersession.ErrActiveSessionExists) {
 			return sendError(c, http.StatusConflict, "conflict", err.Error())
@@ -78,6 +86,17 @@ func (h *BrowserSessionHandler) StartSession(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, resp)
+}
+
+func browserSessionUUIDParam(c echo.Context, name string) (uuid.UUID, error) {
+	raw := strings.TrimSpace(c.QueryParam(name))
+	if raw == "" && name == "workspace_id" {
+		raw = strings.TrimSpace(c.Request().Header.Get("X-Workspace-ID"))
+	}
+	if raw == "" {
+		return uuid.Nil, nil
+	}
+	return uuid.Parse(raw)
 }
 
 func (h *BrowserSessionHandler) GetSession(c echo.Context) error {

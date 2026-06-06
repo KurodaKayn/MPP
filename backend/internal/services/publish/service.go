@@ -167,7 +167,10 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 		return nil, ErrPublicationRequiresSync
 	}
 
-	if err := s.accounts.ApplySavedCredentialsToPublication(proj.UserID, &pub); err != nil {
+	if err := s.accounts.ApplySavedCredentialsToPublication(*scopeUserID, &pub); err != nil {
+		if errors.Is(err, platformaccount.ErrPlatformAccountForbidden) {
+			return nil, ErrForbidden
+		}
 		return nil, err
 	}
 	pub, err = s.preparePublicationMediaRefs(ctx, proj, pub)
@@ -176,15 +179,16 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	}
 
 	var account models.PlatformAccount
-	accountErr := s.db.Where("user_id = ? AND platform = ?", *scopeUserID, platform).First(&account).Error
-	if accountErr != nil && !errors.Is(accountErr, gorm.ErrRecordNotFound) {
-		return nil, accountErr
+	if pub.PlatformAccountID != nil && *pub.PlatformAccountID != uuid.Nil {
+		if err := s.db.Where("id = ?", *pub.PlatformAccountID).First(&account).Error; err != nil {
+			return nil, err
+		}
 	}
 	if usesStoredBrowserCookies(platform) {
-		if errors.Is(accountErr, gorm.ErrRecordNotFound) {
+		if account.ID == uuid.Nil {
 			return nil, fmt.Errorf("%w: %s account is not connected", platformaccount.ErrInvalidPlatformAccount, platform)
 		}
-		if err := s.applySavedBrowserCookies(ctx, proj.UserID, platform, &account); err != nil {
+		if err := s.applySavedBrowserCookies(ctx, *scopeUserID, platform, &account); err != nil {
 			return nil, err
 		}
 	}
@@ -456,7 +460,7 @@ func (s *Service) applySavedBrowserCookies(ctx context.Context, userID uuid.UUID
 		return nil
 	}
 
-	cookies, err := publisher.NewCookieStore(s.db).Load(ctx, userID, platform)
+	cookies, err := publisher.NewCookieStore(s.db).LoadForAccount(ctx, userID, account.ID, platform)
 	if err != nil {
 		return fmt.Errorf("%w: %s cookies are unavailable: %w", platformaccount.ErrInvalidPlatformAccount, platform, err)
 	}
