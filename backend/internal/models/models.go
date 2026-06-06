@@ -240,6 +240,9 @@ const (
 	WorkspaceActivityMemberAdded       = "member_added"
 	WorkspaceActivityMemberRoleChanged = "member_role_changed"
 	WorkspaceActivityMemberRemoved     = "member_removed"
+	WorkspaceActivityInviteCreated     = "invite_created"
+	WorkspaceActivityInviteAccepted    = "invite_accepted"
+	WorkspaceActivityInviteRevoked     = "invite_revoked"
 )
 
 var personalWorkspaceNamespace = uuid.MustParse("03d32585-3f8c-48a8-bf40-53aa3f1698c1")
@@ -276,6 +279,32 @@ type WorkspaceMember struct {
 	Workspace   Workspace `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
 	User        User      `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 	Inviter     *User     `gorm:"foreignKey:InvitedBy"`
+}
+
+const (
+	WorkspaceInviteStatusPending  = "pending"
+	WorkspaceInviteStatusAccepted = "accepted"
+	WorkspaceInviteStatusExpired  = "expired"
+	WorkspaceInviteStatusRevoked  = "revoked"
+)
+
+type WorkspaceInvite struct {
+	ID           uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	WorkspaceID  uuid.UUID  `gorm:"type:uuid;not null;index:idx_workspace_invites_workspace_status"`
+	Email        string     `gorm:"not null;index:idx_workspace_invites_email_status"`
+	Role         string     `gorm:"not null"`
+	InvitedBy    uuid.UUID  `gorm:"type:uuid;not null;index"`
+	AcceptedBy   *uuid.UUID `gorm:"type:uuid;index"`
+	Status       string     `gorm:"not null;default:'pending';index:idx_workspace_invites_workspace_status;index:idx_workspace_invites_email_status"`
+	TokenHash    string     `gorm:"not null;uniqueIndex"`
+	ExpiresAt    time.Time  `gorm:"not null;index"`
+	AcceptedAt   *time.Time
+	RevokedAt    *time.Time
+	CreatedAt    time.Time `gorm:"not null"`
+	UpdatedAt    time.Time `gorm:"not null"`
+	Workspace    Workspace `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
+	Inviter      User      `gorm:"foreignKey:InvitedBy;constraint:OnDelete:CASCADE"`
+	AcceptedUser *User     `gorm:"foreignKey:AcceptedBy;constraint:OnDelete:SET NULL"`
 }
 
 type WorkspaceActivity struct {
@@ -442,6 +471,16 @@ func (w *Workspace) BeforeCreate(_ *gorm.DB) (err error) {
 func (a *WorkspaceActivity) BeforeCreate(_ *gorm.DB) (err error) {
 	if a.ID == uuid.Nil {
 		a.ID = uuid.New()
+	}
+	return
+}
+
+func (i *WorkspaceInvite) BeforeCreate(_ *gorm.DB) (err error) {
+	if i.ID == uuid.Nil {
+		i.ID = uuid.New()
+	}
+	if i.Status == "" {
+		i.Status = WorkspaceInviteStatusPending
 	}
 	return
 }
