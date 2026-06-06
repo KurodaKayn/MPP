@@ -74,7 +74,7 @@ describe("CompactExecutionStatus", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("summarizes active platform progress without the full event timeline", () => {
+  it("summarizes active platform progress with user-facing copy", () => {
     render(
       <CompactExecutionStatus
         handoff={createHandoff()}
@@ -87,8 +87,11 @@ describe("CompactExecutionStatus", () => {
 
     expect(screen.getByText("Platforms ready")).toBeInTheDocument();
     expect(screen.getByText("1/2")).toBeInTheDocument();
-    expect(screen.getByText("Last event")).toBeInTheDocument();
-    expect(screen.getByText("user review")).toBeInTheDocument();
+    expect(screen.getByText("Latest update")).toBeInTheDocument();
+    expect(
+      screen.getByText("Draft ready for review in Douyin."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("user review")).not.toBeInTheDocument();
     expect(screen.queryByText("Execution Events")).not.toBeInTheDocument();
   });
 });

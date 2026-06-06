@@ -117,6 +117,9 @@ describe("PrepublishWorkbenchCard", () => {
     );
 
     expect(screen.getByText("Pre-Publish Drafts")).toBeInTheDocument();
+    expect(
+      screen.getByText("Choose a draft and platform to prepare."),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Douyin article draft").length).toBeGreaterThan(
       0,
     );
@@ -195,9 +198,13 @@ describe("PrepublishWorkbenchCard", () => {
     expect(
       screen.getByRole("button", { name: /start publishing/i }),
     ).toBeDisabled();
+    expect(screen.getByText("0 platforms selected")).toBeInTheDocument();
+    expect(
+      screen.getByText("Select at least one platform."),
+    ).toBeInTheDocument();
   });
 
-  it("hides adapter keys from the platform selector", () => {
+  it("hides adapter keys and backend statuses from the platform selector", () => {
     render(
       <PrepublishWorkbenchCard
         state={{
@@ -216,6 +223,22 @@ describe("PrepublishWorkbenchCard", () => {
 
     expect(screen.getByText("douyin")).toBeInTheDocument();
     expect(screen.queryByText("DYNAMIC_DOUYIN")).not.toBeInTheDocument();
+    expect(screen.queryByText("adapted")).not.toBeInTheDocument();
+  });
+
+  it("uses short task-oriented empty state copy", () => {
+    render(
+      <PrepublishWorkbenchCard
+        state={{ status: "empty" }}
+        selectedProjectId={null}
+        selectedPlatforms={new Set()}
+        onProjectSelect={vi.fn()}
+        onPlatformToggle={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("No pre-publish drafts yet.")).toBeInTheDocument();
   });
 
   it("shows retry action for backend errors", () => {
@@ -285,8 +308,9 @@ describe("usePrepublishWorkbench", () => {
     render(<Harness loadPrepublish={loadPrepublish} />);
 
     expect(
-      screen.getByText("Sign in to MPP to load pre-publish drafts."),
+      screen.getByText("Sign in to MPP to load drafts."),
     ).toBeInTheDocument();
+    expect(screen.queryByText("idle")).not.toBeInTheDocument();
     expect(loadPrepublish).not.toHaveBeenCalled();
   });
 
@@ -307,7 +331,7 @@ describe("usePrepublishWorkbench", () => {
     render(<Harness loadPrepublish={loadPrepublish} openLogin={openLogin} />);
 
     expect(
-      screen.getByText("Sign in to MPP to load pre-publish drafts."),
+      screen.getByText("Sign in to MPP to load drafts."),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /open mpp/i }));
 
