@@ -11,6 +11,11 @@ Required overlay inputs:
 - A reachable PostgreSQL endpoint through `DB_HOST`/`DB_PORT` or an in-cluster Service.
 - A reachable Redis endpoint through `REDIS_ADDR` or an in-cluster Service.
 - Public collaboration routing through `COLLAB_WEBSOCKET_URL_BASE`.
+- Public HTTP routing through the `mpp-public-gateway` Ingress. The baseline
+  routes `/collab` to `collab-service` for WebSocket traffic and all remaining
+  paths to the Next.js frontend, which proxies backend API calls.
+- A TLS Secret referenced by the Ingress. Patch `spec.ingressClassName`, host,
+  and `spec.tls[*].secretName` for the target cluster.
 - LLM provider configuration through `LLM_PROVIDER_URL`, `LLM_MODEL`, and
   `LLM_PROVIDER_KEY`.
 - Browser runtime control resources from
