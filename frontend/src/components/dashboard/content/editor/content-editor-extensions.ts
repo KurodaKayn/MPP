@@ -33,6 +33,38 @@ const MppImageExtension = ImageExtension.extend({
           };
         },
       },
+      mppLocalMediaId: {
+        default: null,
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute("data-mpp-local-media-id"),
+        renderHTML: (attributes: Record<string, unknown>) => {
+          const localMediaId = attributes.mppLocalMediaId;
+
+          if (typeof localMediaId !== "string" || !localMediaId.trim()) {
+            return {};
+          }
+
+          return {
+            "data-mpp-local-media-id": localMediaId,
+          };
+        },
+      },
+      mppUploadStatus: {
+        default: null,
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute("data-mpp-upload-status"),
+        renderHTML: (attributes: Record<string, unknown>) => {
+          const uploadStatus = attributes.mppUploadStatus;
+
+          if (typeof uploadStatus !== "string" || !uploadStatus.trim()) {
+            return {};
+          }
+
+          return {
+            "data-mpp-upload-status": uploadStatus,
+          };
+        },
+      },
     };
   },
 });
