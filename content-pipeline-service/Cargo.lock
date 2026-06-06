@@ -210,6 +210,7 @@ dependencies = [
  "futures-util",
  "prometheus",
  "reqwest",
+ "serde",
  "tokio",
  "tonic",
  "tonic-health",
