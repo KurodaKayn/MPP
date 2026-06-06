@@ -6,11 +6,19 @@ require "uri"
 module KubernetesValidation
   module EnvironmentOverlays
     DEPLOYABLE_VALIDATION_ENV = "MPP_KUBERNETES_VALIDATE_DEPLOYABLE"
-    GHCR_APP_IMAGE_PREFIX = "ghcr.io/kurodakayn/mpp-"
-    SHA_IMAGE_PATTERN = /:sha-[0-9a-f]{40}\z/
-    ALL_ZERO_SHA_IMAGE_PATTERN = /:sha-0{40}\z/
+    RUNTIME_IMAGE_REPOSITORY = "ghcr.io/kurodakayn/mpp-browser-runtime"
+    ALL_ZERO_SHA_TAG = "sha-0000000000000000000000000000000000000000"
     EXAMPLE_COOKIE_ENCRYPTION_KEY = "12345678901234567890123456789012"
     EXAMPLE_SECRET_PREFIX = "staging-example-"
+    APP_IMAGES = {
+      "frontend" => ["frontend", "ghcr.io/kurodakayn/mpp-frontend"],
+      "backend" => ["backend", "ghcr.io/kurodakayn/mpp-backend"],
+      "publish-worker" => ["publish-worker", "ghcr.io/kurodakayn/mpp-backend"],
+      "browser-worker" => ["browser-worker", "ghcr.io/kurodakayn/mpp-browser-worker"],
+      "ai-service" => ["ai-service", "ghcr.io/kurodakayn/mpp-ai-service"],
+      "content-pipeline-service" => ["content-pipeline-service", "ghcr.io/kurodakayn/mpp-content-pipeline-service"],
+      "collab-service" => ["collab-service", "ghcr.io/kurodakayn/mpp-collab-service"],
+    }.freeze
 
     module_function
 
@@ -93,15 +101,26 @@ module KubernetesValidation
 
       env = deployment.containers.flat_map { |container| Array(container["env"]) }
       runtime_image = env.find { |entry| entry["name"] == "BROWSER_RUNTIME_IMAGE" }&.fetch("value", nil).to_s
-      validate_sha_image(context, runtime_image, "staging-self-hosted BROWSER_RUNTIME_IMAGE")
+      validate_sha_image(context, runtime_image, "staging-self-hosted BROWSER_RUNTIME_IMAGE", RUNTIME_IMAGE_REPOSITORY)
     end
 
     def validate_app_images(context)
-      Images.image_lines(context).each do |line|
-        image = line[:value]
-        next unless image.start_with?(GHCR_APP_IMAGE_PREFIX)
+      APP_IMAGES.each do |deployment_name, (container_name, repository)|
+        deployment = context.require_document("Deployment", deployment_name, "mpp-system")
+        next unless deployment
 
-        validate_sha_image(context, image, "staging-self-hosted image at line #{line[:line_number]}")
+        container = deployment.container(container_name)
+        if container.nil?
+          context.add_error("staging-self-hosted Deployment #{deployment_name} must define container #{container_name}")
+          next
+        end
+
+        validate_sha_image(
+          context,
+          container["image"].to_s,
+          "staging-self-hosted Deployment #{deployment_name} image",
+          repository,
+        )
       end
     end
 
@@ -134,11 +153,11 @@ module KubernetesValidation
       end
     end
 
-    def validate_sha_image(context, image, label)
-      unless image.start_with?(GHCR_APP_IMAGE_PREFIX) && image.match?(SHA_IMAGE_PATTERN)
-        context.add_error("#{label} must use a ghcr.io/kurodakayn/mpp-* sha tag")
+    def validate_sha_image(context, image, label, repository)
+      unless image.match?(/\A#{Regexp.escape(repository)}:sha-[0-9a-f]{40}\z/)
+        context.add_error("#{label} must use #{repository}:sha-<40 hex>")
       end
-      if deployable_validation? && image.match?(ALL_ZERO_SHA_IMAGE_PATTERN)
+      if deployable_validation? && image == "#{repository}:#{ALL_ZERO_SHA_TAG}"
         context.add_error("#{label} must not use the all-zero example sha tag in deployable validation")
       end
     end
