@@ -6,12 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -193,22 +195,26 @@ func (s *Service) RestoreProjectVersion(projectID uuid.UUID, userID uuid.UUID, v
 		if !CanEditProjectRole(role) {
 			return ErrForbidden
 		}
+		previousCollabDocumentID := project.CollabDocumentID
 		if err := tx.Model(&project).Updates(map[string]any{
-			"title":          version.Title,
-			"source_content": version.SourceContent,
-			"status":         models.ProjectStatusReady,
+			"title":              version.Title,
+			"source_content":     version.SourceContent,
+			"status":             models.ProjectStatusReady,
+			"collab_document_id": nil,
 		}).Error; err != nil {
 			return err
 		}
 		project.Title = version.Title
 		project.SourceContent = version.SourceContent
 		project.Status = models.ProjectStatusReady
+		project.CollabDocumentID = nil
 		if err := createProjectVersion(tx, project, userID, "version_restore"); err != nil {
 			return err
 		}
 		return recordProjectActivity(tx, projectID, userID, nil, models.ProjectActivityVersionRestored, map[string]any{
-			"version_id":     version.ID.String(),
-			"version_number": version.VersionNumber,
+			"detached_collab_document_id": uuidString(previousCollabDocumentID),
+			"version_id":                  version.ID.String(),
+			"version_number":              version.VersionNumber,
 		})
 	}); err != nil {
 		return nil, err
@@ -272,6 +278,80 @@ func (s *Service) CreateProjectShareLink(projectID uuid.UUID, userID uuid.UUID, 
 		ProjectShareLink: resp,
 		Token:            token,
 		URL:              strings.TrimRight(baseURL, "/") + "/share/projects/" + token,
+	}, nil
+}
+
+func (s *Service) AcceptProjectShareLink(token string, userID uuid.UUID) (*dto.AcceptProjectShareLinkResponse, error) {
+	token = strings.TrimSpace(token)
+	if token == "" || userID == uuid.Nil {
+		return nil, ErrInvalidProjectShareLink
+	}
+
+	tokenHash := hashProjectShareToken(token)
+	now := time.Now().UTC()
+	var projectID uuid.UUID
+
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		var link models.ProjectShareLink
+		if err := tx.
+			Where("token_hash = ? AND status = ? AND (expires_at IS NULL OR expires_at > ?)", tokenHash, models.ProjectShareLinkStatusActive, now).
+			First(&link).Error; err != nil {
+			return err
+		}
+
+		var project models.Project
+		if err := tx.Select("id", "user_id", "workspace_id").First(&project, "id = ?", link.ProjectID).Error; err != nil {
+			return err
+		}
+		projectID = project.ID
+
+		if project.UserID == userID {
+			return nil
+		}
+
+		role := link.Role
+		effectiveRole, err := ProjectAccessRoleWithDB(tx, project, userID)
+		if err == nil && projectRoleRank(effectiveRole) >= projectRoleRank(role) {
+			return nil
+		}
+		if err != nil && !errors.Is(err, ErrForbidden) {
+			return err
+		}
+
+		collaborator := models.ProjectCollaborator{
+			ProjectID: project.ID,
+			UserID:    userID,
+			Role:      role,
+			CreatedBy: link.CreatedBy,
+		}
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "project_id"},
+				{Name: "user_id"},
+			},
+			DoUpdates: clause.Assignments(map[string]any{
+				"role":       role,
+				"created_by": link.CreatedBy,
+			}),
+		}).Create(&collaborator).Error; err != nil {
+			return err
+		}
+
+		return recordProjectActivity(tx, project.ID, userID, nil, models.ProjectActivityShareLinkAccepted, map[string]any{
+			"role":          role,
+			"share_link_id": link.ID.String(),
+		})
+	}); err != nil {
+		return nil, err
+	}
+
+	project, err := s.GetProject(projectID, &userID)
+	if err != nil {
+		return nil, err
+	}
+	return &dto.AcceptProjectShareLinkResponse{
+		Project: project,
+		Role:    project.Role,
 	}, nil
 }
 
@@ -398,6 +478,26 @@ func newProjectShareToken() (string, error) {
 func hashProjectShareToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
+}
+
+func uuidString(value *uuid.UUID) string {
+	if value == nil || *value == uuid.Nil {
+		return ""
+	}
+	return value.String()
+}
+
+func projectRoleRank(role string) int {
+	switch role {
+	case models.ProjectRoleOwner:
+		return 3
+	case models.ProjectRoleEditor:
+		return 2
+	case models.ProjectRoleViewer:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func projectActivityFromModel(activity models.ProjectActivity) dto.ProjectActivity {
