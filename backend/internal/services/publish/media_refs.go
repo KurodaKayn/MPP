@@ -114,10 +114,13 @@ func replaceMediaRefsInJSON(raw datatypes.JSON, replacements map[string]string) 
 	if len(raw) == 0 || len(replacements) == 0 {
 		return raw, nil
 	}
+	if !json.Valid(raw) {
+		return datatypes.JSON([]byte(replaceMediaRefsInString(string(raw), replacements))), nil
+	}
 
 	var value any
 	if err := json.Unmarshal(raw, &value); err != nil {
-		return datatypes.JSON([]byte(replaceMediaRefsInString(string(raw), replacements))), nil
+		return nil, err
 	}
 
 	value = replaceMediaRefsInValue(value, replacements)
