@@ -97,6 +97,10 @@ func NewManager(client kubeclient.Interface, config Config) (*Manager, error) {
 	}, nil
 }
 
+func (m *Manager) RuntimeDriver() string {
+	return browserruntime.DriverKubernetes
+}
+
 type Config struct {
 	Namespace     string
 	RuntimeImage  string
@@ -183,12 +187,13 @@ func (m *Manager) StopSession(ctx context.Context, reference browserruntime.Sess
 	return nil
 }
 
-func (m *Manager) ReapExpiredSessions(ctx context.Context) error {
+func (m *Manager) ReapExpiredSessions(ctx context.Context) (browserruntime.ExpiredSessionReapReport, error) {
+	report := browserruntime.ExpiredSessionReapReport{Driver: browserruntime.DriverKubernetes}
 	pods, err := m.client.CoreV1().Pods(m.namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: runtimePodSelector(),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list runtime pods for cleanup: %w", err)
+		return report, fmt.Errorf("failed to list runtime pods for cleanup: %w", err)
 	}
 
 	now := m.now()
@@ -198,10 +203,14 @@ func (m *Manager) ReapExpiredSessions(ctx context.Context) error {
 			continue
 		}
 		if err := m.client.CoreV1().Pods(m.namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("failed to delete expired runtime pod %s: %w", pod.Name, err)
+			return report, fmt.Errorf("failed to delete expired runtime pod %s: %w", pod.Name, err)
+		}
+		report.DeletedSessions++
+		if report.OldestExpiredAt.IsZero() || expiresAt.Before(report.OldestExpiredAt) {
+			report.OldestExpiredAt = expiresAt
 		}
 	}
-	return nil
+	return report, nil
 }
 
 func (m *Manager) runtimePod(request browserruntime.StartSessionRequest) *corev1.Pod {
