@@ -3,5 +3,6 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - alloy.yaml
+  - networkpolicy.yaml
   - podmonitors.yaml
   - runtime-alerts.yaml

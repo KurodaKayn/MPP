@@ -17,6 +17,8 @@ Required overlay inputs:
 - Patch `LOKI_WRITE_URL` when Loki is outside `mpp-observability`.
 - Install the Prometheus Operator CRDs before applying the PodMonitor and
   PrometheusRule resources.
+- Run Prometheus in `mpp-observability`, or label the Prometheus namespace with
+  `mpp.kurodakayn.dev/metrics-scraper=true` so it can scrape browser-worker.
 - Add this package to the same environment overlay that deploys
   `browser-runtime-control` and `app-baseline`.
 

@@ -6,3 +6,4 @@ metadata:
     app.kubernetes.io/name: mpp
     app.kubernetes.io/component: observability
     app.kubernetes.io/part-of: mpp
+    mpp.kurodakayn.dev/metrics-scraper: "true"
