@@ -24,7 +24,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: frontend
-          image: mpp-frontend:latest
+          image: registry.example.invalid/kurodakayn/mpp-frontend:replace-me
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -82,7 +82,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: backend
-          image: mpp-backend:latest
+          image: registry.example.invalid/kurodakayn/mpp-backend:replace-me
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -114,6 +114,11 @@ spec:
                   name: mpp-app-secrets
                   key: REDIS_PASSWORD
                   optional: true
+            - name: COOKIE_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: COOKIE_ENCRYPTION_KEY
           readinessProbe:
             httpGet:
               path: /ready
@@ -164,7 +169,7 @@ spec:
       terminationGracePeriodSeconds: 60
       containers:
         - name: publish-worker
-          image: mpp-backend:latest
+          image: registry.example.invalid/kurodakayn/mpp-backend:replace-me
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -196,6 +201,11 @@ spec:
                   name: mpp-app-secrets
                   key: REDIS_PASSWORD
                   optional: true
+            - name: COOKIE_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: COOKIE_ENCRYPTION_KEY
           readinessProbe:
             httpGet:
               path: /ready
@@ -246,7 +256,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: browser-worker
-          image: mpp-browser-worker:latest
+          image: registry.example.invalid/kurodakayn/mpp-browser-worker:replace-me
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -263,7 +273,7 @@ spec:
             - name: BROWSER_RUNTIME_KUBERNETES_NAMESPACE
               value: mpp-browser-runtime
             - name: BROWSER_RUNTIME_IMAGE
-              value: mpp-browser-runtime:latest
+              value: registry.example.invalid/kurodakayn/mpp-browser-runtime:replace-me
             - name: BROWSER_RUNTIME_KUBERNETES_CPU_REQUEST
               value: 500m
             - name: BROWSER_RUNTIME_KUBERNETES_CPU_LIMIT
@@ -328,7 +338,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: ai-service
-          image: mpp-ai-service:latest
+          image: registry.example.invalid/kurodakayn/mpp-ai-service:replace-me
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -339,6 +349,12 @@ spec:
             - secretRef:
                 name: mpp-app-secrets
                 optional: true
+          env:
+            - name: LLM_PROVIDER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: LLM_PROVIDER_KEY
           readinessProbe:
             httpGet:
               path: /ready
@@ -389,7 +405,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: content-pipeline-service
-          image: mpp-content-pipeline-service:latest
+          image: registry.example.invalid/kurodakayn/mpp-content-pipeline-service:replace-me
           imagePullPolicy: IfNotPresent
           ports:
             - name: grpc
@@ -451,7 +467,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: collab-service
-          image: mpp-collab-service:latest
+          image: registry.example.invalid/kurodakayn/mpp-collab-service:replace-me
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
