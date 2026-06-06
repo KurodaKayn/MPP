@@ -15,6 +15,8 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+
+	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 )
 
 type Manager struct {
@@ -39,7 +41,42 @@ func NewManager() (*Manager, error) {
 	}, nil
 }
 
+func (m *Manager) StartSession(ctx context.Context, request browserruntime.StartSessionRequest) (browserruntime.SessionReference, error) {
+	containerID, containerHost, cdpPort, streamPort, err := m.startBrowserContainer(ctx, request.SessionID)
+	if err != nil {
+		return browserruntime.SessionReference{}, err
+	}
+	return browserruntime.SessionReference{
+		Driver:    browserruntime.DriverDocker,
+		RuntimeID: containerID,
+		CDPEndpoint: browserruntime.Endpoint{
+			Host: containerHost,
+			Port: cdpPort,
+		},
+		StreamEndpoint: browserruntime.Endpoint{
+			Host: containerHost,
+			Port: streamPort,
+		},
+		CleanupLabels: map[string]string{
+			"session_id": request.SessionID,
+			"user_id":    request.UserID,
+			"platform":   request.Platform,
+		},
+	}, nil
+}
+
+func (m *Manager) StopSession(ctx context.Context, reference browserruntime.SessionReference) error {
+	if reference.RuntimeID == "" {
+		return nil
+	}
+	return m.stopContainer(ctx, reference.RuntimeID)
+}
+
 func (m *Manager) StartBrowserContainer(ctx context.Context, sessionID string) (containerID string, containerIP string, cdpPort, streamPort int, err error) {
+	return m.startBrowserContainer(ctx, sessionID)
+}
+
+func (m *Manager) startBrowserContainer(ctx context.Context, sessionID string) (containerID string, containerIP string, cdpPort, streamPort int, err error) {
 	config := &dockercontainer.Config{
 		Image: m.runtimeImage,
 		ExposedPorts: nat.PortSet{
@@ -136,6 +173,10 @@ func mappedHostPort(ports nat.PortMap, port string) (int, error) {
 }
 
 func (m *Manager) StopContainer(ctx context.Context, id string) error {
+	return m.stopContainer(ctx, id)
+}
+
+func (m *Manager) stopContainer(ctx context.Context, id string) error {
 	log.Printf("Stopping and removing container %s", id)
 	if err := m.cli.ContainerStop(ctx, id, dockercontainer.StopOptions{}); err != nil {
 		log.Printf("Failed to stop container %s: %v", id, err)

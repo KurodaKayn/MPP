@@ -14,25 +14,25 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/kurodakayn/mpp-browser-worker/internal/cdp"
-	browsercontainer "github.com/kurodakayn/mpp-browser-worker/internal/container"
 	"github.com/kurodakayn/mpp-browser-worker/internal/contracts"
 	"github.com/kurodakayn/mpp-browser-worker/internal/cookies"
 	"github.com/kurodakayn/mpp-browser-worker/internal/isolation"
 	workerpublish "github.com/kurodakayn/mpp-browser-worker/internal/publish"
+	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 	"github.com/kurodakayn/mpp-browser-worker/internal/sessionstate"
 	"github.com/kurodakayn/mpp-browser-worker/internal/stream"
 )
 
 type Server struct {
-	containers *browsercontainer.Manager
+	runtimes   browserruntime.Manager
 	sessions   *session.Manager
 	stateStore *session.RedisStateStore
 }
 
-func New(containers *browsercontainer.Manager, sessions *session.Manager, stateStore *session.RedisStateStore) *Server {
+func New(runtimes browserruntime.Manager, sessions *session.Manager, stateStore *session.RedisStateStore) *Server {
 	return &Server{
-		containers: containers,
+		runtimes:   runtimes,
 		sessions:   sessions,
 		stateStore: stateStore,
 	}
@@ -51,7 +51,7 @@ func (s *Server) RegisterRoutes(e *echo.Echo) {
 func (s *Server) ShutdownSessions(ctx context.Context) {
 	for _, workerSession := range s.sessions.List() {
 		if removedSession, ok := s.sessions.Remove(workerSession.ID); ok {
-			cleanupSession(ctx, s.containers, removedSession)
+			cleanupSession(ctx, s.runtimes, removedSession)
 		}
 	}
 }
@@ -72,45 +72,49 @@ func (s *Server) createSession(c echo.Context) error {
 	}()
 
 	// Start at about:blank so request interception is active before platform navigation.
-	containerID, containerHost, cdpPort, streamPort, err := s.containers.StartBrowserContainer(c.Request().Context(), req.SessionID.String())
+	runtimeRef, err := s.runtimes.StartSession(c.Request().Context(), browserruntime.StartSessionRequest{
+		SessionID: req.SessionID.String(),
+		UserID:    req.UserID.String(),
+		Platform:  req.Platform,
+	})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to start browser: %v", err))
 	}
 
-	wsURL, err := cdp.VersionWebSocketURL(containerHost, cdpPort)
+	wsURL, err := cdp.VersionWebSocketURL(runtimeRef.CDPEndpoint.Host, runtimeRef.CDPEndpoint.Port)
 	if err != nil {
-		_ = s.containers.StopContainer(context.Background(), containerID)
+		_ = s.runtimes.StopSession(context.Background(), runtimeRef)
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to obtain WebSocket URL for security configuration")
 	}
 
 	log.Printf("Session %s: Connecting to CDP at %s", req.SessionID, wsURL)
 
 	allocCtx, allocCancel := chromedp.NewRemoteAllocator(context.Background(), wsURL)
-	pageTargetID, err := cdp.PageTargetID(containerHost, cdpPort)
+	pageTargetID, err := cdp.PageTargetID(runtimeRef.CDPEndpoint.Host, runtimeRef.CDPEndpoint.Port)
 	if err != nil {
 		allocCancel()
-		_ = s.containers.StopContainer(context.Background(), containerID)
+		_ = s.runtimes.StopSession(context.Background(), runtimeRef)
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to find browser page target")
 	}
 	browserCtx, browserCancel := chromedp.NewContext(allocCtx, chromedp.WithTargetID(pageTargetID))
 	if err := isolation.SetupInterception(browserCtx, req.AllowedDomains); err != nil {
 		browserCancel()
 		allocCancel()
-		_ = s.containers.StopContainer(context.Background(), containerID)
+		_ = s.runtimes.StopSession(context.Background(), runtimeRef)
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to configure browser isolation: %v", err))
 	}
 	if len(req.InitialCookies) > 0 {
 		if err := chromedp.Run(browserCtx, restoreCookiesAction(req.InitialCookies)); err != nil {
 			browserCancel()
 			allocCancel()
-			_ = s.containers.StopContainer(context.Background(), containerID)
+			_ = s.runtimes.StopSession(context.Background(), runtimeRef)
 			return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to restore browser cookies: %v", err))
 		}
 	}
 	if err := chromedp.Run(browserCtx, chromedp.Navigate(req.LoginURL)); err != nil {
 		browserCancel()
 		allocCancel()
-		_ = s.containers.StopContainer(context.Background(), containerID)
+		_ = s.runtimes.StopSession(context.Background(), runtimeRef)
 		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Failed to navigate to login page: %v", err))
 	}
 
@@ -128,10 +132,11 @@ func (s *Server) createSession(c echo.Context) error {
 		UserID:            req.UserID,
 		Platform:          req.Platform,
 		Status:            "ready",
-		ContainerID:       containerID,
+		RuntimeReference:  runtimeRef,
+		ContainerID:       runtimeRef.LegacyContainerID(),
 		CDPEndpointRef:    "internal-cdp:" + ref,
 		StreamEndpointRef: "",
-		InternalStreamURL: fmt.Sprintf("http://%s:%d", containerHost, streamPort),
+		InternalStreamURL: runtimeRef.InternalStreamURL(),
 		RequiredCookies:   req.RequiredCookies,
 		CreatedAt:         startedAt,
 		ExpiresAt:         expiresAt,
@@ -153,7 +158,7 @@ func (s *Server) createSession(c echo.Context) error {
 		if !ok {
 			return
 		}
-		cleanupSession(context.Background(), s.containers, removedSession)
+		cleanupSession(context.Background(), s.runtimes, removedSession)
 	})
 
 	return c.JSON(http.StatusCreated, session.StartWorkerSessionResponse{
@@ -187,7 +192,7 @@ func (s *Server) captureSession(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "session not found")
 	}
 
-	log.Printf("Capture triggered for session %s (container %s)", ref, workerSession.ContainerID)
+	log.Printf("Capture triggered for session %s (runtime %s/%s)", ref, workerSession.RuntimeReference.Driver, workerSession.RuntimeReference.RuntimeID)
 
 	currentURL, browserCookies, username, err := cdp.Snapshot(c.Request().Context(), workerSession, true)
 	if err != nil {
@@ -266,12 +271,12 @@ func (s *Server) deleteSession(c echo.Context) error {
 	ref := c.Param("ref")
 	workerSession, ok := s.sessions.Remove(ref)
 	if ok {
-		cleanupSession(context.Background(), s.containers, workerSession)
+		cleanupSession(context.Background(), s.runtimes, workerSession)
 	}
 	return c.NoContent(http.StatusNoContent)
 }
 
-func cleanupSession(ctx context.Context, containers *browsercontainer.Manager, workerSession *session.WorkerSession) {
+func cleanupSession(ctx context.Context, runtimes browserruntime.Manager, workerSession *session.WorkerSession) {
 	if workerSession.StateCancel != nil {
 		workerSession.StateCancel()
 	}
@@ -279,9 +284,9 @@ func cleanupSession(ctx context.Context, containers *browsercontainer.Manager, w
 	if workerSession.CancelFunc != nil {
 		workerSession.CancelFunc()
 	}
-	if workerSession.ContainerID != "" {
-		if err := containers.StopContainer(ctx, workerSession.ContainerID); err != nil {
-			log.Printf("Failed to stop session container %s: %v", workerSession.ContainerID, err)
+	if !workerSession.RuntimeReference.IsZero() {
+		if err := runtimes.StopSession(ctx, workerSession.RuntimeReference); err != nil {
+			log.Printf("Failed to stop session runtime %s/%s: %v", workerSession.RuntimeReference.Driver, workerSession.RuntimeReference.RuntimeID, err)
 		}
 	}
 }
