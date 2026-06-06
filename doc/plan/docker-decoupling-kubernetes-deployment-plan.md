@@ -291,8 +291,8 @@ It should not receive broad cluster-admin privileges.
 | K8S-007 | Keep Docker runtime tests after extraction | Runtime quality | Done | 100% | Backend | Existing Docker helper tests still pass; runtime boundary tests cover stable references. |
 | K8S-008 | Add runtime driver factory and env selection | Runtime decoupling | Done | 100% | Backend | `BROWSER_RUNTIME_DRIVER` selects Docker by default and rejects unsupported drivers. |
 | K8S-009 | Add Kubernetes runtime driver | Runtime orchestration | Done | 100% | Backend | Kubernetes driver creates per-session Pods, waits for Pod readiness and Pod IP endpoints, and deletes Pods idempotently. |
-| K8S-010 | Add Kubernetes runtime RBAC | Security | Not Started | 0% | DevOps | Required for browser-worker to manage runtime Pods safely. |
-| K8S-011 | Add browser runtime NetworkPolicy | Security | Not Started | 0% | DevOps | CDP and stream endpoints must remain private. |
+| K8S-010 | Add Kubernetes runtime RBAC | Security | Done | 100% | DevOps | `deploy/kubernetes/browser-runtime-control` defines the browser-worker ServiceAccount, Role, and RoleBinding for scoped runtime Pod management. |
+| K8S-011 | Add browser runtime NetworkPolicy | Security | Done | 100% | DevOps | `deploy/kubernetes/browser-runtime-control` restricts Kubernetes runtime Pod CDP and stream ingress to browser-worker. |
 | K8S-012 | Define Kubernetes service manifests | Kubernetes deployment | Not Started | 0% | DevOps | Deployments and Services are needed for all long-running services. |
 | K8S-013 | Define Kubernetes ingress or gateway | Kubernetes deployment | Not Started | 0% | DevOps | Replaces Traefik Docker labels. |
 | K8S-014 | Define Kubernetes ConfigMaps and Secrets | Configuration | Not Started | 0% | DevOps | Replaces Compose `.env` deployment contract. |
