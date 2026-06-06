@@ -45,7 +45,15 @@ module KubernetesValidation
 
       secret = context.require_document("Secret", "mpp-app-secrets")
       if secret
-        ["JWT_SECRET", "DB_PASSWORD", "COLLAB_TOKEN_SECRET", "COOKIE_ENCRYPTION_KEY", "LLM_PROVIDER_KEY"].each do |key|
+        [
+          "JWT_SECRET",
+          "DB_PASSWORD",
+          "COLLAB_TOKEN_SECRET",
+          "COOKIE_ENCRYPTION_KEY",
+          "LLM_PROVIDER_KEY",
+          "BROWSER_WORKER_INTERNAL_TOKEN",
+          "AI_SERVICE_INTERNAL_TOKEN",
+        ].each do |key|
           unless secret.data.key?(key)
             context.add_error("validation overlay mpp-app-secrets is missing #{key}")
           end
@@ -93,10 +101,18 @@ module KubernetesValidation
         end
       end
 
-      require_secret_refs(context, "backend", ["JWT_SECRET", "DB_PASSWORD", "COOKIE_ENCRYPTION_KEY", "COLLAB_TOKEN_SECRET"])
-      require_secret_refs(context, "publish-worker", ["JWT_SECRET", "DB_PASSWORD", "COOKIE_ENCRYPTION_KEY", "COLLAB_TOKEN_SECRET"])
-      require_secret_refs(context, "browser-worker", ["REDIS_PASSWORD"])
-      require_secret_refs(context, "ai-service", ["LLM_PROVIDER_KEY"])
+      backend_secret_keys = [
+        "JWT_SECRET",
+        "DB_PASSWORD",
+        "COOKIE_ENCRYPTION_KEY",
+        "COLLAB_TOKEN_SECRET",
+        "BROWSER_WORKER_INTERNAL_TOKEN",
+        "AI_SERVICE_INTERNAL_TOKEN",
+      ]
+      require_secret_refs(context, "backend", backend_secret_keys)
+      require_secret_refs(context, "publish-worker", backend_secret_keys)
+      require_secret_refs(context, "browser-worker", ["REDIS_PASSWORD", "BROWSER_WORKER_INTERNAL_TOKEN"])
+      require_secret_refs(context, "ai-service", ["LLM_PROVIDER_KEY", "AI_SERVICE_INTERNAL_TOKEN"])
       require_secret_refs(context, "collab-service", ["COLLAB_TOKEN_SECRET", "DB_PASSWORD", "REDIS_PASSWORD"])
 
       validate_content_pipeline(context)
