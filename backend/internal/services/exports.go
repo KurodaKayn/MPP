@@ -59,6 +59,7 @@ var ErrMediaStorageUnavailable = mediaassetsvc.ErrMediaStorageUnavailable
 var ErrPublicationAlreadyPublishing = publishsvc.ErrPublicationAlreadyPublishing
 var ErrPublicationDisabled = dashboard.ErrPublicationDisabled
 var ErrPublicationRequiresSync = dashboard.ErrPublicationRequiresSync
+var ErrPublishMediaAssetNotReady = dashboard.ErrPublishMediaAssetNotReady
 var ErrPublishQueueEmpty = publishsvc.ErrPublishQueueEmpty
 var ErrXOAuth2NotConfigured = platformaccount.ErrXOAuth2NotConfigured
 

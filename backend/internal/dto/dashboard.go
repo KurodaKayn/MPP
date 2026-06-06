@@ -121,19 +121,23 @@ type ExtensionEventCallbackResponse struct {
 }
 
 type CreateProjectRequest struct {
-	Title         string   `json:"title"`
-	SourceContent string   `json:"source_content"`
-	Summary       string   `json:"summary,omitempty"`
-	CoverImageURL string   `json:"cover_image_url,omitempty"`
-	Platforms     []string `json:"platforms"`
+	Title          string     `json:"title"`
+	SourceContent  string     `json:"source_content"`
+	Summary        string     `json:"summary,omitempty"`
+	CoverImageURL  string     `json:"cover_image_url,omitempty"`
+	Platforms      []string   `json:"platforms"`
+	TemplateID     *uuid.UUID `json:"template_id,omitempty"`
+	BrandProfileID *uuid.UUID `json:"brand_profile_id,omitempty"`
 }
 
 type UpdateProjectRequest struct {
-	Title         string   `json:"title"`
-	SourceContent string   `json:"source_content"`
-	Summary       string   `json:"summary,omitempty"`
-	CoverImageURL string   `json:"cover_image_url,omitempty"`
-	Platforms     []string `json:"platforms"`
+	Title          string     `json:"title"`
+	SourceContent  string     `json:"source_content"`
+	Summary        string     `json:"summary,omitempty"`
+	CoverImageURL  string     `json:"cover_image_url,omitempty"`
+	Platforms      []string   `json:"platforms"`
+	TemplateID     *uuid.UUID `json:"template_id,omitempty"`
+	BrandProfileID *uuid.UUID `json:"brand_profile_id,omitempty"`
 }
 
 type SaveProjectContentRequest struct {
@@ -148,10 +152,14 @@ type SaveProjectPlatformsRequest struct {
 }
 
 type CreateMediaUploadRequest struct {
-	Filename  string `json:"filename"`
-	MimeType  string `json:"mime_type"`
-	SizeBytes int64  `json:"size_bytes"`
-	Usage     string `json:"usage"`
+	Filename     string   `json:"filename"`
+	MimeType     string   `json:"mime_type"`
+	SizeBytes    int64    `json:"size_bytes"`
+	Usage        string   `json:"usage"`
+	LibraryScope string   `json:"library_scope,omitempty"`
+	Tags         []string `json:"tags,omitempty"`
+	AltText      string   `json:"alt_text,omitempty"`
+	Source       string   `json:"source,omitempty"`
 }
 
 type CreateMediaUploadResponse struct {
@@ -189,6 +197,66 @@ type ResolveMediaObjectRefRequest struct {
 type ResolveMediaObjectRefResponse struct {
 	URL       string    `json:"url"`
 	ExpiresAt time.Time `json:"expires_at"`
+}
+
+type ContentTemplate struct {
+	ID               uuid.UUID      `json:"id"`
+	WorkspaceID      *uuid.UUID     `json:"workspace_id,omitempty"`
+	OwnerUserID      *uuid.UUID     `json:"owner_user_id,omitempty"`
+	Scope            string         `json:"scope"`
+	Name             string         `json:"name"`
+	Description      string         `json:"description"`
+	TitleTemplate    string         `json:"title_template"`
+	SourceTemplate   string         `json:"source_template"`
+	DefaultPlatforms []string       `json:"default_platforms"`
+	PlatformConfig   map[string]any `json:"platform_config"`
+	Tags             []string       `json:"tags"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+}
+
+type ContentTemplatesResponse struct {
+	Items []ContentTemplate `json:"items"`
+}
+
+type CreateContentTemplateRequest struct {
+	Scope            string         `json:"scope,omitempty"`
+	Name             string         `json:"name"`
+	Description      string         `json:"description,omitempty"`
+	TitleTemplate    string         `json:"title_template"`
+	SourceTemplate   string         `json:"source_template"`
+	DefaultPlatforms []string       `json:"default_platforms"`
+	PlatformConfig   map[string]any `json:"platform_config,omitempty"`
+	Tags             []string       `json:"tags,omitempty"`
+}
+
+type BrandProfile struct {
+	ID           uuid.UUID `json:"id"`
+	WorkspaceID  uuid.UUID `json:"workspace_id"`
+	CreatedBy    uuid.UUID `json:"created_by"`
+	Name         string    `json:"name"`
+	Voice        string    `json:"voice"`
+	Audience     string    `json:"audience"`
+	BannedWords  []string  `json:"banned_words"`
+	CTA          string    `json:"cta"`
+	LinkStrategy string    `json:"link_strategy"`
+	DefaultTags  []string  `json:"default_tags"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type BrandProfilesResponse struct {
+	Items []BrandProfile `json:"items"`
+}
+
+type CreateBrandProfileRequest struct {
+	Name         string   `json:"name"`
+	Voice        string   `json:"voice,omitempty"`
+	Audience     string   `json:"audience,omitempty"`
+	BannedWords  []string `json:"banned_words,omitempty"`
+	CTA          string   `json:"cta,omitempty"`
+	LinkStrategy string   `json:"link_strategy,omitempty"`
+	DefaultTags  []string `json:"default_tags,omitempty"`
 }
 
 type AddProjectCollaboratorRequest struct {
@@ -257,11 +325,14 @@ type AIEditPrepublishResponse struct {
 }
 
 type PublicationSummary struct {
-	ID         uuid.UUID `json:"id"`
-	Platform   string    `json:"platform"`
-	Enabled    bool      `json:"enabled"`
-	Status     string    `json:"status"`
-	PublishURL string    `json:"publish_url,omitempty"`
+	ID           uuid.UUID `json:"id"`
+	Platform     string    `json:"platform"`
+	Enabled      bool      `json:"enabled"`
+	Status       string    `json:"status"`
+	DraftStatus  string    `json:"draft_status"`
+	ReviewStatus string    `json:"review_status"`
+	SyncRequired bool      `json:"sync_required"`
+	PublishURL   string    `json:"publish_url,omitempty"`
 }
 
 type ProjectListItem struct {
@@ -269,6 +340,8 @@ type ProjectListItem struct {
 	UserID           uuid.UUID            `json:"user_id"`
 	WorkspaceID      *uuid.UUID           `json:"workspace_id,omitempty"`
 	CollabDocumentID *uuid.UUID           `json:"collab_document_id,omitempty"`
+	TemplateID       *uuid.UUID           `json:"template_id,omitempty"`
+	BrandProfileID   *uuid.UUID           `json:"brand_profile_id,omitempty"`
 	Title            string               `json:"title"`
 	Status           string               `json:"status"`
 	Role             string               `json:"role"`
@@ -279,18 +352,32 @@ type ProjectListItem struct {
 }
 
 type ProjectDetail struct {
-	ID               uuid.UUID            `json:"id"`
-	UserID           uuid.UUID            `json:"user_id"`
-	WorkspaceID      *uuid.UUID           `json:"workspace_id,omitempty"`
-	CollabDocumentID *uuid.UUID           `json:"collab_document_id,omitempty"`
-	Title            string               `json:"title"`
-	SourceContent    string               `json:"source_content"`
-	Status           string               `json:"status"`
-	Role             string               `json:"role"`
-	AccessSource     string               `json:"access_source"`
-	CreatedAt        time.Time            `json:"created_at"`
-	UpdatedAt        time.Time            `json:"updated_at"`
-	Publications     []PublicationSummary `json:"publications"`
+	ID                 uuid.UUID                 `json:"id"`
+	UserID             uuid.UUID                 `json:"user_id"`
+	WorkspaceID        *uuid.UUID                `json:"workspace_id,omitempty"`
+	CollabDocumentID   *uuid.UUID                `json:"collab_document_id,omitempty"`
+	TemplateID         *uuid.UUID                `json:"template_id,omitempty"`
+	BrandProfileID     *uuid.UUID                `json:"brand_profile_id,omitempty"`
+	Title              string                    `json:"title"`
+	SourceContent      string                    `json:"source_content"`
+	Status             string                    `json:"status"`
+	Role               string                    `json:"role"`
+	AccessSource       string                    `json:"access_source"`
+	CreatedAt          time.Time                 `json:"created_at"`
+	UpdatedAt          time.Time                 `json:"updated_at"`
+	Publications       []PublicationSummary      `json:"publications"`
+	PublicationDetails []PublicationDetail       `json:"publication_details,omitempty"`
+	Comments           []ProjectComment          `json:"comments,omitempty"`
+	Versions           []ProjectVersion          `json:"versions,omitempty"`
+	Activities         []ProjectActivity         `json:"activities,omitempty"`
+	Collaborators      []ProjectCollaborator     `json:"collaborators,omitempty"`
+	ShareLinks         []ProjectShareLink        `json:"share_links,omitempty"`
+	PermissionSources  []ProjectPermissionSource `json:"permission_sources,omitempty"`
+}
+
+type ProjectPermissionSource struct {
+	Source string `json:"source"`
+	Role   string `json:"role"`
 }
 
 type ProjectCollaborator struct {
@@ -514,6 +601,9 @@ type PublicationDetail struct {
 	Platform       string         `json:"platform"`
 	Enabled        bool           `json:"enabled"`
 	Status         string         `json:"status"`
+	DraftStatus    string         `json:"draft_status"`
+	ReviewStatus   string         `json:"review_status"`
+	SyncRequired   bool           `json:"sync_required"`
 	ErrorMessage   string         `json:"error_message,omitempty"`
 	Config         map[string]any `json:"config"`
 	AdaptedContent map[string]any `json:"adapted_content"`
