@@ -59,7 +59,9 @@ The overlay must patch:
 
 The `Container Images` GitHub Actions workflow publishes production images to
 GitHub Container Registry on pushes to `main`, release tags matching `v*`, and
-manual dispatches.
+manual dispatches. Pull requests that change service source trees or the image
+workflow build every service and browser runtime image without pushing, so
+Dockerfile and image-context breakages are caught before merge.
 
 Published images use this naming scheme:
 
