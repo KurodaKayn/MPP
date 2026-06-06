@@ -76,8 +76,8 @@ func TestRequireAdminRejectsMissingUser(t *testing.T) {
 	err := handler(c)
 
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
-	require.True(t, ok)
+	var httpErr *echo.HTTPError
+	require.ErrorAs(t, err, &httpErr)
 	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
 }
 
@@ -97,8 +97,8 @@ func TestRequireAdminRejectsNonAdminRole(t *testing.T) {
 	err := handler(c)
 
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
-	require.True(t, ok)
+	var httpErr *echo.HTTPError
+	require.ErrorAs(t, err, &httpErr)
 	require.Equal(t, http.StatusForbidden, httpErr.Code)
 }
 
