@@ -40,7 +40,10 @@ import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 type ProjectCollaborationPanelProps = {
   canEdit: boolean;
-  onVersionRestore: (project: { title: string; source_content: string }) => void;
+  onVersionRestore: (project: {
+    title: string;
+    source_content: string;
+  }) => void;
   projectId: string;
   projectRole: ProjectRole | null;
 };
@@ -162,10 +165,23 @@ export function ProjectCollaborationPanel({
     setIsCreatingShareLink(true);
     try {
       const link = await createProjectShareLink(projectId, { role: "viewer" });
-      await navigator.clipboard?.writeText(link.url);
-      toast.success(t("content.collaboration.shareLinkCreated"));
       setShareLinks((items) => [link, ...items]);
       void loadAll();
+
+      try {
+        if (!navigator.clipboard) {
+          throw new Error(t("content.collaboration.shareLinkCopyUnavailable"));
+        }
+        await navigator.clipboard.writeText(link.url);
+        toast.success(t("content.collaboration.shareLinkCreated"));
+      } catch (copyError) {
+        toast.error(t("content.collaboration.shareLinkCopyFailed"), {
+          description:
+            copyError instanceof Error
+              ? copyError.message
+              : t("content.share.retryLater"),
+        });
+      }
     } catch (error) {
       toast.error(t("content.collaboration.shareLinkFailed"), {
         description:
@@ -282,14 +298,18 @@ export function ProjectCollaborationPanel({
                         comment.status === "resolved" ? "outline" : "secondary"
                       }
                     >
-                      {t(`content.collaboration.commentStatus.${comment.status}`)}
+                      {t(
+                        `content.collaboration.commentStatus.${comment.status}`,
+                      )}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
                       {formatDashboardDate(comment.created_at, locale)}
                     </span>
                   </div>
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm">{comment.body}</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm">
+                  {comment.body}
+                </p>
                 {canEdit && comment.status === "open" ? (
                   <Button
                     type="button"
@@ -369,7 +389,9 @@ export function ProjectCollaborationPanel({
               <TimelineRow
                 key={link.id}
                 title={t("content.collaboration.shareLinkTitle")}
-                subtitle={t(`content.collaboration.shareLinkStatus.${link.status}`)}
+                subtitle={t(
+                  `content.collaboration.shareLinkStatus.${link.status}`,
+                )}
                 timestamp={formatDashboardDate(link.created_at, locale)}
                 action={
                   link.status === "active" ? (

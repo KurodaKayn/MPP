@@ -494,6 +494,8 @@
       "versionTitle": "Version {{number}}",
       "createViewerLink": "Create viewer link",
       "shareLinkCreated": "Viewer link created and copied",
+      "shareLinkCopyFailed": "Viewer link created, but could not be copied",
+      "shareLinkCopyUnavailable": "Clipboard access is unavailable in this browser.",
       "shareLinkFailed": "Unable to create share link",
       "shareLinkTitle": "Viewer share link",
       "revokeShareLink": "Revoke",
