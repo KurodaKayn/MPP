@@ -339,6 +339,11 @@ jobs:
         with:
           version: v1.33.9
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Build Kubernetes manifest packages
         shell: bash
         run: |
@@ -346,8 +351,10 @@ jobs:
 
           find deploy/kubernetes -name kustomization.yaml -print | sort | while IFS= read -r package; do
             dir="$(dirname "$package")"
+            rendered="$(mktemp)"
             echo "::group::kubectl kustomize $dir"
-            kubectl kustomize "$dir" >/tmp/kustomize-rendered.yaml
+            kubectl kustomize "$dir" > "$rendered"
+            node script/kubernetes/validate-rendered-manifests.mjs "$dir" "$rendered"
             echo "::endgroup::"
           done
 
