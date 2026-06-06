@@ -1,7 +1,9 @@
 package stats_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,6 +66,51 @@ func TestGetStatsUsesReaderForEventualCounts(t *testing.T) {
 	var writerUsers int64
 	require.NoError(t, writer.Model(&models.User{}).Count(&writerUsers).Error)
 	require.Equal(t, int64(0), writerUsers)
+
+	stats, err := s.GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalUsers)
+	assert.Equal(t, int64(1), stats.TotalProjects)
+	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
+	assert.Equal(t, int64(0), stats.TotalFailedPublications)
+}
+
+func TestGetStatsUsesWriterForStickyEventualCounts(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	router := dbrouter.NewRouter(writer, dbrouter.WithReader(reader))
+	stickyCtx := dbrouter.WithStickyWriter(context.Background(), time.Now().Add(time.Minute))
+	s := services.NewDashboardServiceWithRouter(writer, router).WithContext(stickyCtx)
+
+	writerUser := models.User{Username: "writer-user", Email: "writer-user@example.com", PasswordHash: "hash"}
+	require.NoError(t, writer.Create(&writerUser).Error)
+	writerProject := models.Project{
+		UserID:        writerUser.ID,
+		Title:         "writer-project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, writer.Create(&writerProject).Error)
+	require.NoError(t, writer.Create(&models.ProjectPlatformPublication{
+		ProjectID: writerProject.ID,
+		Platform:  "wechat",
+		Status:    models.PublicationStatusPublished,
+	}).Error)
+
+	readerUser := models.User{Username: "stale-reader-user", Email: "stale-reader-user@example.com", PasswordHash: "hash"}
+	require.NoError(t, reader.Create(&readerUser).Error)
+	staleReaderProject := models.Project{
+		UserID:        readerUser.ID,
+		Title:         "stale-reader-project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, reader.Create(&staleReaderProject).Error)
+	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
+		ProjectID: staleReaderProject.ID,
+		Platform:  "zhihu",
+		Status:    models.PublicationStatusFailed,
+	}).Error)
 
 	stats, err := s.GetStats(nil)
 	require.NoError(t, err)
