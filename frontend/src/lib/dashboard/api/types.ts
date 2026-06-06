@@ -52,6 +52,39 @@ export type SaveProjectPlatformsInput = {
   platforms: PublishPlatform[];
 };
 
+export type MediaUploadUsage = "cover_image" | "editor_image";
+
+export type CreateMediaUploadInput = {
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  usage: MediaUploadUsage;
+};
+
+export type CreateMediaUploadResult = {
+  asset_id: string;
+  object_ref: string;
+  upload_url: string;
+  headers: Record<string, string>;
+  expires_at: string;
+};
+
+export type CompleteMediaUploadResult = {
+  asset_id: string;
+  object_ref: string;
+  status: string;
+};
+
+export type ResolvedMediaAsset = {
+  asset_id: string;
+  url: string;
+  expires_at: string;
+};
+
+export type ResolveMediaAssetsResult = {
+  items: ResolvedMediaAsset[];
+};
+
 export type GetProjectPublicationsOptions = {
   includeContent?: boolean;
 };

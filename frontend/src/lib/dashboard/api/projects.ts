@@ -3,6 +3,9 @@ import type {
   AcceptProjectShareLinkResponse,
   AddProjectCollaboratorInput,
   CollabDocumentSession,
+  CompleteMediaUploadResult,
+  CreateMediaUploadInput,
+  CreateMediaUploadResult,
   CreateProjectCommentInput,
   CreateProjectInput,
   CreateProjectShareLinkInput,
@@ -22,6 +25,7 @@ import type {
   ProjectVersionsResponse,
   PublishProjectOptions,
   PublishResult,
+  ResolveMediaAssetsResult,
   RestoreProjectVersionResponse,
   SaveProjectContentInput,
   SaveProjectPlatformsInput,
@@ -97,6 +101,40 @@ export function saveDashboardProjectPlatforms(
     {
       body: JSON.stringify(input),
       method: "PATCH",
+    },
+  );
+}
+
+export function createProjectMediaUpload(
+  projectId: string,
+  input: CreateMediaUploadInput,
+) {
+  return fetchDashboard<CreateMediaUploadResult>(
+    `/api/user/dashboard/projects/${projectId}/media/uploads`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
+}
+
+export function completeMediaUpload(assetId: string) {
+  return fetchDashboard<CompleteMediaUploadResult>(
+    `/api/user/dashboard/media/${assetId}/complete`,
+    {
+      method: "POST",
+    },
+  );
+}
+
+export function resolveMediaAssets(assetIds: string[]) {
+  return fetchDashboard<ResolveMediaAssetsResult>(
+    "/api/user/dashboard/media/resolve",
+    {
+      body: JSON.stringify({
+        asset_ids: assetIds,
+      }),
+      method: "POST",
     },
   );
 }

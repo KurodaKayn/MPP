@@ -121,6 +121,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
             content={editor.content}
             onTitleChange={editor.setTitle}
             onContentChange={editor.setContent}
+            projectId={projectId}
             viewSwitcher={
               <ContentViewSwitcher
                 value={contentView}

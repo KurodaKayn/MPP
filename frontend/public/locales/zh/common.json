@@ -136,6 +136,8 @@
     "ariaLabel": "正文编辑器",
     "selectImageError": "请选择图片文件",
     "imageSizeError": "图片不能超过 8MB",
+    "imagePreviewError": "无法加载图片预览",
+    "imageUploadError": "图片上传失败",
     "linkPrompt": "链接地址",
     "linkError": "请输入有效的链接地址",
     "placeholder": "在这里开始创作..."

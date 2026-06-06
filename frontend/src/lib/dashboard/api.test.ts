@@ -7,7 +7,9 @@ import {
   addWorkspaceMember,
   cancelBrowserSession,
   completeBrowserSession,
+  completeMediaUpload,
   createDashboardProject,
+  createProjectMediaUpload,
   createProjectComment,
   createProjectCollabSession,
   createProjectShareLink,
@@ -33,6 +35,7 @@ import {
   getWechatAccount,
   publishProject,
   removeProjectCollaborator,
+  resolveMediaAssets,
   removeWorkspaceMember,
   restoreProjectVersion,
   revokeProjectShareLink,
@@ -653,6 +656,82 @@ describe("dashboard api client", () => {
         credentials: "same-origin",
         headers: expect.any(Headers),
         method: "PATCH",
+      }),
+    );
+  });
+
+  it("creates, completes, and resolves project media uploads", async () => {
+    const upload = {
+      asset_id: "asset-1",
+      expires_at: "2026-06-05T12:10:00Z",
+      headers: {
+        "Content-Type": "image/png",
+      },
+      object_ref: "mpp://media/asset-1",
+      upload_url: "https://r2.example/upload",
+    };
+    const complete = {
+      asset_id: "asset-1",
+      object_ref: "mpp://media/asset-1",
+      status: "ready",
+    };
+    const resolved = {
+      items: [
+        {
+          asset_id: "asset-1",
+          expires_at: "2026-06-05T12:05:00Z",
+          url: "https://r2.example/download",
+        },
+      ],
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(upload, { status: 201 }))
+      .mockResolvedValueOnce(jsonResponse(complete))
+      .mockResolvedValueOnce(jsonResponse(resolved));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createProjectMediaUpload("project-1", {
+        filename: "cover.png",
+        mime_type: "image/png",
+        size_bytes: 1024,
+        usage: "editor_image",
+      }),
+    ).resolves.toEqual(upload);
+    await expect(completeMediaUpload("asset-1")).resolves.toEqual(complete);
+    await expect(resolveMediaAssets(["asset-1"])).resolves.toEqual(resolved);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/user/dashboard/projects/project-1/media/uploads",
+      expect.objectContaining({
+        body: JSON.stringify({
+          filename: "cover.png",
+          mime_type: "image/png",
+          size_bytes: 1024,
+          usage: "editor_image",
+        }),
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/user/dashboard/media/asset-1/complete",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/user/dashboard/media/resolve",
+      expect.objectContaining({
+        body: JSON.stringify({
+          asset_ids: ["asset-1"],
+        }),
+        method: "POST",
       }),
     );
   });
