@@ -94,7 +94,7 @@ describe("dashboard api client", () => {
     vi.unstubAllGlobals();
   });
 
-  it("sends same-origin requests with a bearer token from local storage", async () => {
+  it("sends same-origin requests without exposing legacy stored tokens", async () => {
     const stats = {
       total_failed_publications: 0,
       total_projects: 2,
@@ -117,10 +117,10 @@ describe("dashboard api client", () => {
     const [, init] = fetchMock.mock.calls[0];
     expect(init).toBeDefined();
     const headers = init!.headers as Headers;
-    expect(headers.get("Authorization")).toBe("Bearer local-token");
+    expect(headers.get("Authorization")).toBeNull();
   });
 
-  it("falls back to session storage when local storage is unavailable", async () => {
+  it("does not consult session tokens when local storage is unavailable", async () => {
     const localStorageDescriptor = Object.getOwnPropertyDescriptor(
       window,
       "localStorage",
@@ -150,7 +150,7 @@ describe("dashboard api client", () => {
     expect(path).toBe("/api/user/dashboard/projects?page=1&limit=12");
     expect(init).toBeDefined();
     const headers = init!.headers as Headers;
-    expect(headers.get("Authorization")).toBe("Bearer session-token");
+    expect(headers.get("Authorization")).toBeNull();
   });
 
   it("uses backend error messages from JSON responses", async () => {
