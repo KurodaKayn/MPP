@@ -1,4 +1,5 @@
 ARG FRONTEND_BASE_URL=http://127.0.0.1:3000
+ARG BACKEND_API_BASE_URL=http://localhost:8080
 
 FROM node:24-alpine AS base
 
@@ -24,7 +25,9 @@ CMD ["sh", "-c", "pnpm install --frozen-lockfile --config.confirmModulesPurge=fa
 FROM base AS builder
 WORKDIR /app
 ARG FRONTEND_BASE_URL
+ARG BACKEND_API_BASE_URL
 ENV FRONTEND_BASE_URL=$FRONTEND_BASE_URL
+ENV BACKEND_API_BASE_URL=$BACKEND_API_BASE_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm run build
@@ -32,8 +35,10 @@ RUN pnpm run build
 FROM base AS runner
 WORKDIR /app
 ARG FRONTEND_BASE_URL
+ARG BACKEND_API_BASE_URL
 ENV NODE_ENV=production
 ENV FRONTEND_BASE_URL=$FRONTEND_BASE_URL
+ENV BACKEND_API_BASE_URL=$BACKEND_API_BASE_URL
 ENV HOME=/home/app
 RUN addgroup -S app -g 10001 && adduser -S app -G app -u 10001 && chown app:app /app
 COPY --from=builder --chown=app:app /app/public ./public

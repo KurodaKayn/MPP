@@ -80,8 +80,11 @@ tag. Production overlays should pin the `sha-*` tags for app images and set
 `mpp-backend` image contains both the backend API and publish-worker binaries;
 the Deployment command selects the runtime role.
 
-Set the repository variable `FRONTEND_BASE_URL` before publishing images when
-the frontend build should use a public origin other than the validation default.
+Set the repository variables `FRONTEND_BASE_URL` and `BACKEND_API_BASE_URL`
+before publishing images when the frontend build should use values other than
+the validation defaults. `BACKEND_API_BASE_URL` is used by Next.js rewrites at
+build time, so it must point at the backend URL that the published frontend
+image should proxy to.
 
 ## Secrets
 
