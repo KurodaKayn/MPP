@@ -291,8 +291,8 @@ It should not receive broad cluster-admin privileges.
 | K8S-007 | Keep Docker runtime tests after extraction | Runtime quality | Done | 100% | Backend | Existing Docker helper tests still pass; runtime boundary tests cover stable references. |
 | K8S-008 | Add runtime driver factory and env selection | Runtime decoupling | Done | 100% | Backend | `BROWSER_RUNTIME_DRIVER` selects Docker by default and rejects unsupported drivers. |
 | K8S-009 | Add Kubernetes runtime driver | Runtime orchestration | Done | 100% | Backend | Kubernetes driver creates per-session Pods, waits for Pod readiness and Pod IP endpoints, and deletes Pods idempotently. |
-| K8S-010 | Add Kubernetes runtime RBAC | Security | Not Started | 0% | DevOps | Required for browser-worker to manage runtime Pods safely. |
-| K8S-011 | Add browser runtime NetworkPolicy | Security | Not Started | 0% | DevOps | CDP and stream endpoints must remain private. |
+| K8S-010 | Add Kubernetes runtime RBAC | Security | Done | 100% | DevOps | `deploy/kubernetes/browser-runtime-control` defines dedicated system/runtime namespaces, browser-worker ServiceAccount, runtime Pod Role/RoleBinding, and admission guardrails. |
+| K8S-011 | Add browser runtime NetworkPolicy | Security | Done | 100% | DevOps | `deploy/kubernetes/browser-runtime-control` defaults runtime namespace traffic to deny, permits CDP/stream ingress only from browser-worker, and restricts runtime DNS egress to cluster DNS. |
 | K8S-012 | Define Kubernetes service manifests | Kubernetes deployment | Not Started | 0% | DevOps | Deployments and Services are needed for all long-running services. |
 | K8S-013 | Define Kubernetes ingress or gateway | Kubernetes deployment | Not Started | 0% | DevOps | Replaces Traefik Docker labels. |
 | K8S-014 | Define Kubernetes ConfigMaps and Secrets | Configuration | Not Started | 0% | DevOps | Replaces Compose `.env` deployment contract. |
@@ -303,7 +303,7 @@ It should not receive broad cluster-admin privileges.
 | K8S-019 | Add Kubernetes observability discovery | Observability | Not Started | 0% | DevOps | Kubernetes Pod discovery should replace Docker discovery in K8s mode. |
 | K8S-020 | Add runtime session metrics and alerts | Observability | Not Started | 0% | Backend / DevOps | Needed for browser runtime reliability. |
 | K8S-021 | Publish images to a registry | Release | Not Started | 0% | DevOps | Kubernetes should pull immutable images from a registry. |
-| K8S-022 | Add manifest validation in CI | Release quality | Not Started | 0% | DevOps | Use kubeconform, kubeval, Helm lint, or Kustomize validation. |
+| K8S-022 | Add manifest validation in CI | Release quality | Partially Done | 40% | DevOps | CI detects `deploy/kubernetes` changes and runs Kustomize build validation for browser runtime controls; schema validation remains future work. |
 | K8S-023 | Add Kubernetes production setup guide | Documentation | Not Started | 0% | Documentation | Should live beside the existing setup guides. |
 | K8S-024 | Add Kubernetes operations runbooks | Operations | Not Started | 0% | Documentation / DevOps | Include rollback, cleanup, scaling, and secret rotation. |
 | K8S-025 | Run end-to-end Kubernetes smoke test | Verification | Not Started | 0% | QA / DevOps | Must verify login, publishing dependencies, collaboration, and cleanup. |

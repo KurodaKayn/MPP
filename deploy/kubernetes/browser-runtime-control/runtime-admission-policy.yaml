@@ -1,0 +1,50 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: mpp-browser-runtime-pods
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  validations:
+    - expression: "object.metadata.name.startsWith('mpp-browser-')"
+      message: "browser runtime pods must use the mpp-browser- name prefix"
+    - expression: "has(object.metadata.labels) && 'app.kubernetes.io/name' in object.metadata.labels && object.metadata.labels['app.kubernetes.io/name'] == 'mpp' && 'app.kubernetes.io/component' in object.metadata.labels && object.metadata.labels['app.kubernetes.io/component'] == 'browser-runtime' && 'mpp.kurodakayn.dev/runtime-driver' in object.metadata.labels && object.metadata.labels['mpp.kurodakayn.dev/runtime-driver'] == 'kubernetes'"
+      message: "browser runtime pods must carry the expected MPP runtime labels"
+    - expression: "object.spec.restartPolicy == 'Never'"
+      message: "browser runtime pods must not restart"
+    - expression: "!has(object.spec.serviceAccountName) || object.spec.serviceAccountName == '' || object.spec.serviceAccountName == 'default'"
+      message: "browser runtime pods must not use privileged service accounts"
+    - expression: "has(object.spec.automountServiceAccountToken) && object.spec.automountServiceAccountToken == false"
+      message: "browser runtime pods must not mount service account tokens"
+    - expression: "(!has(object.spec.hostNetwork) || object.spec.hostNetwork == false) && (!has(object.spec.hostPID) || object.spec.hostPID == false) && (!has(object.spec.hostIPC) || object.spec.hostIPC == false)"
+      message: "browser runtime pods must not use host namespaces"
+    - expression: "!has(object.spec.volumes) || object.spec.volumes.size() == 0"
+      message: "browser runtime pods must not mount volumes"
+    - expression: "(!has(object.spec.initContainers) || object.spec.initContainers.size() == 0) && (!has(object.spec.ephemeralContainers) || object.spec.ephemeralContainers.size() == 0)"
+      message: "browser runtime pods must not use init or ephemeral containers"
+    - expression: "object.spec.containers.size() == 1 && object.spec.containers[0].name == 'browser-runtime'"
+      message: "browser runtime pods must contain only the browser-runtime container"
+    - expression: "object.spec.containers.all(c, has(c.resources.requests) && 'cpu' in c.resources.requests && 'memory' in c.resources.requests && has(c.resources.limits) && 'cpu' in c.resources.limits && 'memory' in c.resources.limits)"
+      message: "browser runtime containers must define CPU and memory requests and limits"
+    - expression: "object.spec.containers.all(c, has(c.securityContext) && has(c.securityContext.runAsNonRoot) && c.securityContext.runAsNonRoot == true && has(c.securityContext.allowPrivilegeEscalation) && c.securityContext.allowPrivilegeEscalation == false && has(c.securityContext.capabilities) && c.securityContext.capabilities.drop.exists(capability, capability == 'ALL') && has(c.securityContext.seccompProfile) && c.securityContext.seccompProfile.type == 'RuntimeDefault')"
+      message: "browser runtime containers must use restricted security settings"
+    - expression: "object.spec.containers[0].ports.exists(port, port.containerPort == 9222) && object.spec.containers[0].ports.exists(port, port.containerPort == 6080)"
+      message: "browser runtime containers must expose the CDP and stream ports"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: mpp-browser-runtime-pods
+spec:
+  policyName: mpp-browser-runtime-pods
+  validationActions:
+    - Deny
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        mpp.kurodakayn.dev/browser-runtime-namespace: "true"

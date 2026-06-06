@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: browser-worker
+    mpp.kurodakayn.dev/browser-worker-namespace: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mpp-browser-runtime
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: browser-runtime
+    mpp.kurodakayn.dev/browser-runtime-namespace: "true"
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

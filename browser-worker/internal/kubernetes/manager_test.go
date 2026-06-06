@@ -65,6 +65,10 @@ func TestRuntimePodIncludesSessionMetadataAndResources(t *testing.T) {
 	assert.Equal(t, runtimeGroupID, *container.SecurityContext.RunAsGroup)
 	require.NotNil(t, container.SecurityContext.AllowPrivilegeEscalation)
 	assert.False(t, *container.SecurityContext.AllowPrivilegeEscalation)
+	require.NotNil(t, container.SecurityContext.Capabilities)
+	assert.Contains(t, container.SecurityContext.Capabilities.Drop, corev1.Capability("ALL"))
+	require.NotNil(t, container.SecurityContext.SeccompProfile)
+	assert.Equal(t, corev1.SeccompProfileTypeRuntimeDefault, container.SecurityContext.SeccompProfile.Type)
 }
 
 func TestStartSessionCreatesReadyPodReference(t *testing.T) {
