@@ -123,6 +123,43 @@ func TestListProjectsUsesReaderForAdminList(t *testing.T) {
 	require.Equal(t, project.ID, items[0].ID)
 }
 
+func TestListProjectsUsesWriterForStickyAdminList(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	router := dbrouter.NewRouter(writer, dbrouter.WithReader(reader))
+	stickyCtx := dbrouter.WithStickyWriter(context.Background(), time.Now().Add(time.Minute))
+	s := services.NewDashboardServiceWithRouter(writer, router).WithContext(stickyCtx)
+
+	writerUser := models.User{Username: "writer-owner", Email: "writer-owner@example.com", PasswordHash: "hash"}
+	require.NoError(t, writer.Create(&writerUser).Error)
+	writerProject := models.Project{
+		UserID:        writerUser.ID,
+		Title:         "Writer project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+		CreatedAt:     time.Now(),
+	}
+	require.NoError(t, writer.Create(&writerProject).Error)
+
+	readerUser := models.User{Username: "stale-reader-owner", Email: "stale-reader-owner@example.com", PasswordHash: "hash"}
+	require.NoError(t, reader.Create(&readerUser).Error)
+	staleReaderProject := models.Project{
+		UserID:        readerUser.ID,
+		Title:         "Stale reader project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+		CreatedAt:     time.Now().Add(time.Hour),
+	}
+	require.NoError(t, reader.Create(&staleReaderProject).Error)
+
+	res, err := s.ListProjects(1, 10, "", "", "", nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), res.Total)
+	items := res.Items.([]dto.ProjectListItem)
+	require.Len(t, items, 1)
+	require.Equal(t, writerProject.ID, items[0].ID)
+}
+
 func TestListProjectsUsesWriterForScopedList(t *testing.T) {
 	writer := testsupport.SetupTestDB()
 	reader := testsupport.SetupTestDB()

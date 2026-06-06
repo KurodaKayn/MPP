@@ -161,12 +161,19 @@ find deploy/kubernetes -name kustomization.yaml -print | sort | while IFS= read 
   dir="$(dirname "$package")"
   rendered="$(mktemp)"
   kubectl kustomize "$dir" > "$rendered"
-  node script/kubernetes/validate-rendered-manifests.mjs "$dir" "$rendered"
+  ruby script/kubernetes/validate-rendered-manifests.rb "$dir" "$rendered"
 done
 ```
 
-For the final environment overlay, also run your cluster's schema or policy
-validator, such as kubeconform, kubeval, or admission dry-run.
+The repository Ruby validator rejects unresolved app images, `latest` tags,
+missing validation overlay secrets, app workload security-context regressions,
+missing probes or resource requests, broken Service and Ingress wiring, browser
+runtime RBAC or NetworkPolicy drift, missing observability rules, and malformed
+managed or self-hosted data-service packages.
+
+For the final environment overlay, also run your cluster's schema validator or
+admission dry-run. Tools such as kubeconform or kubeval can complement the
+repository policy checks with Kubernetes API schema coverage.
 
 ## Deploy
 
@@ -182,11 +189,35 @@ kubectl rollout status deployment/collab-service -n mpp-system
 
 Smoke test:
 
-- Open the public frontend URL.
-- Sign in and load the dashboard.
-- Create or open a collaborative document.
-- Start and stop a browser session.
-- Confirm runtime Pods disappear after completion or expiry.
+```bash
+ruby script/kubernetes/smoke-test.rb \
+  --public-url https://mpp.example.com
+```
+
+The smoke harness checks Deployment rollout status, Service endpoints,
+application ConfigMap and Secret shape, internal readiness paths, publish-worker
+dependencies, browser runtime RBAC, and runtime Pod cleanup metadata.
+
+Add authenticated user-flow probes when a disposable smoke user token is
+available:
+
+```bash
+MPP_SMOKE_AUTH_TOKEN=<bearer-token> \
+MPP_SMOKE_PROJECT_ID=<existing-project-id> \
+ruby script/kubernetes/smoke-test.rb \
+  --public-url https://mpp.example.com \
+  --run-user-flow-probes
+```
+
+Use the browser session probe only in environments where creating and cancelling
+a remote browser runtime session is acceptable:
+
+```bash
+MPP_SMOKE_AUTH_TOKEN=<bearer-token> \
+ruby script/kubernetes/smoke-test.rb \
+  --public-url https://mpp.example.com \
+  --run-browser-session-probe
+```
 
 ## Operations
 

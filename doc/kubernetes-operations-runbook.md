@@ -214,7 +214,7 @@ Render and validate manifests:
 ```bash
 rendered="$(mktemp)"
 kubectl kustomize "$MPP_OVERLAY" > "$rendered"
-node script/kubernetes/validate-rendered-manifests.mjs "$MPP_OVERLAY" "$rendered"
+ruby script/kubernetes/validate-rendered-manifests.rb "$MPP_OVERLAY" "$rendered"
 ```
 
 Inspect rendered images:
@@ -1266,6 +1266,33 @@ Show runtime Pod age:
 kubectl get pod -n "$MPP_RUNTIME_NS" \
   -l app.kubernetes.io/component=browser-runtime \
   --sort-by=.metadata.creationTimestamp
+```
+
+Run the Kubernetes smoke harness after applying an overlay:
+
+```bash
+ruby script/kubernetes/smoke-test.rb \
+  --public-url "$MPP_PUBLIC_URL"
+```
+
+Run authenticated read and project-scoped probes with a disposable user token:
+
+```bash
+export MPP_SMOKE_AUTH_TOKEN=<bearer-token>
+export MPP_SMOKE_PROJECT_ID=<existing-project-id>
+ruby script/kubernetes/smoke-test.rb \
+  --public-url "$MPP_PUBLIC_URL" \
+  --run-user-flow-probes
+```
+
+Only run the remote browser session probe when the environment can tolerate a
+short-lived runtime Pod:
+
+```bash
+export MPP_SMOKE_AUTH_TOKEN=<bearer-token>
+ruby script/kubernetes/smoke-test.rb \
+  --public-url "$MPP_PUBLIC_URL" \
+  --run-browser-session-probe
 ```
 
 Get recent events:
