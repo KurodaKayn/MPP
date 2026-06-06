@@ -10,6 +10,8 @@ Required overlay inputs:
 - Provide `mpp-app-secrets` with `DB_PASSWORD`. `REDIS_PASSWORD` is optional,
   but recommended.
 - Set `DB_HOST=postgres` and `REDIS_ADDR=redis:6379` in `mpp-app-config`.
+- Patch `DB_SSLMODE=disable` unless you add TLS certificates to the self-hosted
+  PostgreSQL StatefulSet.
 - Patch storage class, storage sizes, resource limits, and image tags for the
   target cluster.
 - Configure backup, restore, and retention outside these manifests.

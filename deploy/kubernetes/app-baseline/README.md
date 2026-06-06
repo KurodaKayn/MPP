@@ -9,6 +9,9 @@ Required overlay inputs:
 - Registry-qualified immutable images for every
   `registry.example.invalid/...:replace-me` image.
 - A reachable PostgreSQL endpoint through `DB_HOST`/`DB_PORT` or an in-cluster Service.
+- PostgreSQL TLS policy through `DB_SSLMODE`; the baseline defaults to
+  `verify-full` for managed production databases. Set `DB_SSLROOTCERT` when a
+  provider or private CA requires a custom root certificate path.
 - A reachable Redis endpoint through `REDIS_ADDR` or an in-cluster Service.
 - Public collaboration routing through `COLLAB_WEBSOCKET_URL_BASE`.
 - Public HTTP routing through the `mpp-public-gateway` Ingress. The baseline
