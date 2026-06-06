@@ -111,8 +111,11 @@ route, status, and latency when services emit JSON request logs.
 
 The package also adds PodMonitor resources for application metrics and
 PrometheusRule alerts for browser runtime startup failures, cleanup failures,
-and cleanup lag. Install the Prometheus Operator CRDs before applying this
-package, or omit it from overlays that use another metrics discovery mechanism.
+and cleanup lag. It labels `mpp-observability` as a metrics-scraper namespace
+and allows that namespace to scrape browser-worker metrics; if Prometheus runs
+elsewhere, add `mpp.kurodakayn.dev/metrics-scraper=true` to its namespace.
+Install the Prometheus Operator CRDs before applying this package, or omit it
+from overlays that use another metrics discovery mechanism.
 
 ## Validate
 
