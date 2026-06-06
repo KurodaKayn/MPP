@@ -51,3 +51,7 @@ type Manager interface {
 	StartSession(ctx context.Context, request StartSessionRequest) (SessionReference, error)
 	StopSession(ctx context.Context, reference SessionReference) error
 }
+
+type ExpiredSessionReaper interface {
+	ReapExpiredSessions(ctx context.Context) error
+}

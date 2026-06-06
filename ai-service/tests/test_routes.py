@@ -1,6 +1,8 @@
 from types import SimpleNamespace
+import logging
 
 from fastapi.testclient import TestClient
+import pytest
 
 import routes
 from main import app
@@ -27,6 +29,16 @@ class FakeLLM:
 
 
 client = TestClient(app)
+INTERNAL_TOKEN = "test-ai-service-token"
+
+
+@pytest.fixture(autouse=True)
+def ai_internal_token(monkeypatch):
+    monkeypatch.setenv(routes.AI_SERVICE_INTERNAL_TOKEN_ENV, INTERNAL_TOKEN)
+
+
+def auth_headers():
+    return {"Authorization": f"Bearer {INTERNAL_TOKEN}"}
 
 
 def test_health_returns_status():
@@ -55,6 +67,7 @@ def test_edit_content_returns_llm_content(monkeypatch):
 
     response = client.post(
         "/content/edit",
+        headers=auth_headers(),
         json={
             "content": "Original content",
             "message": "Make it shorter",
@@ -82,6 +95,7 @@ def test_edit_content_returns_llm_content(monkeypatch):
 def test_edit_content_rejects_blank_message():
     response = client.post(
         "/content/edit",
+        headers=auth_headers(),
         json={"content": "Original content", "message": "   "},
     )
 
@@ -98,6 +112,7 @@ def test_edit_prepublish_updates_selected_adapted_content(monkeypatch):
 
     response = client.post(
         "/prepublish/edit",
+        headers=auth_headers(),
         json={
             "platform": "wechat",
             "title": "Release",
@@ -128,6 +143,7 @@ def test_edit_prepublish_updates_selected_adapted_content(monkeypatch):
 def test_edit_prepublish_rejects_empty_adapted_text():
     response = client.post(
         "/prepublish/edit",
+        headers=auth_headers(),
         json={
             "platform": "wechat",
             "message": "Polish this",
@@ -145,6 +161,7 @@ def test_stream_edit_content_streams_llm_chunks(monkeypatch):
 
     response = client.post(
         "/content/edit/stream",
+        headers=auth_headers(),
         json={"content": "Original content", "message": "Stream it"},
     )
 
@@ -153,3 +170,57 @@ def test_stream_edit_content_streams_llm_chunks(monkeypatch):
     assert response.text == "hello world"
     assert fake_llm.messages is not None
     assert "Stream it" in fake_llm.messages[-1].content
+
+
+def test_ai_business_routes_require_internal_bearer_token():
+    response = client.post(
+        "/content/edit",
+        json={"content": "Original content", "message": "Edit it"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "unauthorized"
+
+
+def test_ai_business_routes_reject_wrong_internal_bearer_token():
+    response = client.post(
+        "/content/edit",
+        headers={"Authorization": "Bearer wrong-token"},
+        json={"content": "Original content", "message": "Edit it"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "unauthorized"
+
+
+def test_ai_business_routes_fail_closed_when_internal_token_missing(monkeypatch):
+    monkeypatch.delenv(routes.AI_SERVICE_INTERNAL_TOKEN_ENV, raising=False)
+
+    response = client.post(
+        "/content/edit",
+        headers=auth_headers(),
+        json={"content": "Original content", "message": "Edit it"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "AI service internal token is not configured"
+
+
+def test_edit_content_returns_generic_detail_for_runtime_errors(monkeypatch, caplog):
+    def raise_provider_error():
+        raise RuntimeError("provider key sk-test-secret failed at internal.host")
+
+    monkeypatch.setattr(routes, "build_llm", raise_provider_error)
+
+    with caplog.at_level(logging.ERROR):
+        response = client.post(
+            "/content/edit",
+            headers=auth_headers(),
+            json={"content": "Original content", "message": "Edit it"},
+        )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == routes.GENERIC_AI_FAILURE_DETAIL
+    assert "sk-test-secret" not in response.text
+    assert "internal.host" not in response.text
+    assert "provider key sk-test-secret" in caplog.text

@@ -93,6 +93,8 @@ Technology selection rationale: the project is polyglot, so DevOps tooling is ch
 | Technology | Problem solved | Role in MPP |
 | --- | --- | --- |
 | Docker Compose | Needs repeatable multi-service startup. | Runs frontend, backend, browser-worker, browser runtime image, ai-service, PostgreSQL, and Redis together. |
+| Kubernetes | Needs production orchestration with rolling deploys, scheduling, runtime isolation, and managed data service integration. | Deploys long-running app services, runs browser runtime Pods per session, and applies Ingress, RBAC, NetworkPolicy, PDB, and HPA resources. |
+| Kustomize | Needs environment-specific Kubernetes configuration without templating secrets into the base package. | Renders app baseline, runtime control, validation, and data-service packages for cluster overlays. |
 | Multi-stage Dockerfiles | Needs separate development and production images. | Builds smaller production images while preserving hot-reload development targets. |
 | PostgreSQL | Needs durable, queryable system-of-record storage. | Stores users, projects, platform publications, accounts, credentials, cookies, and browser-session audit records. |
 | Redis | Needs fast transient coordination state. | Backs Asynq publish queues, distributed locks, OAuth state, browser session state, stream tokens, and TTL-controlled data. |

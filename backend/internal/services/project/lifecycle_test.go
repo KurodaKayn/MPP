@@ -3,6 +3,7 @@ package project_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -155,6 +156,31 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 	var douyinPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", resp.ID, "douyin").Error)
 	assert.Equal(t, models.PublicationStatusPending, douyinPub.Status)
+}
+
+func TestCreateProjectSanitizesStoredSourceContent(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+
+	resp, err := s.CreateProject(user.ID, dto.CreateProjectRequest{
+		Title: "Sanitized title",
+		SourceContent: `<p onclick="alert(1)">Hello</p>
+			<img src="javascript:alert(1)" onerror="alert(1)" alt="cover">
+			<a href="java&#x0A;script:alert(1)">bad link</a>
+			<svg onload="alert(1)"></svg>
+			<script>alert(1)</script>`,
+		Platforms: []string{"wechat"},
+	})
+
+	require.NoError(t, err)
+	var saved models.Project
+	require.NoError(t, db.First(&saved, "id = ?", resp.ID).Error)
+	require.Contains(t, saved.SourceContent, "<p>Hello</p>")
+	require.Contains(t, saved.SourceContent, `<img alt="cover"/>`)
+	assertStoredHTMLHasNoActiveContent(t, saved.SourceContent)
 }
 
 func TestCreateProjectRejectsInvalidInput(t *testing.T) {
@@ -541,6 +567,39 @@ func TestSaveProjectContentAllowsEditorAndRejectsViewer(t *testing.T) {
 	require.Equal(t, "editor body", saved.SourceContent)
 }
 
+func TestSaveProjectContentSanitizesStoredSourceContent(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Old title",
+		SourceContent: "<p>old body</p>",
+		Status:        models.ProjectStatusDraft,
+	}
+	require.NoError(t, db.Create(&project).Error)
+
+	updated, err := s.SaveProjectContent(project.ID, owner.ID, dto.SaveProjectContentRequest{
+		Title: "Saved title",
+		SourceContent: `<h2>Safe heading</h2>
+			<p onclick="alert(1)">Safe paragraph</p>
+			<img src="https://example.com/image.png" onerror="alert(1)" alt="cover">
+			<a href="javascript:alert(1)">bad link</a>
+			<svg onload="alert(1)"></svg>`,
+	})
+
+	require.NoError(t, err)
+	require.Contains(t, updated.SourceContent, "<h2>Safe heading</h2>")
+	require.Contains(t, updated.SourceContent, `<img src="https://example.com/image.png" alt="cover"/>`)
+	assertStoredHTMLHasNoActiveContent(t, updated.SourceContent)
+
+	var saved models.Project
+	require.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
+	require.Equal(t, updated.SourceContent, saved.SourceContent)
+}
+
 func TestSaveProjectContentSyncsLinkedCollabDocumentSnapshot(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	collabService := services.NewCollabDocumentService(db)
@@ -643,6 +702,17 @@ func TestSaveProjectContentPreservesRequestContentForUninitializedLinkedCollabDo
 	require.NoError(t, db.First(&saved, "id = ?", project.ID).Error)
 	require.Equal(t, "<p>Request payload</p>", saved.SourceContent)
 	require.Equal(t, models.ProjectStatusReady, saved.Status)
+}
+
+func assertStoredHTMLHasNoActiveContent(t *testing.T, html string) {
+	t.Helper()
+
+	lower := strings.ToLower(html)
+	require.NotContains(t, lower, "<script")
+	require.NotContains(t, lower, "<svg")
+	require.NotContains(t, lower, "javascript:")
+	require.NotContains(t, lower, "onclick")
+	require.NotContains(t, lower, "onerror")
 }
 
 func TestSaveProjectPlatformsAllowsEditorAndRejectsViewer(t *testing.T) {

@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Eye } from "lucide-react";
 import Image from "next/image";
+import { normalizeStoredHtml } from "@/components/dashboard/content/editor/content-editor-utils";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import type { ContentValue } from "@/lib/content/types";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
@@ -45,10 +46,11 @@ export function PlatformPreview({
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
   const hasBodyContent = Boolean(content.text.trim() || content.firstImageSrc);
+  const safeHTML = normalizeStoredHtml(content.html);
   const previewContent = (
     <div
       className="mt-4 space-y-4 whitespace-pre-wrap [&_figcaption]:border-t [&_figcaption]:bg-background/90 [&_figcaption]:px-3 [&_figcaption]:py-2 [&_figcaption]:text-xs [&_figcaption]:text-muted-foreground [&_figure]:overflow-hidden [&_figure]:rounded-lg [&_figure]:border [&_figure]:bg-muted [&_img]:max-h-96 [&_img]:w-full [&_img]:object-contain"
-      dangerouslySetInnerHTML={{ __html: content.html }}
+      dangerouslySetInnerHTML={{ __html: safeHTML }}
     />
   );
 

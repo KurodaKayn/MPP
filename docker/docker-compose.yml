@@ -76,6 +76,8 @@ services:
       BACKEND_PROCESS_ROLE: api
       BACKEND_REQUIRE_REDIS: ${BACKEND_REQUIRE_REDIS:-true}
       DB_HOST: ${DB_HOST:-db}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      DB_SSLROOTCERT: ${DB_SSLROOTCERT:-}
       DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-10}
       DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-5}
       DB_CONN_MAX_LIFETIME: ${DB_CONN_MAX_LIFETIME:-30m}
@@ -84,6 +86,8 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
       BROWSER_WORKER_URL: ${BROWSER_WORKER_URL:-http://browser-worker:8081}
+      BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-}
+      AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-}
       CONTENT_PIPELINE_HOST: ${CONTENT_PIPELINE_HOST:-content-pipeline-service}
       CONTENT_PIPELINE_PORT: ${CONTENT_PIPELINE_PORT:-50051}
       CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-false}
@@ -121,6 +125,8 @@ services:
     environment:
       BACKEND_REQUIRE_REDIS: ${BACKEND_REQUIRE_REDIS:-true}
       DB_HOST: ${DB_HOST:-db}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      DB_SSLROOTCERT: ${DB_SSLROOTCERT:-}
       DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-10}
       DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-5}
       DB_CONN_MAX_LIFETIME: ${DB_CONN_MAX_LIFETIME:-30m}
@@ -129,6 +135,8 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       REDIS_DB: ${REDIS_DB:-0}
       BROWSER_WORKER_URL: ${BROWSER_WORKER_URL:-http://browser-worker:8081}
+      BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-}
+      AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-}
       CONTENT_PIPELINE_HOST: ${CONTENT_PIPELINE_HOST:-content-pipeline-service}
       CONTENT_PIPELINE_PORT: ${CONTENT_PIPELINE_PORT:-50051}
       CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-false}
@@ -169,6 +177,7 @@ services:
       BROWSER_RUNTIME_BIND_IP: 0.0.0.0
       BROWSER_RUNTIME_HOST: ${BROWSER_RUNTIME_HOST:-host.docker.internal}
       BROWSER_WORKER_POOL_SIZE: ${BROWSER_WORKER_POOL_SIZE:-4}
+      BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
@@ -201,6 +210,8 @@ services:
       context: ../ai-service
       dockerfile: Dockerfile
     env_file: .env
+    environment:
+      AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/ready >/dev/null"]
       interval: 30s
@@ -213,8 +224,8 @@ services:
       context: ../content-pipeline-service
       dockerfile: Dockerfile
     env_file: .env
-    ports:
-      - "${CONTENT_PIPELINE_PORT:-50051}:${CONTENT_PIPELINE_PORT:-50051}"
+    expose:
+      - "${CONTENT_PIPELINE_PORT:-50051}"
     environment:
       CONTENT_PIPELINE_ADDR: "0.0.0.0:${CONTENT_PIPELINE_PORT:-50051}"
     # Add depends_on if it requires DB or Redis
@@ -234,6 +245,8 @@ services:
     env_file: .env
     environment:
       COLLAB_PORT: "8090"
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      DB_SSLROOTCERT: ${DB_SSLROOTCERT:-}
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
       BACKEND_INTERNAL_URL: http://backend:8080
       COLLAB_TOKEN_SECRET: ${COLLAB_TOKEN_SECRET:?COLLAB_TOKEN_SECRET must be set}
