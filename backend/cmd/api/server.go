@@ -1,10 +1,8 @@
 package main
 
 import (
-	"context"
 	"net/http"
 	"sync/atomic"
-	"time"
 
 	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/labstack/echo/v4"
@@ -12,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	"github.com/kurodakayn/mpp-backend/internal/app"
 	dbobs "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
@@ -19,7 +18,7 @@ import (
 )
 
 type serverConfig struct {
-	runtimeConfig backendRuntimeConfig
+	runtimeConfig app.RuntimeConfig
 	jwtSigningKey []byte
 	redisClient   *redis.Client
 	mockLogin     bool
@@ -37,7 +36,7 @@ type serverHandlers struct {
 
 func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 	e := echo.New()
-	observabilitySuite := observability.New(config.runtimeConfig.serviceName())
+	observabilitySuite := observability.New(config.runtimeConfig.ServiceName())
 	observabilitySuite.RegisterRoutes(e)
 	if err := dbobs.InstallQueryObserver(config.sqlDB, observabilitySuite.DatabaseQueryObserver()); err != nil {
 		return nil, err
@@ -45,10 +44,10 @@ func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 
 	e.Use(observabilitySuite.Middleware())
 	e.Use(echoMiddleware.Recover())
-	registerExtensionCORS(e, config.runtimeConfig.extensionAllowedOrigins)
+	registerExtensionCORS(e, config.runtimeConfig.ExtensionAllowedOrigins)
 	registerPublicRoutes(e, config)
 
-	if config.runtimeConfig.servesAPI() {
+	if config.runtimeConfig.ServesAPI() {
 		if err := registerAPIRoutes(e, config, h); err != nil {
 			return nil, err
 		}
@@ -78,39 +77,7 @@ func registerPublicRoutes(e *echo.Echo, config serverConfig) {
 			"message": "pong",
 		})
 	})
-	registerHealthRoutes(e, config.ready, config.sqlDB, config.redisClient)
-}
-
-func registerHealthRoutes(e *echo.Echo, ready *atomic.Bool, sqlDB *gorm.DB, redisClient *redis.Client) {
-	e.GET("/health", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
-	})
-	e.GET("/ready", func(c echo.Context) error {
-		if ready != nil && !ready.Load() {
-			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
-		}
-
-		ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
-		defer cancel()
-
-		if sqlDB != nil {
-			dbObj, err := sqlDB.DB()
-			if err != nil {
-				return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "database"})
-			}
-			if err := dbObj.PingContext(ctx); err != nil {
-				return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "database"})
-			}
-		}
-
-		if redisClient != nil {
-			if err := redisClient.Ping(ctx).Err(); err != nil {
-				return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "not_ready", "dependency": "redis"})
-			}
-		}
-
-		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
-	})
+	app.RegisterHealthRoutes(e, config.ready, config.sqlDB, config.redisClient)
 }
 
 func registerAPIRoutes(e *echo.Echo, config serverConfig, h serverHandlers) error {

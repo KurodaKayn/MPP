@@ -116,9 +116,9 @@ services:
       dockerfile: Dockerfile
       args:
         GOPROXY: ${GOPROXY:-direct}
+    command: ["./publish-worker"]
     env_file: .env
     environment:
-      BACKEND_PROCESS_ROLE: worker
       BACKEND_REQUIRE_REDIS: ${BACKEND_REQUIRE_REDIS:-true}
       DB_HOST: ${DB_HOST:-db}
       DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-10}
@@ -142,7 +142,12 @@ services:
         condition: service_healthy
       content-pipeline-service:
         condition: service_started
-    # No healthcheck: this worker role does not expose an HTTP readiness endpoint.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ready >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     networks:
       - default
       - browser-runtime
