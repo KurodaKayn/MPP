@@ -18,12 +18,13 @@ import (
 )
 
 type serverConfig struct {
-	runtimeConfig app.RuntimeConfig
-	jwtSigningKey []byte
-	redisClient   *redis.Client
-	mockLogin     bool
-	ready         *atomic.Bool
-	sqlDB         *gorm.DB
+	runtimeConfig      app.RuntimeConfig
+	jwtSigningKey      []byte
+	redisClient        *redis.Client
+	mockLogin          bool
+	ready              *atomic.Bool
+	sqlDB              *gorm.DB
+	observabilitySuite *observability.Suite
 }
 
 type serverHandlers struct {
@@ -36,7 +37,10 @@ type serverHandlers struct {
 
 func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 	e := echo.New()
-	observabilitySuite := observability.New(config.runtimeConfig.ServiceName())
+	observabilitySuite := config.observabilitySuite
+	if observabilitySuite == nil {
+		observabilitySuite = observability.New(config.runtimeConfig.ServiceName())
+	}
 	observabilitySuite.RegisterRoutes(e)
 	if err := dbobs.InstallQueryObserver(config.sqlDB, observabilitySuite.DatabaseQueryObserver()); err != nil {
 		return nil, err

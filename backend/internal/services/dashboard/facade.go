@@ -127,6 +127,10 @@ func (s *DashboardService) SetBrowserSessionService(svc *browsersession.BrowserS
 	s.Publisher.SetBrowserSessionService(svc)
 }
 
+func (s *DashboardService) SetPublishJobObserver(observer publishsvc.PublishJobObserver) {
+	s.Publisher.SetPublishJobObserver(observer)
+}
+
 func (s *DashboardService) SetCollabDocumentService(svc *collabdoc.Service) {
 	s.Project.SetCollabDocumentService(svc)
 }

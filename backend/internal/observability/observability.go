@@ -38,6 +38,7 @@ type Suite struct {
 	inFlight         *prometheus.GaugeVec
 	info             *prometheus.GaugeVec
 	databaseObserver *DatabaseQueryObserver
+	publishObserver  *PublishJobObserver
 }
 
 type DatabaseQueryObserver struct {
@@ -46,6 +47,11 @@ type DatabaseQueryObserver struct {
 	queries       *prometheus.CounterVec
 	duration      *prometheus.HistogramVec
 	slowQueries   *prometheus.CounterVec
+}
+
+type PublishJobObserver struct {
+	serviceName string
+	jobs        *prometheus.CounterVec
 }
 
 type requestLog struct {
@@ -115,6 +121,10 @@ func New(serviceName string) *Suite {
 		Name: "mpp_db_slow_queries_total",
 		Help: "Total database queries that exceeded the configured slow query threshold.",
 	}, []string{"service", "operation", "table", "status"})
+	publishJobs := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mpp_publish_jobs_total",
+		Help: "Total publish jobs completed by the publish worker.",
+	}, []string{"service", "platform", "result"})
 
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(
@@ -127,6 +137,7 @@ func New(serviceName string) *Suite {
 		dbQueries,
 		dbDuration,
 		dbSlowQueries,
+		publishJobs,
 	)
 	info.WithLabelValues(serviceName).Set(1)
 	databaseObserver := &DatabaseQueryObserver{
@@ -135,6 +146,10 @@ func New(serviceName string) *Suite {
 		queries:       dbQueries,
 		duration:      dbDuration,
 		slowQueries:   dbSlowQueries,
+	}
+	publishObserver := &PublishJobObserver{
+		serviceName: serviceName,
+		jobs:        publishJobs,
 	}
 
 	return &Suite{
@@ -145,6 +160,7 @@ func New(serviceName string) *Suite {
 		inFlight:         inFlight,
 		info:             info,
 		databaseObserver: databaseObserver,
+		publishObserver:  publishObserver,
 	}
 }
 
@@ -154,6 +170,10 @@ func (s *Suite) RegisterRoutes(e *echo.Echo) {
 
 func (s *Suite) DatabaseQueryObserver() *DatabaseQueryObserver {
 	return s.databaseObserver
+}
+
+func (s *Suite) PublishJobObserver() *PublishJobObserver {
+	return s.publishObserver
 }
 
 func (s *Suite) Middleware() echo.MiddlewareFunc {
@@ -190,6 +210,22 @@ func (s *Suite) Middleware() echo.MiddlewareFunc {
 			return nil
 		}
 	}
+}
+
+func (o *PublishJobObserver) ObservePublishJob(platform string, result string) {
+	if o == nil {
+		return
+	}
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		platform = "unknown"
+	}
+	switch result {
+	case "success", "error":
+	default:
+		result = "unknown"
+	}
+	o.jobs.WithLabelValues(o.serviceName, platform, result).Inc()
 }
 
 func ContextWithTraceID(ctx context.Context, traceID string) context.Context {

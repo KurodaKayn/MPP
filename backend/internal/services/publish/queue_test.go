@@ -112,6 +112,22 @@ func (q *errorReportingPublishQueue) Run(context.Context, PublishJobHandler) err
 	return q.err
 }
 
+type testPublishJobObserver struct {
+	observations []publishJobObservation
+}
+
+type publishJobObservation struct {
+	platform string
+	result   string
+}
+
+func (o *testPublishJobObserver) ObservePublishJob(platform string, result string) {
+	o.observations = append(o.observations, publishJobObservation{
+		platform: platform,
+		result:   result,
+	})
+}
+
 func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -639,6 +655,8 @@ func TestProcessPublishJobPublishesAndReleasesLock(t *testing.T) {
 	service := newPublishTestService(db)
 	queue := newTestPublishQueue()
 	service.queue = queue
+	observer := &testPublishJobObserver{}
+	service.SetPublishJobObserver(observer)
 
 	publisher.Factory.Register("wechat", queueTestPublisher{})
 	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
@@ -679,6 +697,9 @@ func TestProcessPublishJobPublishesAndReleasesLock(t *testing.T) {
 	require.Equal(t, "remote-id", saved.RemoteID)
 	require.Equal(t, "https://example.com/published", saved.PublishURL)
 	require.Empty(t, queue.locks[lockKey])
+	require.Equal(t, []publishJobObservation{
+		{platform: "wechat", result: publishJobResultSuccess},
+	}, observer.observations)
 }
 
 func TestProcessPublishJobReacquiresExpiredLock(t *testing.T) {
@@ -729,6 +750,8 @@ func TestProcessPublishJobReturnsErrorForFailedPublication(t *testing.T) {
 	service := newPublishTestService(db)
 	queue := newTestPublishQueue()
 	service.queue = queue
+	observer := &testPublishJobObserver{}
+	service.SetPublishJobObserver(observer)
 
 	publisher.Factory.Register("wechat", failingQueueTestPublisher{})
 	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
@@ -771,6 +794,9 @@ func TestProcessPublishJobReturnsErrorForFailedPublication(t *testing.T) {
 	require.Equal(t, models.PublicationStatusFailed, saved.Status)
 	require.Equal(t, 1, saved.RetryCount)
 	require.Contains(t, saved.ErrorMessage, "platform unavailable")
+	require.Equal(t, []publishJobObservation{
+		{platform: "wechat", result: publishJobResultError},
+	}, observer.observations)
 }
 
 func TestRedisPublishQueueEnqueuesAsynqTask(t *testing.T) {

@@ -35,11 +35,21 @@ type Service struct {
 	db                    *gorm.DB
 	accounts              *platformaccount.Service
 	queue                 PublishQueue
+	publishJobObserver    PublishJobObserver
 	browserWorkerClient   publisher.BrowserWorkerClient
 	browserSessionService *browsersession.BrowserSessionService
 	objectStorage         objectstorage.Client
 	storageConfig         objectstorage.Config
 }
+
+type PublishJobObserver interface {
+	ObservePublishJob(platform string, result string)
+}
+
+const (
+	publishJobResultSuccess = "success"
+	publishJobResultError   = "error"
+)
 
 func NewService(db *gorm.DB, accounts *platformaccount.Service) *Service {
 	if accounts == nil {
@@ -70,6 +80,10 @@ func (s *Service) SetQueue(queue PublishQueue) {
 	s.queue = queue
 }
 
+func (s *Service) SetPublishJobObserver(observer PublishJobObserver) {
+	s.publishJobObserver = observer
+}
+
 func (s *Service) SetBrowserWorkerClient(client publisher.BrowserWorkerClient) {
 	s.browserWorkerClient = client
 }
@@ -88,6 +102,12 @@ func (s *Service) UseRedis(client *redis.Client) {
 		return
 	}
 	s.queue = NewRedisPublishQueue(client)
+}
+
+func (s *Service) observePublishJob(platform string, result string) {
+	if s.publishJobObserver != nil {
+		s.publishJobObserver.ObservePublishJob(platform, result)
+	}
 }
 
 func SanitizeUserFacingErrorMessage(message string) string {
