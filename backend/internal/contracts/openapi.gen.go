@@ -112,6 +112,7 @@ const (
 	ProjectActivityTypeCommentCreated          ProjectActivityType = "comment_created"
 	ProjectActivityTypeCommentResolved         ProjectActivityType = "comment_resolved"
 	ProjectActivityTypeContentSaved            ProjectActivityType = "content_saved"
+	ProjectActivityTypePublishCompleted        ProjectActivityType = "publish_completed"
 	ProjectActivityTypePublishQueued           ProjectActivityType = "publish_queued"
 	ProjectActivityTypePublishRequested        ProjectActivityType = "publish_requested"
 	ProjectActivityTypeShareLinkAccepted       ProjectActivityType = "share_link_accepted"
