@@ -1,0 +1,517 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: mpp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: frontend
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: frontend
+          image: registry.example.invalid/kurodakayn/mpp-frontend:replace-me
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: mpp-app-config
+          readinessProbe:
+            httpGet:
+              path: /api/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: mpp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: backend
+          image: registry.example.invalid/kurodakayn/mpp-backend:replace-me
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: mpp-app-config
+          env:
+            - name: BACKEND_PROCESS_ROLE
+              value: api
+            - name: PORT
+              value: "8080"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: JWT_SECRET
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: DB_PASSWORD
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: REDIS_PASSWORD
+                  optional: true
+            - name: COOKIE_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: COOKIE_ENCRYPTION_KEY
+            - name: COLLAB_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: COLLAB_TOKEN_SECRET
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: publish-worker
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: publish-worker
+    app.kubernetes.io/part-of: mpp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: publish-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: publish-worker
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: publish-worker
+          image: registry.example.invalid/kurodakayn/mpp-backend:replace-me
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: mpp-app-config
+          env:
+            - name: BACKEND_PROCESS_ROLE
+              value: worker
+            - name: PORT
+              value: "8080"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: JWT_SECRET
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: DB_PASSWORD
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: REDIS_PASSWORD
+                  optional: true
+            - name: COOKIE_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: COOKIE_ENCRYPTION_KEY
+            - name: COLLAB_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: COLLAB_TOKEN_SECRET
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: browser-worker
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: browser-worker
+    app.kubernetes.io/part-of: mpp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: browser-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: browser-worker
+        app.kubernetes.io/part-of: mpp
+    spec:
+      serviceAccountName: browser-worker-runtime-manager
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: browser-worker
+          image: registry.example.invalid/kurodakayn/mpp-browser-worker:replace-me
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: mpp-app-config
+          env:
+            - name: BROWSER_RUNTIME_DRIVER
+              value: kubernetes
+            - name: BROWSER_RUNTIME_KUBERNETES_NAMESPACE
+              value: mpp-browser-runtime
+            - name: BROWSER_RUNTIME_IMAGE
+              value: registry.example.invalid/kurodakayn/mpp-browser-runtime:replace-me
+            - name: BROWSER_RUNTIME_KUBERNETES_CPU_REQUEST
+              value: 500m
+            - name: BROWSER_RUNTIME_KUBERNETES_CPU_LIMIT
+              value: "1"
+            - name: BROWSER_RUNTIME_KUBERNETES_MEMORY_REQUEST
+              value: 512Mi
+            - name: BROWSER_RUNTIME_KUBERNETES_MEMORY_LIMIT
+              value: 1Gi
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: REDIS_PASSWORD
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: ai-service
+    app.kubernetes.io/part-of: mpp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: ai-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: ai-service
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: ai-service
+          image: registry.example.invalid/kurodakayn/mpp-ai-service:replace-me
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: mpp-app-config
+          env:
+            - name: LLM_PROVIDER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: LLM_PROVIDER_KEY
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: content-pipeline-service
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: content-pipeline-service
+    app.kubernetes.io/part-of: mpp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: content-pipeline-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: content-pipeline-service
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: content-pipeline-service
+          image: registry.example.invalid/kurodakayn/mpp-content-pipeline-service:replace-me
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: grpc
+              containerPort: 50051
+            - name: metrics
+              containerPort: 9090
+          env:
+            - name: CONTENT_PIPELINE_ADDR
+              value: 0.0.0.0:50051
+            - name: CONTENT_PIPELINE_METRICS_ADDR
+              value: 0.0.0.0:9090
+          readinessProbe:
+            grpc:
+              port: 50051
+              service: mpp.contentpipeline.v1.MediaAssetProcessor
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            grpc:
+              port: 50051
+              service: mpp.contentpipeline.v1.MediaAssetProcessor
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collab-service
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: collab-service
+    app.kubernetes.io/part-of: mpp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: collab-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: collab-service
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: collab-service
+          image: registry.example.invalid/kurodakayn/mpp-collab-service:replace-me
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8090
+          envFrom:
+            - configMapRef:
+                name: mpp-app-config
+          env:
+            - name: COLLAB_PORT
+              value: "8090"
+            - name: COLLAB_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: COLLAB_TOKEN_SECRET
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: DB_PASSWORD
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: REDIS_PASSWORD
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
