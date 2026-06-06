@@ -53,8 +53,20 @@ func (h *UserDashboardHandler) GetMyStats(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 
-	stats, err := h.serviceFor(c).GetStats(&userID)
+	workspaceID, workspaceErr := workspaceIDFromQuery(c)
+	var stats *dto.DashboardStatsResponse
+	if workspaceErr != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	if workspaceID != uuid.Nil {
+		stats, err = h.serviceFor(c).GetWorkspaceStats(workspaceID, userID)
+	} else {
+		stats, err = h.serviceFor(c).GetStats(&userID)
+	}
 	if err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 	return c.JSON(http.StatusOK, stats)
@@ -152,6 +164,18 @@ func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 	page, limit := projectPaginationFromQuery(c)
 	status := c.QueryParam("status")
 	platform := c.QueryParam("platform")
+	workspaceID, workspaceErr := workspaceIDFromQuery(c)
+	if workspaceErr != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	if workspaceID != uuid.Nil {
+		resp, err := h.serviceFor(c).ListWorkspaceProjects(workspaceID, userID, page, limit, status, platform)
+		if err != nil {
+			return sendWorkspaceError(c, err)
+		}
+		return c.JSON(http.StatusOK, resp)
+	}
 
 	// Personal view: enforce scopeUserID, ignore any requested filterUserID
 	resp, err := h.serviceFor(c).ListProjects(page, limit, status, "", platform, &userID)
@@ -189,6 +213,21 @@ func (h *UserDashboardHandler) CreateProject(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
 	}
 
+	workspaceID, workspaceErr := workspaceIDFromQuery(c)
+	if workspaceErr != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	if workspaceID != uuid.Nil {
+		resp, err := h.serviceFor(c).CreateWorkspaceProject(workspaceID, userID, *req)
+		if err != nil {
+			if errors.Is(err, services.ErrInvalidProject) {
+				return sendError(c, http.StatusBadRequest, "invalid_request", "title, source_content and platforms are required")
+			}
+			return sendWorkspaceError(c, err)
+		}
+		return c.JSON(http.StatusCreated, resp)
+	}
+
 	resp, err := h.serviceFor(c).CreateProject(userID, *req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidProject) {
@@ -198,6 +237,41 @@ func (h *UserDashboardHandler) CreateProject(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, resp)
+}
+
+func workspaceIDFromQuery(c echo.Context) (uuid.UUID, error) {
+	raw := strings.TrimSpace(c.QueryParam("workspace_id"))
+	if raw == "" {
+		raw = strings.TrimSpace(c.Request().Header.Get("X-Workspace-ID"))
+	}
+	if raw == "" {
+		return uuid.Nil, nil
+	}
+	return uuid.Parse(raw)
+}
+
+func (h *UserDashboardHandler) ensureProjectWorkspaceContext(c echo.Context, projectID uuid.UUID, userID uuid.UUID) error {
+	workspaceID, err := workspaceIDFromQuery(c)
+	if err != nil || workspaceID == uuid.Nil {
+		return err
+	}
+	project, err := h.serviceFor(c).GetProject(projectID, &userID)
+	if err != nil {
+		return err
+	}
+	if project.WorkspaceID == nil || *project.WorkspaceID != workspaceID {
+		return services.ErrForbidden
+	}
+	return nil
+}
+
+func (h *UserDashboardHandler) ensureWorkspaceAccountManager(c echo.Context, userID uuid.UUID) error {
+	workspaceID, err := workspaceIDFromQuery(c)
+	if err != nil || workspaceID == uuid.Nil {
+		return err
+	}
+	_, err = h.serviceFor(c).RequirePermission(workspaceID, userID, services.PermissionAccountManage)
+	return err
 }
 
 func (h *UserDashboardHandler) GetMyProject(c echo.Context) error {
@@ -210,6 +284,15 @@ func (h *UserDashboardHandler) GetMyProject(c echo.Context) error {
 	projectID, err := uuid.Parse(idParam)
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
 	}
 
 	project, err := h.serviceFor(c).GetProject(projectID, &userID)
@@ -236,6 +319,12 @@ func (h *UserDashboardHandler) UpdateProject(c echo.Context) error {
 	projectID, err := uuid.Parse(idParam)
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
 	}
 
 	req := new(dto.UpdateProjectRequest)
@@ -274,6 +363,12 @@ func (h *UserDashboardHandler) SaveProjectContent(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
+	}
 
 	req := new(dto.SaveProjectContentRequest)
 	if err := c.Bind(req); err != nil {
@@ -311,6 +406,12 @@ func (h *UserDashboardHandler) SaveProjectPlatforms(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
+	}
 
 	req := new(dto.SaveProjectPlatformsRequest)
 	if err := c.Bind(req); err != nil {
@@ -343,6 +444,12 @@ func (h *UserDashboardHandler) CreateProjectMediaUpload(c echo.Context) error {
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
 	}
 
 	req := new(dto.CreateMediaUploadRequest)
@@ -454,6 +561,12 @@ func (h *UserDashboardHandler) CreateProjectCollabSession(c echo.Context) error 
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
 	}
 
 	session, err := h.serviceFor(c).CreateProjectCollabSession(projectID, userID)
@@ -958,6 +1071,86 @@ func (h *UserDashboardHandler) AddWorkspaceMember(c echo.Context) error {
 	return c.JSON(http.StatusCreated, member)
 }
 
+func (h *UserDashboardHandler) ListWorkspaceInvites(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	invites, err := h.serviceFor(c).ListWorkspaceInvites(workspaceID, userID)
+	if err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusOK, invites)
+}
+
+func (h *UserDashboardHandler) CreateWorkspaceInvite(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	req := new(dto.CreateWorkspaceInviteRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	invite, err := h.serviceFor(c).CreateWorkspaceInvite(workspaceID, userID, *req)
+	if err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, invite)
+}
+
+func (h *UserDashboardHandler) AcceptWorkspaceInvite(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	req := new(dto.AcceptWorkspaceInviteRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+
+	member, err := h.serviceFor(c).AcceptWorkspaceInvite(userID, *req)
+	if err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.JSON(http.StatusOK, member)
+}
+
+func (h *UserDashboardHandler) RevokeWorkspaceInvite(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	inviteID, err := uuid.Parse(c.Param("inviteId"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid invite UUID")
+	}
+
+	if err := h.serviceFor(c).RevokeWorkspaceInvite(workspaceID, userID, inviteID); err != nil {
+		return sendWorkspaceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (h *UserDashboardHandler) UpdateWorkspaceMember(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
@@ -1007,7 +1200,9 @@ func (h *UserDashboardHandler) RemoveWorkspaceMember(c echo.Context) error {
 }
 
 func sendWorkspaceError(c echo.Context, err error) error {
-	if errors.Is(err, services.ErrInvalidWorkspace) || errors.Is(err, services.ErrInvalidWorkspaceMember) {
+	if errors.Is(err, services.ErrInvalidWorkspace) ||
+		errors.Is(err, services.ErrInvalidWorkspaceInvite) ||
+		errors.Is(err, services.ErrInvalidWorkspaceMember) {
 		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1029,6 +1224,12 @@ func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
 	projectID, err := uuid.Parse(idParam)
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
 	}
 
 	// Personal view: enforce scopeUserID to check ownership
@@ -1057,6 +1258,12 @@ func (h *UserDashboardHandler) SyncProjectPrepublish(c echo.Context) error {
 	projectID, err := uuid.Parse(idParam)
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
 	}
 
 	req := new(dto.SyncPrepublishRequest)
@@ -1096,6 +1303,12 @@ func (h *UserDashboardHandler) UpdateProjectPrepublishDraft(c echo.Context) erro
 	projectID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
 	}
 
 	req := new(dto.UpdatePrepublishDraftRequest)
@@ -1316,6 +1529,12 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
+	}
 
 	type PublishRequest struct {
 		Platform       string   `json:"platform"`
@@ -1396,6 +1615,12 @@ func (h *UserDashboardHandler) StartDouyinPublishSession(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
+	}
 
 	resp, err := h.serviceFor(c).StartDouyinPublishSession(c.Request().Context(), projectID, userID)
 	if err != nil {
@@ -1447,6 +1672,9 @@ func (h *UserDashboardHandler) SaveWechatAccount(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
+	if err := h.ensureWorkspaceAccountManager(c, userID); err != nil {
+		return sendWorkspaceError(c, err)
+	}
 
 	req := new(dto.UpsertWechatAccountRequest)
 	if err := c.Bind(req); err != nil {
@@ -1468,6 +1696,9 @@ func (h *UserDashboardHandler) TestWechatAccount(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	if err := h.ensureWorkspaceAccountManager(c, userID); err != nil {
+		return sendWorkspaceError(c, err)
 	}
 
 	req := new(dto.TestWechatAccountRequest)
@@ -1533,6 +1764,9 @@ func (h *UserDashboardHandler) SaveXAccount(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
+	if err := h.ensureWorkspaceAccountManager(c, userID); err != nil {
+		return sendWorkspaceError(c, err)
+	}
 
 	req := new(dto.UpsertXAccountRequest)
 	if err := c.Bind(req); err != nil {
@@ -1554,6 +1788,9 @@ func (h *UserDashboardHandler) TestXAccount(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	if err := h.ensureWorkspaceAccountManager(c, userID); err != nil {
+		return sendWorkspaceError(c, err)
 	}
 
 	req := new(dto.TestXAccountRequest)

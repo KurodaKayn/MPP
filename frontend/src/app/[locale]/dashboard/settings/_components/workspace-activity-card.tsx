@@ -322,6 +322,21 @@ function workspaceActivityIcon(
         className: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
         icon: UserMinus,
       };
+    case "invite_created":
+      return {
+        className: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+        icon: UserPlus,
+      };
+    case "invite_accepted":
+      return {
+        className: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+        icon: ShieldCheck,
+      };
+    case "invite_revoked":
+      return {
+        className: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+        icon: UserMinus,
+      };
   }
 }
 
@@ -387,6 +402,24 @@ function workspaceActivityDetail(t: DashboardT, activity: WorkspaceActivity) {
         previousRole,
         target,
       });
+    case "invite_created":
+      return t("settings.workspaceActivity.detail.invite_created", {
+        actor,
+        email: metadataString(activity.metadata, "email") ?? target,
+        role,
+      });
+    case "invite_accepted":
+      return t("settings.workspaceActivity.detail.invite_accepted", {
+        actor,
+        email: metadataString(activity.metadata, "email") ?? actor,
+        role,
+      });
+    case "invite_revoked":
+      return t("settings.workspaceActivity.detail.invite_revoked", {
+        actor,
+        email: metadataString(activity.metadata, "email") ?? target,
+        role,
+      });
   }
 }
 
@@ -418,7 +451,13 @@ function workspaceActivityBadges(t: DashboardT, activity: WorkspaceActivity) {
     }
   }
 
-  if (activity.event_type === "member_added" && role) {
+  if (
+    (activity.event_type === "member_added" ||
+      activity.event_type === "invite_created" ||
+      activity.event_type === "invite_accepted" ||
+      activity.event_type === "invite_revoked") &&
+    role
+  ) {
     badges.push(
       t("settings.workspaceActivity.badge.role", {
         role: workspaceRoleLabel(t, role),

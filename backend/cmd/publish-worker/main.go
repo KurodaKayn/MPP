@@ -48,7 +48,9 @@ func main() {
 	browserSessionService := browsersession.NewBrowserSessionService(db.DB, workerClient, publisher.NewCookieStore(db.DB))
 	browserSessionService.UseRedis(redisClient)
 
+	observabilitySuite := observability.New(app.PublishWorkerServiceName)
 	dashboardService := services.NewDashboardService(db.DB)
+	dashboardService.SetPublishJobObserver(observabilitySuite.PublishJobObserver())
 	dashboardService.SetBrowserWorkerClient(workerClient)
 	dashboardService.SetBrowserSessionService(browserSessionService)
 	dashboardService.UseRedis(redisClient)
@@ -61,7 +63,7 @@ func main() {
 
 	ready := atomic.Bool{}
 	ready.Store(true)
-	server, err := newHealthServer(&ready, redisClient)
+	server, err := newHealthServer(&ready, redisClient, observabilitySuite)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -112,9 +114,11 @@ func main() {
 	}
 }
 
-func newHealthServer(ready *atomic.Bool, redisClient *redis.Client) (*echo.Echo, error) {
+func newHealthServer(ready *atomic.Bool, redisClient *redis.Client, observabilitySuite *observability.Suite) (*echo.Echo, error) {
 	e := echo.New()
-	observabilitySuite := observability.New(app.PublishWorkerServiceName)
+	if observabilitySuite == nil {
+		observabilitySuite = observability.New(app.PublishWorkerServiceName)
+	}
 	observabilitySuite.RegisterRoutes(e)
 	if err := db.InstallQueryObserver(db.DB, observabilitySuite.DatabaseQueryObserver()); err != nil {
 		return nil, err

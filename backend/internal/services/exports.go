@@ -22,6 +22,7 @@ type MemoryXOAuth2StateStore = platformaccount.MemoryXOAuth2StateStore
 type PublishJob = publishsvc.PublishJob
 type PublishQueue = publishsvc.PublishQueue
 type PublishRequest = publishsvc.PublishRequest
+type WorkspacePermission = dashboard.WorkspacePermission
 type RedisPublishQueue = publishsvc.RedisPublishQueue
 type RedisXOAuth2StateStore = platformaccount.RedisXOAuth2StateStore
 type WechatAPITester = platformaccount.WechatAPITester
@@ -46,6 +47,7 @@ var ErrInvalidProjectCollaborator = dashboard.ErrInvalidProjectCollaborator
 var ErrInvalidProjectShareLink = dashboard.ErrInvalidProjectShareLink
 var ErrInvalidProjectVersion = dashboard.ErrInvalidProjectVersion
 var ErrInvalidWorkspace = dashboard.ErrInvalidWorkspace
+var ErrInvalidWorkspaceInvite = dashboard.ErrInvalidWorkspaceInvite
 var ErrInvalidWorkspaceMember = dashboard.ErrInvalidWorkspaceMember
 var ErrProjectCollabUnavailable = dashboard.ErrProjectCollabUnavailable
 var ErrInvalidXOAuth2State = platformaccount.ErrInvalidXOAuth2State
@@ -59,6 +61,8 @@ var ErrPublicationDisabled = dashboard.ErrPublicationDisabled
 var ErrPublicationRequiresSync = dashboard.ErrPublicationRequiresSync
 var ErrPublishQueueEmpty = publishsvc.ErrPublishQueueEmpty
 var ErrXOAuth2NotConfigured = platformaccount.ErrXOAuth2NotConfigured
+
+const PermissionAccountManage = dashboard.PermissionAccountManage
 
 var NewAIServiceClient = ai.NewAIServiceClient
 var NewAIServiceClientFromEnv = ai.NewAIServiceClientFromEnv

@@ -345,11 +345,15 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 		log.Printf("discarding invalid publish job: %+v", job)
 		return nil
 	}
+	observeJob := func(result string) {
+		s.observePublishJob(job.Platform, result)
+	}
 
 	lockKey := publishLockKey(job.ProjectID, job.Platform)
 	locked, err := s.ensurePublishJobLock(ctx, job, lockKey)
 	if err != nil {
 		log.Printf("publish lock check failed for job %s: %v", job.JobID, err)
+		observeJob(publishJobResultError)
 		return err
 	}
 	if !locked {
@@ -376,6 +380,7 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 	resp, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID, uuid.Nil)
 	if err != nil {
 		log.Printf("publish job %s failed: %v", job.JobID, err)
+		observeJob(publishJobResultError)
 		if markErr := s.markPublicationFailed(job.ProjectID, job.Platform, err.Error()); markErr != nil {
 			log.Printf("failed to mark publish job %s as failed: %v", job.JobID, markErr)
 		}
@@ -398,6 +403,7 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 	if status, _ := resp["status"].(string); status == models.PublicationStatusFailed {
 		message, _ := resp["error_message"].(string)
 		err := fmt.Errorf("publish job %s failed: %s", job.JobID, message)
+		observeJob(publishJobResultError)
 		_ = s.recordPublishEvent(models.PublishEvent{
 			PublicationID:  job.PublicationID,
 			ProjectID:      job.ProjectID,
@@ -432,6 +438,7 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 	if err := s.queue.ReleaseLock(ctx, lockKey, job.JobID.String()); err != nil {
 		log.Printf("publish lock release failed for job %s: %v", job.JobID, err)
 	}
+	observeJob(publishJobResultSuccess)
 	return nil
 }
 

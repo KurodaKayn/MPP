@@ -38,6 +38,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize browser runtime manager: %v", err)
 	}
+	runtimes = observabilitySuite.InstrumentRuntimeManager(runtimes)
 	startRuntimeCleanupLoop(rootCtx, runtimes)
 
 	sessions := session.NewManager()
@@ -86,7 +87,7 @@ func startRuntimeCleanupLoop(ctx context.Context, runtimes browserruntime.Manage
 		ticker := time.NewTicker(runtimeCleanupInterval)
 		defer ticker.Stop()
 		for {
-			if err := reaper.ReapExpiredSessions(ctx); err != nil && ctx.Err() == nil {
+			if _, err := reaper.ReapExpiredSessions(ctx); err != nil && ctx.Err() == nil {
 				log.Printf("Failed to reap expired browser runtime sessions: %v", err)
 			}
 			select {

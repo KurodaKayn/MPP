@@ -1,6 +1,12 @@
 import { cookies } from "next/headers";
+import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { authTokenNames, formatBearerToken } from "@/lib/auth/tokens";
+import {
+  expireAuthCookies,
+  getAuthTokenCookie,
+  setAuthTokenCookie,
+} from "../_lib/session-cookie";
+import { formatBearerToken } from "@/lib/auth/tokens";
 
 const appEnvEnv = "APP_ENV";
 const defaultBackendApiBaseUrl = "http://localhost:8080";
@@ -48,16 +54,6 @@ function getBackendApiBaseUrl() {
   );
 }
 
-function expireAuthCookies(response: NextResponse) {
-  for (const name of authTokenNames) {
-    response.cookies.set(name, "", {
-      maxAge: 0,
-      path: "/",
-      sameSite: "lax",
-    });
-  }
-}
-
 function createSessionResponse(
   authenticated: boolean,
   options: { clearCookies?: boolean } = {},
@@ -94,9 +90,7 @@ async function verifyAuthCookie(token: string) {
 
 export async function GET() {
   const cookieStore = await cookies();
-  const token = authTokenNames
-    .map((name) => cookieStore.get(name)?.value)
-    .find(Boolean);
+  const token = getAuthTokenCookie(cookieStore);
 
   if (!token) {
     return createSessionResponse(false);
@@ -106,6 +100,44 @@ export async function GET() {
   return createSessionResponse(authenticated, {
     clearCookies: !authenticated,
   });
+}
+
+export async function POST(request: NextRequest) {
+  const body = (await request.json().catch(() => ({}))) as {
+    token?: unknown;
+  };
+  const token = typeof body.token === "string" ? body.token.trim() : "";
+
+  if (!token) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "missing_token",
+          message: "Access token is required",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const authenticated = await verifyAuthCookie(token).catch(() => false);
+  if (!authenticated) {
+    const response = NextResponse.json(
+      {
+        error: {
+          code: "invalid_token",
+          message: "Invalid or expired access token",
+        },
+      },
+      { status: 401 },
+    );
+    expireAuthCookies(response);
+    return response;
+  }
+
+  const response = createSessionResponse(true);
+  setAuthTokenCookie(response, token, request);
+  return response;
 }
 
 export function DELETE() {

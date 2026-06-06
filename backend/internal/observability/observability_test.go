@@ -112,6 +112,21 @@ func TestDatabaseObserverRecordsQueryMetricsAndSlowQueries(t *testing.T) {
 	})
 }
 
+func TestPublishJobObserverRecordsPublishMetrics(t *testing.T) {
+	e := echo.New()
+	suite := New("publish-worker-test")
+	suite.RegisterRoutes(e)
+
+	suite.PublishJobObserver().ObservePublishJob("wechat", "error")
+
+	metrics := scrapeMetrics(t, e)
+	assertMetricLineContains(t, metrics, "mpp_publish_jobs_total", []string{
+		`service="publish-worker-test"`,
+		`platform="wechat"`,
+		`result="error"`,
+	})
+}
+
 func scrapeMetrics(t *testing.T, e *echo.Echo) string {
 	t.Helper()
 

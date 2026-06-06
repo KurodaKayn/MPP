@@ -28,6 +28,7 @@ var ErrInvalidProjectComment = projectsvc.ErrInvalidProjectComment
 var ErrInvalidProjectShareLink = projectsvc.ErrInvalidProjectShareLink
 var ErrInvalidProjectVersion = projectsvc.ErrInvalidProjectVersion
 var ErrInvalidWorkspace = workspacesvc.ErrInvalidWorkspace
+var ErrInvalidWorkspaceInvite = workspacesvc.ErrInvalidWorkspaceInvite
 var ErrInvalidWorkspaceMember = workspacesvc.ErrInvalidWorkspaceMember
 var ErrProjectCollabUnavailable = projectsvc.ErrProjectCollabUnavailable
 var ErrPublicationDisabled = publishsvc.ErrPublicationDisabled
@@ -41,6 +42,9 @@ var ErrMediaAssetUploadIncomplete = mediaassetsvc.ErrMediaAssetUploadIncomplete
 var ErrMediaAssetNotReady = mediaassetsvc.ErrMediaAssetNotReady
 
 type ProjectDraftCompiler = compiler.ProjectDraftCompiler
+type WorkspacePermission = workspacesvc.Permission
+
+const PermissionAccountManage = workspacesvc.PermissionAccountManage
 
 type DashboardService struct {
 	*Project
@@ -121,6 +125,10 @@ func (s *DashboardService) SetBrowserWorkerClient(client publisher.BrowserWorker
 
 func (s *DashboardService) SetBrowserSessionService(svc *browsersession.BrowserSessionService) {
 	s.Publisher.SetBrowserSessionService(svc)
+}
+
+func (s *DashboardService) SetPublishJobObserver(observer publishsvc.PublishJobObserver) {
+	s.Publisher.SetPublishJobObserver(observer)
 }
 
 func (s *DashboardService) SetCollabDocumentService(svc *collabdoc.Service) {

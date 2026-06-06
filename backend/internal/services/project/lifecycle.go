@@ -11,6 +11,7 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	pkghtml "github.com/kurodakayn/mpp-backend/internal/pkg/html"
 )
 
 func (s *Service) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
@@ -20,7 +21,7 @@ func (s *Service) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) 
 
 func (s *Service) CreateProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
 	title := strings.TrimSpace(req.Title)
-	sourceContent := strings.TrimSpace(req.SourceContent)
+	sourceContent := sanitizeProjectSourceContent(req.SourceContent)
 	platforms, err := NormalizeProjectPlatforms(req.Platforms)
 	if err != nil {
 		return nil, err
@@ -121,7 +122,7 @@ func (s *Service) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUID) (*dto.
 
 func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.UpdateProjectRequest) (*dto.ProjectDetail, error) {
 	title := strings.TrimSpace(req.Title)
-	sourceContent := strings.TrimSpace(req.SourceContent)
+	sourceContent := sanitizeProjectSourceContent(req.SourceContent)
 	platforms, err := NormalizeProjectPlatforms(req.Platforms)
 	if err != nil {
 		return nil, err
@@ -151,6 +152,10 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 		project.Title = title
 		if project.CollabDocumentID == nil || *project.CollabDocumentID == uuid.Nil || !syncedCollabSource {
 			project.SourceContent = sourceContent
+		}
+		project.SourceContent = sanitizeProjectSourceContent(project.SourceContent)
+		if project.SourceContent == "" {
+			return ErrInvalidProject
 		}
 		project.Status = models.ProjectStatusReady
 		if err := tx.Save(&project).Error; err != nil {
@@ -239,7 +244,7 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 
 func (s *Service) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req dto.SaveProjectContentRequest) (*dto.ProjectDetail, error) {
 	title := strings.TrimSpace(req.Title)
-	sourceContent := strings.TrimSpace(req.SourceContent)
+	sourceContent := sanitizeProjectSourceContent(req.SourceContent)
 	if title == "" || sourceContent == "" {
 		return nil, ErrInvalidProject
 	}
@@ -268,6 +273,10 @@ func (s *Service) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req 
 
 	if project.CollabDocumentID == nil || *project.CollabDocumentID == uuid.Nil || !syncedCollabSource {
 		project.SourceContent = sourceContent
+	}
+	project.SourceContent = sanitizeProjectSourceContent(project.SourceContent)
+	if project.SourceContent == "" {
+		return nil, ErrInvalidProject
 	}
 	project.Title = title
 	project.Status = models.ProjectStatusReady
@@ -378,6 +387,10 @@ func BuildPendingPublicationPayload(title, summary, coverImageURL string) (datat
 	}
 
 	return config, datatypes.JSON([]byte(`{}`)), models.PublicationStatusPending, nil
+}
+
+func sanitizeProjectSourceContent(sourceContent string) string {
+	return pkghtml.SanitizeStoredHTML(strings.TrimSpace(sourceContent))
 }
 
 func projectDetailFromModel(project models.Project, role string, accessSource string) *dto.ProjectDetail {

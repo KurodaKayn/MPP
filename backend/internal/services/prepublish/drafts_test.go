@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,6 +111,51 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 	require.NoError(t, json.Unmarshal(douyinPub.AdaptedContent, &douyinContent))
 	assert.Equal(t, "text", douyinContent["format"])
 	assert.Contains(t, douyinContent["text"], "Hello draft")
+}
+
+func TestSyncProjectPrepublishSanitizesHTMLDraftsBeforePersisting(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	s.SetDraftCompiler(&testsupport.FakeProjectDraftCompiler{})
+
+	owner := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&owner).Error)
+	project := models.Project{
+		UserID: owner.ID,
+		Title:  "Platform title",
+		SourceContent: `<p onclick="alert(1)">Hello draft</p>
+			<img src="javascript:alert(1)" onerror="alert(1)" alt="cover">
+			<a href="java&#x0A;script:alert(1)">bad link</a>
+			<svg onload="alert(1)"></svg>
+			<script>alert(1)</script>`,
+		Status: models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusPending,
+		Config:    datatypes.JSON(`{"title":"Platform title"}`),
+	}).Error)
+
+	resp, err := s.SyncProjectPrepublish(project.ID, owner.ID, dto.SyncPrepublishRequest{
+		Platforms: []string{"wechat"},
+		Actor:     dto.SyncActor{Type: "system"},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Items, 1)
+
+	var wechatPub models.ProjectPlatformPublication
+	require.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	var wechatContent map[string]any
+	require.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &wechatContent))
+	html, ok := wechatContent["html"].(string)
+	require.True(t, ok)
+	require.Contains(t, html, "<p>Hello draft</p>")
+	require.Contains(t, html, `<img alt="cover"/>`)
+	assertPrepublishHTMLHasNoActiveContent(t, html)
 }
 
 func TestSyncProjectPrepublishReadsLatestCollabSnapshot(t *testing.T) {
@@ -324,4 +370,63 @@ func TestSyncProjectPrepublishDoesNotApplyDraftWhenPublicationBecomesPublishing(
 	require.Equal(t, "https://example.com/active", saved.PublishURL)
 	require.NotNil(t, saved.LastAttemptAt)
 	require.True(t, saved.LastAttemptAt.Equal(lastAttemptAt))
+}
+
+func TestUpdateProjectPrepublishDraftSanitizesHTMLBeforePersisting(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&owner).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Platform title",
+		SourceContent: `<p>Project body</p>`,
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusPending,
+		Config:         datatypes.JSON(`{"title":"Platform title"}`),
+		AdaptedContent: datatypes.JSON(`{}`),
+	}).Error)
+
+	resp, err := s.UpdateProjectPrepublishDraft(project.ID, owner.ID, "wechat", dto.UpdatePrepublishDraftRequest{
+		AdaptedContent: map[string]any{
+			"format": "html",
+			"html": `<h2 onclick="alert(1)">Manual draft</h2>
+				<img src="javascript:alert(1)" onerror="alert(1)" alt="cover">
+				<svg onload="alert(1)"></svg>`,
+			"summary": "Manual draft",
+		},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, resp.Items, 1)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	var adaptedContent map[string]any
+	require.NoError(t, json.Unmarshal(saved.AdaptedContent, &adaptedContent))
+	require.Equal(t, "html", adaptedContent["format"])
+	require.Equal(t, "Manual draft", adaptedContent["summary"])
+	html, ok := adaptedContent["html"].(string)
+	require.True(t, ok)
+	require.Contains(t, html, "<h2>Manual draft</h2>")
+	require.Contains(t, html, `<img alt="cover"/>`)
+	assertPrepublishHTMLHasNoActiveContent(t, html)
+}
+
+func assertPrepublishHTMLHasNoActiveContent(t *testing.T, html string) {
+	t.Helper()
+
+	lower := strings.ToLower(html)
+	require.NotContains(t, lower, "<script")
+	require.NotContains(t, lower, "<svg")
+	require.NotContains(t, lower, "javascript:")
+	require.NotContains(t, lower, "onclick")
+	require.NotContains(t, lower, "onerror")
 }

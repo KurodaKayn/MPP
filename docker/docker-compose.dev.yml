@@ -43,6 +43,8 @@ services:
       CONTENT_PIPELINE_DRAFTS_ENABLED: ${CONTENT_PIPELINE_DRAFTS_ENABLED:-true}
       CONTENT_PIPELINE_MEDIA_RESOLVER_URL: ${CONTENT_PIPELINE_MEDIA_RESOLVER_URL:-http://backend:8080/internal/media/resolve}
       CONTENT_PIPELINE_INTERNAL_TOKEN: ${CONTENT_PIPELINE_INTERNAL_TOKEN:-change-me-content-pipeline-internal-token}
+      BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-change-me-browser-worker-internal-token}
+      AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-change-me-ai-service-internal-token}
     healthcheck:
       start_period: 120s
     volumes:
@@ -75,6 +77,8 @@ services:
       CONTENT_PIPELINE_DRAFTS_ENABLED: ${CONTENT_PIPELINE_DRAFTS_ENABLED:-true}
       CONTENT_PIPELINE_MEDIA_RESOLVER_URL: ${CONTENT_PIPELINE_MEDIA_RESOLVER_URL:-http://backend:8080/internal/media/resolve}
       CONTENT_PIPELINE_INTERNAL_TOKEN: ${CONTENT_PIPELINE_INTERNAL_TOKEN:-change-me-content-pipeline-internal-token}
+      BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-change-me-browser-worker-internal-token}
+      AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-change-me-ai-service-internal-token}
     volumes:
       - ../backend:/app
       - backend_go_cache:/go/pkg/mod
@@ -90,9 +94,10 @@ services:
     build:
       target: dev
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     environment:
       APP_ENV: development
+      BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-change-me-browser-worker-internal-token}
     volumes:
       - ../browser-worker:/app
       - browser_worker_go_cache:/go/pkg/mod
@@ -109,7 +114,9 @@ services:
     build:
       target: dev
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
+    environment:
+      AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-change-me-ai-service-internal-token}
     volumes:
       - ../ai-service:/app
       - ai_service_venv:/app/.venv

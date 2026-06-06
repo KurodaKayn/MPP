@@ -853,9 +853,15 @@ func TestUserDashboardHandlerWorkspaces(t *testing.T) {
 
 	var workspaces dto.WorkspacesResponse
 	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &workspaces))
-	require.Len(t, workspaces.Items, 1)
-	require.Equal(t, created.ID, workspaces.Items[0].ID)
-	require.Equal(t, models.WorkspaceRoleMember, workspaces.Items[0].Role)
+	require.Len(t, workspaces.Items, 2)
+	var listedWorkspace dto.Workspace
+	for _, item := range workspaces.Items {
+		if item.ID == created.ID {
+			listedWorkspace = item
+		}
+	}
+	require.Equal(t, created.ID, listedWorkspace.ID)
+	require.Equal(t, models.WorkspaceRoleMember, listedWorkspace.Role)
 
 	membersContext, membersRec := newHandlerTestContext(e, http.MethodGet, "/api/workspaces/"+created.ID.String()+"/members")
 	membersContext.SetParamNames("id")

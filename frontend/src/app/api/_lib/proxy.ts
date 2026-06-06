@@ -44,18 +44,42 @@ function buildTargetUrl(
   return targetUrl;
 }
 
+const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 function applyAuthorizationFromCookie(request: NextRequest, headers: Headers) {
   if (headers.has("authorization")) {
-    return;
+    return false;
   }
 
   for (const name of authTokenNames) {
     const token = request.cookies.get(name)?.value;
     if (token) {
       headers.set("authorization", formatBearerToken(token));
-      return;
+      return true;
     }
   }
+
+  return false;
+}
+
+function isSameOriginHeader(value: string | null, requestOrigin: string) {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    return new URL(value).origin === requestOrigin;
+  } catch {
+    return false;
+  }
+}
+
+function isSameOriginBrowserWrite(request: NextRequest) {
+  const requestOrigin = request.nextUrl.origin;
+  return (
+    isSameOriginHeader(request.headers.get("origin"), requestOrigin) ||
+    isSameOriginHeader(request.headers.get("referer"), requestOrigin)
+  );
 }
 
 function ensureTraceHeaders(headers: Headers) {
@@ -80,10 +104,22 @@ function createForwardedHeaders(request: NextRequest) {
   headers.delete("host");
   headers.set("x-forwarded-host", forwardedHost);
   headers.set("x-forwarded-proto", forwardedProto || "http");
-  applyAuthorizationFromCookie(request, headers);
+  const usesCookieAuth = applyAuthorizationFromCookie(request, headers);
   ensureTraceHeaders(headers);
 
-  return headers;
+  return { headers, usesCookieAuth };
+}
+
+function createCsrfFailureResponse() {
+  return Response.json(
+    {
+      error: {
+        code: "csrf_failed",
+        message: "Request origin is not allowed",
+      },
+    },
+    { status: 403 },
+  );
 }
 
 export async function proxyApiRequest(
@@ -94,7 +130,16 @@ export async function proxyApiRequest(
   const { path } = await params;
   const method = request.method.toUpperCase();
   const canHaveBody = method !== "GET" && method !== "HEAD";
-  const forwardedHeaders = createForwardedHeaders(request);
+  const { headers: forwardedHeaders, usesCookieAuth } =
+    createForwardedHeaders(request);
+  if (
+    usesCookieAuth &&
+    unsafeMethods.has(method) &&
+    !isSameOriginBrowserWrite(request)
+  ) {
+    return createCsrfFailureResponse();
+  }
+
   const traceId = forwardedHeaders.get(requestIdHeader) ?? randomUUID();
   const response = await fetch(buildTargetUrl(request, targetPrefix, path), {
     body: canHaveBody ? await request.arrayBuffer() : undefined,

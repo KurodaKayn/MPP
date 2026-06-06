@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  authTokenNames,
-  formatBearerToken,
-  primaryAuthTokenName,
-} from "./tokens";
+import { authTokenNames } from "./tokens";
 
 export { formatBearerToken } from "./tokens";
 
@@ -46,17 +42,6 @@ const authUserStorageKey = "sevenoxcloud.auth_user";
 const authChangedEvent = "sevenoxcloud.auth_changed";
 const cookieSessionUsername = "Creator";
 
-function getStorageToken(storage: Storage) {
-  for (const key of authTokenNames) {
-    const token = storage.getItem(key);
-    if (token) {
-      return token;
-    }
-  }
-
-  return null;
-}
-
 function getAuthUser(storage: Storage) {
   try {
     const raw = storage.getItem(authUserStorageKey);
@@ -72,8 +57,12 @@ function getAuthUser(storage: Storage) {
 }
 
 export function getStoredAuthToken() {
+  return null;
+}
+
+function clearStoredAuthTokens() {
   if (typeof window === "undefined") {
-    return null;
+    return;
   }
 
   for (const getStorage of [
@@ -81,25 +70,18 @@ export function getStoredAuthToken() {
     () => window.sessionStorage,
   ]) {
     try {
-      const token = getStorageToken(getStorage());
-      if (token) {
-        return token;
+      const storage = getStorage();
+      for (const key of authTokenNames) {
+        storage.removeItem(key);
       }
     } catch {
       // Some privacy modes can deny Web Storage access.
     }
   }
-
-  return null;
 }
 
-export function getStoredAuthSession(): AuthSession | null {
+function getStoredAuthUsername() {
   if (typeof window === "undefined") {
-    return null;
-  }
-
-  const token = getStoredAuthToken();
-  if (!token) {
     return null;
   }
 
@@ -110,14 +92,29 @@ export function getStoredAuthSession(): AuthSession | null {
     try {
       const username = getAuthUser(getStorage());
       if (username) {
-        return { token, username };
+        return username;
       }
     } catch {
       // Some privacy modes can deny Web Storage access.
     }
   }
 
-  return { token, username: "Creator" };
+  return null;
+}
+
+export function getStoredAuthSession(): AuthSession | null {
+  const username = getStoredAuthUsername();
+  return username ? { token: null, username } : null;
+}
+
+function clearLegacyAuthCookies() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  for (const key of authTokenNames) {
+    document.cookie = `${key}=; path=/; max-age=0; SameSite=Lax`;
+  }
 }
 
 async function getResponseErrorMessage(response: Response, fallback: string) {
@@ -167,40 +164,27 @@ export async function getAuthStatus(): Promise<{
 }
 
 export async function getCurrentAuthState(): Promise<AuthState> {
-  const storedSession = getStoredAuthSession();
   const status = await getAuthStatus();
 
-  if (storedSession) {
-    return {
-      loginMethods: status.loginMethods,
-      session: storedSession,
-    };
-  }
-
   if (status.authenticated) {
+    const username =
+      status.username ?? getStoredAuthUsername() ?? cookieSessionUsername;
+
     return {
       loginMethods: status.loginMethods,
       session: {
         token: null,
-        username: status.username ?? cookieSessionUsername,
+        username,
       },
     };
   }
+
+  clearStoredAuthTokens();
 
   return {
     loginMethods: status.loginMethods,
     session: null,
   };
-}
-
-function setAuthCookie(token: string) {
-  document.cookie = `${primaryAuthTokenName}=${encodeURIComponent(
-    token,
-  )}; path=/; max-age=259200; SameSite=Lax`;
-}
-
-function clearAuthCookie() {
-  document.cookie = `${primaryAuthTokenName}=; path=/; max-age=0; SameSite=Lax`;
 }
 
 function notifyAuthChanged() {
@@ -217,13 +201,27 @@ export function subscribeAuthChanged(listener: () => void) {
   };
 }
 
-export function setAuthSession(session: { token: string; username: string }) {
-  window.localStorage.setItem(primaryAuthTokenName, session.token);
-  window.localStorage.setItem(
-    authUserStorageKey,
-    JSON.stringify({ username: session.username }),
-  );
-  setAuthCookie(session.token);
+export function setAuthSession(session: {
+  token?: string | null;
+  username: string;
+}) {
+  clearStoredAuthTokens();
+  clearLegacyAuthCookies();
+  try {
+    window.localStorage.setItem(
+      authUserStorageKey,
+      JSON.stringify({ username: session.username }),
+    );
+  } catch {
+    try {
+      window.sessionStorage.setItem(
+        authUserStorageKey,
+        JSON.stringify({ username: session.username }),
+      );
+    } catch {
+      // Some privacy modes can deny Web Storage access.
+    }
+  }
   notifyAuthChanged();
 }
 
@@ -234,7 +232,7 @@ export function clearAuthSession(options: { notify?: boolean } = {}) {
   }
   window.localStorage.removeItem(authUserStorageKey);
   window.sessionStorage.removeItem(authUserStorageKey);
-  clearAuthCookie();
+  clearLegacyAuthCookies();
   if (options.notify ?? true) {
     notifyAuthChanged();
   }
@@ -248,15 +246,15 @@ export async function clearServerAuthSession() {
   }).catch(() => undefined);
 }
 
-async function verifyAuthToken(token: string) {
-  const headers = new Headers({
-    Accept: "application/json",
-    Authorization: formatBearerToken(token),
-  });
-  const response = await fetch("/api/user/dashboard/stats", {
+async function createServerAuthSession(token: string) {
+  const response = await fetch("/api/auth/session", {
+    body: JSON.stringify({ token }),
     cache: "no-store",
     credentials: "same-origin",
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    method: "POST",
   });
 
   if (!response.ok) {
@@ -276,9 +274,9 @@ export async function loginWithAccessToken(token: string) {
     throw new Error("Please enter access token");
   }
 
-  await verifyAuthToken(normalizedToken);
+  await createServerAuthSession(normalizedToken);
 
-  const session = { token: normalizedToken, username: cookieSessionUsername };
+  const session = { token: null, username: cookieSessionUsername };
   setAuthSession(session);
   return session;
 }
@@ -313,13 +311,13 @@ export async function loginWithCredentials(username: string, password: string) {
   });
   const body = (await response.json().catch(() => ({}))) as LoginResponse;
 
-  if (!response.ok || !body.token) {
+  if (!response.ok) {
     throw new Error(
       body.error?.message || body.error?.code || body.message || "Login failed",
     );
   }
 
-  const session = { token: body.token, username: normalizedUsername };
+  const session = { token: null, username: normalizedUsername };
   setAuthSession(session);
   return session;
 }
@@ -422,7 +420,7 @@ export async function registerWithCredentials(
   });
   const body = (await response.json().catch(() => ({}))) as LoginResponse;
 
-  if (!response.ok || !body.token) {
+  if (!response.ok) {
     throw new Error(
       body.error?.message ||
         body.error?.code ||
@@ -431,7 +429,7 @@ export async function registerWithCredentials(
     );
   }
 
-  const session = { token: body.token, username: normalizedUsername };
+  const session = { token: null, username: normalizedUsername };
   setAuthSession(session);
   return session;
 }

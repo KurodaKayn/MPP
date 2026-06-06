@@ -17,6 +17,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/app"
 	"github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
+	"github.com/kurodakayn/mpp-backend/internal/observability"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 	objectstorager2 "github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage/r2"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
@@ -51,7 +52,9 @@ func main() {
 	db.InitDB()
 
 	// Initialize Services and Handlers
+	observabilitySuite := observability.New(runtimeConfig.ServiceName())
 	dashboardService := services.NewDashboardService(db.DB)
+	dashboardService.SetPublishJobObserver(observabilitySuite.PublishJobObserver())
 	objectStorageConfig, err := objectstorage.ConfigFromEnv()
 	if err != nil {
 		log.Fatal(err)
@@ -142,12 +145,13 @@ func main() {
 	ready.Store(true)
 
 	server, err := newServer(serverConfig{
-		runtimeConfig: runtimeConfig,
-		jwtSigningKey: jwtSigningKey,
-		redisClient:   redisClient,
-		mockLogin:     mockLogin,
-		ready:         &ready,
-		sqlDB:         db.DB,
+		runtimeConfig:      runtimeConfig,
+		jwtSigningKey:      jwtSigningKey,
+		redisClient:        redisClient,
+		mockLogin:          mockLogin,
+		ready:              &ready,
+		sqlDB:              db.DB,
+		observabilitySuite: observabilitySuite,
 	}, serverHandlers{
 		adminDashboard: adminDashboardHandler,
 		userDashboard:  userDashboardHandler,

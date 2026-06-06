@@ -41,6 +41,10 @@ func NewManager() (*Manager, error) {
 	}, nil
 }
 
+func (m *Manager) RuntimeDriver() string {
+	return browserruntime.DriverDocker
+}
+
 func (m *Manager) StartSession(ctx context.Context, request browserruntime.StartSessionRequest) (browserruntime.SessionReference, error) {
 	containerID, containerHost, cdpPort, streamPort, err := m.startBrowserContainer(ctx, request.SessionID)
 	if err != nil {

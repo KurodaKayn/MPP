@@ -94,7 +94,7 @@ describe("dashboard api client", () => {
     vi.unstubAllGlobals();
   });
 
-  it("sends same-origin requests with a bearer token from local storage", async () => {
+  it("sends same-origin requests without exposing legacy stored tokens", async () => {
     const stats = {
       total_failed_publications: 0,
       total_projects: 2,
@@ -117,10 +117,10 @@ describe("dashboard api client", () => {
     const [, init] = fetchMock.mock.calls[0];
     expect(init).toBeDefined();
     const headers = init!.headers as Headers;
-    expect(headers.get("Authorization")).toBe("Bearer local-token");
+    expect(headers.get("Authorization")).toBeNull();
   });
 
-  it("falls back to session storage when local storage is unavailable", async () => {
+  it("does not consult session tokens when local storage is unavailable", async () => {
     const localStorageDescriptor = Object.getOwnPropertyDescriptor(
       window,
       "localStorage",
@@ -150,7 +150,35 @@ describe("dashboard api client", () => {
     expect(path).toBe("/api/user/dashboard/projects?page=1&limit=12");
     expect(init).toBeDefined();
     const headers = init!.headers as Headers;
-    expect(headers.get("Authorization")).toBe("Bearer session-token");
+    expect(headers.get("Authorization")).toBeNull();
+  });
+
+  it("adds the selected workspace context to dashboard requests", async () => {
+    const stats = {
+      total_failed_publications: 0,
+      total_projects: 1,
+      total_published_publications: 0,
+      total_users: 1,
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(stats));
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem(
+      "mpp.dashboard.selectedWorkspaceId",
+      "workspace-1",
+    );
+
+    await expect(getDashboardStats()).resolves.toEqual(stats);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/stats?workspace_id=workspace-1",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+    const [, init] = fetchMock.mock.calls[0];
+    const headers = init!.headers as Headers;
+    expect(headers.get("X-Workspace-ID")).toBe("workspace-1");
   });
 
   it("uses backend error messages from JSON responses", async () => {

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 
 const (
 	browserStreamGatewayTimeoutEnv     = "BROWSER_STREAM_GATEWAY_TIMEOUT"
+	browserWorkerInternalTokenEnv      = "BROWSER_WORKER_INTERNAL_TOKEN"
 	defaultBrowserStreamGatewayTimeout = 15 * time.Second
 )
 
@@ -157,13 +159,14 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	}
 	target.Scheme = reverseProxyScheme(target.Scheme)
 	rawQuery := streamProxyRawQuery(c)
+	internalHeaders := browserWorkerInternalHeaders()
 
 	// Use custom WebSocket proxy for noVNC stream (e.g. when requesting /websockify)
 	if isWebSocket {
 		// Update target path with proxy path before proxying
 		target.Path = joinURLPath(target.Path, proxyPath)
 		target.RawQuery = rawQuery
-		return proxy.WebSocket(c, target)
+		return proxy.WebSocketWithHeaders(c, target, internalHeaders)
 	}
 
 	reverseProxy := &httputil.ReverseProxy{
@@ -178,6 +181,12 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 			}
 			req.URL.RawQuery = rawQuery
 			req.Host = target.Host
+			for key, values := range internalHeaders {
+				req.Header.Del(key)
+				for _, value := range values {
+					req.Header.Add(key, value)
+				}
+			}
 			proxyRequest.SetXForwarded()
 		},
 	}
@@ -188,6 +197,18 @@ func (h *BrowserSessionHandler) StreamSession(c echo.Context) error {
 	}
 	reverseProxy.ServeHTTP(c.Response(), c.Request())
 	return nil
+}
+
+func browserWorkerInternalHeaders() http.Header {
+	headers := http.Header{
+		echo.HeaderAuthorization: []string{},
+	}
+	token := strings.TrimSpace(os.Getenv(browserWorkerInternalTokenEnv))
+	if token == "" {
+		return headers
+	}
+	headers.Set(echo.HeaderAuthorization, "Bearer "+token)
+	return headers
 }
 
 func shouldAcquireBrowserStreamLease(c echo.Context, isWebSocket bool, proxyPath string) bool {

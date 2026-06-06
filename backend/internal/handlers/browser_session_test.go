@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
@@ -205,6 +206,56 @@ func TestBrowserSessionHandler_StreamSessionUsesMockStream(t *testing.T) {
 	require.NoError(t, h.StreamSession(c))
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), "Mock remote browser session")
+}
+
+func TestBrowserSessionHandler_StreamSessionUsesWorkerInternalToken(t *testing.T) {
+	e, h, db := setupBrowserSessionHandlerTest(t)
+	userID := uuid.New()
+	sessionID := uuid.New()
+	streamToken := "stream-token"
+	t.Setenv("BROWSER_WORKER_INTERNAL_TOKEN", "worker-stream-token")
+	seenAuthorization := make(chan string, 1)
+	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenAuthorization <- r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte("worker stream"))
+	}))
+	t.Cleanup(targetServer.Close)
+	require.NoError(t, db.Create(&models.RemoteBrowserSession{
+		ID:                    sessionID,
+		UserID:                userID,
+		Platform:              "douyin",
+		Status:                models.BrowserSessionStatusReady,
+		WorkerSessionRef:      "worker-ref",
+		StreamEndpointRef:     targetServer.URL + "/internal/browser-sessions/worker-ref/stream",
+		ConnectTokenHash:      browsersession.HashStreamToken(streamToken),
+		ConnectTokenExpiresAt: time.Now().Add(time.Minute),
+		CreatedAt:             time.Now(),
+		ExpiresAt:             time.Now().Add(time.Minute),
+	}).Error)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/api/user/dashboard/browser-sessions/"+sessionID.String()+"/stream/"+streamToken+"/vnc.html",
+		nil,
+	)
+	req.Header.Set("Authorization", "Bearer user-jwt")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id", "*")
+	c.SetParamValues(sessionID.String(), streamToken+"/vnc.html")
+	setHandlerUser(c, userID)
+
+	require.NoError(t, h.StreamSession(c))
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "worker stream", rec.Body.String())
+	select {
+	case got := <-seenAuthorization:
+		assert.Equal(t, "Bearer worker-stream-token", got)
+	case <-time.After(time.Second):
+		t.Fatal("expected worker stream target to receive request")
+	}
 }
 
 func TestBrowserSessionHandler_WebSocketStreamRotatesPollingURLAfterConsumingToken(t *testing.T) {
