@@ -44,8 +44,9 @@ module KubernetesSmoke
       "COLLAB_TOKEN_SECRET",
       "COOKIE_ENCRYPTION_KEY",
       "LLM_PROVIDER_KEY",
-      "BROWSER_WORKER_INTERNAL_TOKEN",
       "AI_SERVICE_INTERNAL_TOKEN",
+      "BROWSER_WORKER_INTERNAL_TOKEN",
+      "CONTENT_PIPELINE_INTERNAL_TOKEN",
     ].freeze
 
     attr_accessor :app_namespace,

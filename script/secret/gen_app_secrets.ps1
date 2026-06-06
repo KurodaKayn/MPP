@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("jwt", "cookie", "collab", "pipeline", "all")]
+    [ValidateSet("jwt", "cookie", "collab", "ai", "pipeline", "browser", "db", "redis", "grafana", "app", "infra", "all")]
     [string]$Kind = "all"
 )
 
@@ -50,14 +50,40 @@ function Write-AppSecret {
         "collab" {
             Write-Output "COLLAB_TOKEN_SECRET=$(New-HexSecret)"
         }
+        "ai" {
+            Write-Output "AI_SERVICE_INTERNAL_TOKEN=$(New-HexSecret)"
+        }
         "pipeline" {
             Write-Output "CONTENT_PIPELINE_INTERNAL_TOKEN=$(New-HexSecret)"
         }
-        "all" {
+        "browser" {
+            Write-Output "BROWSER_WORKER_INTERNAL_TOKEN=$(New-HexSecret)"
+        }
+        "db" {
+            Write-Output "DB_PASSWORD=$(New-HexSecret)"
+        }
+        "redis" {
+            Write-Output "REDIS_PASSWORD=$(New-HexSecret)"
+        }
+        "grafana" {
+            Write-Output "GRAFANA_ADMIN_PASSWORD=$(New-HexSecret)"
+        }
+        "app" {
             Write-AppSecret "jwt"
             Write-AppSecret "cookie"
             Write-AppSecret "collab"
+            Write-AppSecret "ai"
             Write-AppSecret "pipeline"
+            Write-AppSecret "browser"
+        }
+        "infra" {
+            Write-AppSecret "db"
+            Write-AppSecret "redis"
+            Write-AppSecret "grafana"
+        }
+        "all" {
+            Write-AppSecret "app"
+            Write-AppSecret "infra"
         }
     }
 }

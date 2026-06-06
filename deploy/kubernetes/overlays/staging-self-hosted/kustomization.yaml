@@ -52,6 +52,7 @@ secretGenerator:
       - LLM_PROVIDER_KEY=staging-example-llm-key
       - BROWSER_WORKER_INTERNAL_TOKEN=staging-example-browser-worker-token
       - AI_SERVICE_INTERNAL_TOKEN=staging-example-ai-service-token
+      - CONTENT_PIPELINE_INTERNAL_TOKEN=staging-example-content-pipeline-token
 
 images:
   - name: registry.example.invalid/kurodakayn/mpp-frontend

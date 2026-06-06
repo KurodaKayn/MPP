@@ -153,6 +153,11 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: AI_SERVICE_INTERNAL_TOKEN
+            - name: CONTENT_PIPELINE_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: CONTENT_PIPELINE_INTERNAL_TOKEN
           readinessProbe:
             httpGet:
               path: /ready
@@ -263,6 +268,11 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: AI_SERVICE_INTERNAL_TOKEN
+            - name: CONTENT_PIPELINE_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: CONTENT_PIPELINE_INTERNAL_TOKEN
           readinessProbe:
             httpGet:
               path: /ready
@@ -506,11 +516,19 @@ spec:
               containerPort: 50051
             - name: metrics
               containerPort: 9090
+          envFrom:
+            - configMapRef:
+                name: mpp-app-config
           env:
             - name: CONTENT_PIPELINE_ADDR
               value: 0.0.0.0:50051
             - name: CONTENT_PIPELINE_METRICS_ADDR
               value: 0.0.0.0:9090
+            - name: CONTENT_PIPELINE_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: CONTENT_PIPELINE_INTERNAL_TOKEN
           readinessProbe:
             grpc:
               port: 50051
