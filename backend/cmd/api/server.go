@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
+	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -117,6 +120,7 @@ func registerAPIRoutes(e *echo.Echo, config serverConfig, h serverHandlers) erro
 	registerAuthRoutes(e, config, h)
 	registerAdminDashboardRoutes(e, h)
 	e.POST("/api/user/dashboard/extension/events", h.userDashboard.RecordExtensionEvent)
+	registerInternalRoutes(e, h)
 	if err := registerUserDashboardRoutes(e, config, h); err != nil {
 		return err
 	}
@@ -124,6 +128,36 @@ func registerAPIRoutes(e *echo.Echo, config serverConfig, h serverHandlers) erro
 		return err
 	}
 	return registerCollabRoutes(e, config, h)
+}
+
+func registerInternalRoutes(e *echo.Echo, h serverHandlers) {
+	e.POST("/internal/media/resolve", h.userDashboard.ResolveMediaObjectRef, requireInternalToken)
+}
+
+func requireInternalToken(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		expected := strings.TrimSpace(os.Getenv("CONTENT_PIPELINE_INTERNAL_TOKEN"))
+		if expected == "" {
+			return c.JSON(http.StatusServiceUnavailable, map[string]any{
+				"error": map[string]string{
+					"code":    "internal_token_unconfigured",
+					"message": "internal token is not configured",
+				},
+			})
+		}
+
+		token := strings.TrimSpace(c.Request().Header.Get("X-MPP-Internal-Token"))
+		if token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(expected)) != 1 {
+			return c.JSON(http.StatusUnauthorized, map[string]any{
+				"error": map[string]string{
+					"code":    "unauthorized",
+					"message": "invalid internal token",
+				},
+			})
+		}
+
+		return next(c)
+	}
 }
 
 func registerAuthRoutes(e *echo.Echo, config serverConfig, h serverHandlers) {
