@@ -24,16 +24,20 @@ func TestWorkspaceRoutesIncludeManagementRoutes(t *testing.T) {
 	}
 
 	expectedRoutes := map[string]bool{
-		http.MethodGet + " /api/workspaces":                        false,
-		http.MethodPost + " /api/workspaces":                       false,
-		http.MethodGet + " /api/workspaces/:id/projects":           false,
-		http.MethodPost + " /api/workspaces/:id/projects":          false,
-		http.MethodGet + " /api/workspaces/:id":                    false,
-		http.MethodPatch + " /api/workspaces/:id":                  false,
-		http.MethodGet + " /api/workspaces/:id/members":            false,
-		http.MethodPost + " /api/workspaces/:id/members":           false,
-		http.MethodPatch + " /api/workspaces/:id/members/:userId":  false,
-		http.MethodDelete + " /api/workspaces/:id/members/:userId": false,
+		http.MethodGet + " /api/workspaces":                          false,
+		http.MethodPost + " /api/workspaces":                         false,
+		http.MethodGet + " /api/workspaces/:id/projects":             false,
+		http.MethodPost + " /api/workspaces/:id/projects":            false,
+		http.MethodGet + " /api/workspaces/:id":                      false,
+		http.MethodPatch + " /api/workspaces/:id":                    false,
+		http.MethodGet + " /api/workspaces/:id/members":              false,
+		http.MethodGet + " /api/workspaces/:id/invites":              false,
+		http.MethodPost + " /api/workspaces/:id/members":             false,
+		http.MethodPost + " /api/workspaces/:id/invites":             false,
+		http.MethodPost + " /api/workspaces/invites/accept":          false,
+		http.MethodPatch + " /api/workspaces/:id/members/:userId":    false,
+		http.MethodDelete + " /api/workspaces/:id/members/:userId":   false,
+		http.MethodDelete + " /api/workspaces/:id/invites/:inviteId": false,
 	}
 	for _, route := range server.Routes() {
 		key := route.Method + " " + route.Path

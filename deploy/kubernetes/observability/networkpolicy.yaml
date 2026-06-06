@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: browser-worker-observability-metrics
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: browser-worker
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              mpp.kurodakayn.dev/metrics-scraper: "true"
+      ports:
+        - protocol: TCP
+          port: 8081

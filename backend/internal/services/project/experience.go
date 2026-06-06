@@ -43,6 +43,7 @@ func (s *Service) ListProjectActivities(projectID uuid.UUID, userID uuid.UUID, l
 		Preload("TargetUser", selectUserIdentity).
 		Where("project_id = ?", projectID).
 		Order("created_at desc").
+		Order("id desc").
 		Limit(limit).
 		Find(&activities).Error; err != nil {
 		return nil, err
@@ -415,12 +416,27 @@ func recordProjectActivity(tx *gorm.DB, projectID uuid.UUID, actorUserID uuid.UU
 	if err != nil {
 		return err
 	}
+	createdAt := time.Now().UTC()
+	var latestCreatedAt time.Time
+	if err := tx.
+		Model(&models.ProjectActivity{}).
+		Where("project_id = ?", projectID).
+		Select("created_at").
+		Order("created_at desc").
+		Limit(1).
+		Scan(&latestCreatedAt).Error; err != nil {
+		return err
+	}
+	if !latestCreatedAt.IsZero() && !createdAt.After(latestCreatedAt) {
+		createdAt = latestCreatedAt.Add(time.Nanosecond)
+	}
 	return tx.Create(&models.ProjectActivity{
 		ProjectID:    projectID,
 		ActorUserID:  actorUserID,
 		TargetUserID: targetUserID,
 		EventType:    eventType,
 		Metadata:     payload,
+		CreatedAt:    createdAt,
 	}).Error
 }
 

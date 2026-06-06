@@ -167,6 +167,22 @@ func SetupTestDB() *gorm.DB {
 		PRIMARY KEY (workspace_id, user_id)
 	)`)
 
+	db.Exec(`CREATE TABLE workspace_invites (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		email TEXT NOT NULL,
+		role TEXT NOT NULL,
+		invited_by TEXT NOT NULL,
+		accepted_by TEXT,
+		status TEXT NOT NULL DEFAULT 'pending',
+		token_hash TEXT NOT NULL UNIQUE,
+		expires_at DATETIME NOT NULL,
+		accepted_at DATETIME,
+		revoked_at DATETIME,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL
+	)`)
+
 	db.Exec(`CREATE TABLE workspace_activities (
 		id TEXT PRIMARY KEY,
 		workspace_id TEXT NOT NULL,

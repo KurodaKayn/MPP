@@ -13,6 +13,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { normalizeStoredHtml } from "@/components/dashboard/content/editor/content-editor-utils";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
@@ -259,7 +260,7 @@ function AIProposalPreview({
   if (format === "html") {
     return (
       <article className="prose prose-sm max-w-none dark:prose-invert">
-        <div dangerouslySetInnerHTML={{ __html: value }} />
+        <div dangerouslySetInnerHTML={{ __html: normalizeStoredHtml(value) }} />
       </article>
     );
   }

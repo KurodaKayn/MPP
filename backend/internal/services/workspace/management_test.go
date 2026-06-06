@@ -93,9 +93,15 @@ func TestWorkspaceManagement(t *testing.T) {
 
 	workspaces, err := s.ListWorkspaces(member.ID)
 	require.NoError(t, err)
-	require.Len(t, workspaces.Items, 1)
-	require.Equal(t, workspace.ID, workspaces.Items[0].ID)
-	require.Equal(t, models.WorkspaceRoleViewer, workspaces.Items[0].Role)
+	require.Len(t, workspaces.Items, 2)
+	var teamWorkspace dto.Workspace
+	for _, item := range workspaces.Items {
+		if item.ID == workspace.ID {
+			teamWorkspace = item
+		}
+	}
+	require.Equal(t, workspace.ID, teamWorkspace.ID)
+	require.Equal(t, models.WorkspaceRoleViewer, teamWorkspace.Role)
 
 	detail, err := s.GetWorkspace(workspace.ID, viewer.ID)
 	require.NoError(t, err)
@@ -128,6 +134,57 @@ func TestWorkspaceManagement(t *testing.T) {
 
 	err = s.RemoveWorkspaceMember(workspace.ID, owner.ID, owner.ID)
 	require.ErrorIs(t, err, services.ErrInvalidWorkspaceMember)
+}
+
+func TestWorkspaceInvites(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "invite-owner", Email: "invite-owner@example.com"}
+	member := models.User{Username: "invite-member", Email: "invite-member@example.com"}
+	viewer := models.User{Username: "invite-viewer", Email: "invite-viewer@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&member).Error)
+	require.NoError(t, db.Create(&viewer).Error)
+
+	workspace, err := s.CreateWorkspace(owner.ID, dto.CreateWorkspaceRequest{Name: "Invite Workspace"})
+	require.NoError(t, err)
+
+	invite, err := s.CreateWorkspaceInvite(workspace.ID, owner.ID, dto.CreateWorkspaceInviteRequest{
+		Email: "INVITE-MEMBER@example.com",
+		Role:  models.WorkspaceRoleMember,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, invite.Token)
+	require.Equal(t, models.WorkspaceInviteStatusPending, invite.Status)
+
+	list, err := s.ListWorkspaceInvites(workspace.ID, owner.ID)
+	require.NoError(t, err)
+	require.Len(t, list.Items, 1)
+	require.Equal(t, invite.ID, list.Items[0].ID)
+
+	accepted, err := s.AcceptWorkspaceInvite(member.ID, dto.AcceptWorkspaceInviteRequest{Token: invite.Token})
+	require.NoError(t, err)
+	require.Equal(t, member.ID, accepted.UserID)
+	require.Equal(t, models.WorkspaceRoleMember, accepted.Role)
+
+	_, err = s.AcceptWorkspaceInvite(member.ID, dto.AcceptWorkspaceInviteRequest{Token: invite.Token})
+	require.ErrorIs(t, err, services.ErrInvalidWorkspaceInvite)
+
+	_, err = s.CreateWorkspaceInvite(workspace.ID, member.ID, dto.CreateWorkspaceInviteRequest{
+		Email: "invite-viewer@example.com",
+		Role:  models.WorkspaceRoleViewer,
+	})
+	require.ErrorIs(t, err, services.ErrForbidden)
+
+	revokedInvite, err := s.CreateWorkspaceInvite(workspace.ID, owner.ID, dto.CreateWorkspaceInviteRequest{
+		Email: "invite-viewer@example.com",
+		Role:  models.WorkspaceRoleViewer,
+	})
+	require.NoError(t, err)
+	require.NoError(t, s.RevokeWorkspaceInvite(workspace.ID, owner.ID, revokedInvite.ID))
+	_, err = s.AcceptWorkspaceInvite(viewer.ID, dto.AcceptWorkspaceInviteRequest{Token: revokedInvite.Token})
+	require.ErrorIs(t, err, services.ErrInvalidWorkspaceInvite)
 }
 
 func TestWorkspaceActivitiesRecordManagementChanges(t *testing.T) {

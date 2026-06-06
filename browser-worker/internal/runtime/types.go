@@ -48,10 +48,28 @@ func (r SessionReference) LegacyContainerID() string {
 }
 
 type Manager interface {
+	RuntimeDriver() string
 	StartSession(ctx context.Context, request StartSessionRequest) (SessionReference, error)
 	StopSession(ctx context.Context, reference SessionReference) error
 }
 
+type ExpiredSessionReapReport struct {
+	Driver          string
+	DeletedSessions int
+	OldestExpiredAt time.Time
+}
+
+func (r ExpiredSessionReapReport) CleanupLag(now time.Time) time.Duration {
+	if r.OldestExpiredAt.IsZero() {
+		return 0
+	}
+	lag := now.Sub(r.OldestExpiredAt)
+	if lag < 0 {
+		return 0
+	}
+	return lag
+}
+
 type ExpiredSessionReaper interface {
-	ReapExpiredSessions(ctx context.Context) error
+	ReapExpiredSessions(ctx context.Context) (ExpiredSessionReapReport, error)
 }

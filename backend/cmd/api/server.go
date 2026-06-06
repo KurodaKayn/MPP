@@ -21,12 +21,13 @@ import (
 )
 
 type serverConfig struct {
-	runtimeConfig app.RuntimeConfig
-	jwtSigningKey []byte
-	redisClient   *redis.Client
-	mockLogin     bool
-	ready         *atomic.Bool
-	sqlDB         *gorm.DB
+	runtimeConfig      app.RuntimeConfig
+	jwtSigningKey      []byte
+	redisClient        *redis.Client
+	mockLogin          bool
+	ready              *atomic.Bool
+	sqlDB              *gorm.DB
+	observabilitySuite *observability.Suite
 }
 
 type serverHandlers struct {
@@ -39,7 +40,10 @@ type serverHandlers struct {
 
 func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 	e := echo.New()
-	observabilitySuite := observability.New(config.runtimeConfig.ServiceName())
+	observabilitySuite := config.observabilitySuite
+	if observabilitySuite == nil {
+		observabilitySuite = observability.New(config.runtimeConfig.ServiceName())
+	}
 	observabilitySuite.RegisterRoutes(e)
 	if err := dbobs.InstallQueryObserver(config.sqlDB, observabilitySuite.DatabaseQueryObserver()); err != nil {
 		return nil, err
@@ -85,7 +89,7 @@ func registerPublicRoutes(e *echo.Echo, config serverConfig) {
 
 func registerAPIRoutes(e *echo.Echo, config serverConfig, h serverHandlers) error {
 	registerAuthRoutes(e, config, h)
-	registerAdminDashboardRoutes(e, h)
+	registerAdminDashboardRoutes(e, config, h)
 	e.POST("/api/user/dashboard/extension/events", h.userDashboard.RecordExtensionEvent)
 	registerInternalRoutes(e, h)
 	if err := registerUserDashboardRoutes(e, config, h); err != nil {
@@ -138,8 +142,10 @@ func registerAuthRoutes(e *echo.Echo, config serverConfig, h serverHandlers) {
 	e.GET("/api/user/dashboard/settings/x/oauth2/callback", h.userDashboard.CompleteXOAuth2)
 }
 
-func registerAdminDashboardRoutes(e *echo.Echo, h serverHandlers) {
+func registerAdminDashboardRoutes(e *echo.Echo, config serverConfig, h serverHandlers) {
 	adminGroup := e.Group("/api/admin/dashboard")
+	adminGroup.Use(echojwt.WithConfig(middleware.GetJWTConfig(config.jwtSigningKey)))
+	adminGroup.Use(middleware.RequireAdmin())
 	adminGroup.GET("/stats", h.adminDashboard.GetStats)
 	adminGroup.GET("/projects", h.adminDashboard.ListProjects)
 	adminGroup.GET("/projects/:id/publications", h.adminDashboard.GetProjectPublications)
@@ -230,11 +236,15 @@ func registerWorkspaceRoutes(e *echo.Echo, config serverConfig, h serverHandlers
 	workspaceGroup.POST("/:id/projects", h.userDashboard.CreateWorkspaceProject)
 	workspaceGroup.GET("/:id/activity", h.userDashboard.ListWorkspaceActivities)
 	workspaceGroup.GET("/:id/members", h.userDashboard.ListWorkspaceMembers)
+	workspaceGroup.GET("/:id/invites", h.userDashboard.ListWorkspaceInvites)
 	workspaceGroup.GET("/:id", h.userDashboard.GetWorkspace)
 	workspaceGroup.PATCH("/:id", h.userDashboard.UpdateWorkspace)
 	workspaceGroup.POST("/:id/members", h.userDashboard.AddWorkspaceMember)
+	workspaceGroup.POST("/:id/invites", h.userDashboard.CreateWorkspaceInvite)
+	workspaceGroup.POST("/invites/accept", h.userDashboard.AcceptWorkspaceInvite)
 	workspaceGroup.PATCH("/:id/members/:userId", h.userDashboard.UpdateWorkspaceMember)
 	workspaceGroup.DELETE("/:id/members/:userId", h.userDashboard.RemoveWorkspaceMember)
+	workspaceGroup.DELETE("/:id/invites/:inviteId", h.userDashboard.RevokeWorkspaceInvite)
 	return nil
 }
 

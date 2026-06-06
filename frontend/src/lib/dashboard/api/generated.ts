@@ -121,7 +121,10 @@ export interface components {
       | "workspace_updated"
       | "member_added"
       | "member_role_changed"
-      | "member_removed";
+      | "member_removed"
+      | "invite_created"
+      | "invite_accepted"
+      | "invite_revoked";
     /** @enum {string} */
     PublicationStatus:
       | "draft"
@@ -541,6 +544,16 @@ export interface components {
       email?: string;
       role: components["schemas"]["WorkspaceMemberRequestRole"];
     };
+    CreateWorkspaceInviteRequest: {
+      /** Format: email */
+      email: string;
+      role: components["schemas"]["WorkspaceMemberRequestRole"];
+      /** Format: date-time */
+      expires_at?: string;
+    };
+    AcceptWorkspaceInviteRequest: {
+      token: string;
+    };
     UpdateWorkspaceMemberRequest: {
       role: components["schemas"]["WorkspaceMemberRequestRole"];
     };
@@ -579,6 +592,37 @@ export interface components {
     };
     WorkspaceMembersResponse: {
       items: components["schemas"]["WorkspaceMember"][];
+    };
+    WorkspaceInvite: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      workspace_id: string;
+      /** Format: email */
+      email: string;
+      role: components["schemas"]["WorkspaceRole"];
+      /** Format: uuid */
+      invited_by: string;
+      /** Format: uuid */
+      accepted_by?: string;
+      /** @enum {string} */
+      status: "pending" | "accepted" | "expired" | "revoked";
+      /** Format: date-time */
+      expires_at: string;
+      /** Format: date-time */
+      accepted_at?: string;
+      /** Format: date-time */
+      revoked_at?: string;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    WorkspaceInviteWithToken: components["schemas"]["WorkspaceInvite"] & {
+      token: string;
+    };
+    WorkspaceInvitesResponse: {
+      items: components["schemas"]["WorkspaceInvite"][];
     };
     WorkspaceActivity: {
       /** Format: uuid */

@@ -47,15 +47,13 @@ describe("useAuthStore", () => {
     });
   });
 
-  it("stores an access token login in auth state", async () => {
+  it("stores an access token login state without keeping the token in web storage", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>(async () =>
         jsonResponse({
-          total_failed_publications: 0,
-          total_projects: 0,
-          total_published_publications: 0,
-          total_users: 1,
+          authenticated: true,
+          loginMethods: { mock: false, token: true },
         }),
       ),
     );
@@ -63,15 +61,16 @@ describe("useAuthStore", () => {
     await expect(
       useAuthStore.getState().loginWithToken("raw-token"),
     ).resolves.toEqual({
-      token: "raw-token",
+      token: null,
       username: "Creator",
     });
 
     expect(useAuthStore.getState().session).toEqual({
-      token: "raw-token",
+      token: null,
       username: "Creator",
     });
-    expect(window.localStorage.getItem(primaryAuthTokenName)).toBe("raw-token");
+    expect(window.localStorage.getItem(primaryAuthTokenName)).toBeNull();
+    expect(window.sessionStorage.getItem(primaryAuthTokenName)).toBeNull();
   });
 
   it("clears client and server auth state on logout", async () => {
@@ -80,7 +79,7 @@ describe("useAuthStore", () => {
     window.localStorage.setItem(primaryAuthTokenName, "raw-token");
     useAuthStore.setState({
       initialized: true,
-      session: { token: "raw-token", username: "Creator" },
+      session: { token: null, username: "Creator" },
     });
 
     await useAuthStore.getState().logout();
