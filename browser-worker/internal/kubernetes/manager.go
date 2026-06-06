@@ -40,6 +40,9 @@ const (
 
 	cdpPort    int32 = 9222
 	streamPort int32 = 6080
+
+	runtimeUserID  int64 = 1000
+	runtimeGroupID int64 = 1000
 )
 
 type Manager struct {
@@ -184,6 +187,8 @@ func (m *Manager) runtimePod(request browserruntime.StartSessionRequest) *corev1
 
 	runAsNonRoot := true
 	allowPrivilegeEscalation := false
+	runAsUser := runtimeUserID
+	runAsGroup := runtimeGroupID
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        runtimePodName(request.SessionID),
@@ -218,6 +223,8 @@ func (m *Manager) runtimePod(request browserruntime.StartSessionRequest) *corev1
 					},
 					SecurityContext: &corev1.SecurityContext{
 						RunAsNonRoot:             &runAsNonRoot,
+						RunAsUser:                &runAsUser,
+						RunAsGroup:               &runAsGroup,
 						AllowPrivilegeEscalation: &allowPrivilegeEscalation,
 					},
 				},
