@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -12,6 +13,7 @@ import (
 
 const jwtTokenLookup = "header:Authorization:Bearer ,cookie:sevenoxcloud.auth_token,cookie:auth_token,cookie:access_token"
 const DefaultTenantID = "default"
+const RoleAdmin = "admin"
 
 // JWTCustomClaims are custom claims extending default ones.
 type JWTCustomClaims struct {
@@ -29,6 +31,24 @@ func GetJWTConfig(signingKey []byte) echojwt.Config {
 		},
 		SigningKey:  signingKey,
 		TokenLookup: jwtTokenLookup,
+	}
+}
+
+// RequireAdmin allows only authenticated users with an admin role through.
+func RequireAdmin() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			claims, err := jwtClaimsFromContext(c)
+			if err != nil {
+				return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
+			}
+
+			if strings.ToLower(strings.TrimSpace(claims.Role)) != RoleAdmin {
+				return echo.NewHTTPError(http.StatusForbidden, "admin role required")
+			}
+
+			return next(c)
+		}
 	}
 }
 
