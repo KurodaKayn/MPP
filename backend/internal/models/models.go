@@ -124,28 +124,28 @@ const (
 )
 
 const (
-	ProjectActivityContentSaved            = "content_saved"
-	ProjectActivityCommentCreated          = "comment_created"
-	ProjectActivityCommentResolved         = "comment_resolved"
-	ProjectActivityCollaboratorAdded       = "collaborator_added"
-	ProjectActivityCollaboratorRoleChanged = "collaborator_role_changed"
-	ProjectActivityCollaboratorRemoved     = "collaborator_removed"
-	ProjectActivityPublishRequested        = "publish_requested"
-	ProjectActivityPublishQueued           = "publish_queued"
-	ProjectActivityShareLinkAccepted       = "share_link_accepted"
-	ProjectActivityShareLinkCreated        = "share_link_created"
-	ProjectActivityShareLinkRevoked        = "share_link_revoked"
-	ProjectActivityVersionRestored         = "version_restored"
+	ProjectActivityContentSaved            = string(contracts.ProjectActivityTypeContentSaved)
+	ProjectActivityCommentCreated          = string(contracts.ProjectActivityTypeCommentCreated)
+	ProjectActivityCommentResolved         = string(contracts.ProjectActivityTypeCommentResolved)
+	ProjectActivityCollaboratorAdded       = string(contracts.ProjectActivityTypeCollaboratorAdded)
+	ProjectActivityCollaboratorRoleChanged = string(contracts.ProjectActivityTypeCollaboratorRoleChanged)
+	ProjectActivityCollaboratorRemoved     = string(contracts.ProjectActivityTypeCollaboratorRemoved)
+	ProjectActivityPublishRequested        = string(contracts.ProjectActivityTypePublishRequested)
+	ProjectActivityPublishQueued           = string(contracts.ProjectActivityTypePublishQueued)
+	ProjectActivityShareLinkAccepted       = string(contracts.ProjectActivityTypeShareLinkAccepted)
+	ProjectActivityShareLinkCreated        = string(contracts.ProjectActivityTypeShareLinkCreated)
+	ProjectActivityShareLinkRevoked        = string(contracts.ProjectActivityTypeShareLinkRevoked)
+	ProjectActivityVersionRestored         = string(contracts.ProjectActivityTypeVersionRestored)
 )
 
 const (
-	ProjectCommentStatusOpen     = "open"
-	ProjectCommentStatusResolved = "resolved"
+	ProjectCommentStatusOpen     = string(contracts.ProjectCommentStatusOpen)
+	ProjectCommentStatusResolved = string(contracts.ProjectCommentStatusResolved)
 )
 
 const (
-	ProjectShareLinkStatusActive  = "active"
-	ProjectShareLinkStatusRevoked = "revoked"
+	ProjectShareLinkStatusActive  = string(contracts.ProjectShareLinkStatusActive)
+	ProjectShareLinkStatusRevoked = string(contracts.ProjectShareLinkStatusRevoked)
 )
 
 const (
