@@ -5,13 +5,14 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/kurodakayn/mpp-backend/internal/app"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
 )
 
 func TestWorkspaceRoutesIncludeManagementRoutes(t *testing.T) {
 	server, err := newServer(serverConfig{
-		runtimeConfig: backendRuntimeConfig{
-			processRole: backendProcessRoleAPI,
+		runtimeConfig: app.RuntimeConfig{
+			ProcessRole: app.ProcessRoleAPI,
 		},
 		jwtSigningKey: []byte("test-secret"),
 		ready:         &atomic.Bool{},

@@ -59,9 +59,16 @@ services:
   publish-worker:
     build:
       target: dev
+    command:
+      - air
+      - --build.cmd
+      - go build -o /tmp/publish-worker ./cmd/publish-worker
+      - --build.entrypoint
+      - /tmp/publish-worker
+      - --build.exclude_dir
+      - tmp,vendor
     environment:
       APP_ENV: development
-      BACKEND_PROCESS_ROLE: worker
       BACKEND_REQUIRE_REDIS: "true"
       ENABLE_DEV_SEED: "false"
       CONTENT_PIPELINE_MEDIA_ENABLED: ${CONTENT_PIPELINE_MEDIA_ENABLED:-true}

@@ -6,14 +6,15 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/kurodakayn/mpp-backend/internal/app"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
 )
 
 func TestServerAllowsConfiguredExtensionOriginWithCredentials(t *testing.T) {
 	server, err := newServer(serverConfig{
-		runtimeConfig: backendRuntimeConfig{
-			processRole:             backendProcessRoleAPI,
-			extensionAllowedOrigins: []string{"chrome-extension://abc"},
+		runtimeConfig: app.RuntimeConfig{
+			ProcessRole:             app.ProcessRoleAPI,
+			ExtensionAllowedOrigins: []string{"chrome-extension://abc"},
 		},
 		ready: &atomic.Bool{},
 	}, serverHandlers{})
@@ -45,9 +46,9 @@ func TestServerAllowsConfiguredExtensionOriginWithCredentials(t *testing.T) {
 
 func TestServerRejectsUnconfiguredExtensionOrigin(t *testing.T) {
 	server, err := newServer(serverConfig{
-		runtimeConfig: backendRuntimeConfig{
-			processRole:             backendProcessRoleAPI,
-			extensionAllowedOrigins: []string{"chrome-extension://abc"},
+		runtimeConfig: app.RuntimeConfig{
+			ProcessRole:             app.ProcessRoleAPI,
+			ExtensionAllowedOrigins: []string{"chrome-extension://abc"},
 		},
 		ready: &atomic.Bool{},
 	}, serverHandlers{})
@@ -69,8 +70,8 @@ func TestServerRejectsUnconfiguredExtensionOrigin(t *testing.T) {
 
 func TestUserDashboardRoutesIncludeExtensionSession(t *testing.T) {
 	server, err := newServer(serverConfig{
-		runtimeConfig: backendRuntimeConfig{
-			processRole: backendProcessRoleAPI,
+		runtimeConfig: app.RuntimeConfig{
+			ProcessRole: app.ProcessRoleAPI,
 		},
 		jwtSigningKey: []byte("test-secret"),
 		ready:         &atomic.Bool{},
@@ -92,8 +93,8 @@ func TestUserDashboardRoutesIncludeExtensionSession(t *testing.T) {
 
 func TestUserDashboardRoutesIncludeExtensionPrepublish(t *testing.T) {
 	server, err := newServer(serverConfig{
-		runtimeConfig: backendRuntimeConfig{
-			processRole: backendProcessRoleAPI,
+		runtimeConfig: app.RuntimeConfig{
+			ProcessRole: app.ProcessRoleAPI,
 		},
 		jwtSigningKey: []byte("test-secret"),
 		ready:         &atomic.Bool{},
@@ -115,8 +116,8 @@ func TestUserDashboardRoutesIncludeExtensionPrepublish(t *testing.T) {
 
 func TestUserDashboardRoutesIncludeExtensionHandoffs(t *testing.T) {
 	server, err := newServer(serverConfig{
-		runtimeConfig: backendRuntimeConfig{
-			processRole: backendProcessRoleAPI,
+		runtimeConfig: app.RuntimeConfig{
+			ProcessRole: app.ProcessRoleAPI,
 		},
 		jwtSigningKey: []byte("test-secret"),
 		ready:         &atomic.Bool{},
@@ -138,8 +139,8 @@ func TestUserDashboardRoutesIncludeExtensionHandoffs(t *testing.T) {
 
 func TestUserDashboardRoutesIncludeExtensionEvents(t *testing.T) {
 	server, err := newServer(serverConfig{
-		runtimeConfig: backendRuntimeConfig{
-			processRole: backendProcessRoleAPI,
+		runtimeConfig: app.RuntimeConfig{
+			ProcessRole: app.ProcessRoleAPI,
 		},
 		jwtSigningKey: []byte("test-secret"),
 		ready:         &atomic.Bool{},
@@ -161,8 +162,8 @@ func TestUserDashboardRoutesIncludeExtensionEvents(t *testing.T) {
 
 func TestUserDashboardRoutesIncludeMediaAssetEndpoints(t *testing.T) {
 	server, err := newServer(serverConfig{
-		runtimeConfig: backendRuntimeConfig{
-			processRole: backendProcessRoleAPI,
+		runtimeConfig: app.RuntimeConfig{
+			ProcessRole: app.ProcessRoleAPI,
 		},
 		jwtSigningKey: []byte("test-secret"),
 		ready:         &atomic.Bool{},

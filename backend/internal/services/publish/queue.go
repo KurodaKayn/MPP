@@ -95,6 +95,12 @@ func (q *RedisPublishQueue) Enqueue(ctx context.Context, job PublishJob) error {
 }
 
 func (q *RedisPublishQueue) Start(ctx context.Context, handler PublishJobHandler) {
+	if err := q.Run(ctx, handler); err != nil && ctx.Err() == nil {
+		log.Printf("publish worker stopped with error: %v", err)
+	}
+}
+
+func (q *RedisPublishQueue) Run(ctx context.Context, handler PublishJobHandler) error {
 	server := asynq.NewServerFromRedisClient(q.redisClient, asynq.Config{
 		Concurrency: publishWorkerConcurrent,
 		Queues: map[string]int{
@@ -115,9 +121,13 @@ func (q *RedisPublishQueue) Start(ctx context.Context, handler PublishJobHandler
 		server.Shutdown()
 	}()
 
-	if err := server.Run(mux); err != nil && ctx.Err() == nil {
-		log.Printf("publish worker stopped with error: %v", err)
+	if err := server.Run(mux); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return err
 	}
+	return nil
 }
 
 func newPublishTask(job PublishJob) (*asynq.Task, error) {
@@ -306,6 +316,28 @@ func (s *Service) StartPublishWorker(ctx context.Context) {
 	}
 
 	go s.queue.Start(ctx, s.processPublishJob)
+}
+
+func (s *Service) StartPublishWorkerWithErrors(ctx context.Context) <-chan error {
+	if s.queue == nil {
+		return nil
+	}
+
+	runner, ok := s.queue.(interface {
+		Run(context.Context, PublishJobHandler) error
+	})
+	if !ok {
+		s.StartPublishWorker(ctx)
+		return nil
+	}
+
+	workerErrors := make(chan error, 1)
+	go func() {
+		if err := runner.Run(ctx, s.processPublishJob); err != nil && ctx.Err() == nil {
+			workerErrors <- err
+		}
+	}()
+	return workerErrors
 }
 
 func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
