@@ -188,6 +188,7 @@ jobs:
         with:
           version: v2.12.2
           working-directory: backend
+          args: ./...
 
       - name: Test
         run: go test ./...
