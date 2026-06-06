@@ -483,6 +483,129 @@ describe("useContentPageController", () => {
     view.unmount();
   });
 
+  it("blocks prepublish and publish actions while editor media is unsaved", async () => {
+    mocks.getDashboardProject.mockResolvedValue({
+      created_at: "2026-05-30T12:00:00.000Z",
+      id: "project-1",
+      publications: [
+        { enabled: true, id: "pub-1", platform: "wechat", status: "draft" },
+      ],
+      role: "owner",
+      source_content: "<p>Old body</p>",
+      status: "ready",
+      title: "Old title",
+      updated_at: "2026-05-30T12:00:00.000Z",
+      user_id: "user-1",
+    });
+    mocks.getProjectPublications.mockResolvedValue({
+      items: [],
+      project_id: "project-1",
+    });
+    const view = renderController("project-1");
+
+    await act(async () => {
+      await flushPromises();
+      await flushPromises();
+    });
+
+    act(() => {
+      useContentPageStore.setState({
+        content: {
+          firstImageSrc: "blob:http://localhost:3000/local-preview",
+          html: '<p><img src="blob:http://localhost:3000/local-preview" data-mpp-local-media-id="local-1"></p>',
+          text: "Rendered body",
+        },
+        prepublishDrafts: {
+          wechat: {
+            format: "html",
+            raw: "<p>Rendered body</p>",
+            syncedAt: "2026-05-30T12:00:00.000Z",
+          },
+        },
+        selectedPlatforms: ["wechat"],
+        title: "Post title",
+      });
+    });
+
+    expect(view.getController().prepublish.canEdit).toBe(false);
+    expect(view.getController().publishing.canPublish).toBe(false);
+    expect(view.getController().publishing.canOpenXPostIntent).toBe(false);
+
+    await act(async () => {
+      await view.getController().prepublish.onSync(["wechat"]);
+      view.getController().publishing.onPublish();
+      view.getController().publishing.onOpenDouyinPublishSession();
+      await flushPromises();
+    });
+
+    expect(mocks.updateDashboardProject).not.toHaveBeenCalled();
+    expect(mocks.syncProjectPrepublish).not.toHaveBeenCalled();
+    expect(mocks.saveDashboardProjectContent).not.toHaveBeenCalled();
+    expect(mocks.publishProject).not.toHaveBeenCalled();
+    expect(mocks.startDouyinPublishSession).not.toHaveBeenCalled();
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      "project.savePendingMediaTitle",
+      {
+        description: "project.savePendingMediaDesc",
+      },
+    );
+
+    view.unmount();
+  });
+
+  it("disables prepublish and publishing controls while saving", async () => {
+    mocks.getDashboardProject.mockResolvedValue({
+      created_at: "2026-05-30T12:00:00.000Z",
+      id: "project-1",
+      publications: [
+        { enabled: true, id: "pub-1", platform: "wechat", status: "draft" },
+      ],
+      role: "owner",
+      source_content: "<p>Old body</p>",
+      status: "ready",
+      title: "Old title",
+      updated_at: "2026-05-30T12:00:00.000Z",
+      user_id: "user-1",
+    });
+    mocks.getProjectPublications.mockResolvedValue({
+      items: [],
+      project_id: "project-1",
+    });
+    const view = renderController("project-1");
+
+    await act(async () => {
+      await flushPromises();
+      await flushPromises();
+    });
+
+    act(() => {
+      useContentPageStore.setState({
+        content: {
+          firstImageSrc: "",
+          html: "<p>Rendered body</p>",
+          text: "Rendered body",
+        },
+        isSaving: true,
+        prepublishDrafts: {
+          wechat: {
+            format: "html",
+            raw: "<p>Rendered body</p>",
+            syncedAt: "2026-05-30T12:00:00.000Z",
+          },
+        },
+        selectedPlatforms: ["wechat"],
+        title: "Post title",
+      });
+    });
+
+    expect(view.getController().prepublish.canEdit).toBe(false);
+    expect(view.getController().publishing.canOpenXPostIntent).toBe(false);
+    expect(view.getController().publishing.canPublish).toBe(false);
+    expect(view.getController().publishing.canSelectPlatforms).toBe(false);
+
+    view.unmount();
+  });
+
   it("excludes Douyin from automatic publishing", async () => {
     mocks.getDashboardProject.mockResolvedValue({
       created_at: "2026-05-30T12:00:00.000Z",
