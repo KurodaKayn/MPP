@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -187,6 +186,7 @@ func (m *Manager) runtimePod(request browserruntime.StartSessionRequest) *corev1
 
 	runAsNonRoot := true
 	allowPrivilegeEscalation := false
+	automountServiceAccountToken := false
 	runAsUser := runtimeUserID
 	runAsGroup := runtimeGroupID
 	return &corev1.Pod{
@@ -197,7 +197,7 @@ func (m *Manager) runtimePod(request browserruntime.StartSessionRequest) *corev1
 			Annotations: map[string]string{"mpp.kurodakayn.dev/expires-at": expiresAt.UTC().Format(time.RFC3339)},
 		},
 		Spec: corev1.PodSpec{
-			AutomountServiceAccountToken: boolPtr(false),
+			AutomountServiceAccountToken: &automountServiceAccountToken,
 			RestartPolicy:                corev1.RestartPolicyNever,
 			Containers: []corev1.Container{
 				{
@@ -369,13 +369,7 @@ func kubernetesConfigFromEnv() (*rest.Config, error) {
 	if kubeconfig := strings.TrimSpace(os.Getenv(kubeconfigEnv)); kubeconfig != "" {
 		return clientcmd.BuildConfigFromFlags("", kubeconfig)
 	}
-	if home := strings.TrimSpace(os.Getenv("HOME")); home != "" {
-		kubeconfig := filepath.Join(home, ".kube", "config")
-		if _, err := os.Stat(kubeconfig); err == nil {
-			return clientcmd.BuildConfigFromFlags("", kubeconfig)
-		}
-	}
-	config, err := rest.InClusterConfig()
+	config, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to load kubernetes config: %w", err)
 	}
@@ -404,8 +398,4 @@ func durationEnvOrDefault(name string, fallback time.Duration) time.Duration {
 		return time.Duration(seconds) * time.Second
 	}
 	return fallback
-}
-
-func boolPtr(value bool) *bool {
-	return &value
 }

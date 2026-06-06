@@ -3,6 +3,7 @@ package isolation
 import (
 	"net"
 	"net/url"
+	"slices"
 
 	"github.com/kurodakayn/mpp-browser-worker/internal/cookies"
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
@@ -23,23 +24,17 @@ func IsDomainAllowed(rawURL string, rules []session.DomainRule) bool {
 
 	for _, rule := range rules {
 		// Check scheme
-		schemeMatch := false
-		for _, s := range rule.Schemes {
-			if s == scheme {
-				schemeMatch = true
-				break
-			}
-		}
-		if !schemeMatch {
+		if !slices.Contains(rule.Schemes, scheme) {
 			continue
 		}
 
 		// Check host
-		if rule.Match == "exact" {
+		switch rule.Match {
+		case "exact":
 			if host == rule.Host {
 				return true
 			}
-		} else if rule.Match == "suffix" {
+		case "suffix":
 			if cookies.DomainMatches(host, rule.Host) {
 				return true
 			}

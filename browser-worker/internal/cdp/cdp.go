@@ -14,6 +14,7 @@ import (
 	"github.com/chromedp/cdproto/storage"
 	cdptarget "github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
+
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
 
@@ -22,7 +23,7 @@ func VersionWebSocketURL(cdpHost string, cdpPort int) (string, error) {
 	reqURL := fmt.Sprintf("http://%s/json/version", cdpAddr)
 	client := &http.Client{Timeout: 2 * time.Second}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		httpReq, _ := http.NewRequest(http.MethodGet, reqURL, nil)
 		httpReq.Host = "localhost" // Bypass Chromium Host check
 
@@ -34,12 +35,12 @@ func VersionWebSocketURL(cdpHost string, cdpPort int) (string, error) {
 			if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && result.WebSocketDebuggerUrl != "" {
 				u, _ := url.Parse(result.WebSocketDebuggerUrl)
 				u.Host = cdpAddr
-				resp.Body.Close()
+				_ = resp.Body.Close()
 				return u.String(), nil
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		} else if resp != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 		time.Sleep(1 * time.Second)
 	}
@@ -52,7 +53,7 @@ func PageTargetID(cdpHost string, cdpPort int) (cdptarget.ID, error) {
 	reqURL := fmt.Sprintf("http://%s/json", cdpAddr)
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		httpReq, _ := http.NewRequest(http.MethodGet, reqURL, nil)
 		httpReq.Host = "localhost" // Bypass Host validation
 
@@ -64,7 +65,7 @@ func PageTargetID(cdpHost string, cdpPort int) (cdptarget.ID, error) {
 		}
 
 		func() {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != http.StatusOK {
 				return
 			}
@@ -83,7 +84,7 @@ func PageTargetID(cdpHost string, cdpPort int) (cdptarget.ID, error) {
 					break
 				}
 			}
-			if strings.HasPrefix(reqURL, "target:") {
+			if _, ok := strings.CutPrefix(reqURL, "target:"); ok {
 				return
 			}
 			for _, t := range targets {
@@ -94,8 +95,8 @@ func PageTargetID(cdpHost string, cdpPort int) (cdptarget.ID, error) {
 			}
 		}()
 
-		if strings.HasPrefix(reqURL, "target:") {
-			return cdptarget.ID(strings.TrimPrefix(reqURL, "target:")), nil
+		if targetID, ok := strings.CutPrefix(reqURL, "target:"); ok {
+			return cdptarget.ID(targetID), nil
 		}
 		time.Sleep(1 * time.Second)
 	}

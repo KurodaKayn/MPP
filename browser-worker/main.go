@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -10,12 +11,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+
 	"github.com/kurodakayn/mpp-browser-worker/internal/observability"
 	"github.com/kurodakayn/mpp-browser-worker/internal/runtimefactory"
 	"github.com/kurodakayn/mpp-browser-worker/internal/server"
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 const shutdownTimeout = 15 * time.Second
@@ -54,7 +56,7 @@ func main() {
 
 	select {
 	case err := <-serverErrors:
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			e.Logger.Fatal(err)
 		}
 	case <-rootCtx.Done():

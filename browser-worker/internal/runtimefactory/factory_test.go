@@ -3,9 +3,10 @@ package runtimefactory
 import (
 	"testing"
 
-	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 )
 
 func TestDriverFromEnvDefaultsToDocker(t *testing.T) {

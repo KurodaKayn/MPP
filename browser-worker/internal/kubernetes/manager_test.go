@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,9 +11,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 )
 
 func TestRuntimePodIncludesSessionMetadataAndResources(t *testing.T) {
@@ -76,7 +78,10 @@ func TestStartSessionCreatesReadyPodReference(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	go markPodReady(ctx, t, client, "runtime-ns", "mpp-browser-session-123", "10.42.0.7")
+	readyErrors := make(chan error, 1)
+	go func() {
+		readyErrors <- markPodReady(ctx, client, "runtime-ns", "mpp-browser-session-123", "10.42.0.7")
+	}()
 
 	reference, err := manager.StartSession(ctx, browserruntime.StartSessionRequest{
 		SessionID: "session-123",
@@ -85,6 +90,7 @@ func TestStartSessionCreatesReadyPodReference(t *testing.T) {
 		TTL:       time.Minute,
 	})
 
+	require.NoError(t, <-readyErrors)
 	require.NoError(t, err)
 	assert.Equal(t, browserruntime.DriverKubernetes, reference.Driver)
 	assert.Equal(t, "mpp-browser-session-123", reference.RuntimeID)
@@ -133,22 +139,24 @@ func TestNewManagerRejectsInvalidResources(t *testing.T) {
 	assert.ErrorContains(t, err, "invalid kubernetes runtime resource cpu")
 }
 
-func markPodReady(ctx context.Context, t *testing.T, client *fake.Clientset, namespace string, name string, podIP string) {
-	t.Helper()
+func markPodReady(ctx context.Context, client *fake.Clientset, namespace string, name string, podIP string) error {
 	deadline := time.After(300 * time.Millisecond)
 	ticker := time.NewTicker(time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-deadline:
-			t.Errorf("timed out waiting for pod creation")
-			return
+			return fmt.Errorf("timed out waiting for pod creation")
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-ticker.C:
 			pod, err := client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			require.NoError(t, err)
+			if err != nil {
+				return err
+			}
 			pod.Status = corev1.PodStatus{
 				Phase: corev1.PodRunning,
 				PodIP: podIP,
@@ -157,8 +165,7 @@ func markPodReady(ctx context.Context, t *testing.T, client *fake.Clientset, nam
 				},
 			}
 			_, err = client.CoreV1().Pods(namespace).UpdateStatus(ctx, pod, metav1.UpdateOptions{})
-			require.NoError(t, err)
-			return
+			return err
 		}
 	}
 }
