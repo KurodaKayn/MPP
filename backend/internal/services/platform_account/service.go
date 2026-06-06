@@ -114,29 +114,57 @@ func (s *Service) ResolvePublicationAccount(userID uuid.UUID, pub *models.Projec
 	query := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, pub.Platform)
 	if pub.PlatformAccountID != nil && *pub.PlatformAccountID != uuid.Nil {
 		query = query.Where("id = ?", *pub.PlatformAccountID)
-	} else {
-		query = query.Order("updated_at DESC")
-	}
-	if err := query.First(&account).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := query.First(&account).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, ErrInvalidPlatformAccount
+			}
+			return nil, err
+		}
+		if err := s.RequireAccountUse(userID, account, pub.ProjectID); err != nil {
+			return nil, err
+		}
+		if !accountReadyForPublication(account) {
+			if err := s.recordAccountNeedsReauthNotification(userID, workspaceID, account, pub.ProjectID); err != nil {
+				return nil, err
+			}
 			return nil, ErrInvalidPlatformAccount
 		}
+		return &account, nil
+	}
+
+	var accounts []models.PlatformAccount
+	if err := query.Order("updated_at DESC").Find(&accounts).Error; err != nil {
 		return nil, err
 	}
-	if err := s.RequireAccountUse(userID, account, pub.ProjectID); err != nil {
-		return nil, err
+	var firstUnavailable *models.PlatformAccount
+	for i := range accounts {
+		account = accounts[i]
+		if err := s.RequireAccountUse(userID, account, pub.ProjectID); err != nil {
+			if errors.Is(err, ErrPlatformAccountForbidden) {
+				continue
+			}
+			return nil, err
+		}
+		if !accountReadyForPublication(account) {
+			if firstUnavailable == nil {
+				firstUnavailable = &accounts[i]
+			}
+			continue
+		}
+		accountID := account.ID
+		pub.PlatformAccountID = &accountID
+		return &account, nil
 	}
-	if account.Status != models.PlatformAccountStatusConnected || account.HealthStatus == models.PlatformAccountHealthNeedsReauth || account.HealthStatus == models.PlatformAccountHealthFailed {
-		if err := s.recordAccountNeedsReauthNotification(userID, workspaceID, account, pub.ProjectID); err != nil {
+	if firstUnavailable != nil {
+		if err := s.recordAccountNeedsReauthNotification(userID, workspaceID, *firstUnavailable, pub.ProjectID); err != nil {
 			return nil, err
 		}
 		return nil, ErrInvalidPlatformAccount
 	}
-	if pub.PlatformAccountID == nil || *pub.PlatformAccountID == uuid.Nil {
-		accountID := account.ID
-		pub.PlatformAccountID = &accountID
+	if len(accounts) > 0 {
+		return nil, ErrPlatformAccountForbidden
 	}
-	return &account, nil
+	return nil, ErrInvalidPlatformAccount
 }
 
 func (s *Service) recordAccountNeedsReauthNotification(userID uuid.UUID, workspaceID uuid.UUID, account models.PlatformAccount, projectID uuid.UUID) error {
@@ -169,10 +197,10 @@ func (s *Service) recordAccountNeedsReauthNotification(userID uuid.UUID, workspa
 }
 
 func (s *Service) RequireAccountUse(userID uuid.UUID, account models.PlatformAccount, projectID uuid.UUID) error {
-	if account.OwnerUserID != nil && *account.OwnerUserID == userID {
-		return nil
-	}
-	if account.UserID == userID {
+	if account.WorkspaceID != nil && (account.OwnerUserID != nil && *account.OwnerUserID == userID || account.UserID == userID) {
+		if err := s.requireWorkspaceAccountMembership(userID, *account.WorkspaceID); err != nil {
+			return err
+		}
 		return nil
 	}
 	if account.ShareScope == models.PlatformAccountShareWorkspace {
@@ -207,6 +235,21 @@ func (s *Service) RequireAccountUse(userID uuid.UUID, account models.PlatformAcc
 		}
 	}
 	return ErrPlatformAccountForbidden
+}
+
+func (s *Service) requireWorkspaceAccountMembership(userID uuid.UUID, workspaceID uuid.UUID) error {
+	if workspaceID == models.PersonalWorkspaceID(userID) {
+		return nil
+	}
+	var member models.WorkspaceMember
+	err := s.db.Select("role").First(&member, "workspace_id = ? AND user_id = ?", workspaceID, userID).Error
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrPlatformAccountForbidden
+	}
+	return err
 }
 
 func (s *Service) ensureAccountDefaults(account *models.PlatformAccount, userID uuid.UUID, workspaceID uuid.UUID, platform string) {
@@ -262,4 +305,10 @@ func healthStatusForStatus(status string) string {
 	default:
 		return models.PlatformAccountHealthUnknown
 	}
+}
+
+func accountReadyForPublication(account models.PlatformAccount) bool {
+	return account.Status == models.PlatformAccountStatusConnected &&
+		account.HealthStatus != models.PlatformAccountHealthNeedsReauth &&
+		account.HealthStatus != models.PlatformAccountHealthFailed
 }

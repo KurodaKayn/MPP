@@ -105,6 +105,9 @@ func (s *CookieStore) SaveForAccount(ctx context.Context, userID uuid.UUID, work
 		"last_tested_at":       &now,
 		"last_test_error":      "",
 	}
+	if profile.PlatformUserID != "" {
+		updates["platform_user_id"] = profile.PlatformUserID
+	}
 	if workspaceID != uuid.Nil {
 		updates["workspace_id"] = workspaceID
 	}
@@ -112,8 +115,14 @@ func (s *CookieStore) SaveForAccount(ctx context.Context, userID uuid.UUID, work
 	query := s.db.WithContext(ctx).Model(&models.PlatformAccount{})
 	if accountID != uuid.Nil {
 		query = query.Where("id = ?", accountID)
+	} else if profile.PlatformUserID != "" {
+		if workspaceID != uuid.Nil {
+			query = query.Where("workspace_id = ? AND platform = ? AND platform_user_id = ?", workspaceID, platform, profile.PlatformUserID)
+		} else {
+			query = query.Where("user_id = ? AND platform = ? AND platform_user_id = ?", userID, platform, profile.PlatformUserID)
+		}
 	} else if workspaceID != uuid.Nil {
-		query = query.Where("workspace_id = ? AND platform = ?", workspaceID, platform)
+		query = query.Where("1 = 0")
 	} else {
 		query = query.Where("user_id = ? AND platform = ?", userID, platform)
 	}
@@ -130,6 +139,7 @@ func (s *CookieStore) SaveForAccount(ctx context.Context, userID uuid.UUID, work
 			Platform:            platform,
 			Username:            profile.Username,
 			DisplayName:         firstNonEmpty(profile.Username, platform),
+			PlatformUserID:      profile.PlatformUserID,
 			AvatarURL:           profile.AvatarURL,
 			Cookies:             datatypes.JSON(envelopeJSON),
 			Status:              models.PlatformAccountStatusConnected,
