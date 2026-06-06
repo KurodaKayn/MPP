@@ -82,7 +82,7 @@ func registerPublicRoutes(e *echo.Echo, config serverConfig) {
 
 func registerAPIRoutes(e *echo.Echo, config serverConfig, h serverHandlers) error {
 	registerAuthRoutes(e, config, h)
-	registerAdminDashboardRoutes(e, h)
+	registerAdminDashboardRoutes(e, config, h)
 	e.POST("/api/user/dashboard/extension/events", h.userDashboard.RecordExtensionEvent)
 	if err := registerUserDashboardRoutes(e, config, h); err != nil {
 		return err
@@ -104,8 +104,10 @@ func registerAuthRoutes(e *echo.Echo, config serverConfig, h serverHandlers) {
 	e.GET("/api/user/dashboard/settings/x/oauth2/callback", h.userDashboard.CompleteXOAuth2)
 }
 
-func registerAdminDashboardRoutes(e *echo.Echo, h serverHandlers) {
+func registerAdminDashboardRoutes(e *echo.Echo, config serverConfig, h serverHandlers) {
 	adminGroup := e.Group("/api/admin/dashboard")
+	adminGroup.Use(echojwt.WithConfig(middleware.GetJWTConfig(config.jwtSigningKey)))
+	adminGroup.Use(middleware.RequireAdmin())
 	adminGroup.GET("/stats", h.adminDashboard.GetStats)
 	adminGroup.GET("/projects", h.adminDashboard.ListProjects)
 	adminGroup.GET("/projects/:id/publications", h.adminDashboard.GetProjectPublications)

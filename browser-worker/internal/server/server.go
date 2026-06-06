@@ -2,9 +2,12 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	cdpproto "github.com/chromedp/cdproto/cdp"
@@ -25,27 +28,52 @@ import (
 )
 
 type Server struct {
-	runtimes   browserruntime.Manager
-	sessions   *session.Manager
-	stateStore *session.RedisStateStore
+	runtimes      browserruntime.Manager
+	sessions      *session.Manager
+	stateStore    *session.RedisStateStore
+	internalToken string
 }
 
 func New(runtimes browserruntime.Manager, sessions *session.Manager, stateStore *session.RedisStateStore) *Server {
 	return &Server{
-		runtimes:   runtimes,
-		sessions:   sessions,
-		stateStore: stateStore,
+		runtimes:      runtimes,
+		sessions:      sessions,
+		stateStore:    stateStore,
+		internalToken: internalTokenFromEnv(),
 	}
 }
 
 func (s *Server) RegisterRoutes(e *echo.Echo) {
-	e.POST("/internal/browser-sessions", s.createSession)
-	e.GET("/internal/browser-sessions/:ref", s.getSession)
-	e.Any("/internal/browser-sessions/:ref/stream", stream.Handler(s.sessions))
-	e.Any("/internal/browser-sessions/:ref/stream/*", stream.Handler(s.sessions))
-	e.POST("/internal/browser-sessions/:ref/capture", s.captureSession)
-	e.POST("/internal/browser-sessions/:ref/publish/douyin", s.startDouyinPublish)
-	e.DELETE("/internal/browser-sessions/:ref", s.deleteSession)
+	internalGroup := e.Group("/internal/browser-sessions")
+	internalGroup.Use(requireInternalBearerToken(s.internalToken))
+	internalGroup.POST("", s.createSession)
+	internalGroup.GET("/:ref", s.getSession)
+	internalGroup.Any("/:ref/stream", stream.Handler(s.sessions))
+	internalGroup.Any("/:ref/stream/*", stream.Handler(s.sessions))
+	internalGroup.POST("/:ref/capture", s.captureSession)
+	internalGroup.POST("/:ref/publish/douyin", s.startDouyinPublish)
+	internalGroup.DELETE("/:ref", s.deleteSession)
+}
+
+const internalTokenEnv = "BROWSER_WORKER_INTERNAL_TOKEN"
+
+func internalTokenFromEnv() string {
+	return strings.TrimSpace(os.Getenv(internalTokenEnv))
+}
+
+func requireInternalBearerToken(expectedToken string) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			if expectedToken == "" {
+				return echo.NewHTTPError(http.StatusServiceUnavailable, "browser worker internal token is not configured")
+			}
+			token, ok := strings.CutPrefix(c.Request().Header.Get(echo.HeaderAuthorization), "Bearer ")
+			if !ok || subtle.ConstantTimeCompare([]byte(token), []byte(expectedToken)) != 1 {
+				return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
+			}
+			return next(c)
+		}
+	}
 }
 
 func (s *Server) ShutdownSessions(ctx context.Context) {

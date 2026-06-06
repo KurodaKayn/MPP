@@ -4,6 +4,17 @@ import { serializeMediaAssetRefs } from "./content-editor-media";
 const EMPTY_DOCUMENT_HTML = "<p></p>";
 
 export const MAX_INLINE_IMAGE_SIZE = 8 * 1024 * 1024;
+const BLOCKED_HTML_ELEMENTS =
+  "base, embed, form, iframe, link, math, meta, object, script, style, svg, template";
+const URL_ATTRIBUTES = new Set([
+  "action",
+  "formaction",
+  "href",
+  "poster",
+  "src",
+  "xlink:href",
+]);
+const BLOCKED_ATTRIBUTES = new Set(["srcdoc", "srcset", "style"]);
 
 function canUseDomParser() {
   return typeof window !== "undefined" && typeof DOMParser !== "undefined";
@@ -46,7 +57,9 @@ export function normalizeStoredHtml(html: string) {
     figure.replaceWith(fragment);
   });
 
-  return documentFragment.body.innerHTML.trim() || EMPTY_DOCUMENT_HTML;
+  return (
+    sanitizeStoredHtml(documentFragment.body.innerHTML) || EMPTY_DOCUMENT_HTML
+  );
 }
 
 export function normalizeUrl(url: string) {
@@ -77,18 +90,6 @@ export function sanitizeClipboardHtml(html: string) {
 
   const documentFragment = new DOMParser().parseFromString(html, "text/html");
 
-  documentFragment
-    .querySelectorAll("script, style, iframe, object, embed")
-    .forEach((element) => element.remove());
-
-  documentFragment.querySelectorAll("*").forEach((element) => {
-    [...element.attributes].forEach((attribute) => {
-      if (attribute.name.toLowerCase().startsWith("on")) {
-        element.removeAttribute(attribute.name);
-      }
-    });
-  });
-
   documentFragment.querySelectorAll("a").forEach((anchor) => {
     const safeHref = normalizeUrl(anchor.getAttribute("href") ?? "");
 
@@ -113,6 +114,92 @@ export function sanitizeClipboardHtml(html: string) {
   });
 
   return normalizeStoredHtml(documentFragment.body.innerHTML);
+}
+
+export function sanitizeStoredHtml(html: string) {
+  if (!canUseDomParser()) {
+    return html.trim();
+  }
+
+  const documentFragment = new DOMParser().parseFromString(html, "text/html");
+
+  documentFragment
+    .querySelectorAll(BLOCKED_HTML_ELEMENTS)
+    .forEach((element) => element.remove());
+
+  documentFragment.querySelectorAll("*").forEach((element) => {
+    [...element.attributes].forEach((attribute) => {
+      const attributeName = attribute.name.toLowerCase();
+      if (
+        attributeName.startsWith("on") ||
+        attributeName.startsWith("xmlns") ||
+        BLOCKED_ATTRIBUTES.has(attributeName)
+      ) {
+        element.removeAttribute(attribute.name);
+        return;
+      }
+
+      if (
+        URL_ATTRIBUTES.has(attributeName) &&
+        !isSafeHtmlUrl(attributeName, attribute.value)
+      ) {
+        element.removeAttribute(attribute.name);
+      }
+    });
+  });
+
+  return documentFragment.body.innerHTML.trim();
+}
+
+function isSafeHtmlUrl(attributeName: string, value: string) {
+  const normalizedValue = normalizeHtmlUrlForSafety(value);
+  if (!normalizedValue) {
+    return false;
+  }
+
+  if (normalizedValue.startsWith("#") || normalizedValue.startsWith("/")) {
+    return true;
+  }
+
+  if (!normalizedValue.includes(":")) {
+    return true;
+  }
+
+  const scheme = normalizedValue.split(":", 1)[0];
+  if (attributeName === "href" || attributeName === "xlink:href") {
+    return ["http", "https", "mailto", "tel"].includes(scheme);
+  }
+
+  if (attributeName === "src" || attributeName === "poster") {
+    return (
+      ["http", "https", "blob"].includes(scheme) ||
+      normalizedValue.startsWith("mpp://media/") ||
+      isSafeDataImageUrl(normalizedValue)
+    );
+  }
+
+  return ["http", "https"].includes(scheme);
+}
+
+function normalizeHtmlUrlForSafety(value: string) {
+  const textArea = document.createElement("textarea");
+  textArea.innerHTML = value.trim();
+  let normalizedValue = "";
+
+  for (const character of textArea.value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint <= 0x1f || codePoint === 0x7f || /\s/.test(character)) {
+      continue;
+    }
+
+    normalizedValue += character;
+  }
+
+  return normalizedValue.toLowerCase();
+}
+
+function isSafeDataImageUrl(value: string) {
+  return /^data:image\/(?:png|jpe?g|gif|webp|avif);base64,/i.test(value);
 }
 
 export function contentValueFromHtml(html: string): ContentValue {

@@ -17,9 +17,12 @@ import (
 )
 
 const (
-	aiServiceURLEnv     = "AI_SERVICE_URL"
-	defaultAIServiceURL = "http://localhost:8000"
-	aiServiceTimeout    = 90 * time.Second
+	aiServiceURLEnv              = "AI_SERVICE_URL"
+	aiServiceInternalTokenEnv    = "AI_SERVICE_INTERNAL_TOKEN"
+	defaultAIServiceURL          = "http://localhost:8000"
+	aiServiceTimeout             = 90 * time.Second
+	aiServiceUnavailableMessage  = "request failed"
+	aiServiceAuthenticationError = "authentication failed"
 )
 
 var (
@@ -40,8 +43,9 @@ type AIServiceStream struct {
 }
 
 type AIServiceClient struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL       string
+	httpClient    *http.Client
+	internalToken string
 }
 
 func NewAIServiceClientFromEnv() *AIServiceClient {
@@ -49,16 +53,22 @@ func NewAIServiceClientFromEnv() *AIServiceClient {
 	if baseURL == "" {
 		baseURL = defaultAIServiceURL
 	}
-	return NewAIServiceClient(baseURL, nil)
+	internalToken := strings.TrimSpace(os.Getenv(aiServiceInternalTokenEnv))
+	return NewAIServiceClientWithToken(baseURL, nil, internalToken)
 }
 
 func NewAIServiceClient(baseURL string, httpClient *http.Client) *AIServiceClient {
+	return NewAIServiceClientWithToken(baseURL, httpClient, "")
+}
+
+func NewAIServiceClientWithToken(baseURL string, httpClient *http.Client, internalToken string) *AIServiceClient {
 	if httpClient == nil {
 		httpClient = resilience.NewHTTPClient("ai-service", aiServiceTimeout)
 	}
 	return &AIServiceClient{
-		baseURL:    strings.TrimRight(strings.TrimSpace(baseURL), "/"),
-		httpClient: httpClient,
+		baseURL:       strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		httpClient:    httpClient,
+		internalToken: strings.TrimSpace(internalToken),
 	}
 }
 
@@ -110,7 +120,7 @@ func (c *AIServiceClient) postJSON(ctx context.Context, path string, payload any
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
+	req, err := c.newRequest(ctx, path, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -143,7 +153,7 @@ func (c *AIServiceClient) postStream(ctx context.Context, path string, payload a
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
+	req, err := c.newRequest(ctx, path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -166,6 +176,17 @@ func (c *AIServiceClient) postStream(ctx context.Context, path string, payload a
 	}, nil
 }
 
+func (c *AIServiceClient) newRequest(ctx context.Context, path string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if c.internalToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.internalToken)
+	}
+	return req, nil
+}
+
 func aiServiceStatusError(resp *http.Response) error {
 	message := strings.TrimSpace(readAIServiceErrorMessage(resp.Body))
 	if message == "" {
@@ -174,7 +195,10 @@ func aiServiceStatusError(resp *http.Response) error {
 	if resp.StatusCode == http.StatusBadRequest {
 		return fmt.Errorf("%w: %s", ErrInvalidAIEditRequest, message)
 	}
-	return fmt.Errorf("%w: %s", ErrAIServiceUnavailable, message)
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("%w: %s", ErrAIServiceUnavailable, aiServiceAuthenticationError)
+	}
+	return fmt.Errorf("%w: %s", ErrAIServiceUnavailable, aiServiceUnavailableMessage)
 }
 
 func readAIServiceErrorMessage(body io.Reader) string {
