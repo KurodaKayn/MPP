@@ -133,6 +133,7 @@ func (s *DashboardService) SetDraftCompiler(compiler ProjectDraftCompiler) {
 
 func (s *DashboardService) UseObjectStorage(client objectstorage.Client, config objectstorage.Config) {
 	s.MediaAsset.UseObjectStorage(client, config)
+	s.Publisher.UseObjectStorage(client, config)
 }
 
 func NewDashboardServiceWithWechatTester(db *gorm.DB, tester platformaccount.WechatConnectionTester) *DashboardService {

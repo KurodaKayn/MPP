@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
@@ -28,7 +29,7 @@ var ErrPublicationDisabled = errors.New("publication is disabled")
 var ErrPublicationRequiresSync = errors.New("publication requires prepublish sync")
 var ErrManualPublishUnsupported = errors.New("manual publish is only supported for x")
 
-var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token)=([^&"\s]+)`)
+var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_token|x-amz-credential|x-amz-signature|x-amz-security-token)=([^&"\s]+)`)
 
 type Service struct {
 	db                    *gorm.DB
@@ -36,6 +37,8 @@ type Service struct {
 	queue                 PublishQueue
 	browserWorkerClient   publisher.BrowserWorkerClient
 	browserSessionService *browsersession.BrowserSessionService
+	objectStorage         objectstorage.Client
+	storageConfig         objectstorage.Config
 }
 
 func NewService(db *gorm.DB, accounts *platformaccount.Service) *Service {
@@ -73,6 +76,11 @@ func (s *Service) SetBrowserWorkerClient(client publisher.BrowserWorkerClient) {
 
 func (s *Service) SetBrowserSessionService(service *browsersession.BrowserSessionService) {
 	s.browserSessionService = service
+}
+
+func (s *Service) UseObjectStorage(client objectstorage.Client, config objectstorage.Config) {
+	s.objectStorage = client
+	s.storageConfig = config
 }
 
 func (s *Service) UseRedis(client *redis.Client) {
@@ -140,6 +148,10 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	}
 
 	if err := s.accounts.ApplySavedCredentialsToPublication(proj.UserID, &pub); err != nil {
+		return nil, err
+	}
+	pub, err = s.preparePublicationMediaRefs(ctx, proj, pub)
+	if err != nil {
 		return nil, err
 	}
 
