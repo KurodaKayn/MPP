@@ -11,6 +11,8 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+
 	"github.com/kurodakayn/mpp-browser-worker/internal/cdp"
 	browsercontainer "github.com/kurodakayn/mpp-browser-worker/internal/container"
 	"github.com/kurodakayn/mpp-browser-worker/internal/contracts"
@@ -20,7 +22,6 @@ import (
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 	"github.com/kurodakayn/mpp-browser-worker/internal/sessionstate"
 	"github.com/kurodakayn/mpp-browser-worker/internal/stream"
-	"github.com/labstack/echo/v4"
 )
 
 type Server struct {

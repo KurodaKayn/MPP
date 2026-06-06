@@ -10,12 +10,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+
 	browsercontainer "github.com/kurodakayn/mpp-browser-worker/internal/container"
 	"github.com/kurodakayn/mpp-browser-worker/internal/observability"
 	"github.com/kurodakayn/mpp-browser-worker/internal/server"
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 const shutdownTimeout = 15 * time.Second

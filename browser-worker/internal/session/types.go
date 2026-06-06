@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/kurodakayn/mpp-browser-worker/internal/contracts"
 )
 
