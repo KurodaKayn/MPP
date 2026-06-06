@@ -26,8 +26,8 @@
 - `Project.SourceContent` 以 HTML 字符串保存正文内容。
 - `ProjectPlatformPublication.Config` 和 `AdaptedContent` 以 JSON 保存平台发布配置和适配内容。
 - 前端 TipTap 编辑器当前会把本地图片转为 `data:image` 并直接插入 HTML。
-- backend 发布链路当前可以通过 `media.DownloadAndProcess` 下载 URL 或解析 data URL。
-- content pipeline protobuf 已具备 `object_ref` 形态，但 backend 当前媒体处理入口仍主要按 URL/data URL 使用。
+- backend 发布链路当前可以通过 `media.DownloadAndProcess` 下载 URL 或解析 data URL，并可在 `CONTENT_PIPELINE_MEDIA_ENABLED=true` 时委托 Rust `content-pipeline-service` 处理媒体。
+- content pipeline protobuf 已具备 `object_ref` 形态，但 Rust 服务当前对 `object_ref` 仍是 passthrough，尚未承担 asset 权限校验或 R2 读取职责。
 - extension handoff 已有 `assets[].source_url` 字段，但第一阶段不改 extension 资产交付。
 
 ## 目标
@@ -43,7 +43,8 @@ Backend 负责：
 - 生成 R2 PUT signed URL。
 - 校验上传完成状态。
 - 为前端预览生成短期 GET signed URL。
-- 为发布链路读取对象内容。
+- 为发布链路校验 `mpp://media/{asset_id}` 并生成内部短期 GET signed URL，或在 fallback 路径中读取对象内容。
+- 编排 Rust `content-pipeline-service` 处理发布前的图片解码、压缩和平台媒体约束。
 
 Frontend 负责：
 
@@ -99,8 +100,12 @@ auto
 发布时：
 
 1. 发布服务解析项目内容或平台 config 中的 asset ref。
-2. Backend/publish-worker 使用 R2 client 读取对象 bytes，或生成内部短期 GET signed URL 后复用现有下载处理逻辑。
-3. 现有平台发布器继续接收处理后的图片 bytes 或临时本地文件。
+2. Backend/publish-worker 校验 asset 归属、项目访问权限和 `ready` 状态。
+3. Backend 为已授权 asset 生成短期 GET signed URL。
+4. Backend 调用 Rust `content-pipeline-service`，让 pipeline 下载 signed GET URL 并按平台约束处理图片。
+5. Rust 返回处理后的 `inline_bytes`，现有平台发布器继续接收图片 bytes 或临时本地文件。
+
+当前阶段不让 Rust 直接持有 R2 secret，也不让 Rust 直接查询 media asset 数据库。权限、项目边界和 signed URL 签发仍由 Go backend 负责。
 
 ### 不选方案
 
@@ -332,22 +337,28 @@ DELETE /api/user/dashboard/media/:id
 
 ## 发布链路设计
 
-第一阶段只要求 backend 发布链路能读取 R2 图片。
+第一阶段只要求发布链路能读取 R2 图片，并在发布前通过 Rust `content-pipeline-service` 执行平台媒体处理。
 
 落点：
 
 - `backend/internal/pkg/media`
+- `backend/internal/services/mediaasset`
 - WeChat 发布器。
 - Douyin 发布器。
 - dashboard publish delegates。
+- Rust `content-pipeline-service` 的 `MediaAssetProcessor.ProcessAsset`。
 
 处理策略：
 
 1. 当图片来源是 `mpp://media/{asset_id}` 时，调用 media asset service 校验权限和对象状态。
-2. 使用 R2 `GetObject` 读取 bytes。
-3. 复用现有压缩和平台上传逻辑。
+2. Go backend 使用 object storage client 生成短期 GET signed URL。
+3. 将 signed GET URL 作为 `MediaSource.url` 传给 Rust `content-pipeline-service`。
+4. Rust pipeline 下载图片、校验 MIME、解码、压缩并应用平台 profile。
+5. Rust 返回 `inline_bytes`，发布器继续复用现有平台上传逻辑。
 
-如果为了最小改动，也可以先将 `mpp://media/{asset_id}` 解析为短期 GET signed URL，再复用现有 `DownloadAndProcess`。但 publish-worker 已经运行在后端环境中，长期更推荐直接通过 object storage client 读取对象。
+如果 `CONTENT_PIPELINE_MEDIA_ENABLED=false` 或 Rust 服务出现可 fallback 的临时错误，本地开发可以继续走 Go fallback：Go 使用 signed GET URL 或 R2 `GetObject` 读取 bytes，并复用现有压缩逻辑。生产环境推荐开启 Rust pipeline，让 Go backend 保持编排和授权职责，Rust 专注媒体处理。
+
+后续增强可以让 Rust 原生处理 `MediaSource.object_ref`，但需要额外设计内部授权 token、R2 读取配置或 backend 内部解析接口。该增强不属于阶段 4A。
 
 ## 配置项
 
@@ -365,6 +376,9 @@ MEDIA_UPLOAD_MAX_BYTES=5242880
 MEDIA_UPLOAD_URL_TTL=10m
 MEDIA_DOWNLOAD_URL_TTL=5m
 MEDIA_ALLOWED_MIME_TYPES=image/jpeg,image/png,image/webp,gif
+CONTENT_PIPELINE_MEDIA_ENABLED=true
+CONTENT_PIPELINE_HOST=content-pipeline-service
+CONTENT_PIPELINE_PORT=50051
 ```
 
 说明：
@@ -372,6 +386,7 @@ MEDIA_ALLOWED_MIME_TYPES=image/jpeg,image/png,image/webp,gif
 - `R2_ENDPOINT` 可由 `R2_ACCOUNT_ID` 推导，也允许显式覆盖，方便测试。
 - R2 secret 只进入 backend/publish-worker。
 - Frontend 不读取 R2 secret。
+- Rust pipeline 第一阶段不读取 R2 secret，只接收 backend 签发的短期 GET URL。
 - 本地开发可以关闭对象存储，继续兼容旧 data URL。
 
 ## R2 Bucket CORS
@@ -462,14 +477,23 @@ feature/backend-media-asset-api
 feature/frontend-r2-editor-upload
 ```
 
-### 阶段 4：发布链路读取 R2 图片
+### 阶段 4：发布链路通过 Rust pipeline 处理 R2 图片
 
 交付：
 
 - `mpp://media/{asset_id}` 解析器。
-- backend/publish-worker 从 R2 读取图片 bytes。
+- backend/publish-worker 校验 asset 权限、状态和项目归属。
+- backend/publish-worker 为授权 asset 生成短期 GET signed URL。
+- Go `media` 包将 signed GET URL 传给 Rust `content-pipeline-service` 的 `ProcessAsset`。
+- Rust pipeline 返回平台处理后的 `inline_bytes`。
 - WeChat/Douyin 发布链路兼容 object ref。
 - 保留旧 data URL 和外部 URL 兼容。
+- 保留 Go fallback，供本地开发或 Rust pipeline 临时不可用时使用。
+
+阶段拆分：
+
+- 4A：Go 授权 `mpp://media/{asset_id}`，生成 signed GET URL，Rust 通过 URL 处理图片。
+- 4B：可选增强 Rust 原生 `object_ref`，需要单独设计内部授权和对象读取边界。
 
 建议分支：
 
@@ -507,6 +531,9 @@ Backend：
 - complete 时 size/mime 不匹配返回失败。
 - resolve URL 只允许项目可访问用户读取。
 - publish 读取 object ref 成功。
+- publish 对 object ref 生成 signed GET URL 后调用 content pipeline 成功。
+- content pipeline disabled 时 publish fallback 仍能处理 object ref。
+- content pipeline 返回不可 fallback 错误时 publish 返回可读错误。
 - publish 对 missing/deleted asset 给出可读错误。
 
 Frontend：
@@ -526,7 +553,8 @@ Frontend：
 4. 在编辑器上传图片。
 5. 刷新页面确认图片仍能显示。
 6. 保存项目，确认 DB 中没有新的 base64 图片。
-7. 执行发布，确认发布链路能读取 R2 图片。
+7. 开启 `CONTENT_PIPELINE_MEDIA_ENABLED=true`。
+8. 执行发布，确认发布链路能读取 R2 图片并经过 Rust pipeline 处理。
 
 ## 非目标
 
@@ -534,6 +562,8 @@ Frontend：
 - 不实现 multipart upload。
 - 不实现 CDN。
 - 不实现 extension handoff asset signed URL。
+- 不让 Rust pipeline 在阶段 4A 直接持有 R2 secret 或查询 media asset 数据库。
+- 不在阶段 4A 实现 Rust 原生 `object_ref` 读取。
 - 不删除旧 data URL 兼容。
 - 不批量迁移历史内容。
 
@@ -549,7 +579,11 @@ Frontend：
 
 ### 发布任务延迟
 
-异步发布可能晚于 frontend 预览 URL TTL。发布链路不能依赖前端生成的 signed URL，应由 backend/publish-worker 自己读取对象或重新生成 signed URL。
+异步发布可能晚于 frontend 预览 URL TTL。发布链路不能依赖前端生成的 signed URL，应由 backend/publish-worker 自己重新生成内部短期 GET signed URL，再交给 Rust pipeline 或 Go fallback 使用。
+
+### Rust pipeline object ref 边界
+
+Rust pipeline 当前不承担 asset 权限校验、项目归属校验或 R2 secret 管理。阶段 4A 只把 backend 已授权的短期 GET URL 交给 Rust；如果后续要使用 `MediaSource.object_ref`，必须先补齐内部授权、对象读取和审计策略。
 
 ### 旧内容兼容
 
