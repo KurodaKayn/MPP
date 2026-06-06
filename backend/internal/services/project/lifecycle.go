@@ -156,6 +156,14 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 		if err := tx.Save(&project).Error; err != nil {
 			return err
 		}
+		if err := createProjectVersion(tx, project, userID, "project_update"); err != nil {
+			return err
+		}
+		if err := recordProjectActivity(tx, project.ID, userID, nil, models.ProjectActivityContentSaved, map[string]any{
+			"title": project.Title,
+		}); err != nil {
+			return err
+		}
 
 		var existing []models.ProjectPlatformPublication
 		if err := tx.Where("project_id = ?", project.ID).Find(&existing).Error; err != nil {
@@ -252,16 +260,29 @@ func (s *Service) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req 
 	if err != nil {
 		return nil, err
 	}
-
-	updates := map[string]any{
-		"status": models.ProjectStatusReady,
-		"title":  title,
+	if syncedCollabSource {
+		if err := s.db.First(&project, "id = ?", projectID).Error; err != nil {
+			return nil, err
+		}
 	}
+
 	if project.CollabDocumentID == nil || *project.CollabDocumentID == uuid.Nil || !syncedCollabSource {
-		updates["source_content"] = sourceContent
+		project.SourceContent = sourceContent
 	}
+	project.Title = title
+	project.Status = models.ProjectStatusReady
 
-	if err := s.db.Model(&project).Updates(updates).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(&project).Error; err != nil {
+			return err
+		}
+		if err := createProjectVersion(tx, project, userID, "content_save"); err != nil {
+			return err
+		}
+		return recordProjectActivity(tx, project.ID, userID, nil, models.ProjectActivityContentSaved, map[string]any{
+			"title": project.Title,
+		})
+	}); err != nil {
 		return nil, err
 	}
 

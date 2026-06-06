@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"sync"
@@ -204,6 +205,13 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	if err := s.db.Model(&pub).Updates(updates).Error; err != nil {
 		return nil, err
 	}
+	if err := s.recordProjectPublishActivity(projectID, *scopeUserID, models.ProjectActivityPublishCompleted, map[string]any{
+		"platform":  platform,
+		"status":    status,
+		"remote_id": remoteID,
+	}); err != nil {
+		log.Printf("failed to record project publish activity for project %s platform %s: %v", projectID, platform, err)
+	}
 
 	return response, nil
 }
@@ -296,6 +304,26 @@ func (s *Service) recordPublishEvent(event models.PublishEvent) error {
 		event.Status = models.PublicationStatusDraft
 	}
 	return s.db.Create(&event).Error
+}
+
+func (s *Service) recordProjectPublishActivity(projectID uuid.UUID, userID uuid.UUID, eventType string, metadata map[string]any) error {
+	if projectID == uuid.Nil || userID == uuid.Nil || strings.TrimSpace(eventType) == "" {
+		return nil
+	}
+	payload := datatypes.JSON([]byte(`{}`))
+	if metadata != nil {
+		encoded, err := json.Marshal(metadata)
+		if err != nil {
+			return err
+		}
+		payload = datatypes.JSON(encoded)
+	}
+	return s.db.Create(&models.ProjectActivity{
+		ProjectID:   projectID,
+		ActorUserID: userID,
+		EventType:   eventType,
+		Metadata:    payload,
+	}).Error
 }
 
 func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform string, userID uuid.UUID, key string) (map[string]any, bool, error) {

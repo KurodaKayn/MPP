@@ -24,6 +24,9 @@ import (
 var ErrForbidden = publishsvc.ErrForbidden
 var ErrInvalidProject = projectsvc.ErrInvalidProject
 var ErrInvalidProjectCollaborator = projectsvc.ErrInvalidProjectCollaborator
+var ErrInvalidProjectComment = projectsvc.ErrInvalidProjectComment
+var ErrInvalidProjectShareLink = projectsvc.ErrInvalidProjectShareLink
+var ErrInvalidProjectVersion = projectsvc.ErrInvalidProjectVersion
 var ErrInvalidWorkspace = workspacesvc.ErrInvalidWorkspace
 var ErrInvalidWorkspaceMember = workspacesvc.ErrInvalidWorkspaceMember
 var ErrProjectCollabUnavailable = projectsvc.ErrProjectCollabUnavailable
