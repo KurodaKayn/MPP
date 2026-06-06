@@ -7,6 +7,19 @@ resources:
 
 patches:
   - path: runtime-image-patch.yaml
+  - target:
+      group: networking.k8s.io
+      version: v1
+      kind: Ingress
+      name: mpp-public-gateway
+      namespace: mpp-system
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: mpp.example.invalid
+      - op: replace
+        path: /spec/rules/0/host
+        value: mpp.example.invalid
 
 generatorOptions:
   disableNameSuffixHash: true
