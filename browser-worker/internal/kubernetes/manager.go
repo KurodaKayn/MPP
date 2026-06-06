@@ -14,6 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	kubeclient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -42,6 +43,16 @@ const (
 
 	runtimeUserID  int64 = 1000
 	runtimeGroupID int64 = 1000
+
+	appNameLabel            = "app.kubernetes.io/name"
+	componentLabel          = "app.kubernetes.io/component"
+	runtimeDriverLabel      = "mpp.kurodakayn.dev/runtime-driver"
+	sessionIDLabel          = "mpp.kurodakayn.dev/session-id"
+	ownerHashLabel          = "mpp.kurodakayn.dev/owner-hash"
+	platformLabel           = "mpp.kurodakayn.dev/platform"
+	expiresAtAnnotation     = "mpp.kurodakayn.dev/expires-at"
+	appName                 = "mpp"
+	browserRuntimeComponent = "browser-runtime"
 )
 
 type Manager struct {
@@ -172,16 +183,41 @@ func (m *Manager) StopSession(ctx context.Context, reference browserruntime.Sess
 	return nil
 }
 
+func (m *Manager) ReapExpiredSessions(ctx context.Context) error {
+	pods, err := m.client.CoreV1().Pods(m.namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: runtimePodSelector(),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list runtime pods for cleanup: %w", err)
+	}
+
+	now := m.now()
+	for _, pod := range pods.Items {
+		expiresAt, ok := runtimePodExpiresAt(&pod)
+		if !ok || expiresAt.After(now) {
+			continue
+		}
+		if err := m.client.CoreV1().Pods(m.namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete expired runtime pod %s: %w", pod.Name, err)
+		}
+	}
+	return nil
+}
+
 func (m *Manager) runtimePod(request browserruntime.StartSessionRequest) *corev1.Pod {
 	labels := cleanupLabels(request)
-	labels["app.kubernetes.io/name"] = "mpp"
-	labels["app.kubernetes.io/component"] = "browser-runtime"
-	labels["mpp.kurodakayn.dev/runtime-driver"] = browserruntime.DriverKubernetes
+	labels[appNameLabel] = appName
+	labels[componentLabel] = browserRuntimeComponent
+	labels[runtimeDriverLabel] = browserruntime.DriverKubernetes
 
 	now := m.now()
 	expiresAt := now.Add(request.TTL)
 	if request.TTL <= 0 {
 		expiresAt = now.Add(15 * time.Minute)
+	}
+	activeDeadlineSeconds := int64(expiresAt.Sub(now).Seconds())
+	if activeDeadlineSeconds <= 0 {
+		activeDeadlineSeconds = int64((15 * time.Minute).Seconds())
 	}
 
 	runAsNonRoot := true
@@ -194,10 +230,11 @@ func (m *Manager) runtimePod(request browserruntime.StartSessionRequest) *corev1
 			Name:        runtimePodName(request.SessionID),
 			Namespace:   m.namespace,
 			Labels:      labels,
-			Annotations: map[string]string{"mpp.kurodakayn.dev/expires-at": expiresAt.UTC().Format(time.RFC3339)},
+			Annotations: map[string]string{expiresAtAnnotation: expiresAt.UTC().Format(time.RFC3339)},
 		},
 		Spec: corev1.PodSpec{
 			AutomountServiceAccountToken: &automountServiceAccountToken,
+			ActiveDeadlineSeconds:        &activeDeadlineSeconds,
 			RestartPolicy:                corev1.RestartPolicyNever,
 			Containers: []corev1.Container{
 				{
@@ -275,10 +312,33 @@ func podReady(pod *corev1.Pod) bool {
 
 func cleanupLabels(request browserruntime.StartSessionRequest) map[string]string {
 	return map[string]string{
-		"mpp.kurodakayn.dev/session-id": request.SessionID,
-		"mpp.kurodakayn.dev/owner-hash": ownerHash(request.UserID),
-		"mpp.kurodakayn.dev/platform":   sanitizeLabelValue(request.Platform),
+		sessionIDLabel: request.SessionID,
+		ownerHashLabel: ownerHash(request.UserID),
+		platformLabel:  sanitizeLabelValue(request.Platform),
 	}
+}
+
+func runtimePodSelector() string {
+	return labels.SelectorFromSet(labels.Set{
+		appNameLabel:       appName,
+		componentLabel:     browserRuntimeComponent,
+		runtimeDriverLabel: browserruntime.DriverKubernetes,
+	}).String()
+}
+
+func runtimePodExpiresAt(pod *corev1.Pod) (time.Time, bool) {
+	if pod == nil || pod.Annotations == nil {
+		return time.Time{}, false
+	}
+	raw := strings.TrimSpace(pod.Annotations[expiresAtAnnotation])
+	if raw == "" {
+		return time.Time{}, false
+	}
+	expiresAt, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return expiresAt, true
 }
 
 func runtimePodName(sessionID string) string {

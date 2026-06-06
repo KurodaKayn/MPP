@@ -15,12 +15,14 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/kurodakayn/mpp-browser-worker/internal/observability"
+	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 	"github.com/kurodakayn/mpp-browser-worker/internal/runtimefactory"
 	"github.com/kurodakayn/mpp-browser-worker/internal/server"
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
 
 const shutdownTimeout = 15 * time.Second
+const runtimeCleanupInterval = 30 * time.Second
 
 func main() {
 	rootCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -36,6 +38,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize browser runtime manager: %v", err)
 	}
+	startRuntimeCleanupLoop(rootCtx, runtimes)
 
 	sessions := session.NewManager()
 	stateStore, err := session.NewRedisStateStoreFromEnv(context.Background())
@@ -71,6 +74,28 @@ func main() {
 			log.Printf("Failed to close Redis state store: %v", err)
 		}
 	}
+}
+
+func startRuntimeCleanupLoop(ctx context.Context, runtimes browserruntime.Manager) {
+	reaper, ok := runtimes.(browserruntime.ExpiredSessionReaper)
+	if !ok {
+		return
+	}
+
+	go func() {
+		ticker := time.NewTicker(runtimeCleanupInterval)
+		defer ticker.Stop()
+		for {
+			if err := reaper.ReapExpiredSessions(ctx); err != nil && ctx.Err() == nil {
+				log.Printf("Failed to reap expired browser runtime sessions: %v", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 }
 
 func registerHealthRoutes(e *echo.Echo, ready *atomic.Bool, stateStore *session.RedisStateStore) {

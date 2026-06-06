@@ -37,9 +37,14 @@ const EnvSchema = z.object({
   DB_USER: z.string().default("postgres"),
   DB_PASSWORD: z.string().default("postgres"),
   DB_NAME: z.string().default("poster_db"),
+  DB_SSLMODE: z
+    .enum(["disable", "allow", "prefer", "require", "verify-ca", "verify-full"])
+    .default("disable"),
+  DB_SSLROOTCERT: z.string().optional(),
   REDIS_ADDR: z.string().default("redis:6379"),
   REDIS_PASSWORD: z.string().default(""),
   REDIS_DB: z.coerce.number().int().nonnegative().default(0),
+  REDIS_TLS: EnvBoolean.default(false),
   COLLAB_REDIS_SYNC_ENABLED: EnvBoolean.default(true),
   COLLAB_REDIS_CHANNEL_PREFIX: z.string().default("mpp:collab:doc"),
   BACKEND_INTERNAL_URL: z.string().url().default("http://backend:8080"),
