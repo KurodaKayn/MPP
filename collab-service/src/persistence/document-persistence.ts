@@ -14,6 +14,7 @@ import {
 
 import type { PoolConfig, QueryResult } from "pg";
 import type { CollabConfig } from "../config.js";
+import type { Metrics } from "../metrics.js";
 
 interface Queryable {
   query<Row extends Record<string, unknown>>(
@@ -80,6 +81,7 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
     private readonly maxFlushRetryAttempts = 5,
     private readonly maxFlushRetryDelayMs = 30_000,
     private readonly logger: PersistenceLogger = console,
+    private readonly metrics?: Pick<Metrics, "recordUpdateFlush">,
   ) {}
 
   async load(documentId: string, document: Document): Promise<void> {
@@ -361,6 +363,7 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
   }
 
   private async flushDocumentOnce(documentId: string): Promise<void> {
+    const startedAt = process.hrtime.bigint();
     const timer = this.flushTimers.get(documentId);
     if (timer) {
       clearTimeout(timer);
@@ -427,6 +430,9 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
         ...(this.pendingUpdates.get(documentId) ?? []),
       ]);
       throw error;
+    } finally {
+      const elapsedNs = process.hrtime.bigint() - startedAt;
+      this.metrics?.recordUpdateFlush(Number(elapsedNs) / 1_000_000_000);
     }
   }
 
@@ -476,6 +482,7 @@ function lastActorUserId(pending: PendingUpdate[]): string | undefined {
 
 export function createPostgresDocumentPersistence(
   config: CollabConfig,
+  metrics?: Pick<Metrics, "recordUpdateFlush">,
 ): DocumentPersistence {
   const poolConfig: PoolConfig = config.DATABASE_URL
     ? { connectionString: config.DATABASE_URL }
@@ -494,5 +501,7 @@ export function createPostgresDocumentPersistence(
     config.COLLAB_UPDATE_RETENTION_DAYS,
     config.COLLAB_UPDATE_FLUSH_RETRY_MAX_ATTEMPTS,
     config.COLLAB_UPDATE_FLUSH_RETRY_MAX_MS,
+    console,
+    metrics,
   );
 }

@@ -60,6 +60,7 @@ function testConfig() {
     COLLAB_HOST: "127.0.0.1",
     COLLAB_PORT: "8090",
     COLLAB_WS_PATH: "/collab/documents/:documentId",
+    COLLAB_REDIS_SYNC_ENABLED: "false",
     BACKEND_INTERNAL_URL: "http://backend:8080",
     COLLAB_TOKEN_SECRET: "collab-secret",
   });
@@ -99,6 +100,10 @@ describe("collab-service app", () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers["content-type"]).toContain("text/plain");
     expect(response.body).toContain("collab_service_info");
+    expect(response.body).toContain("collab_active_connections");
+    expect(response.body).toContain("collab_active_documents");
+    expect(response.body).toContain("collab_auth_denials_total");
+    expect(response.body).toContain("collab_update_flush_latency_seconds");
 
     await app.close();
   });

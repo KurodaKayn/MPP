@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+const EnvBoolean = z
+  .union([z.boolean(), z.string()])
+  .transform((value) =>
+    typeof value === "boolean"
+      ? value
+      : ["1", "true", "yes", "on"].includes(value.trim().toLowerCase()),
+  );
+
 const EnvSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -30,6 +38,10 @@ const EnvSchema = z.object({
   DB_PASSWORD: z.string().default("postgres"),
   DB_NAME: z.string().default("poster_db"),
   REDIS_ADDR: z.string().default("redis:6379"),
+  REDIS_PASSWORD: z.string().default(""),
+  REDIS_DB: z.coerce.number().int().nonnegative().default(0),
+  COLLAB_REDIS_SYNC_ENABLED: EnvBoolean.default(true),
+  COLLAB_REDIS_CHANNEL_PREFIX: z.string().default("mpp:collab:doc"),
   BACKEND_INTERNAL_URL: z.string().url().default("http://backend:8080"),
   COLLAB_TOKEN_SECRET: z.string().optional(),
 });
