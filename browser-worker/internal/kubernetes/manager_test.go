@@ -154,9 +154,12 @@ func TestReapExpiredSessionsDeletesOnlyExpiredRuntimePods(t *testing.T) {
 	require.NoError(t, err)
 	manager.now = func() time.Time { return now }
 
-	err = manager.ReapExpiredSessions(context.Background())
+	report, err := manager.ReapExpiredSessions(context.Background())
 
 	require.NoError(t, err)
+	assert.Equal(t, browserruntime.DriverKubernetes, report.Driver)
+	assert.Equal(t, 1, report.DeletedSessions)
+	assert.Equal(t, now.Add(-time.Minute), report.OldestExpiredAt)
 	_, err = client.CoreV1().Pods("runtime-ns").Get(context.Background(), "expired", metav1.GetOptions{})
 	assert.True(t, apierrors.IsNotFound(err))
 	for _, name := range []string{"active", "missing-expiry", "other-component"} {
