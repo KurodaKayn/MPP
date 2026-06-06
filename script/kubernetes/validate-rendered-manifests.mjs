@@ -180,6 +180,7 @@ function validateAppBaselineOverlay() {
 
   const requiredConfig = new Map([
     ["DB_HOST", "postgres"],
+    ["DB_SSLMODE", "verify-full"],
     ["REDIS_ADDR", "redis:6379"],
     ["COLLAB_WEBSOCKET_URL_BASE", "wss://mpp.example.invalid"],
     ["LLM_PROVIDER_URL", "https://llm.example.invalid/v1"],
