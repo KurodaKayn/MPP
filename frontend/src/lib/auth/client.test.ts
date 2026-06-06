@@ -72,37 +72,38 @@ describe("auth client", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("/api/auth/session");
   });
 
-  it("verifies and stores an access token login", async () => {
+  it("creates a server access-token session without storing the token in browser storage", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
       jsonResponse({
-        total_failed_publications: 0,
-        total_projects: 0,
-        total_published_publications: 0,
-        total_users: 1,
+        authenticated: true,
+        loginMethods: { mock: false, token: true },
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(loginWithAccessToken("raw-token")).resolves.toEqual({
-      token: "raw-token",
+      token: null,
       username: "Creator",
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/user/dashboard/stats",
+      "/api/auth/session",
       expect.objectContaining({
+        body: JSON.stringify({ token: "raw-token" }),
         cache: "no-store",
         credentials: "same-origin",
-        headers: expect.any(Headers),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "POST",
       }),
     );
-    const [, init] = fetchMock.mock.calls[0];
-    const headers = init?.headers as Headers;
-    expect(headers.get("Authorization")).toBe("Bearer raw-token");
-    expect(window.localStorage.getItem(primaryAuthTokenName)).toBe("raw-token");
+    expect(window.localStorage.getItem(primaryAuthTokenName)).toBeNull();
+    expect(window.sessionStorage.getItem(primaryAuthTokenName)).toBeNull();
+    expect(document.cookie).not.toContain(primaryAuthTokenName);
   });
 
-  it("logs in with username and password and stores the returned token", async () => {
+  it("logs in with username and password without exposing the returned token", async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       if (input === "/api/auth/session") {
         return jsonResponse({
@@ -111,14 +112,14 @@ describe("auth client", () => {
         });
       }
 
-      return jsonResponse({ token: "jwt-token" });
+      return jsonResponse({ authenticated: true });
     });
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
       loginWithUsername("test_user", "Password1234"),
     ).resolves.toEqual({
-      token: "jwt-token",
+      token: null,
       username: "test_user",
     });
 
@@ -132,12 +133,14 @@ describe("auth client", () => {
         method: "POST",
       }),
     );
-    expect(window.localStorage.getItem(primaryAuthTokenName)).toBe("jwt-token");
+    expect(window.localStorage.getItem(primaryAuthTokenName)).toBeNull();
+    expect(window.sessionStorage.getItem(primaryAuthTokenName)).toBeNull();
+    expect(document.cookie).not.toContain(primaryAuthTokenName);
   });
 
-  it("registers with credentials and stores the returned token", async () => {
+  it("registers with credentials without exposing the returned token", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
-      jsonResponse({ token: "new-jwt-token" }),
+      jsonResponse({ authenticated: true }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -149,7 +152,7 @@ describe("auth client", () => {
         "Password1234",
       ),
     ).resolves.toEqual({
-      token: "new-jwt-token",
+      token: null,
       username: "new_user",
     });
 
@@ -165,9 +168,9 @@ describe("auth client", () => {
         method: "POST",
       }),
     );
-    expect(window.localStorage.getItem(primaryAuthTokenName)).toBe(
-      "new-jwt-token",
-    );
+    expect(window.localStorage.getItem(primaryAuthTokenName)).toBeNull();
+    expect(window.sessionStorage.getItem(primaryAuthTokenName)).toBeNull();
+    expect(document.cookie).not.toContain(primaryAuthTokenName);
   });
 
   it("sends an auth verification code", async () => {

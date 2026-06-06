@@ -1,9 +1,4 @@
-import {
-  clearAuthSession,
-  clearServerAuthSession,
-  formatBearerToken,
-  getStoredAuthToken,
-} from "@/lib/auth/client";
+import { clearAuthSession, clearServerAuthSession } from "@/lib/auth/client";
 import type { AITextStreamOptions } from "./types";
 
 type ApiErrorResponse = {
@@ -50,11 +45,6 @@ export async function fetchDashboard<T>(
   const headers = new Headers({
     Accept: "application/json",
   });
-  const token = getStoredAuthToken();
-
-  if (token) {
-    headers.set("Authorization", formatBearerToken(token));
-  }
 
   if (init?.body) {
     headers.set("Content-Type", "application/json");
@@ -80,11 +70,6 @@ export async function fetchDashboardNoContent(
   const headers = new Headers({
     Accept: "application/json",
   });
-  const token = getStoredAuthToken();
-
-  if (token) {
-    headers.set("Authorization", formatBearerToken(token));
-  }
 
   if (init?.body) {
     headers.set("Content-Type", "application/json");
@@ -110,11 +95,6 @@ export async function streamDashboardText(
     Accept: "text/markdown, text/plain, application/json",
     "Content-Type": "application/json",
   });
-  const token = getStoredAuthToken();
-
-  if (token) {
-    headers.set("Authorization", formatBearerToken(token));
-  }
 
   const response = await fetch(path, {
     body: JSON.stringify(body),

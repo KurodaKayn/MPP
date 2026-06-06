@@ -10,6 +10,7 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	pkghtml "github.com/kurodakayn/mpp-backend/internal/pkg/html"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 )
@@ -196,8 +197,13 @@ func (s *Service) applyCompiledPrepublishDrafts(projectID uuid.UUID, platforms [
 				continue
 			}
 
+			sanitizedContent, err := sanitizeAdaptedContentJSON(adaptedContent)
+			if err != nil {
+				return err
+			}
+
 			if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]any{
-				"adapted_content": datatypes.JSON(adaptedContent),
+				"adapted_content": sanitizedContent,
 				"enabled":         true,
 				"error_message":   "",
 				"last_attempt_at": nil,
@@ -265,7 +271,7 @@ func (s *Service) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.
 		return nil, ErrInvalidProject
 	}
 
-	adaptedContent, err := json.Marshal(req.AdaptedContent)
+	adaptedContent, err := json.Marshal(sanitizeAdaptedContentMap(req.AdaptedContent))
 	if err != nil {
 		return nil, err
 	}
@@ -290,4 +296,31 @@ func (s *Service) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.
 	}
 
 	return s.projects.GetProjectPublications(projectID, &userID, true)
+}
+
+func sanitizeAdaptedContentJSON(raw []byte) (datatypes.JSON, error) {
+	var adaptedContent map[string]any
+	if err := json.Unmarshal(raw, &adaptedContent); err != nil {
+		return nil, err
+	}
+
+	payload, err := json.Marshal(sanitizeAdaptedContentMap(adaptedContent))
+	if err != nil {
+		return nil, err
+	}
+	return datatypes.JSON(payload), nil
+}
+
+func sanitizeAdaptedContentMap(raw map[string]any) map[string]any {
+	sanitized := make(map[string]any, len(raw))
+	for key, value := range raw {
+		if key == "html" {
+			if htmlValue, ok := value.(string); ok {
+				sanitized[key] = pkghtml.SanitizeStoredHTML(htmlValue)
+				continue
+			}
+		}
+		sanitized[key] = value
+	}
+	return sanitized
 }
