@@ -55,3 +55,35 @@ func (s *Service) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse,
 
 	return &stats, nil
 }
+
+func (s *Service) GetWorkspaceStats(workspaceID uuid.UUID, scopeUserID uuid.UUID) (*dto.DashboardStatsResponse, error) {
+	if _, err := s.projects.WorkspaceProjectRole(workspaceID, scopeUserID); err != nil {
+		return nil, err
+	}
+
+	var stats dto.DashboardStatsResponse
+	stats.TotalUsers = 1
+
+	projQuery := s.db.Model(&models.Project{}).Where("workspace_id = ?", workspaceID)
+	if err := projQuery.Count(&stats.TotalProjects).Error; err != nil {
+		return nil, err
+	}
+
+	pubQuery := s.db.Model(&models.ProjectPlatformPublication{}).
+		Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
+		Where("projects.workspace_id = ?", workspaceID)
+	if err := pubQuery.Where("project_platform_publications.status = ?", models.PublicationStatusPublished).
+		Count(&stats.TotalPublishedPublications).Error; err != nil {
+		return nil, err
+	}
+
+	pubQuery = s.db.Model(&models.ProjectPlatformPublication{}).
+		Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
+		Where("projects.workspace_id = ?", workspaceID)
+	if err := pubQuery.Where("project_platform_publications.status = ?", models.PublicationStatusFailed).
+		Count(&stats.TotalFailedPublications).Error; err != nil {
+		return nil, err
+	}
+
+	return &stats, nil
+}

@@ -40,6 +40,10 @@ func (s *Service) ProjectAccessRoleAndSource(project models.Project, userID uuid
 	return ProjectAccessRoleAndSourceWithDB(s.db, project, userID)
 }
 
+func (s *Service) WorkspaceProjectRole(workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
+	return workspaceProjectAccessRoleWithDB(s.db, workspaceID, userID)
+}
+
 func ProjectAccessRoleWithDB(db *gorm.DB, project models.Project, userID uuid.UUID) (string, error) {
 	role, _, err := ProjectAccessRoleAndSourceWithDB(db, project, userID)
 	return role, err

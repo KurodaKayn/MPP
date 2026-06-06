@@ -164,7 +164,10 @@
         "workspace_updated": "更新工作空间",
         "member_added": "添加成员",
         "member_role_changed": "调整成员角色",
-        "member_removed": "移除成员"
+        "member_removed": "移除成员",
+        "invite_created": "创建邀请",
+        "invite_accepted": "接受邀请",
+        "invite_revoked": "撤销邀请"
       },
       "detail": {
         "workspace_created": "{{actor}} 创建了 {{workspace}}。",
@@ -172,7 +175,10 @@
         "workspace_updatedRenamed": "{{actor}} 将 {{previousName}} 重命名为 {{name}}。",
         "member_added": "{{actor}} 将 {{target}} 添加为 {{role}}。",
         "member_role_changed": "{{actor}} 将 {{target}} 从 {{previousRole}} 调整为 {{role}}。",
-        "member_removed": "{{actor}} 将 {{target}}（原{{previousRole}}）移除。"
+        "member_removed": "{{actor}} 将 {{target}}（原{{previousRole}}）移除。",
+        "invite_created": "{{actor}} 邀请 {{email}} 成为 {{role}}。",
+        "invite_accepted": "{{actor}} 接受了 {{email}} 的 {{role}} 邀请。",
+        "invite_revoked": "{{actor}} 撤销了 {{email}} 的 {{role}} 邀请。"
       },
       "badge": {
         "role": "角色：{{role}}",

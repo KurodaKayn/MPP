@@ -260,7 +260,7 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 	require.Equal(t, resp["job_id"], duplicate["job_id"])
 }
 
-func TestEnqueuePublishProjectRejectsProjectEditor(t *testing.T) {
+func TestEnqueuePublishProjectAllowsProjectEditor(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
 	service := newPublishTestService(db)
 	queue := newTestPublishQueue()
@@ -296,6 +296,45 @@ func TestEnqueuePublishProjectRejectsProjectEditor(t *testing.T) {
 	}).Error)
 
 	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &editor.ID, PublishRequest{IdempotencyKey: "click-editor"})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, queue.jobs, 1)
+}
+
+func TestEnqueuePublishProjectRejectsProjectViewer(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+
+	owner := models.User{Username: "owner", Email: "owner@example.com"}
+	viewer := models.User{Username: "viewer", Email: "viewer@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&viewer).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    viewer.ID,
+		Role:      models.ProjectRoleViewer,
+		CreatedBy: owner.ID,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &viewer.ID, PublishRequest{IdempotencyKey: "click-viewer"})
 
 	require.ErrorIs(t, err, ErrForbidden)
 	require.Nil(t, resp)
