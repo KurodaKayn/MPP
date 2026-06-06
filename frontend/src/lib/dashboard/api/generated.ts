@@ -91,6 +91,25 @@ export interface components {
     /** @enum {string} */
     ProjectCollaboratorRole: "editor" | "viewer";
     /** @enum {string} */
+    ProjectActivityType:
+      | "content_saved"
+      | "comment_created"
+      | "comment_resolved"
+      | "collaborator_added"
+      | "collaborator_role_changed"
+      | "collaborator_removed"
+      | "publish_requested"
+      | "publish_queued"
+      | "publish_completed"
+      | "share_link_accepted"
+      | "share_link_created"
+      | "share_link_revoked"
+      | "version_restored";
+    /** @enum {string} */
+    ProjectCommentStatus: "open" | "resolved";
+    /** @enum {string} */
+    ProjectShareLinkStatus: "active" | "revoked";
+    /** @enum {string} */
     WorkspaceRole: "owner" | "admin" | "member" | "viewer";
     /** @enum {string} */
     WorkspaceMemberRequestRole: "admin" | "member" | "viewer";
@@ -387,6 +406,125 @@ export interface components {
     };
     ProjectCollaboratorsResponse: {
       items: components["schemas"]["ProjectCollaborator"][];
+    };
+    ProjectActivity: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      project_id: string;
+      /** Format: uuid */
+      actor_user_id: string;
+      actor_username: string;
+      /** Format: email */
+      actor_email: string;
+      /** Format: uuid */
+      target_user_id?: string;
+      target_username?: string;
+      /** Format: email */
+      target_email?: string;
+      event_type: components["schemas"]["ProjectActivityType"];
+      metadata: {
+        [key: string]: unknown;
+      };
+      /** Format: date-time */
+      created_at: string;
+    };
+    ProjectActivitiesResponse: {
+      items: components["schemas"]["ProjectActivity"][];
+    };
+    CreateProjectCommentRequest: {
+      body: string;
+      anchor_text?: string;
+      metadata?: {
+        [key: string]: unknown;
+      };
+    };
+    UpdateProjectCommentRequest: {
+      /** @enum {string} */
+      status: "resolved";
+    };
+    ProjectComment: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      project_id: string;
+      /** Format: uuid */
+      author_id: string;
+      author_username: string;
+      /** Format: email */
+      author_email: string;
+      body: string;
+      anchor_text?: string;
+      status: components["schemas"]["ProjectCommentStatus"];
+      metadata: {
+        [key: string]: unknown;
+      };
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      resolved_at?: string;
+    };
+    ProjectCommentsResponse: {
+      items: components["schemas"]["ProjectComment"][];
+    };
+    ProjectVersion: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      project_id: string;
+      /** Format: uuid */
+      created_by: string;
+      creator_username: string;
+      /** Format: email */
+      creator_email: string;
+      version_number: number;
+      title: string;
+      source: string;
+      /** Format: uuid */
+      collab_document_id?: string;
+      /** Format: int64 */
+      collab_seq: number;
+      /** Format: date-time */
+      created_at: string;
+    };
+    ProjectVersionsResponse: {
+      items: components["schemas"]["ProjectVersion"][];
+    };
+    RestoreProjectVersionResponse: {
+      project: components["schemas"]["ProjectDetail"];
+      version: components["schemas"]["ProjectVersion"];
+    };
+    CreateProjectShareLinkRequest: {
+      role: components["schemas"]["ProjectCollaboratorRole"];
+      /** Format: date-time */
+      expires_at?: string;
+    };
+    ProjectShareLink: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      project_id: string;
+      /** Format: uuid */
+      created_by: string;
+      role: components["schemas"]["ProjectCollaboratorRole"];
+      status: components["schemas"]["ProjectShareLinkStatus"];
+      /** Format: date-time */
+      expires_at?: string;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      revoked_at?: string;
+    };
+    ProjectShareLinkWithToken: components["schemas"]["ProjectShareLink"] & {
+      token: string;
+      url: string;
+    };
+    ProjectShareLinksResponse: {
+      items: components["schemas"]["ProjectShareLink"][];
+    };
+    AcceptProjectShareLinkResponse: {
+      project: components["schemas"]["ProjectDetail"];
+      role: components["schemas"]["ProjectRole"];
     };
     CreateWorkspaceRequest: {
       name: string;

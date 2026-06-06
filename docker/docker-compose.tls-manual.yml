@@ -1,0 +1,19 @@
+services:
+  traefik:
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.file.filename=/etc/traefik/dynamic/manual-certificates.yml
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.metrics.address=:8082
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --accesslog=true
+      - --log.level=${TRAEFIK_LOG_LEVEL:-INFO}
+      - --metrics.prometheus=true
+      - --metrics.prometheus.entrypoint=metrics
+    volumes:
+      - ./traefik/dynamic/manual-certificates.yml:/etc/traefik/dynamic/manual-certificates.yml:ro
+      - ${TRAEFIK_MANUAL_CERT_DIR:-./traefik/certs}:/certs:ro

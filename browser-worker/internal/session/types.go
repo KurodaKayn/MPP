@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kurodakayn/mpp-browser-worker/internal/contracts"
+	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 )
 
 type Cookie = contracts.BrowserWorkerCookie
@@ -23,6 +24,7 @@ type WorkerSession struct {
 	UserID            uuid.UUID
 	Platform          string
 	Status            string
+	RuntimeReference  browserruntime.SessionReference
 	ContainerID       string
 	CDPEndpointRef    string
 	StreamEndpointRef string

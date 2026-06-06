@@ -5,6 +5,7 @@ import { ContentEditor } from "@/components/dashboard/content/content-editor";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectCollabConnection } from "@/features/collab-editor/use-collab-document";
+import { useState } from "react";
 import { DashboardErrorCard } from "../../_components/dashboard-error-card";
 import { WorkspaceSwitcher } from "../../_components/workspace-switcher";
 import {
@@ -16,6 +17,7 @@ import { ContentPageHeader } from "./content-page-header";
 import { ContentPrepublishPanel } from "./content-prepublish-panel";
 import { ContentPublishBar } from "./content-publish-bar";
 import { PlatformPreview } from "./platform-preview";
+import { ProjectCollaborationPanel } from "./project-collaboration-panel";
 import { RemoteBrowserSessionModal } from "../../auth/_components/remote-browser-session-modal";
 import { useContentPageController } from "../_hooks/use-content-page-controller";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
@@ -30,6 +32,7 @@ type ContentWorkspaceProps = {
 
 export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
   const { session } = useAuth();
+  const [collabReconnectKey, setCollabReconnectKey] = useState(0);
   const workspaceSelection = useDashboardWorkspaceSelection({
     enabled: !projectId,
   });
@@ -44,6 +47,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
   const { t: tDashboard } = useTranslation(locale, "dashboard");
   const projectCollaboration = useProjectCollabConnection({
     projectId,
+    reconnectKey: collabReconnectKey,
     userName: session?.username ?? tDashboard("collab.userFallback"),
   });
   const selectedWorkspace = workspaceSelection.selectedWorkspace;
@@ -109,7 +113,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
       ) : null}
 
       {contentView === "editor" ? (
-        <div>
+        <div className="space-y-4">
           <ContentEditor
             canEdit={editor.canEdit}
             collaboration={projectId ? projectCollaboration : undefined}
@@ -125,6 +129,17 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
               />
             }
           />
+          {projectId ? (
+            <ProjectCollaborationPanel
+              canEdit={editor.canEdit}
+              onVersionRestore={(project) => {
+                editor.restoreVersionContent(project);
+                setCollabReconnectKey((current) => current + 1);
+              }}
+              projectId={projectId}
+              projectRole={header.projectRole}
+            />
+          ) : null}
         </div>
       ) : (
         <div>

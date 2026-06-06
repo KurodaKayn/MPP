@@ -33,12 +33,14 @@ type UseCollabConnectionOptions = {
 
 type UseProjectCollabConnectionOptions = {
   projectId: string | null | undefined;
+  reconnectKey?: string | number;
   userName: string;
 };
 
 type UseCollabConnectionTargetOptions = {
   createSession: (targetKey: string) => Promise<CollabDocumentSession>;
   fallbackError: string;
+  reconnectKey?: string | number;
   targetKey: string | null | undefined;
   userName: string;
 };
@@ -191,11 +193,13 @@ export function useCollabConnection({
 
 export function useProjectCollabConnection({
   projectId,
+  reconnectKey,
   userName,
 }: UseProjectCollabConnectionOptions) {
   return useCollabConnectionTarget({
     createSession: createProjectCollabSession,
     fallbackError: "Unable to start project collaboration session",
+    reconnectKey,
     targetKey: projectId,
     userName,
   });
@@ -204,6 +208,7 @@ export function useProjectCollabConnection({
 function useCollabConnectionTarget({
   createSession,
   fallbackError,
+  reconnectKey,
   targetKey,
   userName,
 }: UseCollabConnectionTargetOptions) {
@@ -302,7 +307,7 @@ function useCollabConnectionTarget({
       activeProvider?.destroy();
       activeYdoc?.destroy();
     };
-  }, [createSession, fallbackError, targetKey, userName]);
+  }, [createSession, fallbackError, reconnectKey, targetKey, userName]);
 
   return {
     canEdit: role === "editor",
