@@ -143,6 +143,16 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: COLLAB_TOKEN_SECRET
+            - name: BROWSER_WORKER_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: BROWSER_WORKER_INTERNAL_TOKEN
+            - name: AI_SERVICE_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: AI_SERVICE_INTERNAL_TOKEN
           readinessProbe:
             httpGet:
               path: /ready
@@ -243,6 +253,16 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: COLLAB_TOKEN_SECRET
+            - name: BROWSER_WORKER_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: BROWSER_WORKER_INTERNAL_TOKEN
+            - name: AI_SERVICE_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: AI_SERVICE_INTERNAL_TOKEN
           readinessProbe:
             httpGet:
               path: /ready
@@ -333,6 +353,11 @@ spec:
                   name: mpp-app-secrets
                   key: REDIS_PASSWORD
                   optional: true
+            - name: BROWSER_WORKER_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: BROWSER_WORKER_INTERNAL_TOKEN
           readinessProbe:
             httpGet:
               path: /ready
@@ -408,6 +433,11 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: LLM_PROVIDER_KEY
+            - name: AI_SERVICE_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: AI_SERVICE_INTERNAL_TOKEN
           readinessProbe:
             httpGet:
               path: /ready
