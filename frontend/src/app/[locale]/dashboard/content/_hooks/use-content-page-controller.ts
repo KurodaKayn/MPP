@@ -9,10 +9,20 @@ import { canCreateWorkspaceProject } from "../../_hooks/use-dashboard-workspace-
 import {
   createDashboardProject,
   createWorkspaceProject,
+  getBrandProfiles,
   getDashboardProject,
+  getContentTemplates,
   getProjectPublications,
+  getWorkspaceBrandProfiles,
+  getWorkspaceContentTemplates,
 } from "@/lib/dashboard/api";
-import type { ProjectRole, Workspace } from "@/lib/dashboard/api";
+import type {
+  BrandProfile,
+  ContentTemplate,
+  ProjectPermissionSource,
+  ProjectRole,
+  Workspace,
+} from "@/lib/dashboard/api";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import { type PublishPlatform } from "../_lib/publish-content";
 import { useContentPageStore } from "../_stores/content-page-store";
@@ -75,6 +85,17 @@ export function useContentPageController(
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
   const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
+  const [contentTemplates, setContentTemplates] = useState<ContentTemplate[]>(
+    [],
+  );
+  const [brandProfiles, setBrandProfiles] = useState<BrandProfile[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [selectedBrandProfileId, setSelectedBrandProfileId] = useState("");
+  const [permissionSources, setPermissionSources] = useState<
+    ProjectPermissionSource[]
+  >([]);
+  const [setupError, setSetupError] = useState("");
+  const [isSetupLoading, setIsSetupLoading] = useState(false);
   const publishBarRef = useRef<HTMLDivElement>(null);
   const isRouteContentLoaded = projectId
     ? loadedProjectId === projectId
@@ -88,7 +109,14 @@ export function useContentPageController(
     (platform) => platform !== "douyin",
   );
   const hasSyncedSelectedPlatforms = automaticPublishPlatforms.every(
-    (platform) => prepublishDrafts[platform],
+    (platform) => {
+      const draft = prepublishDrafts[platform];
+      return Boolean(
+        draft &&
+          !draft.syncRequired &&
+          (draft.draftStatus === undefined || draft.draftStatus === "ready"),
+      );
+    },
   );
   const canEditProject = !projectId || projectRole !== "viewer";
   const canPublishProject = !projectId || projectRole === "owner";
@@ -137,6 +165,9 @@ export function useContentPageController(
 
         setTitle(project.title);
         setProjectRole(project.role);
+        setSelectedTemplateId(project.template_id ?? "");
+        setSelectedBrandProfileId(project.brand_profile_id ?? "");
+        setPermissionSources(project.permission_sources ?? []);
         setContent(contentValueFromSource(project.source_content));
         setSelectedPlatforms(
           project.publications.flatMap((publication) =>
@@ -161,6 +192,9 @@ export function useContentPageController(
 
         setTitle("");
         setProjectRole(null);
+        setSelectedTemplateId("");
+        setSelectedBrandProfileId("");
+        setPermissionSources([]);
         setContent(emptyContentValue);
         setSelectedPlatforms([]);
         setPrepublishDrafts({});
@@ -184,6 +218,73 @@ export function useContentPageController(
       cancelled = true;
     };
   }, [projectId]);
+
+  useEffect(() => {
+    if (projectId) {
+      return;
+    }
+
+    const workspaceId = selectedWorkspace?.id;
+    if (requiresWorkspace && !workspaceId) {
+      setContentTemplates([]);
+      setBrandProfiles([]);
+      setSelectedTemplateId("");
+      setSelectedBrandProfileId("");
+      setSetupError("");
+      return;
+    }
+
+    let cancelled = false;
+    async function loadSetupOptions() {
+      setIsSetupLoading(true);
+      setSetupError("");
+      try {
+        const [templatesResp, profilesResp] = workspaceId
+          ? await Promise.all([
+              getWorkspaceContentTemplates(workspaceId),
+              getWorkspaceBrandProfiles(workspaceId),
+            ])
+          : await Promise.all([getContentTemplates(), getBrandProfiles()]);
+        if (cancelled) {
+          return;
+        }
+
+        setContentTemplates(templatesResp.items);
+        setBrandProfiles(profilesResp.items);
+        setSelectedTemplateId((current) =>
+          current && templatesResp.items.some((item) => item.id === current)
+            ? current
+            : "",
+        );
+        setSelectedBrandProfileId((current) =>
+          current && profilesResp.items.some((item) => item.id === current)
+            ? current
+            : "",
+        );
+      } catch (requestError) {
+        if (cancelled) {
+          return;
+        }
+        setContentTemplates([]);
+        setBrandProfiles([]);
+        setSetupError(
+          requestError instanceof Error
+            ? requestError.message
+            : t("common.retryLater"),
+        );
+      } finally {
+        if (!cancelled) {
+          setIsSetupLoading(false);
+        }
+      }
+    }
+
+    void loadSetupOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, requiresWorkspace, selectedWorkspace?.id]);
 
   const openPublishPanel = () => {
     publishBarRef.current?.scrollIntoView({
@@ -211,7 +312,9 @@ export function useContentPageController(
       router.replace(`/dashboard/content/${targetProjectId}`),
     prepublishDrafts,
     projectId,
+    selectedBrandProfileId,
     selectedPlatforms,
+    selectedTemplateId,
     setIsOpeningXPostIntent,
     setIsSaving,
     setIsSyncingPrepublish,
@@ -222,8 +325,9 @@ export function useContentPageController(
   });
 
   const editor = {
-    canEdit: canEditProject,
-    content,
+      canEdit: canEditProject,
+      content,
+      permissionSources,
     setContent: (nextContent: ContentValue) => {
       setContent(nextContent);
       setPrepublishDrafts({});
@@ -241,6 +345,21 @@ export function useContentPageController(
       setPrepublishDrafts({});
     },
     title,
+  };
+
+  const applyTemplate = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    const template = contentTemplates.find((item) => item.id === templateId);
+    if (!template) {
+      return;
+    }
+
+    setTitle(template.title_template);
+    setContent(contentValueFromSource(template.source_template));
+    setSelectedPlatforms(
+      template.default_platforms.filter(isPublishPlatform),
+    );
+    setPrepublishDrafts({});
   };
 
   return {
@@ -266,6 +385,16 @@ export function useContentPageController(
       title,
     },
     publishBarRef,
+    setup: {
+      brandProfiles,
+      contentTemplates,
+      error: setupError,
+      isLoading: isSetupLoading,
+      onBrandProfileChange: setSelectedBrandProfileId,
+      onTemplateChange: applyTemplate,
+      selectedBrandProfileId,
+      selectedTemplateId,
+    },
     publishing: {
       canOpenXPostIntent,
       canPublish,

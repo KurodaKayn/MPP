@@ -14,6 +14,17 @@ export type ProjectCollaboratorRole = ContractSchema<"ProjectCollaboratorRole">;
 export type PublicationSummary = ContractSchema<"PublicationSummary">;
 export type PublicationDetail = ContractSchema<"PublicationDetail">;
 export type ProjectPublications = ContractSchema<"ProjectPublications">;
+export type ContentTemplateScope = ContractSchema<"ContentTemplateScope">;
+export type ContentTemplate = ContractSchema<"ContentTemplate">;
+export type ContentTemplatesResponse =
+  ContractSchema<"ContentTemplatesResponse">;
+export type CreateContentTemplateInput =
+  ContractSchema<"CreateContentTemplateRequest">;
+export type BrandProfile = ContractSchema<"BrandProfile">;
+export type BrandProfilesResponse = ContractSchema<"BrandProfilesResponse">;
+export type CreateBrandProfileInput =
+  ContractSchema<"CreateBrandProfileRequest">;
+export type MediaAssetLibraryScope = ContractSchema<"MediaAssetLibraryScope">;
 export type PublishResult = ContractSchema<"PublishResult">;
 export type CollabDocumentRole = ContractSchema<"CollabDocumentRole">;
 export type CollabDocumentSession = ContractSchema<"CollabDocumentSession">;
@@ -36,6 +47,8 @@ export type CreateProjectInput = {
   summary?: string;
   cover_image_url?: string;
   platforms: PublishPlatform[];
+  template_id?: string;
+  brand_profile_id?: string;
 };
 
 export type UpdateProjectInput = CreateProjectInput;
@@ -59,6 +72,10 @@ export type CreateMediaUploadInput = {
   mime_type: string;
   size_bytes: number;
   usage: MediaUploadUsage;
+  library_scope?: MediaAssetLibraryScope;
+  tags?: string[];
+  alt_text?: string;
+  source?: string;
 };
 
 export type CreateMediaUploadResult = {
@@ -158,6 +175,8 @@ export type CancelBrowserSessionResult =
 
 export type ProjectListItem = ContractSchema<"ProjectListItem">;
 export type ProjectDetail = ContractSchema<"ProjectDetail">;
+export type ProjectPermissionSource =
+  ContractSchema<"ProjectPermissionSource">;
 export type ProjectCollaborator = ContractSchema<"ProjectCollaborator">;
 export type ProjectCollaboratorsResponse =
   ContractSchema<"ProjectCollaboratorsResponse">;
