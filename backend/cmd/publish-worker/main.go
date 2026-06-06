@@ -73,7 +73,7 @@ func main() {
 
 	workerErrors := make(chan error, 1)
 	var workerWG sync.WaitGroup
-	dashboardService.StartPublishWorker(rootCtx)
+	publishWorkerErrors := dashboardService.StartPublishWorkerWithErrors(rootCtx)
 	browserSessionService.StartCleanupWorker(rootCtx)
 	workerWG.Go(func() {
 		if err := asyncEmailService.StartWorker(rootCtx, baseEmailService); err != nil && rootCtx.Err() == nil {
@@ -91,7 +91,13 @@ func main() {
 			log.Fatal(err)
 		}
 	case err := <-workerErrors:
+		ready.Store(false)
 		log.Fatalf("email worker stopped: %v", err)
+	case err := <-publishWorkerErrors:
+		ready.Store(false)
+		if err != nil {
+			log.Fatalf("publish worker stopped: %v", err)
+		}
 	case <-rootCtx.Done():
 		ready.Store(false)
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
