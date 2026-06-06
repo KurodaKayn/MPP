@@ -46,6 +46,9 @@ secretGenerator:
       - COLLAB_TOKEN_SECRET=validation-collab-secret
       - COOKIE_ENCRYPTION_KEY=12345678901234567890123456789012
       - LLM_PROVIDER_KEY=validation-llm-key
+      - AI_SERVICE_INTERNAL_TOKEN=validation-ai-service-token
+      - BROWSER_WORKER_INTERNAL_TOKEN=validation-browser-worker-token
+      - CONTENT_PIPELINE_INTERNAL_TOKEN=validation-content-pipeline-token
 
 images:
   - name: registry.example.invalid/kurodakayn/mpp-frontend
