@@ -23,7 +23,12 @@ pre-commit:
     browser-worker-format:
       root: "browser-worker/"
       glob: "*.go"
-      run: gofmt -w {staged_files}
+      run: |
+        for file in {staged_files}; do
+          tmp="$(mktemp)"
+          golangci-lint fmt --stdin < "$file" > "$tmp"
+          mv "$tmp" "$file"
+        done
       stage_fixed: true
 
     ai-service-format:
