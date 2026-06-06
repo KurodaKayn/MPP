@@ -153,6 +153,34 @@ describe("dashboard api client", () => {
     expect(headers.get("Authorization")).toBe("Bearer session-token");
   });
 
+  it("adds the selected workspace context to dashboard requests", async () => {
+    const stats = {
+      total_failed_publications: 0,
+      total_projects: 1,
+      total_published_publications: 0,
+      total_users: 1,
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(stats));
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem(
+      "mpp.dashboard.selectedWorkspaceId",
+      "workspace-1",
+    );
+
+    await expect(getDashboardStats()).resolves.toEqual(stats);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/stats?workspace_id=workspace-1",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+    const [, init] = fetchMock.mock.calls[0];
+    const headers = init!.headers as Headers;
+    expect(headers.get("X-Workspace-ID")).toBe("workspace-1");
+  });
+
   it("uses backend error messages from JSON responses", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () =>
       jsonResponse(
