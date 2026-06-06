@@ -23,6 +23,7 @@ jobs:
       ai_service: ${{ steps.filter.outputs.ai_service }}
       collab_service: ${{ steps.filter.outputs.collab_service }}
       content_pipeline_service: ${{ steps.filter.outputs.content_pipeline_service }}
+      kubernetes: ${{ steps.filter.outputs.kubernetes }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,6 +45,7 @@ jobs:
               echo "ai_service=true"
               echo "collab_service=true"
               echo "content_pipeline_service=true"
+              echo "kubernetes=true"
             } >> "$GITHUB_OUTPUT"
           }
 
@@ -81,6 +83,7 @@ jobs:
           mark ai_service "^(ai-service/|${shared_pattern#^})"
           mark collab_service "^(collab-service/|${shared_pattern#^})"
           mark content_pipeline_service "^(content-pipeline-service/|${shared_pattern#^})"
+          mark kubernetes "^(deploy/kubernetes/|${shared_pattern#^})"
 
   frontend:
     name: Frontend
@@ -322,6 +325,23 @@ jobs:
       - name: Test
         run: cargo test
 
+  kubernetes:
+    name: Kubernetes manifests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.kubernetes == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.33.9
+
+      - name: Build browser runtime controls
+        run: kubectl kustomize deploy/kubernetes/browser-runtime-control
+
   ci-result:
     name: CI result
     runs-on: ubuntu-latest
@@ -334,6 +354,7 @@ jobs:
       - ai_service
       - collab_service
       - content_pipeline_service
+      - kubernetes
     if: always()
     steps:
       - name: Check selected jobs
@@ -350,6 +371,7 @@ jobs:
             "${{ needs.ai_service.result }}"
             "${{ needs.collab_service.result }}"
             "${{ needs.content_pipeline_service.result }}"
+            "${{ needs.kubernetes.result }}"
           )
 
           for result in "${results[@]}"; do
