@@ -182,6 +182,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 473
         runAsGroup: 473
+        fsGroup: 473
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
       containers:
