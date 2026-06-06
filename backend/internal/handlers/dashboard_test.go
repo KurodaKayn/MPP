@@ -60,6 +60,8 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		user_id TEXT NOT NULL,
 		workspace_id TEXT,
 		collab_document_id TEXT UNIQUE,
+		template_id TEXT,
+		brand_profile_id TEXT,
 		title TEXT NOT NULL,
 		source_content TEXT NOT NULL,
 		status TEXT NOT NULL,
@@ -227,6 +229,9 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		platform_account_id TEXT,
 		enabled BOOLEAN NOT NULL DEFAULT 1,
 		status TEXT NOT NULL,
+		draft_status TEXT NOT NULL DEFAULT 'unsynced',
+		review_status TEXT NOT NULL DEFAULT 'draft',
+		sync_required BOOLEAN NOT NULL DEFAULT 0,
 		config TEXT NOT NULL DEFAULT '{}',
 		adapted_content TEXT NOT NULL DEFAULT '{}',
 		remote_id TEXT,
@@ -237,6 +242,19 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		published_at DATETIME,
 		created_at DATETIME,
 		updated_at DATETIME
+	)`).Error)
+
+	require.NoError(t, db.Exec(`CREATE TABLE media_asset_usages (
+		id TEXT PRIMARY KEY,
+		media_asset_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
+		project_id TEXT,
+		publication_id TEXT,
+		template_id TEXT,
+		resource_type TEXT NOT NULL,
+		resource_id TEXT NOT NULL,
+		usage_kind TEXT NOT NULL DEFAULT '',
+		created_at DATETIME NOT NULL
 	)`).Error)
 
 	require.NoError(t, db.Exec(`CREATE TABLE extension_callback_tokens (
