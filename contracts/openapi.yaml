@@ -271,6 +271,36 @@ components:
         - failed
         - cancelled
 
+    PublicationDraftStatus:
+      type: string
+      enum:
+        - unsynced
+        - syncing
+        - ready
+        - stale
+
+    PublicationReviewStatus:
+      type: string
+      enum:
+        - draft
+        - reviewing
+        - approved
+        - changes_requested
+
+    ContentTemplateScope:
+      type: string
+      enum:
+        - system
+        - workspace
+        - personal
+
+    MediaAssetLibraryScope:
+      type: string
+      enum:
+        - project
+        - workspace
+        - personal
+
     PublishResultStatus:
       type: string
       enum:
@@ -674,6 +704,9 @@ components:
         - platform
         - enabled
         - status
+        - draft_status
+        - review_status
+        - sync_required
       properties:
         id:
           type: string
@@ -684,6 +717,12 @@ components:
           type: boolean
         status:
           $ref: "#/components/schemas/PublicationStatus"
+        draft_status:
+          $ref: "#/components/schemas/PublicationDraftStatus"
+        review_status:
+          $ref: "#/components/schemas/PublicationReviewStatus"
+        sync_required:
+          type: boolean
         publish_url:
           type: string
 
@@ -923,6 +962,14 @@ components:
           type: string
           format: uuid
           nullable: true
+        template_id:
+          type: string
+          format: uuid
+          nullable: true
+        brand_profile_id:
+          type: string
+          format: uuid
+          nullable: true
         title:
           type: string
         status:
@@ -952,6 +999,230 @@ components:
           properties:
             source_content:
               type: string
+            publication_details:
+              type: array
+              items:
+                $ref: "#/components/schemas/PublicationDetail"
+            comments:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProjectComment"
+            versions:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProjectVersion"
+            activities:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProjectActivity"
+            collaborators:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProjectCollaborator"
+            share_links:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProjectShareLink"
+            permission_sources:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProjectPermissionSource"
+
+    ProjectPermissionSource:
+      type: object
+      additionalProperties: false
+      required:
+        - source
+        - role
+      properties:
+        source:
+          type: string
+        role:
+          type: string
+
+    ContentTemplate:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - scope
+        - name
+        - description
+        - title_template
+        - source_template
+        - default_platforms
+        - platform_config
+        - tags
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+          nullable: true
+        owner_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        scope:
+          $ref: "#/components/schemas/ContentTemplateScope"
+        name:
+          type: string
+        description:
+          type: string
+        title_template:
+          type: string
+        source_template:
+          type: string
+        default_platforms:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublishPlatform"
+        platform_config:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ContentTemplatesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContentTemplate"
+
+    CreateContentTemplateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - title_template
+        - source_template
+        - default_platforms
+      properties:
+        scope:
+          $ref: "#/components/schemas/ContentTemplateScope"
+        name:
+          type: string
+        description:
+          type: string
+        title_template:
+          type: string
+        source_template:
+          type: string
+        default_platforms:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublishPlatform"
+        platform_config:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items:
+            type: string
+
+    BrandProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspace_id
+        - created_by
+        - name
+        - voice
+        - audience
+        - banned_words
+        - cta
+        - link_strategy
+        - default_tags
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        name:
+          type: string
+        voice:
+          type: string
+        audience:
+          type: string
+        banned_words:
+          type: array
+          items:
+            type: string
+        cta:
+          type: string
+        link_strategy:
+          type: string
+        default_tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BrandProfilesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrandProfile"
+
+    CreateBrandProfileRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        voice:
+          type: string
+        audience:
+          type: string
+        banned_words:
+          type: array
+          items:
+            type: string
+        cta:
+          type: string
+        link_strategy:
+          type: string
+        default_tags:
+          type: array
+          items:
+            type: string
 
     AddProjectCollaboratorRequest:
       type: object
