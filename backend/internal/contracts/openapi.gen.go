@@ -104,10 +104,32 @@ const (
 	ProjectAccessSourceWorkspace   ProjectAccessSource = "workspace"
 )
 
+// Defines values for ProjectActivityType.
+const (
+	ProjectActivityTypeCollaboratorAdded       ProjectActivityType = "collaborator_added"
+	ProjectActivityTypeCollaboratorRemoved     ProjectActivityType = "collaborator_removed"
+	ProjectActivityTypeCollaboratorRoleChanged ProjectActivityType = "collaborator_role_changed"
+	ProjectActivityTypeCommentCreated          ProjectActivityType = "comment_created"
+	ProjectActivityTypeCommentResolved         ProjectActivityType = "comment_resolved"
+	ProjectActivityTypeContentSaved            ProjectActivityType = "content_saved"
+	ProjectActivityTypePublishQueued           ProjectActivityType = "publish_queued"
+	ProjectActivityTypePublishRequested        ProjectActivityType = "publish_requested"
+	ProjectActivityTypeShareLinkAccepted       ProjectActivityType = "share_link_accepted"
+	ProjectActivityTypeShareLinkCreated        ProjectActivityType = "share_link_created"
+	ProjectActivityTypeShareLinkRevoked        ProjectActivityType = "share_link_revoked"
+	ProjectActivityTypeVersionRestored         ProjectActivityType = "version_restored"
+)
+
 // Defines values for ProjectCollaboratorRole.
 const (
 	ProjectCollaboratorRoleEditor ProjectCollaboratorRole = "editor"
 	ProjectCollaboratorRoleViewer ProjectCollaboratorRole = "viewer"
+)
+
+// Defines values for ProjectCommentStatus.
+const (
+	ProjectCommentStatusOpen     ProjectCommentStatus = "open"
+	ProjectCommentStatusResolved ProjectCommentStatus = "resolved"
 )
 
 // Defines values for ProjectRole.
@@ -115,6 +137,12 @@ const (
 	ProjectRoleEditor ProjectRole = "editor"
 	ProjectRoleOwner  ProjectRole = "owner"
 	ProjectRoleViewer ProjectRole = "viewer"
+)
+
+// Defines values for ProjectShareLinkStatus.
+const (
+	ProjectShareLinkStatusActive  ProjectShareLinkStatus = "active"
+	ProjectShareLinkStatusRevoked ProjectShareLinkStatus = "revoked"
 )
 
 // Defines values for ProjectStatus.
@@ -161,6 +189,11 @@ const (
 	RequirementStatusValuePassed  RequirementStatusValue = "passed"
 	RequirementStatusValueUnknown RequirementStatusValue = "unknown"
 	RequirementStatusValueWarning RequirementStatusValue = "warning"
+)
+
+// Defines values for UpdateProjectCommentRequestStatus.
+const (
+	Resolved UpdateProjectCommentRequestStatus = "resolved"
 )
 
 // Defines values for WechatAccountPlatform.
@@ -259,6 +292,12 @@ type AIEditPrepublishResponse struct {
 
 // AIEditPrepublishResponseChannel defines model for AIEditPrepublishResponse.Channel.
 type AIEditPrepublishResponseChannel string
+
+// AcceptProjectShareLinkResponse defines model for AcceptProjectShareLinkResponse.
+type AcceptProjectShareLinkResponse struct {
+	Project ProjectDetail `json:"project"`
+	Role    ProjectRole   `json:"role"`
+}
 
 // AdaptedAsset defines model for AdaptedAsset.
 type AdaptedAsset struct {
@@ -472,6 +511,19 @@ type CreateCollabDocumentRequest struct {
 	Title string `json:"title"`
 }
 
+// CreateProjectCommentRequest defines model for CreateProjectCommentRequest.
+type CreateProjectCommentRequest struct {
+	AnchorText *string                 `json:"anchor_text,omitempty"`
+	Body       string                  `json:"body"`
+	Metadata   *map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// CreateProjectShareLinkRequest defines model for CreateProjectShareLinkRequest.
+type CreateProjectShareLinkRequest struct {
+	ExpiresAt *time.Time              `json:"expires_at,omitempty"`
+	Role      ProjectCollaboratorRole `json:"role"`
+}
+
 // CreateWorkspaceRequest defines model for CreateWorkspaceRequest.
 type CreateWorkspaceRequest struct {
 	Name string  `json:"name"`
@@ -539,6 +591,29 @@ type PlatformAccountStatus string
 // ProjectAccessSource defines model for ProjectAccessSource.
 type ProjectAccessSource string
 
+// ProjectActivitiesResponse defines model for ProjectActivitiesResponse.
+type ProjectActivitiesResponse struct {
+	Items []ProjectActivity `json:"items"`
+}
+
+// ProjectActivity defines model for ProjectActivity.
+type ProjectActivity struct {
+	ActorEmail     openapi_types.Email    `json:"actor_email"`
+	ActorUserId    openapi_types.UUID     `json:"actor_user_id"`
+	ActorUsername  string                 `json:"actor_username"`
+	CreatedAt      time.Time              `json:"created_at"`
+	EventType      ProjectActivityType    `json:"event_type"`
+	Id             openapi_types.UUID     `json:"id"`
+	Metadata       map[string]interface{} `json:"metadata"`
+	ProjectId      openapi_types.UUID     `json:"project_id"`
+	TargetEmail    *openapi_types.Email   `json:"target_email,omitempty"`
+	TargetUserId   *openapi_types.UUID    `json:"target_user_id,omitempty"`
+	TargetUsername *string                `json:"target_username,omitempty"`
+}
+
+// ProjectActivityType defines model for ProjectActivityType.
+type ProjectActivityType string
+
 // ProjectCollaborator defines model for ProjectCollaborator.
 type ProjectCollaborator struct {
 	CreatedAt time.Time               `json:"created_at"`
@@ -556,6 +631,29 @@ type ProjectCollaboratorRole string
 // ProjectCollaboratorsResponse defines model for ProjectCollaboratorsResponse.
 type ProjectCollaboratorsResponse struct {
 	Items []ProjectCollaborator `json:"items"`
+}
+
+// ProjectComment defines model for ProjectComment.
+type ProjectComment struct {
+	AnchorText     *string                `json:"anchor_text,omitempty"`
+	AuthorEmail    openapi_types.Email    `json:"author_email"`
+	AuthorId       openapi_types.UUID     `json:"author_id"`
+	AuthorUsername string                 `json:"author_username"`
+	Body           string                 `json:"body"`
+	CreatedAt      time.Time              `json:"created_at"`
+	Id             openapi_types.UUID     `json:"id"`
+	Metadata       map[string]interface{} `json:"metadata"`
+	ProjectId      openapi_types.UUID     `json:"project_id"`
+	ResolvedAt     *time.Time             `json:"resolved_at,omitempty"`
+	Status         ProjectCommentStatus   `json:"status"`
+}
+
+// ProjectCommentStatus defines model for ProjectCommentStatus.
+type ProjectCommentStatus string
+
+// ProjectCommentsResponse defines model for ProjectCommentsResponse.
+type ProjectCommentsResponse struct {
+	Items []ProjectComment `json:"items"`
 }
 
 // ProjectDetail defines model for ProjectDetail.
@@ -598,8 +696,62 @@ type ProjectPublications struct {
 // ProjectRole defines model for ProjectRole.
 type ProjectRole string
 
+// ProjectShareLink defines model for ProjectShareLink.
+type ProjectShareLink struct {
+	CreatedAt time.Time               `json:"created_at"`
+	CreatedBy openapi_types.UUID      `json:"created_by"`
+	ExpiresAt *time.Time              `json:"expires_at,omitempty"`
+	Id        openapi_types.UUID      `json:"id"`
+	ProjectId openapi_types.UUID      `json:"project_id"`
+	RevokedAt *time.Time              `json:"revoked_at,omitempty"`
+	Role      ProjectCollaboratorRole `json:"role"`
+	Status    ProjectShareLinkStatus  `json:"status"`
+}
+
+// ProjectShareLinkStatus defines model for ProjectShareLinkStatus.
+type ProjectShareLinkStatus string
+
+// ProjectShareLinkWithToken defines model for ProjectShareLinkWithToken.
+type ProjectShareLinkWithToken struct {
+	CreatedAt time.Time               `json:"created_at"`
+	CreatedBy openapi_types.UUID      `json:"created_by"`
+	ExpiresAt *time.Time              `json:"expires_at,omitempty"`
+	Id        openapi_types.UUID      `json:"id"`
+	ProjectId openapi_types.UUID      `json:"project_id"`
+	RevokedAt *time.Time              `json:"revoked_at,omitempty"`
+	Role      ProjectCollaboratorRole `json:"role"`
+	Status    ProjectShareLinkStatus  `json:"status"`
+	Token     string                  `json:"token"`
+	Url       string                  `json:"url"`
+}
+
+// ProjectShareLinksResponse defines model for ProjectShareLinksResponse.
+type ProjectShareLinksResponse struct {
+	Items []ProjectShareLink `json:"items"`
+}
+
 // ProjectStatus defines model for ProjectStatus.
 type ProjectStatus string
+
+// ProjectVersion defines model for ProjectVersion.
+type ProjectVersion struct {
+	CollabDocumentId *openapi_types.UUID `json:"collab_document_id,omitempty"`
+	CollabSeq        int64               `json:"collab_seq"`
+	CreatedAt        time.Time           `json:"created_at"`
+	CreatedBy        openapi_types.UUID  `json:"created_by"`
+	CreatorEmail     openapi_types.Email `json:"creator_email"`
+	CreatorUsername  string              `json:"creator_username"`
+	Id               openapi_types.UUID  `json:"id"`
+	ProjectId        openapi_types.UUID  `json:"project_id"`
+	Source           string              `json:"source"`
+	Title            string              `json:"title"`
+	VersionNumber    int                 `json:"version_number"`
+}
+
+// ProjectVersionsResponse defines model for ProjectVersionsResponse.
+type ProjectVersionsResponse struct {
+	Items []ProjectVersion `json:"items"`
+}
 
 // PublicationDetail defines model for PublicationDetail.
 type PublicationDetail struct {
@@ -661,6 +813,12 @@ type RequirementStatus struct {
 // RequirementStatusValue defines model for RequirementStatusValue.
 type RequirementStatusValue string
 
+// RestoreProjectVersionResponse defines model for RestoreProjectVersionResponse.
+type RestoreProjectVersionResponse struct {
+	Project ProjectDetail  `json:"project"`
+	Version ProjectVersion `json:"version"`
+}
+
 // SaveWechatAccountInput defines model for SaveWechatAccountInput.
 type SaveWechatAccountInput struct {
 	AppId     string  `json:"app_id"`
@@ -705,6 +863,14 @@ type UpdateCollabDocumentRequest struct {
 type UpdateProjectCollaboratorRequest struct {
 	Role ProjectCollaboratorRole `json:"role"`
 }
+
+// UpdateProjectCommentRequest defines model for UpdateProjectCommentRequest.
+type UpdateProjectCommentRequest struct {
+	Status UpdateProjectCommentRequestStatus `json:"status"`
+}
+
+// UpdateProjectCommentRequestStatus defines model for UpdateProjectCommentRequest.Status.
+type UpdateProjectCommentRequestStatus string
 
 // UpdateWorkspaceMemberRequest defines model for UpdateWorkspaceMemberRequest.
 type UpdateWorkspaceMemberRequest struct {
