@@ -46,6 +46,8 @@ func TestRuntimePodIncludesSessionMetadataAndResources(t *testing.T) {
 	assert.Equal(t, "fcdec6df4d44dbc6", pod.Labels["mpp.kurodakayn.dev/owner-hash"])
 	assert.Equal(t, "douyin", pod.Labels["mpp.kurodakayn.dev/platform"])
 	assert.Equal(t, "2026-06-06T12:30:00Z", pod.Annotations["mpp.kurodakayn.dev/expires-at"])
+	require.NotNil(t, pod.Spec.ActiveDeadlineSeconds)
+	assert.Equal(t, int64(1800), *pod.Spec.ActiveDeadlineSeconds)
 	assert.Equal(t, "registry.example/mpp-browser-runtime:sha", container.Image)
 	assert.Equal(t, "250m", container.Resources.Requests.Cpu().String())
 	assert.Equal(t, "750m", container.Resources.Limits.Cpu().String())
@@ -117,6 +119,52 @@ func TestStopSessionIgnoresMissingPod(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestReapExpiredSessionsDeletesOnlyExpiredRuntimePods(t *testing.T) {
+	now := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	client := fake.NewSimpleClientset(
+		runtimePodFixture("expired", now.Add(-time.Minute)),
+		runtimePodFixture("active", now.Add(time.Minute)),
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "missing-expiry",
+				Namespace: "runtime-ns",
+				Labels: map[string]string{
+					appNameLabel:       appName,
+					componentLabel:     browserRuntimeComponent,
+					runtimeDriverLabel: browserruntime.DriverKubernetes,
+				},
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "other-component",
+				Namespace: "runtime-ns",
+				Labels: map[string]string{
+					appNameLabel:       appName,
+					componentLabel:     "backend",
+					runtimeDriverLabel: browserruntime.DriverKubernetes,
+				},
+				Annotations: map[string]string{
+					expiresAtAnnotation: now.Add(-time.Minute).Format(time.RFC3339),
+				},
+			},
+		},
+	)
+	manager, err := NewManager(client, Config{Namespace: "runtime-ns"})
+	require.NoError(t, err)
+	manager.now = func() time.Time { return now }
+
+	err = manager.ReapExpiredSessions(context.Background())
+
+	require.NoError(t, err)
+	_, err = client.CoreV1().Pods("runtime-ns").Get(context.Background(), "expired", metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err))
+	for _, name := range []string{"active", "missing-expiry", "other-component"} {
+		_, err = client.CoreV1().Pods("runtime-ns").Get(context.Background(), name, metav1.GetOptions{})
+		assert.NoError(t, err)
+	}
+}
+
 func TestWaitForReadyPodRejectsTerminalPod(t *testing.T) {
 	ctx := context.Background()
 	client := fake.NewSimpleClientset(&corev1.Pod{
@@ -141,6 +189,23 @@ func TestNewManagerRejectsInvalidResources(t *testing.T) {
 
 	assert.Nil(t, manager)
 	assert.ErrorContains(t, err, "invalid kubernetes runtime resource cpu")
+}
+
+func runtimePodFixture(name string, expiresAt time.Time) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "runtime-ns",
+			Labels: map[string]string{
+				appNameLabel:       appName,
+				componentLabel:     browserRuntimeComponent,
+				runtimeDriverLabel: browserruntime.DriverKubernetes,
+			},
+			Annotations: map[string]string{
+				expiresAtAnnotation: expiresAt.Format(time.RFC3339),
+			},
+		},
+	}
 }
 
 func markPodReady(ctx context.Context, client *fake.Clientset, namespace string, name string, podIP string) error {
