@@ -25,7 +25,7 @@ func TestPortFromEnvUsesConfiguredPort(t *testing.T) {
 
 func TestHealthServerReadyRouteRejectsWhenDraining(t *testing.T) {
 	ready := atomic.Bool{}
-	server, err := newHealthServer(&ready, nil, nil)
+	server, err := newHealthServer(&ready, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected health server: %v", err)
 	}
