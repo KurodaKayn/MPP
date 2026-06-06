@@ -37,7 +37,7 @@ const (
 	dbSSLRootCertEnv     = "DB_SSLROOTCERT"
 	dbReaderHostEnv      = "DB_READER_HOST"
 	dbReaderUserEnv      = "DB_READER_USER"
-	dbReaderPasswordEnv  = "DB_READER_PASSWORD"
+	dbReaderPasswordEnv  = "DB_READER_PASSWORD" //nolint:gosec // This is an environment variable name, not a password value.
 	dbReaderNameEnv      = "DB_READER_NAME"
 	dbReaderPortEnv      = "DB_READER_PORT"
 	dbReaderSSLModeEnv   = "DB_READER_SSLMODE"
