@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - postgres.yaml
   - redis.yaml
+  - networkpolicy.yaml
