@@ -53,13 +53,17 @@ print_secret() {
         collab)
             printf 'COLLAB_TOKEN_SECRET=%s\n' "$(hex_secret)"
             ;;
+        pipeline)
+            printf 'CONTENT_PIPELINE_INTERNAL_TOKEN=%s\n' "$(hex_secret)"
+            ;;
         all)
             print_secret jwt
             print_secret cookie
             print_secret collab
+            print_secret pipeline
             ;;
         *)
-            echo "usage: $0 [jwt|cookie|collab|all]" >&2
+            echo "usage: $0 [jwt|cookie|collab|pipeline|all]" >&2
             exit 2
             ;;
     esac
