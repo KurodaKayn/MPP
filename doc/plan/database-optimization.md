@@ -11,11 +11,11 @@
 - `未开始`：尚未发现明确实现。
 - `暂缓`：当前业务阶段不建议投入，只保留触发条件。
 
-当前总体进度：约 `14%`。这个数字按阶段权重人工估算，后续可按实际完成项调整。
+当前总体进度：约 `16%`。这个数字按阶段权重人工估算，后续可按实际完成项调整。
 
 | 阶段                                         | 权重 | 当前完成度 | 状态   | 已完成                                                                         | 未完成/下一步                                                                          |
 | -------------------------------------------- | ---- | ---------- | ------ | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| 阶段 0：数据层基线盘点                       | 10%  | 35%        | 进行中 | GORM 查询观测、`mpp_db_*` 指标、dashboard 查询计划审计脚本                     | `pg_stat_statements`、表增长面板、读写一致性分类、版本化迁移规范                       |
+| 阶段 0：数据层基线盘点                       | 10%  | 55%        | 进行中 | GORM 查询观测、`mpp_db_*` 指标、dashboard 查询计划审计脚本、`pg_stat_statements`、数据库基线审计脚本 | 表增长面板、读写一致性分类、版本化迁移规范                                            |
 | 阶段 1：单库连接池、索引、分页和生命周期治理 | 15%  | 45%        | 进行中 | 应用层 `DB_MAX_*` 连接池、组合索引、列表分页、列表避开 `source_content` 大字段 | PgBouncer、keyset pagination、事件保留期、归档 worker                                  |
 | 阶段 2：读模型与缓存优先                     | 15%  | 10%        | 未开始 | Redis、Asynq 基础依赖可复用                                                    | dashboard 读模型、Redis TTL 缓存、失效策略、读模型重建任务                             |
 | 阶段 3：读写分离                             | 15%  | 0%         | 未开始 | 无                                                                             | PostgreSQL read replica、reader/writer 连接池、DB Router、一致性路由、replica lag 降级 |
@@ -58,7 +58,7 @@
 | 能力               | 当前状态 | 已经做了什么                                                                                                          | 还没做什么                                                            | 验证/证据入口                                                                                 |
 | ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | 应用层数据库连接池 | 完成     | backend/publish-worker 支持 `DB_MAX_OPEN_CONNS`、`DB_MAX_IDLE_CONNS`、`DB_CONN_MAX_LIFETIME`、`DB_CONN_MAX_IDLE_TIME` | PgBouncer 还未引入                                                    | `backend/internal/db/db.go`                                                                   |
-| 查询观测           | 进行中   | GORM QueryObserver、慢查询日志、`mpp_db_queries_total`、`mpp_db_query_duration_seconds`、`mpp_db_slow_queries_total`  | PostgreSQL 侧 `pg_stat_statements` 和表增长面板未补齐                 | `backend/internal/db/query_observer.go`、`backend/internal/observability/observability.go`    |
+| 查询观测           | 进行中   | GORM QueryObserver、慢查询日志、`mpp_db_queries_total`、`mpp_db_query_duration_seconds`、`mpp_db_slow_queries_total`、自托管 PostgreSQL `pg_stat_statements` | 表增长面板未补齐                                                      | `backend/internal/db/query_observer.go`、`backend/internal/observability/observability.go`、`script/db/audit_database_baseline.sql` |
 | Dashboard 查询审计 | 完成     | 已有 dashboard Count、列表、平台过滤、publication preload、账号查询、活跃会话查询计划审计脚本                         | 还未形成定期 CI/运维门禁                                              | `script/db/audit_dashboard_query_plans.sql`                                                   |
 | 租户边界           | 进行中   | 已有 `workspaces`、`workspace_members`、`projects.workspace_id`、个人工作区规则                                       | 发布事件、协作状态、媒体元数据等还没有全部显式带 `workspace_id`       | `backend/internal/models/models.go`                                                           |
 | Dashboard 读模型   | 未开始   | 无业务读模型表；当前仍以事实表聚合查询为主                                                                            | `workspace_dashboard_stats`、`project_list_summaries`、重建任务未实现 | `backend/internal/services/stats/overview.go`                                                 |
@@ -75,7 +75,8 @@
 
 - [x] 接入 GORM 查询观测和 `mpp_db_*` 指标。
 - [x] 增加 dashboard 查询计划审计脚本。
-- [ ] 开启 PostgreSQL `pg_stat_statements`。
+- [x] 开启 PostgreSQL `pg_stat_statements`。
+- [x] 增加查询指纹、表大小、索引大小、dead tuple 基线审计脚本。
 - [ ] 建立表行数、表大小、索引大小、dead tuples、vacuum 状态面板。
 - [ ] 给 dashboard、publish、collab-service 的 DB 调用标注一致性等级。
 - [ ] 制定复杂 DDL 的版本化迁移规范。
