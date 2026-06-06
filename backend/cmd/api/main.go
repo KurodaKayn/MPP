@@ -53,7 +53,7 @@ func main() {
 
 	// Initialize Services and Handlers
 	observabilitySuite := observability.New(runtimeConfig.ServiceName())
-	dashboardService := services.NewDashboardService(db.DB)
+	dashboardService := services.NewDashboardServiceWithRouter(db.DB, db.DefaultRouter)
 	dashboardService.SetPublishJobObserver(observabilitySuite.PublishJobObserver())
 	objectStorageConfig, err := objectstorage.ConfigFromEnv()
 	if err != nil {
@@ -151,6 +151,7 @@ func main() {
 		mockLogin:          mockLogin,
 		ready:              &ready,
 		sqlDB:              db.DB,
+		dbRouter:           db.DefaultRouter,
 		observabilitySuite: observabilitySuite,
 	}, serverHandlers{
 		adminDashboard: adminDashboardHandler,

@@ -49,7 +49,7 @@ func main() {
 	browserSessionService.UseRedis(redisClient)
 
 	observabilitySuite := observability.New(app.PublishWorkerServiceName)
-	dashboardService := services.NewDashboardService(db.DB)
+	dashboardService := services.NewDashboardServiceWithRouter(db.DB, db.DefaultRouter)
 	dashboardService.SetPublishJobObserver(observabilitySuite.PublishJobObserver())
 	dashboardService.SetBrowserWorkerClient(workerClient)
 	dashboardService.SetBrowserSessionService(browserSessionService)
@@ -63,7 +63,7 @@ func main() {
 
 	ready := atomic.Bool{}
 	ready.Store(true)
-	server, err := newHealthServer(&ready, redisClient, observabilitySuite)
+	server, err := newHealthServer(&ready, redisClient, observabilitySuite, db.DefaultRouter)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -114,14 +114,20 @@ func main() {
 	}
 }
 
-func newHealthServer(ready *atomic.Bool, redisClient *redis.Client, observabilitySuite *observability.Suite) (*echo.Echo, error) {
+func newHealthServer(ready *atomic.Bool, redisClient *redis.Client, observabilitySuite *observability.Suite, router *db.Router) (*echo.Echo, error) {
 	e := echo.New()
 	if observabilitySuite == nil {
 		observabilitySuite = observability.New(app.PublishWorkerServiceName)
 	}
 	observabilitySuite.RegisterRoutes(e)
-	if err := db.InstallQueryObserver(db.DB, observabilitySuite.DatabaseQueryObserver()); err != nil {
-		return nil, err
+	if router != nil {
+		if err := router.InstallQueryObserver(observabilitySuite.DatabaseQueryObserver()); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := db.InstallQueryObserver(db.DB, observabilitySuite.DatabaseQueryObserver()); err != nil {
+			return nil, err
+		}
 	}
 	e.Use(observabilitySuite.Middleware())
 	e.Use(echoMiddleware.Recover())

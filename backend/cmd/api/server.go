@@ -24,6 +24,7 @@ type serverConfig struct {
 	mockLogin          bool
 	ready              *atomic.Bool
 	sqlDB              *gorm.DB
+	dbRouter           *dbobs.Router
 	observabilitySuite *observability.Suite
 }
 
@@ -42,8 +43,14 @@ func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 		observabilitySuite = observability.New(config.runtimeConfig.ServiceName())
 	}
 	observabilitySuite.RegisterRoutes(e)
-	if err := dbobs.InstallQueryObserver(config.sqlDB, observabilitySuite.DatabaseQueryObserver()); err != nil {
-		return nil, err
+	if config.dbRouter != nil {
+		if err := config.dbRouter.InstallQueryObserver(observabilitySuite.DatabaseQueryObserver()); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := dbobs.InstallQueryObserver(config.sqlDB, observabilitySuite.DatabaseQueryObserver()); err != nil {
+			return nil, err
+		}
 	}
 
 	e.Use(observabilitySuite.Middleware())
