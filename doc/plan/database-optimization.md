@@ -11,14 +11,14 @@
 - `未开始`：尚未发现明确实现。
 - `暂缓`：当前业务阶段不建议投入，只保留触发条件。
 
-当前总体进度：约 `16%`。这个数字按阶段权重人工估算，后续可按实际完成项调整。
+当前总体进度：约 `23%`。这个数字按阶段权重人工估算，后续可按实际完成项调整。
 
 | 阶段                                         | 权重 | 当前完成度 | 状态   | 已完成                                                                         | 未完成/下一步                                                                          |
 | -------------------------------------------- | ---- | ---------- | ------ | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | 阶段 0：数据层基线盘点                       | 10%  | 55%        | 进行中 | GORM 查询观测、`mpp_db_*` 指标、dashboard 查询计划审计脚本、`pg_stat_statements`、数据库基线审计脚本 | 表增长面板、读写一致性分类、版本化迁移规范                                            |
 | 阶段 1：单库连接池、索引、分页和生命周期治理 | 15%  | 45%        | 进行中 | 应用层 `DB_MAX_*` 连接池、组合索引、列表分页、列表避开 `source_content` 大字段 | PgBouncer、keyset pagination、事件保留期、归档 worker                                  |
 | 阶段 2：读模型与缓存优先                     | 15%  | 10%        | 未开始 | Redis、Asynq 基础依赖可复用                                                    | dashboard 读模型、Redis TTL 缓存、失效策略、读模型重建任务                             |
-| 阶段 3：读写分离                             | 15%  | 0%         | 未开始 | 无                                                                             | PostgreSQL read replica、reader/writer 连接池、DB Router、一致性路由、replica lag 降级 |
+| 阶段 3：读写分离                             | 15%  | 45%        | 进行中 | `DB_READER_*` 可选连接、应用层 DB Router、签名 sticky writer、project/stats/workspace/platform_account 一致性路由 | 生产 read replica/PgBouncer、剩余服务一致性标注、replica lag 降级                      |
 | 阶段 4：单库分区、归档和冷热分层             | 15%  | 10%        | 未开始 | 协作编辑已有 state + update batch + compaction 基础                            | 事件表时间分区、协作 batch hash 分区、R2/S3 归档、恢复流程                             |
 | 阶段 5：Citus 化准备                         | 20%  | 5%         | 未开始 | Workspace 模型、`projects.workspace_id`、个人工作区 ID 已存在                  | 全域 `workspace_id`、Citus 分布列/colocation 设计、唯一约束与外键复审、迁移演练        |
 | 阶段 6：Citus 分布式 PostgreSQL 运行         | 10%  | 0%         | 暂缓   | 无                                                                             | Citus 影子集群、小租户迁移演练、worker/coordinator 监控备份、大租户隔离策略            |
@@ -63,7 +63,7 @@
 | 租户边界           | 进行中   | 已有 `workspaces`、`workspace_members`、`projects.workspace_id`、个人工作区规则                                       | 发布事件、协作状态、媒体元数据等还没有全部显式带 `workspace_id`       | `backend/internal/models/models.go`                                                           |
 | Dashboard 读模型   | 未开始   | 无业务读模型表；当前仍以事实表聚合查询为主                                                                            | `workspace_dashboard_stats`、`project_list_summaries`、重建任务未实现 | `backend/internal/services/stats/overview.go`                                                 |
 | Redis 读缓存       | 未开始   | Redis 已用于队列、锁、OAuth、browser session 等短期协调                                                               | dashboard stats/list/account 摘要缓存和失效策略未实现                 | `backend/internal/redisclient/redisclient.go`                                                 |
-| 读写分离           | 未开始   | 无 reader/writer 双连接配置                                                                                           | read replica、DB Router、sticky writer、replica lag fallback 未实现   | 无                                                                                            |
+| 读写分离           | 进行中   | 已支持 `DB_READER_*` 可选读副本连接、`DefaultRouter`、签名 sticky writer；project/stats/workspace/platform_account 已接入 strong/eventual 路由和 stale replica 回归测试 | 生产 read replica、PgBouncer reader/writer pool、剩余服务一致性标注、replica lag fallback 未实现 | `backend/internal/db/db.go`、`backend/internal/db/router.go`、`backend/internal/middleware/sticky_writer.go` |
 | 事件表分区与归档   | 未开始   | `publish_events`、`extension_execution_events` 等事件表已存在部分基础                                                 | 时间分区、归档 worker、恢复流程未实现                                 | `backend/internal/models/models.go`                                                           |
 | 协作批次治理       | 进行中   | `collab_document_states`、`collab_document_update_batches`、compaction/retention 基础已存在                           | `document_id` hash 分区、冷归档未实现                                 | `backend/internal/models/collab.go`、`collab-service/src/persistence/document-persistence.ts` |
 | Outbox/CDC/事件流  | 未开始   | Asynq 已承担发布任务队列；`PublishEvent` 已承担发布审计                                                               | 事务 Outbox、Debezium、Redpanda/Kafka CDC 未实现                      | `backend/internal/services/publish/queue.go`、`backend/internal/models/models.go`             |
@@ -103,10 +103,11 @@
 #### 阶段 3：读写分离
 
 - [ ] 部署 PostgreSQL read replica。
-- [ ] 拆分 `DB_WRITER_*` 和 `DB_READER_*` 配置。
-- [ ] 引入 reader/writer DB Router 或 GORM DBResolver。
-- [ ] 为查询标注 `StrongRead`、`ReadYourWrite`、`EventualRead`。
-- [ ] 写后短窗口 sticky writer，避免副本延迟造成状态倒退。
+- [x] 增加 `DB_READER_*` 可选读副本配置；writer 当前继续沿用 `DB_*` 配置。
+- [x] 引入应用层 reader/writer DB Router。
+- [x] 为 project、stats、workspace、platform_account 标注 `StrongRead`、`EventualRead` 等一致性路径。
+- [x] 写后短窗口 sticky writer，避免副本延迟造成状态倒退。
+- [ ] 补齐 publish、prepublish、mediaasset、browser_session、extension 等剩余服务的一致性路由。
 - [ ] 监控 replica lag，并在延迟超阈值时自动回退 writer。
 
 #### 阶段 4：单库分区、归档和冷热分层
