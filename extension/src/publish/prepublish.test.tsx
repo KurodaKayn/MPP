@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { BackendApiError } from "../backend/client";
 import type { ExtensionPrepublishResponse } from "../backend/types";
@@ -124,6 +130,9 @@ describe("PrepublishWorkbenchCard", () => {
     expect(screen.getAllByText("Douyin article draft").length).toBeGreaterThan(
       0,
     );
+    expect(
+      screen.getByRole("button", { name: /douyin article draft/i }),
+    ).toHaveAttribute("data-state", "open");
     expect(screen.getAllByText("ready")).toHaveLength(1);
     expect(
       screen.queryByText("1 ready platform selected"),
@@ -132,6 +141,11 @@ describe("PrepublishWorkbenchCard", () => {
     expect(
       screen.getByRole("button", { name: /douyin ready/i }),
     ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(screen.getByRole("button", { name: /douyin ready/i })).queryByText(
+        "First draft preview",
+      ),
+    ).not.toBeInTheDocument();
     expect(screen.getByAltText("Douyin icon")).toHaveAttribute(
       "src",
       "/icon/platforms/douyin.svg",
@@ -168,6 +182,28 @@ describe("PrepublishWorkbenchCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /second draft/i }));
 
     expect(selectProject).toHaveBeenCalledWith("project-2");
+  });
+
+  it("shows preview for the selected project accordion", () => {
+    render(
+      <PrepublishWorkbenchCard
+        state={{
+          status: "loaded",
+          items: createPrepublishResponse().items,
+        }}
+        selectedProjectId="project-2"
+        selectedPlatforms={new Set<PlatformUiKey>(["douyin"])}
+        onProjectSelect={vi.fn()}
+        onPlatformToggle={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /second draft/i }),
+    ).toHaveAttribute("data-state", "open");
+    expect(screen.getByText("Second preview")).toBeInTheDocument();
+    expect(screen.queryByText("First draft preview")).not.toBeInTheDocument();
   });
 
   it("starts handoff for the selected project and platforms", () => {
