@@ -2,17 +2,23 @@ package stats
 
 import (
 	"context"
+	"time"
 
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 )
 
+const dashboardStatsCacheTTL = 15 * time.Second
+
 type Service struct {
 	db       *gorm.DB
 	router   *dbrouter.Router
 	projects *projectsvc.Service
+	cache    *redis.Client
+	cacheTTL time.Duration
 }
 
 func NewService(db *gorm.DB, projects *projectsvc.Service) *Service {
@@ -24,6 +30,26 @@ func NewServiceWithRouter(db *gorm.DB, projects *projectsvc.Service, router *dbr
 		router = dbrouter.NewRouter(db)
 	}
 	return &Service{db: db, router: router, projects: projects}
+}
+
+func (s *Service) WithContext(ctx context.Context) *Service {
+	if ctx == nil {
+		return s
+	}
+	scoped := *s
+	scoped.db = s.db.WithContext(ctx)
+	if s.projects != nil {
+		scoped.projects = s.projects.WithContext(ctx)
+	}
+	return &scoped
+}
+
+func (s *Service) UseRedis(client *redis.Client) {
+	if client == nil {
+		return
+	}
+	s.cache = client
+	s.cacheTTL = dashboardStatsCacheTTL
 }
 
 func (s *Service) eventualReadDB() *gorm.DB {

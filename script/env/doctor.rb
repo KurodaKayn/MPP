@@ -8,6 +8,14 @@ require_relative "env_contract"
 require_relative "env_file"
 
 BOOLEAN_VALUES = %w[1 0 true false yes no y n on off].freeze
+DURATION_UNITS = {
+  "ns" => 1.0e-9,
+  "us" => 1.0e-6,
+  "ms" => 1.0e-3,
+  "s" => 1.0,
+  "m" => 60.0,
+  "h" => 3600.0,
+}.freeze
 PLACEHOLDER_PATTERNS = [
   /replace-with/i,
   /change-me/i,
@@ -156,7 +164,7 @@ class EnvDoctor
     when "port"
       validate_port(path, name, value)
     when "duration"
-      validate_duration(path, name, value)
+      validate_duration(path, name, value, spec)
     when "enum"
       add_error(path, name, "must be one of: #{Array(spec['values']).join(', ')}") unless Array(spec["values"]).map(&:to_s).include?(value)
     when "url"
@@ -199,11 +207,26 @@ class EnvDoctor
     add_error(path, name, "must be a port number")
   end
 
-  def validate_duration(path, name, value)
-    return if value.match?(/\A\d+(\.\d+)?(ns|us|ms|s|m|h)\z/)
-    return if value.match?(/\A\d+\z/)
+  def validate_duration(path, name, value, spec)
+    parsed = parse_duration_seconds(value)
+    unless parsed
+      add_error(path, name, "must be a duration such as 30s, 5m, or 1h")
+      return
+    end
 
-    add_error(path, name, "must be a duration such as 30s, 5m, or 1h")
+    min_duration = spec["min_duration"]
+    min_parsed = parse_duration_seconds(min_duration.to_s) if min_duration
+    add_error(path, name, "must be >= #{min_duration}") if min_parsed && parsed < min_parsed
+  end
+
+  def parse_duration_seconds(value)
+    raw = value.to_s.strip
+    if (match = raw.match(/\A(\d+(?:\.\d+)?)(ns|us|ms|s|m|h)\z/))
+      return match[1].to_f * DURATION_UNITS.fetch(match[2])
+    end
+    return raw.to_i if raw.match?(/\A\d+\z/)
+
+    nil
   end
 
   def validate_url(path, name, value, schemes: nil)
