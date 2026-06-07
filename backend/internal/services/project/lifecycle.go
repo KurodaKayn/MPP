@@ -24,11 +24,15 @@ func (s *Service) CreateProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid
 	if workspaceID != nil && *workspaceID != uuid.Nil {
 		workspaceValue = *workspaceID
 	}
-	template, err := s.contentTemplateForProject(userID, workspaceValue, req.TemplateID)
+	templateValue, hasTemplate, err := s.contentTemplateForProject(userID, workspaceValue, req.TemplateID)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.brandProfileForProject(userID, workspaceValue, req.BrandProfileID); err != nil {
+	var template *models.ContentTemplate
+	if hasTemplate {
+		template = &templateValue
+	}
+	if err := s.validateBrandProfileForProject(userID, workspaceValue, req.BrandProfileID); err != nil {
 		return nil, err
 	}
 
@@ -179,11 +183,15 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 		return nil, ErrForbidden
 	}
 	workspaceValue := projectWorkspaceID(existingProject)
-	template, err := s.contentTemplateForProject(userID, workspaceValue, req.TemplateID)
+	templateValue, hasTemplate, err := s.contentTemplateForProject(userID, workspaceValue, req.TemplateID)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.brandProfileForProject(userID, workspaceValue, req.BrandProfileID); err != nil {
+	var template *models.ContentTemplate
+	if hasTemplate {
+		template = &templateValue
+	}
+	if err := s.validateBrandProfileForProject(userID, workspaceValue, req.BrandProfileID); err != nil {
 		return nil, err
 	}
 

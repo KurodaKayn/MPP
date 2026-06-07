@@ -2,6 +2,7 @@ package project
 
 import (
 	"encoding/json"
+	"maps"
 	"strings"
 
 	"github.com/google/uuid"
@@ -195,35 +196,35 @@ func (s *Service) CreateBrandProfile(userID uuid.UUID, workspaceID uuid.UUID, re
 	return &resp, nil
 }
 
-func (s *Service) contentTemplateForProject(userID uuid.UUID, workspaceID uuid.UUID, templateID *uuid.UUID) (*models.ContentTemplate, error) {
+func (s *Service) contentTemplateForProject(userID uuid.UUID, workspaceID uuid.UUID, templateID *uuid.UUID) (models.ContentTemplate, bool, error) {
 	if templateID == nil || *templateID == uuid.Nil {
-		return nil, nil
+		return models.ContentTemplate{}, false, nil
 	}
 	var template models.ContentTemplate
 	if err := s.db.First(&template, "id = ?", *templateID).Error; err != nil {
-		return nil, err
+		return models.ContentTemplate{}, false, err
 	}
 	if contentTemplateAccessible(template, userID, workspaceID) {
-		return &template, nil
+		return template, true, nil
 	}
-	return nil, ErrForbidden
+	return models.ContentTemplate{}, false, ErrForbidden
 }
 
-func (s *Service) brandProfileForProject(userID uuid.UUID, workspaceID uuid.UUID, brandProfileID *uuid.UUID) (*models.BrandProfile, error) {
+func (s *Service) validateBrandProfileForProject(userID uuid.UUID, workspaceID uuid.UUID, brandProfileID *uuid.UUID) error {
 	if brandProfileID == nil || *brandProfileID == uuid.Nil {
-		return nil, nil
+		return nil
 	}
 	var profile models.BrandProfile
 	if err := s.db.First(&profile, "id = ?", *brandProfileID).Error; err != nil {
-		return nil, err
+		return err
 	}
 	if profile.WorkspaceID != workspaceID {
-		return nil, ErrForbidden
+		return ErrForbidden
 	}
 	if _, err := workspaceProjectAccessRoleWithDB(s.db, workspaceID, userID); err != nil {
-		return nil, err
+		return err
 	}
-	return &profile, nil
+	return nil
 }
 
 func contentTemplateAccessible(template models.ContentTemplate, userID uuid.UUID, workspaceID uuid.UUID) bool {
@@ -337,9 +338,7 @@ func mergePublicationConfig(base datatypes.JSON, extra map[string]any) (datatype
 		return base, nil
 	}
 	config := mapFromJSON(base)
-	for key, value := range extra {
-		config[key] = value
-	}
+	maps.Copy(config, extra)
 	payload, err := json.Marshal(config)
 	if err != nil {
 		return nil, err
