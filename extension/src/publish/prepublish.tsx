@@ -24,6 +24,11 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
+import {
+  PLATFORM_UI_CONFIGS,
+  type PlatformUiConfig,
+  type PlatformUiKey,
+} from "./platform-ui";
 
 export type PrepublishViewState =
   | {
@@ -49,9 +54,9 @@ export type LoadPrepublish = () => Promise<ExtensionPrepublishResponse>;
 export interface PrepublishWorkbenchProps {
   state: PrepublishViewState;
   selectedProjectId: string | null;
-  selectedPlatforms: Set<PlatformKey>;
+  selectedPlatforms: Set<PlatformUiKey>;
   onProjectSelect: (projectId: string) => void;
-  onPlatformToggle: (platform: PlatformKey) => void;
+  onPlatformToggle: (platform: PlatformUiKey) => void;
   onRetry: () => void;
   onOpenLogin?: () => void;
   onStartHandoff?: (projectId: string, platforms: PlatformKey[]) => void;
@@ -82,6 +87,20 @@ export async function getPrepublishViewState(
 }
 
 function enabledPlatformsForProject(
+  item: ExtensionPrepublishItem | undefined,
+): Set<PlatformUiKey> {
+  const enabledHandoffPlatforms = getEnabledHandoffPlatforms(item);
+
+  return new Set(
+    PLATFORM_UI_CONFIGS.filter(
+      (platform) =>
+        platform.handoffPlatform &&
+        enabledHandoffPlatforms.has(platform.handoffPlatform),
+    ).map((platform) => platform.key),
+  );
+}
+
+function getEnabledHandoffPlatforms(
   item: ExtensionPrepublishItem | undefined,
 ): Set<PlatformKey> {
   return new Set(
@@ -128,13 +147,7 @@ function getWorkbenchStatusVariant(
 }
 
 function formatSelectedPlatformCount(count: number): string {
-  return `${count} ${count === 1 ? "platform" : "platforms"} selected`;
-}
-
-function getPlatformAvailabilityLabel(
-  platform: ExtensionPrepublishPlatform,
-): string {
-  return platform.enabled ? "ready" : "unavailable";
+  return `${count} ready ${count === 1 ? "platform" : "platforms"} selected`;
 }
 
 export function usePrepublishWorkbench(
@@ -148,7 +161,7 @@ export function usePrepublishWorkbench(
     string | null
   >(null);
   const [selectedPlatforms, setSelectedPlatforms] = React.useState<
-    Set<PlatformKey>
+    Set<PlatformUiKey>
   >(new Set());
 
   const selectProject = React.useCallback(
@@ -189,7 +202,7 @@ export function usePrepublishWorkbench(
   }, [enabled, loadPrepublish]);
 
   const togglePlatform = React.useCallback(
-    (platform: PlatformKey) => {
+    (platform: PlatformUiKey) => {
       setSelectedPlatforms((current) => {
         const next = new Set(current);
 
@@ -274,55 +287,115 @@ function ProjectList({
   );
 }
 
+function findBackendPlatform(
+  platforms: ExtensionPrepublishPlatform[],
+  config: PlatformUiConfig,
+): ExtensionPrepublishPlatform | undefined {
+  return config.handoffPlatform
+    ? platforms.find((platform) => platform.platform === config.handoffPlatform)
+    : undefined;
+}
+
+function getPlatformCardStatus(
+  config: PlatformUiConfig,
+  backendPlatform: ExtensionPrepublishPlatform | undefined,
+): {
+  disabled: boolean;
+  label: string;
+  variant: React.ComponentProps<typeof Badge>["variant"];
+} {
+  if (config.implementationStatus === "ui_only") {
+    return {
+      disabled: false,
+      label: config.statusLabel,
+      variant: "secondary",
+    };
+  }
+
+  if (!backendPlatform?.enabled) {
+    return {
+      disabled: true,
+      label: "Unavailable",
+      variant: "secondary",
+    };
+  }
+
+  return {
+    disabled: false,
+    label: config.statusLabel,
+    variant: "success",
+  };
+}
+
 function PlatformSelection({
   platforms,
   selectedPlatforms,
   onPlatformToggle,
 }: {
   platforms: ExtensionPrepublishPlatform[];
-  selectedPlatforms: Set<PlatformKey>;
-  onPlatformToggle: (platform: PlatformKey) => void;
+  selectedPlatforms: Set<PlatformUiKey>;
+  onPlatformToggle: (platform: PlatformUiKey) => void;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      {platforms.map((platform) => (
-        <label
-          key={platform.publication_id}
-          className={[
-            "flex items-start gap-3 rounded-md border px-3 py-2",
-            platform.enabled
-              ? "border-border bg-background"
-              : "border-border bg-muted opacity-70",
-          ].join(" ")}
-        >
-          <input
-            type="checkbox"
-            className="mt-1"
-            checked={
-              platform.enabled && selectedPlatforms.has(platform.platform)
-            }
-            disabled={!platform.enabled}
-            onChange={() => onPlatformToggle(platform.platform)}
-            aria-label={platform.platform}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium capitalize">
-                {platform.platform}
+    <div className="grid grid-cols-2 gap-2">
+      {PLATFORM_UI_CONFIGS.map((platform) => {
+        const backendPlatform = findBackendPlatform(platforms, platform);
+        const status = getPlatformCardStatus(platform, backendPlatform);
+        const selected =
+          !status.disabled && selectedPlatforms.has(platform.key);
+
+        return (
+          <button
+            key={platform.key}
+            type="button"
+            aria-label={`${platform.label} ${status.label}`}
+            aria-pressed={selected}
+            disabled={status.disabled}
+            className={[
+              "flex min-h-28 flex-col gap-3 rounded-md border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-55",
+              selected
+                ? "border-primary bg-primary/5"
+                : "border-border bg-background hover:bg-muted",
+            ].join(" ")}
+            onClick={() => onPlatformToggle(platform.key)}
+          >
+            <span className="flex items-start justify-between gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-card">
+                <img
+                  src={platform.iconPath}
+                  alt={`${platform.label} icon`}
+                  className="size-5"
+                />
               </span>
-              <Badge variant={platform.enabled ? "success" : "secondary"}>
-                {getPlatformAvailabilityLabel(platform)}
-              </Badge>
+              <Badge variant={status.variant}>{status.label}</Badge>
             </span>
-            {platform.preview ? (
-              <span className="mt-2 block text-sm text-muted-foreground">
-                {platform.preview}
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium">
+                {platform.label}
               </span>
-            ) : null}
-          </span>
-        </label>
-      ))}
+              {backendPlatform?.preview ? (
+                <span className="mt-2 line-clamp-2 block text-xs text-muted-foreground">
+                  {backendPlatform.preview}
+                </span>
+              ) : null}
+            </span>
+          </button>
+        );
+      })}
     </div>
+  );
+}
+
+function getSelectedHandoffPlatforms(
+  selectedPlatforms: Set<PlatformUiKey>,
+  enabledHandoffPlatforms: Set<PlatformKey>,
+): PlatformKey[] {
+  return PLATFORM_UI_CONFIGS.flatMap((platform) =>
+    platform.handoffPlatform &&
+    selectedPlatforms.has(platform.key) &&
+    enabledHandoffPlatforms.has(platform.handoffPlatform)
+      ? [platform.handoffPlatform]
+      : [],
   );
 }
 
@@ -341,12 +414,10 @@ function LoadedWorkbench({
   const selectedProject =
     state.items.find((item) => item.project_id === selectedProjectId) ??
     state.items[0];
-  const selectedPlatformList = selectedProject.platforms
-    .filter(
-      (platform) =>
-        platform.enabled && selectedPlatforms.has(platform.platform),
-    )
-    .map((platform) => platform.platform);
+  const selectedPlatformList = getSelectedHandoffPlatforms(
+    selectedPlatforms,
+    getEnabledHandoffPlatforms(selectedProject),
+  );
   const canStart =
     Boolean(onStartHandoff) &&
     Boolean(selectedProject.project_id) &&
@@ -387,7 +458,7 @@ function LoadedWorkbench({
         ) : null}
         {!selectedPlatformList.length ? (
           <p className="mt-3 text-sm text-muted-foreground">
-            Select at least one platform.
+            Select Douyin to start publishing.
           </p>
         ) : null}
         <div className="mt-3 flex justify-end">
