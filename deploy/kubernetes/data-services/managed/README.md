@@ -22,3 +22,6 @@ Required overlay inputs:
 
 Do not store provider credentials in this package. Materialize them through a
 Kubernetes Secret or an external secret manager.
+
+For a renderable staging starter that wires this package to the app baseline and
+browser runtime controls, see `deploy/kubernetes/overlays/staging-managed`.
