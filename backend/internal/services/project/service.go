@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -20,6 +22,8 @@ var ErrInvalidProject = errors.New("invalid project")
 var ErrInvalidProjectCollaborator = errors.New("invalid project collaborator")
 var ErrProjectCollabUnavailable = errors.New("project collaboration unavailable")
 
+const dashboardProjectListCacheTTL = 15 * time.Second
+
 var allowedProjectPlatforms = map[string]struct{}{
 	"douyin": {},
 	"wechat": {},
@@ -31,6 +35,9 @@ type Service struct {
 	db              *gorm.DB
 	router          *dbrouter.Router
 	collabDocuments *collabdoc.Service
+	cache           *redis.Client
+	cacheTTL        time.Duration
+	cacheGroup      *singleflight.Group
 }
 
 func NewService(db *gorm.DB) *Service {
@@ -41,7 +48,7 @@ func NewServiceWithRouter(db *gorm.DB, router *dbrouter.Router) *Service {
 	if router == nil {
 		router = dbrouter.NewRouter(db)
 	}
-	return &Service{db: db, router: router}
+	return &Service{db: db, router: router, cacheGroup: &singleflight.Group{}}
 }
 
 func (s *Service) WithContext(ctx context.Context) *Service {
@@ -50,6 +57,7 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 	}
 	scoped := *s
 	scoped.db = s.db.WithContext(ctx)
+	scoped.cacheGroup = s.cacheGroup
 	if s.collabDocuments != nil {
 		scoped.collabDocuments = s.collabDocuments.WithContext(ctx)
 	}
@@ -58,6 +66,14 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 
 func (s *Service) SetCollabDocumentService(svc *collabdoc.Service) {
 	s.collabDocuments = svc
+}
+
+func (s *Service) UseRedis(client *redis.Client) {
+	if client == nil {
+		return
+	}
+	s.cache = client
+	s.cacheTTL = dashboardProjectListCacheTTL
 }
 
 func (s *Service) requestContext() context.Context {
