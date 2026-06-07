@@ -119,8 +119,8 @@ describe("PrepublishWorkbenchCard", () => {
 
     expect(screen.getByText("Pre-Publish Drafts")).toBeInTheDocument();
     expect(
-      screen.getByText("Choose a draft and platform to prepare."),
-    ).toBeInTheDocument();
+      screen.queryByText("Choose a draft and platform to prepare."),
+    ).not.toBeInTheDocument();
     expect(screen.getAllByText("Douyin article draft").length).toBeGreaterThan(
       0,
     );
