@@ -23,6 +23,8 @@ spec:
       message: "browser runtime pods must not use privileged service accounts"
     - expression: "has(object.spec.automountServiceAccountToken) && object.spec.automountServiceAccountToken == false"
       message: "browser runtime pods must not mount service account tokens"
+    - expression: "has(object.spec.securityContext) && has(object.spec.securityContext.runAsNonRoot) && object.spec.securityContext.runAsNonRoot == true && has(object.spec.securityContext.runAsUser) && object.spec.securityContext.runAsUser == 1000 && has(object.spec.securityContext.runAsGroup) && object.spec.securityContext.runAsGroup == 1000 && has(object.spec.securityContext.seccompProfile) && object.spec.securityContext.seccompProfile.type == 'RuntimeDefault'"
+      message: "browser runtime pods must use a restricted Pod security context"
     - expression: "(!has(object.spec.hostNetwork) || object.spec.hostNetwork == false) && (!has(object.spec.hostPID) || object.spec.hostPID == false) && (!has(object.spec.hostIPC) || object.spec.hostIPC == false)"
       message: "browser runtime pods must not use host namespaces"
     - expression: "!has(object.spec.volumes) || object.spec.volumes.size() == 0"
