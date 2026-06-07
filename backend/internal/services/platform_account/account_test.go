@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkgx "github.com/kurodakayn/mpp-backend/internal/pkg/x"
@@ -248,6 +249,176 @@ func TestGetDouyinAccount(t *testing.T) {
 	assert.Equal(t, "creator", account.Username)
 	assert.Equal(t, "https://example.com/avatar.png", account.AvatarURL)
 	assert.Equal(t, models.PlatformAccountStatusConnected, account.Status)
+}
+
+func TestGetWechatAccountUsesWriterForScopedAccount(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	s := services.NewDashboardServiceWithRouter(writer, dbrouter.NewRouter(writer, dbrouter.WithReader(reader)))
+
+	userID := uuid.New()
+	workspaceID := models.PersonalWorkspaceID(userID)
+	user := models.User{ID: userID, Username: "account-routing-owner", Email: "account-routing-owner@example.com"}
+	require.NoError(t, writer.Create(&user).Error)
+	require.NoError(t, reader.Create(&user).Error)
+
+	ownerID := userID
+	writerAccount := models.PlatformAccount{
+		ID:             uuid.New(),
+		UserID:         userID,
+		WorkspaceID:    &workspaceID,
+		OwnerUserID:    &ownerID,
+		Platform:       "wechat",
+		Username:       "writer wechat",
+		DisplayName:    "writer wechat",
+		PlatformUserID: "wx-writer",
+		ShareScope:     models.PlatformAccountSharePrivate,
+		Status:         models.PlatformAccountStatusConnected,
+		HealthStatus:   models.PlatformAccountHealthHealthy,
+		Credentials:    datatypes.JSON([]byte(`{"app_id":"wx-writer","app_secret":"writer-secret"}`)),
+	}
+	staleReaderAccount := models.PlatformAccount{
+		ID:             uuid.New(),
+		UserID:         userID,
+		WorkspaceID:    &workspaceID,
+		OwnerUserID:    &ownerID,
+		Platform:       "wechat",
+		Username:       "reader wechat",
+		DisplayName:    "reader wechat",
+		PlatformUserID: "wx-reader",
+		ShareScope:     models.PlatformAccountSharePrivate,
+		Status:         models.PlatformAccountStatusConnected,
+		HealthStatus:   models.PlatformAccountHealthHealthy,
+		Credentials:    datatypes.JSON([]byte(`{"app_id":"wx-reader","app_secret":"reader-secret"}`)),
+	}
+	require.NoError(t, writer.Create(&writerAccount).Error)
+	require.NoError(t, reader.Create(&staleReaderAccount).Error)
+
+	account, err := s.GetWechatAccount(userID)
+	require.NoError(t, err)
+	assert.Equal(t, "wx-writer", account.AppID)
+	assert.True(t, account.HasAppSecret)
+}
+
+func TestResolvePublicationAccountUsesWriterForScopedAccount(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	s := platformaccount.NewServiceWithRouter(writer, dbrouter.NewRouter(writer, dbrouter.WithReader(reader)))
+
+	userID := uuid.New()
+	workspaceID := models.PersonalWorkspaceID(userID)
+	user := models.User{ID: userID, Username: "publication-account-owner", Email: "publication-account-owner@example.com"}
+	require.NoError(t, writer.Create(&user).Error)
+	require.NoError(t, reader.Create(&user).Error)
+
+	project := models.Project{
+		ID:            uuid.New(),
+		UserID:        userID,
+		WorkspaceID:   &workspaceID,
+		Title:         "Publication account routing",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, writer.Create(&project).Error)
+	require.NoError(t, reader.Create(&project).Error)
+
+	ownerID := userID
+	writerAccount := models.PlatformAccount{
+		ID:           uuid.New(),
+		UserID:       userID,
+		WorkspaceID:  &workspaceID,
+		OwnerUserID:  &ownerID,
+		Platform:     "douyin",
+		Username:     "writer account",
+		DisplayName:  "writer account",
+		ShareScope:   models.PlatformAccountSharePrivate,
+		Status:       models.PlatformAccountStatusConnected,
+		HealthStatus: models.PlatformAccountHealthHealthy,
+	}
+	staleReaderAccount := models.PlatformAccount{
+		ID:           uuid.New(),
+		UserID:       userID,
+		WorkspaceID:  &workspaceID,
+		OwnerUserID:  &ownerID,
+		Platform:     "douyin",
+		Username:     "stale reader account",
+		DisplayName:  "stale reader account",
+		ShareScope:   models.PlatformAccountSharePrivate,
+		Status:       models.PlatformAccountStatusConnected,
+		HealthStatus: models.PlatformAccountHealthHealthy,
+	}
+	require.NoError(t, writer.Create(&writerAccount).Error)
+	require.NoError(t, reader.Create(&staleReaderAccount).Error)
+
+	pub := models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "douyin",
+	}
+	account, err := s.ResolvePublicationAccount(userID, &pub)
+	require.NoError(t, err)
+	require.NotNil(t, pub.PlatformAccountID)
+	assert.Equal(t, writerAccount.ID, account.ID)
+	assert.Equal(t, writerAccount.ID, *pub.PlatformAccountID)
+}
+
+func TestRequireAccountUseUsesWriterForWorkspaceMembership(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	s := platformaccount.NewServiceWithRouter(writer, dbrouter.NewRouter(writer, dbrouter.WithReader(reader)))
+
+	actorID := uuid.New()
+	ownerID := uuid.New()
+	workspaceID := uuid.New()
+	account := models.PlatformAccount{
+		ID:           uuid.New(),
+		UserID:       ownerID,
+		WorkspaceID:  &workspaceID,
+		OwnerUserID:  &ownerID,
+		Platform:     "douyin",
+		Username:     "workspace shared",
+		DisplayName:  "workspace shared",
+		ShareScope:   models.PlatformAccountShareWorkspace,
+		Status:       models.PlatformAccountStatusConnected,
+		HealthStatus: models.PlatformAccountHealthHealthy,
+	}
+	require.NoError(t, reader.Create(&models.WorkspaceMember{
+		WorkspaceID: workspaceID,
+		UserID:      actorID,
+		Role:        models.WorkspaceRoleMember,
+	}).Error)
+
+	err := s.RequireAccountUse(actorID, account, uuid.Nil)
+	require.ErrorIs(t, err, platformaccount.ErrPlatformAccountForbidden)
+}
+
+func TestRequireAccountUseUsesWriterForAccountGrant(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	s := platformaccount.NewServiceWithRouter(writer, dbrouter.NewRouter(writer, dbrouter.WithReader(reader)))
+
+	actorID := uuid.New()
+	accountID := uuid.New()
+	account := models.PlatformAccount{
+		ID:           accountID,
+		UserID:       uuid.New(),
+		Platform:     "douyin",
+		Username:     "private account",
+		DisplayName:  "private account",
+		ShareScope:   models.PlatformAccountSharePrivate,
+		Status:       models.PlatformAccountStatusConnected,
+		HealthStatus: models.PlatformAccountHealthHealthy,
+	}
+	require.NoError(t, reader.Create(&models.PlatformAccountGrant{
+		ID:                uuid.New(),
+		PlatformAccountID: accountID,
+		WorkspaceID:       uuid.New(),
+		GranteeUserID:     &actorID,
+		Role:              models.PlatformAccountGrantRolePublisher,
+		CreatedBy:         uuid.New(),
+	}).Error)
+
+	err := s.RequireAccountUse(actorID, account, uuid.Nil)
+	require.ErrorIs(t, err, platformaccount.ErrPlatformAccountForbidden)
 }
 
 func TestResolvePublicationAccountFallbackSkipsInaccessibleAccount(t *testing.T) {
