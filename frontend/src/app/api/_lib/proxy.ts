@@ -62,24 +62,53 @@ function applyAuthorizationFromCookie(request: NextRequest, headers: Headers) {
   return false;
 }
 
-function isSameOriginHeader(value: string | null, requestOrigin: string) {
+function firstForwardedValue(value: string | null) {
+  return value?.split(",")[0]?.trim() ?? "";
+}
+
+function requestOriginCandidates(request: NextRequest) {
+  const origins = new Set<string>([request.nextUrl.origin]);
+  const forwardedHost =
+    firstForwardedValue(request.headers.get("x-forwarded-host")) ||
+    firstForwardedValue(request.headers.get("host")) ||
+    request.nextUrl.host;
+  const forwardedProto =
+    firstForwardedValue(request.headers.get("x-forwarded-proto")) ||
+    request.nextUrl.protocol.replace(/:$/, "") ||
+    "http";
+
+  if (forwardedHost) {
+    origins.add(`${forwardedProto}://${forwardedHost}`);
+  }
+
+  return origins;
+}
+
+function isSameOriginHeader(value: string | null, requestOrigins: Set<string>) {
   if (!value) {
     return false;
   }
 
   try {
-    return new URL(value).origin === requestOrigin;
+    return requestOrigins.has(new URL(value).origin);
   } catch {
     return false;
   }
 }
 
 function isSameOriginBrowserWrite(request: NextRequest) {
-  const requestOrigin = request.nextUrl.origin;
-  return (
-    isSameOriginHeader(request.headers.get("origin"), requestOrigin) ||
-    isSameOriginHeader(request.headers.get("referer"), requestOrigin)
-  );
+  const requestOrigins = requestOriginCandidates(request);
+  const origin = request.headers.get("origin");
+  if (origin) {
+    return isSameOriginHeader(origin, requestOrigins);
+  }
+
+  const referer = request.headers.get("referer");
+  if (referer) {
+    return isSameOriginHeader(referer, requestOrigins);
+  }
+
+  return request.headers.get("sec-fetch-site")?.toLowerCase() === "same-origin";
 }
 
 function ensureTraceHeaders(headers: Headers) {
