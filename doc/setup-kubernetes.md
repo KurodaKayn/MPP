@@ -206,6 +206,7 @@ find deploy/kubernetes -name kustomization.yaml -print | sort | while IFS= read 
   rendered="$(mktemp)"
   kubectl kustomize "$dir" > "$rendered"
   ruby script/kubernetes/validate-rendered-manifests.rb "$dir" "$rendered"
+  ruby script/kubernetes/validate-rendered-schema.rb "$dir" "$rendered"
 done
 ```
 
@@ -214,6 +215,12 @@ missing validation overlay secrets, app workload security-context regressions,
 missing probes or resource requests, broken Service and Ingress wiring, browser
 runtime RBAC or NetworkPolicy drift, missing observability rules, and malformed
 managed or self-hosted data-service packages.
+
+The schema validator wraps `kubeconform` in strict mode against Kubernetes
+1.33 schemas. It ignores missing schemas so Prometheus Operator CRDs such as
+`PodMonitor` and `PrometheusRule` can still be included while built-in
+Kubernetes resources receive API schema coverage. CI installs kubeconform
+`v0.8.0`; local validation can use the same binary or set `KUBECONFORM_BIN`.
 
 When validating a staging overlay after replacing the checked-in example values,
 enable deployable validation to reject `.example.invalid` hosts, all-zero SHA
@@ -226,9 +233,9 @@ MPP_KUBERNETES_VALIDATE_DEPLOYABLE=1 \
   /tmp/mpp-staging.yaml
 ```
 
-For the final environment overlay, also run your cluster's schema validator or
-admission dry-run. Tools such as kubeconform or kubeval can complement the
-repository policy checks with Kubernetes API schema coverage.
+For the final environment overlay, also run an admission dry-run against the
+target cluster to catch cluster-specific admission policies, enabled API
+versions, and CRD schemas that are outside the repository validation scope.
 
 ## Deploy
 

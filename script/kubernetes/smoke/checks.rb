@@ -462,7 +462,7 @@ module KubernetesSmoke
         annotations = dig(pod, "metadata", "annotations") || {}
         labels["mpp.kurodakayn.dev/runtime-driver"] != "kubernetes" ||
           labels["mpp.kurodakayn.dev/session-id"].to_s.empty? ||
-          labels["mpp.kurodakayn.dev/session-owner-hash"].to_s.empty? ||
+          labels["mpp.kurodakayn.dev/owner-hash"].to_s.empty? ||
           annotations["mpp.kurodakayn.dev/expires-at"].to_s.empty?
       end
     end
