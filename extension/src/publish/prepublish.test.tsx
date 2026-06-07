@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { BackendApiError } from "../backend/client";
 import type { ExtensionPrepublishResponse } from "../backend/types";
@@ -7,6 +13,7 @@ import {
   getPrepublishViewState,
   usePrepublishWorkbench,
 } from "./prepublish";
+import type { PlatformUiKey } from "./platform-ui";
 
 function createPrepublishResponse(): ExtensionPrepublishResponse {
   return {
@@ -107,7 +114,7 @@ describe("PrepublishWorkbenchCard", () => {
           items: createPrepublishResponse().items,
         }}
         selectedProjectId="project-1"
-        selectedPlatforms={new Set(["douyin"])}
+        selectedPlatforms={new Set<PlatformUiKey>(["douyin"])}
         onProjectSelect={vi.fn()}
         onPlatformToggle={vi.fn()}
         onRetry={vi.fn()}
@@ -118,14 +125,41 @@ describe("PrepublishWorkbenchCard", () => {
 
     expect(screen.getByText("Pre-Publish Drafts")).toBeInTheDocument();
     expect(
-      screen.getByText("Choose a draft and platform to prepare."),
-    ).toBeInTheDocument();
+      screen.queryByText("Choose a draft and platform to prepare."),
+    ).not.toBeInTheDocument();
     expect(screen.getAllByText("Douyin article draft").length).toBeGreaterThan(
       0,
     );
+    expect(
+      screen.getByRole("button", { name: /douyin article draft/i }),
+    ).toHaveAttribute("data-state", "open");
+    expect(screen.getAllByText("ready")).toHaveLength(1);
+    expect(
+      screen.queryByText("1 ready platform selected"),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("First draft preview")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /douyin/i })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /bilibili/i })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /douyin ready/i }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(screen.getByRole("button", { name: /douyin ready/i })).queryByText(
+        "First draft preview",
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.getByAltText("Douyin icon")).toHaveAttribute(
+      "src",
+      "/icon/platforms/douyin.svg",
+    );
+    expect(
+      screen.getByRole("button", { name: /wechat coming soon/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /x coming soon/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /zhihu coming soon/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
   it("switches selected project", () => {
@@ -138,7 +172,7 @@ describe("PrepublishWorkbenchCard", () => {
           items: createPrepublishResponse().items,
         }}
         selectedProjectId="project-1"
-        selectedPlatforms={new Set(["douyin"])}
+        selectedPlatforms={new Set<PlatformUiKey>(["douyin"])}
         onProjectSelect={selectProject}
         onPlatformToggle={vi.fn()}
         onRetry={vi.fn()}
@@ -148,6 +182,28 @@ describe("PrepublishWorkbenchCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /second draft/i }));
 
     expect(selectProject).toHaveBeenCalledWith("project-2");
+  });
+
+  it("shows preview for the selected project accordion", () => {
+    render(
+      <PrepublishWorkbenchCard
+        state={{
+          status: "loaded",
+          items: createPrepublishResponse().items,
+        }}
+        selectedProjectId="project-2"
+        selectedPlatforms={new Set<PlatformUiKey>(["douyin"])}
+        onProjectSelect={vi.fn()}
+        onPlatformToggle={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /second draft/i }),
+    ).toHaveAttribute("data-state", "open");
+    expect(screen.getByText("Second preview")).toBeInTheDocument();
+    expect(screen.queryByText("First draft preview")).not.toBeInTheDocument();
   });
 
   it("starts handoff for the selected project and platforms", () => {
@@ -160,7 +216,7 @@ describe("PrepublishWorkbenchCard", () => {
           items: createPrepublishResponse().items,
         }}
         selectedProjectId="project-1"
-        selectedPlatforms={new Set(["douyin"])}
+        selectedPlatforms={new Set<PlatformUiKey>(["douyin"])}
         onProjectSelect={vi.fn()}
         onPlatformToggle={vi.fn()}
         onRetry={vi.fn()}
@@ -176,6 +232,34 @@ describe("PrepublishWorkbenchCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /start publishing/i }));
 
     expect(startHandoff).toHaveBeenCalledWith("project-1", ["douyin"]);
+    expect(
+      screen.queryByText("Only Douyin will start now."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps UI-only platform selections out of handoff", () => {
+    const startHandoff = vi.fn();
+
+    render(
+      <PrepublishWorkbenchCard
+        state={{
+          status: "loaded",
+          items: createPrepublishResponse().items,
+        }}
+        selectedProjectId="project-1"
+        selectedPlatforms={new Set<PlatformUiKey>(["douyin", "wechat"])}
+        onProjectSelect={vi.fn()}
+        onPlatformToggle={vi.fn()}
+        onRetry={vi.fn()}
+        onStartHandoff={startHandoff}
+        startingHandoff={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /start publishing/i }));
+
+    expect(startHandoff).toHaveBeenCalledWith("project-1", ["douyin"]);
+    expect(screen.getByText("Only Douyin will start now.")).toBeInTheDocument();
   });
 
   it("keeps start disabled until at least one platform is selected", () => {
@@ -186,7 +270,7 @@ describe("PrepublishWorkbenchCard", () => {
           items: createPrepublishResponse().items,
         }}
         selectedProjectId="project-1"
-        selectedPlatforms={new Set()}
+        selectedPlatforms={new Set<PlatformUiKey>()}
         onProjectSelect={vi.fn()}
         onPlatformToggle={vi.fn()}
         onRetry={vi.fn()}
@@ -198,9 +282,36 @@ describe("PrepublishWorkbenchCard", () => {
     expect(
       screen.getByRole("button", { name: /start publishing/i }),
     ).toBeDisabled();
-    expect(screen.getByText("0 platforms selected")).toBeInTheDocument();
     expect(
-      screen.getByText("Select at least one platform."),
+      screen.queryByText("0 ready platforms selected"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Select Douyin to start publishing."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps start disabled when only UI-only platforms are selected", () => {
+    render(
+      <PrepublishWorkbenchCard
+        state={{
+          status: "loaded",
+          items: createPrepublishResponse().items,
+        }}
+        selectedProjectId="project-1"
+        selectedPlatforms={new Set<PlatformUiKey>(["wechat"])}
+        onProjectSelect={vi.fn()}
+        onPlatformToggle={vi.fn()}
+        onRetry={vi.fn()}
+        onStartHandoff={vi.fn()}
+        startingHandoff={false}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: /start publishing/i }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText("Select Douyin to start publishing."),
     ).toBeInTheDocument();
   });
 
@@ -212,7 +323,7 @@ describe("PrepublishWorkbenchCard", () => {
           items: createPrepublishResponse().items,
         }}
         selectedProjectId="project-1"
-        selectedPlatforms={new Set(["douyin"])}
+        selectedPlatforms={new Set<PlatformUiKey>(["douyin"])}
         onProjectSelect={vi.fn()}
         onPlatformToggle={vi.fn()}
         onRetry={vi.fn()}
@@ -221,7 +332,7 @@ describe("PrepublishWorkbenchCard", () => {
       />,
     );
 
-    expect(screen.getByText("douyin")).toBeInTheDocument();
+    expect(screen.getByText("Douyin")).toBeInTheDocument();
     expect(screen.queryByText("DYNAMIC_DOUYIN")).not.toBeInTheDocument();
     expect(screen.queryByText("adapted")).not.toBeInTheDocument();
   });
@@ -231,7 +342,7 @@ describe("PrepublishWorkbenchCard", () => {
       <PrepublishWorkbenchCard
         state={{ status: "empty" }}
         selectedProjectId={null}
-        selectedPlatforms={new Set()}
+        selectedPlatforms={new Set<PlatformUiKey>()}
         onProjectSelect={vi.fn()}
         onPlatformToggle={vi.fn()}
         onRetry={vi.fn()}
@@ -251,7 +362,7 @@ describe("PrepublishWorkbenchCard", () => {
           message: "prepublish unavailable",
         }}
         selectedProjectId={null}
-        selectedPlatforms={new Set()}
+        selectedPlatforms={new Set<PlatformUiKey>()}
         onProjectSelect={vi.fn()}
         onPlatformToggle={vi.fn()}
         onRetry={retry}
@@ -291,7 +402,9 @@ describe("usePrepublishWorkbench", () => {
       ).toBeGreaterThan(0),
     );
     expect(loadPrepublish).toHaveBeenCalledOnce();
-    expect(screen.getByRole("checkbox", { name: /douyin/i })).toBeChecked();
+    expect(
+      screen.getByRole("button", { name: /douyin ready/i }),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 
   it("waits for an authenticated session before loading", () => {
