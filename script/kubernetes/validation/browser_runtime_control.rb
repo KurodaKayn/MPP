@@ -88,6 +88,9 @@ module KubernetesValidation
           "restartPolicy == 'Never'",
           "activeDeadlineSeconds",
           "automountServiceAccountToken",
+          "object.spec.securityContext",
+          "runAsUser == 1000",
+          "runAsGroup == 1000",
           "allowPrivilegeEscalation",
           "RuntimeDefault",
         ].each do |fragment|
