@@ -53,6 +53,13 @@ if context.path_suffix?("deploy/kubernetes/overlays/staging-self-hosted")
   KubernetesValidation::EnvironmentOverlays.validate_staging_self_hosted(context)
 end
 
+if context.path_suffix?("deploy/kubernetes/overlays/staging-managed")
+  KubernetesValidation::AppBaseline.validate_workloads(context)
+  KubernetesValidation::BrowserRuntimeControl.validate(context)
+  KubernetesValidation::DataServices.validate_managed(context)
+  KubernetesValidation::EnvironmentOverlays.validate_staging_managed(context)
+end
+
 unless context.valid?
   warn context.errors.join("\n")
   exit 1
