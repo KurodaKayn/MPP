@@ -81,7 +81,7 @@ func (s *DashboardService) WithContext(ctx context.Context) *DashboardService {
 	scoped.Prepublish = &Prepublish{Service: prepublishsvc.NewService(scoped.db, scoped.Project.Service, draftCompiler)}
 	scoped.Extension = &Extension{Service: extensionsvc.NewService(scoped.db)}
 	scoped.MediaAsset = &MediaAsset{Service: s.MediaAsset.WithContext(ctx)}
-	scoped.Stats = &Stats{Service: statssvc.NewServiceWithRouter(scoped.db, scoped.Project.Service, scoped.dbRouter)}
+	scoped.Stats = &Stats{Service: s.Stats.WithContext(ctx)}
 	scoped.AccountSettings = &AccountSettings{Service: s.AccountSettings.WithContext(ctx)}
 	scoped.Publisher = &Publisher{Service: s.Publisher.WithContext(ctx)}
 	return &scoped
@@ -209,4 +209,5 @@ func (s *DashboardService) UseRedis(client *redis.Client) {
 	}
 	s.AccountSettings.UseRedis(client)
 	s.Publisher.UseRedis(client)
+	s.Stats.UseRedis(client)
 }
