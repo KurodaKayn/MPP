@@ -20,9 +20,39 @@ func (s *Service) CreateProject(userID uuid.UUID, req dto.CreateProjectRequest) 
 }
 
 func (s *Service) CreateProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {
+	workspaceValue := models.PersonalWorkspaceID(userID)
+	if workspaceID != nil && *workspaceID != uuid.Nil {
+		workspaceValue = *workspaceID
+	}
+	templateValue, hasTemplate, err := s.contentTemplateForProject(userID, workspaceValue, req.TemplateID)
+	if err != nil {
+		return nil, err
+	}
+	var template *models.ContentTemplate
+	if hasTemplate {
+		template = &templateValue
+	}
+	if err := s.validateBrandProfileForProject(userID, workspaceValue, req.BrandProfileID); err != nil {
+		return nil, err
+	}
+
 	title := strings.TrimSpace(req.Title)
-	sourceContent := sanitizeProjectSourceContent(req.SourceContent)
-	platforms, err := NormalizeProjectPlatforms(req.Platforms)
+	if title == "" && template != nil {
+		title = template.TitleTemplate
+	}
+	sourceInput := req.SourceContent
+	if strings.TrimSpace(sourceInput) == "" && template != nil {
+		sourceInput = template.SourceTemplate
+	}
+	sourceContent := sanitizeProjectSourceContent(sourceInput)
+	platformInput := req.Platforms
+	if len(platformInput) == 0 {
+		platformInput, err = contentTemplateDefaultPlatforms(template)
+		if err != nil {
+			return nil, err
+		}
+	}
+	platforms, err := NormalizeProjectPlatforms(platformInput)
 	if err != nil {
 		return nil, err
 	}
@@ -31,13 +61,16 @@ func (s *Service) CreateProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid
 	}
 
 	project := models.Project{
-		UserID:        userID,
-		WorkspaceID:   workspaceID,
-		Title:         title,
-		SourceContent: sourceContent,
-		Status:        models.ProjectStatusReady,
+		UserID:         userID,
+		WorkspaceID:    workspaceID,
+		TemplateID:     req.TemplateID,
+		BrandProfileID: req.BrandProfileID,
+		Title:          title,
+		SourceContent:  sourceContent,
+		Status:         models.ProjectStatusReady,
 	}
 	publications := make([]dto.PublicationSummary, 0, len(platforms))
+	createdPublications := make([]models.ProjectPlatformPublication, 0, len(platforms))
 
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		if workspaceID != nil && *workspaceID == models.PersonalWorkspaceID(userID) {
@@ -55,27 +88,38 @@ func (s *Service) CreateProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid
 			if err != nil {
 				return err
 			}
+			if config, err = mergePublicationConfig(config, contentTemplatePlatformConfig(template, platform)); err != nil {
+				return err
+			}
 
 			publication := models.ProjectPlatformPublication{
 				ProjectID:      project.ID,
 				Platform:       platform,
 				Enabled:        true,
 				Status:         status,
+				SyncRequired:   true,
 				Config:         config,
 				AdaptedContent: adaptedContent,
 			}
 			if err := tx.Create(&publication).Error; err != nil {
 				return err
 			}
+			createdPublications = append(createdPublications, publication)
 
 			publications = append(publications, dto.PublicationSummary{
-				ID:       publication.ID,
-				Platform: platform,
-				Enabled:  publication.Enabled,
-				Status:   publication.Status,
+				ID:           publication.ID,
+				Platform:     platform,
+				Enabled:      publication.Enabled,
+				Status:       publication.Status,
+				DraftStatus:  publication.DraftStatus,
+				ReviewStatus: publication.ReviewStatus,
+				SyncRequired: publication.SyncRequired,
 			})
 		}
 
+		if err := refreshProjectMediaUsages(tx, project, createdPublications); err != nil {
+			return err
+		}
 		return nil
 	}); err != nil {
 		return nil, err
@@ -86,6 +130,8 @@ func (s *Service) CreateProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid
 		UserID:           project.UserID,
 		WorkspaceID:      project.WorkspaceID,
 		CollabDocumentID: project.CollabDocumentID,
+		TemplateID:       project.TemplateID,
+		BrandProfileID:   project.BrandProfileID,
 		Title:            project.Title,
 		Status:           project.Status,
 		Role:             models.ProjectRoleOwner,
@@ -100,7 +146,7 @@ func (s *Service) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUID) (*dto.
 	var project models.Project
 	if err := s.projectDetailReadDB(scopeUserID).
 		Preload("Publications", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id, project_id, platform, enabled, status, publish_url").Order("platform asc")
+			return db.Select("id, project_id, platform, enabled, status, draft_status, review_status, sync_required, publish_url").Order("platform asc")
 		}).
 		First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
@@ -117,7 +163,11 @@ func (s *Service) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUID) (*dto.
 		accessSource = source
 	}
 
-	return projectDetailFromModel(project, role, accessSource), nil
+	detail := projectDetailFromModel(project, role, accessSource)
+	if err := s.enrichProjectDetail(detail, project, scopeUserID); err != nil {
+		return nil, err
+	}
+	return detail, nil
 }
 
 func (s *Service) projectDetailReadDB(scopeUserID *uuid.UUID) *gorm.DB {
@@ -128,9 +178,47 @@ func (s *Service) projectDetailReadDB(scopeUserID *uuid.UUID) *gorm.DB {
 }
 
 func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.UpdateProjectRequest) (*dto.ProjectDetail, error) {
+	var existingProject models.Project
+	if err := s.db.Select("id", "user_id", "workspace_id").First(&existingProject, "id = ?", projectID).Error; err != nil {
+		return nil, err
+	}
+	role, err := s.ProjectAccessRole(existingProject, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !CanEditProjectRole(role) {
+		return nil, ErrForbidden
+	}
+	workspaceValue := projectWorkspaceID(existingProject)
+	templateValue, hasTemplate, err := s.contentTemplateForProject(userID, workspaceValue, req.TemplateID)
+	if err != nil {
+		return nil, err
+	}
+	var template *models.ContentTemplate
+	if hasTemplate {
+		template = &templateValue
+	}
+	if err := s.validateBrandProfileForProject(userID, workspaceValue, req.BrandProfileID); err != nil {
+		return nil, err
+	}
+
 	title := strings.TrimSpace(req.Title)
-	sourceContent := sanitizeProjectSourceContent(req.SourceContent)
-	platforms, err := NormalizeProjectPlatforms(req.Platforms)
+	if title == "" && template != nil {
+		title = template.TitleTemplate
+	}
+	sourceInput := req.SourceContent
+	if strings.TrimSpace(sourceInput) == "" && template != nil {
+		sourceInput = template.SourceTemplate
+	}
+	sourceContent := sanitizeProjectSourceContent(sourceInput)
+	platformInput := req.Platforms
+	if len(platformInput) == 0 {
+		platformInput, err = contentTemplateDefaultPlatforms(template)
+		if err != nil {
+			return nil, err
+		}
+	}
+	platforms, err := NormalizeProjectPlatforms(platformInput)
 	if err != nil {
 		return nil, err
 	}
@@ -148,15 +236,10 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 		if err := tx.First(&project, "id = ?", projectID).Error; err != nil {
 			return err
 		}
-		role, err := ProjectAccessRoleWithDB(tx, project, userID)
-		if err != nil {
-			return err
-		}
-		if !CanEditProjectRole(role) {
-			return ErrForbidden
-		}
 
 		project.Title = title
+		project.TemplateID = req.TemplateID
+		project.BrandProfileID = req.BrandProfileID
 		if project.CollabDocumentID == nil || *project.CollabDocumentID == uuid.Nil || !syncedCollabSource {
 			project.SourceContent = sourceContent
 		}
@@ -203,10 +286,16 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 			if err != nil {
 				return err
 			}
+			if config, err = mergePublicationConfig(config, contentTemplatePlatformConfig(template, publication.Platform)); err != nil {
+				return err
+			}
 			if err := tx.Model(&publication).Updates(map[string]any{
 				"config":          config,
 				"enabled":         true,
 				"error_message":   "",
+				"draft_status":    models.PublicationDraftStatusStale,
+				"review_status":   models.PublicationReviewStatusDraft,
+				"sync_required":   true,
 				"last_attempt_at": nil,
 				"published_at":    nil,
 				"publish_url":     "",
@@ -228,11 +317,15 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 			if err != nil {
 				return err
 			}
+			if config, err = mergePublicationConfig(config, contentTemplatePlatformConfig(template, platform)); err != nil {
+				return err
+			}
 			publication := models.ProjectPlatformPublication{
 				ProjectID:      project.ID,
 				Platform:       platform,
 				Enabled:        true,
 				Status:         status,
+				SyncRequired:   true,
 				Config:         config,
 				AdaptedContent: adaptedContent,
 			}
@@ -241,6 +334,13 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 			}
 		}
 
+		var publications []models.ProjectPlatformPublication
+		if err := tx.Where("project_id = ?", project.ID).Find(&publications).Error; err != nil {
+			return err
+		}
+		if err := refreshProjectMediaUsages(tx, project, publications); err != nil {
+			return err
+		}
 		return nil
 	}); err != nil {
 		return nil, err
@@ -293,6 +393,16 @@ func (s *Service) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req 
 			return err
 		}
 		if err := createProjectVersion(tx, project, userID, "content_save"); err != nil {
+			return err
+		}
+		if err := markProjectDraftsStale(tx, project.ID); err != nil {
+			return err
+		}
+		var publications []models.ProjectPlatformPublication
+		if err := tx.Where("project_id = ?", project.ID).Find(&publications).Error; err != nil {
+			return err
+		}
+		if err := refreshProjectMediaUsages(tx, project, publications); err != nil {
 			return err
 		}
 		return recordProjectActivity(tx, project.ID, userID, nil, models.ProjectActivityContentSaved, map[string]any{
@@ -348,8 +458,11 @@ func (s *Service) SaveProjectPlatforms(projectID uuid.UUID, userID uuid.UUID, re
 
 			if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
 				if err := tx.Model(&publication).Updates(map[string]any{
-					"enabled": true,
-					"status":  models.PublicationStatusPending,
+					"draft_status":  models.PublicationDraftStatusUnsynced,
+					"enabled":       true,
+					"review_status": models.PublicationReviewStatusDraft,
+					"status":        models.PublicationStatusPending,
+					"sync_required": true,
 				}).Error; err != nil {
 					return err
 				}
@@ -371,6 +484,7 @@ func (s *Service) SaveProjectPlatforms(projectID uuid.UUID, userID uuid.UUID, re
 				Platform:       platform,
 				Enabled:        true,
 				Status:         status,
+				SyncRequired:   true,
 				Config:         config,
 				AdaptedContent: adaptedContent,
 			}
@@ -379,6 +493,13 @@ func (s *Service) SaveProjectPlatforms(projectID uuid.UUID, userID uuid.UUID, re
 			}
 		}
 
+		var publications []models.ProjectPlatformPublication
+		if err := tx.Where("project_id = ?", project.ID).Find(&publications).Error; err != nil {
+			return err
+		}
+		if err := refreshProjectMediaUsages(tx, project, publications); err != nil {
+			return err
+		}
 		return nil
 	}); err != nil {
 		return nil, err
@@ -400,15 +521,39 @@ func sanitizeProjectSourceContent(sourceContent string) string {
 	return pkghtml.SanitizeStoredHTML(strings.TrimSpace(sourceContent))
 }
 
+func projectWorkspaceID(project models.Project) uuid.UUID {
+	if project.WorkspaceID != nil && *project.WorkspaceID != uuid.Nil {
+		return *project.WorkspaceID
+	}
+	return models.PersonalWorkspaceID(project.UserID)
+}
+
+func markProjectDraftsStale(tx *gorm.DB, projectID uuid.UUID) error {
+	return tx.Model(&models.ProjectPlatformPublication{}).
+		Where("project_id = ? AND enabled = ? AND status NOT IN ?", projectID, true, []string{
+			models.PublicationStatusQueued,
+			models.PublicationStatusPublishing,
+			models.PublicationStatusSucceeded,
+		}).
+		Updates(map[string]any{
+			"draft_status":  models.PublicationDraftStatusStale,
+			"review_status": models.PublicationReviewStatusDraft,
+			"sync_required": true,
+		}).Error
+}
+
 func projectDetailFromModel(project models.Project, role string, accessSource string) *dto.ProjectDetail {
 	publications := make([]dto.PublicationSummary, 0, len(project.Publications))
 	for _, pub := range project.Publications {
 		publications = append(publications, dto.PublicationSummary{
-			ID:         pub.ID,
-			Platform:   pub.Platform,
-			Enabled:    pub.Enabled,
-			Status:     pub.Status,
-			PublishURL: pub.PublishURL,
+			ID:           pub.ID,
+			Platform:     pub.Platform,
+			Enabled:      pub.Enabled,
+			Status:       pub.Status,
+			DraftStatus:  pub.DraftStatus,
+			ReviewStatus: pub.ReviewStatus,
+			SyncRequired: pub.SyncRequired,
+			PublishURL:   pub.PublishURL,
 		})
 	}
 	if publications == nil {
@@ -420,6 +565,8 @@ func projectDetailFromModel(project models.Project, role string, accessSource st
 		UserID:           project.UserID,
 		WorkspaceID:      project.WorkspaceID,
 		CollabDocumentID: project.CollabDocumentID,
+		TemplateID:       project.TemplateID,
+		BrandProfileID:   project.BrandProfileID,
 		Title:            project.Title,
 		SourceContent:    project.SourceContent,
 		Status:           project.Status,
@@ -435,11 +582,14 @@ func projectListItemFromModel(project models.Project, access projectAccessResolu
 	publications := make([]dto.PublicationSummary, 0, len(project.Publications))
 	for _, pub := range project.Publications {
 		publications = append(publications, dto.PublicationSummary{
-			ID:         pub.ID,
-			Platform:   pub.Platform,
-			Enabled:    pub.Enabled,
-			Status:     pub.Status,
-			PublishURL: pub.PublishURL,
+			ID:           pub.ID,
+			Platform:     pub.Platform,
+			Enabled:      pub.Enabled,
+			Status:       pub.Status,
+			DraftStatus:  pub.DraftStatus,
+			ReviewStatus: pub.ReviewStatus,
+			SyncRequired: pub.SyncRequired,
+			PublishURL:   pub.PublishURL,
 		})
 	}
 	if publications == nil {
@@ -451,6 +601,8 @@ func projectListItemFromModel(project models.Project, access projectAccessResolu
 		UserID:           project.UserID,
 		WorkspaceID:      project.WorkspaceID,
 		CollabDocumentID: project.CollabDocumentID,
+		TemplateID:       project.TemplateID,
+		BrandProfileID:   project.BrandProfileID,
 		Title:            project.Title,
 		Status:           project.Status,
 		Role:             access.role,
@@ -559,7 +711,7 @@ func (s *Service) ListProjectPage(query *gorm.DB, page, limit int, scopeUserID *
 	// Fetch data with specific fields and preload summary publications
 	if err := query.Omit("source_content").
 		Preload("Publications", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id, project_id, platform, enabled, status, publish_url")
+			return db.Select("id, project_id, platform, enabled, status, draft_status, review_status, sync_required, publish_url")
 		}).
 		Order("projects.created_at desc").
 		Limit(limit).Offset(offset).

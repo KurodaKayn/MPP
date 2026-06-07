@@ -1,6 +1,7 @@
 package mediaasset
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
@@ -70,6 +71,10 @@ func (s *Service) CreateProjectMediaUpload(projectID uuid.UUID, userID uuid.UUID
 		MimeType:         mimeType,
 		SizeBytes:        req.SizeBytes,
 		Usage:            usage,
+		LibraryScope:     normalizeMediaLibraryScope(req.LibraryScope),
+		Tags:             mediaTagsJSON(req.Tags),
+		AltText:          strings.TrimSpace(req.AltText),
+		Source:           strings.TrimSpace(req.Source),
 		Status:           models.MediaAssetStatusPending,
 	}
 	asset.ObjectKey = mediaAssetStagingObjectKey(workspaceID, project.ID, asset.ID, filename)
@@ -266,6 +271,35 @@ func validateMediaUploadRequest(filename string, mimeType string, sizeBytes int6
 	return nil
 }
 
+func normalizeMediaLibraryScope(scope string) string {
+	switch strings.TrimSpace(scope) {
+	case models.MediaAssetLibraryScopeWorkspace:
+		return models.MediaAssetLibraryScopeWorkspace
+	case models.MediaAssetLibraryScopePersonal:
+		return models.MediaAssetLibraryScopePersonal
+	default:
+		return models.MediaAssetLibraryScopeProject
+	}
+}
+
+func mediaTagsJSON(tags []string) []byte {
+	seen := map[string]struct{}{}
+	normalized := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		normalized = append(normalized, tag)
+	}
+	payload, _ := json.Marshal(normalized)
+	return payload
+}
+
 func (s *Service) mediaAssetForEdit(assetID uuid.UUID, userID uuid.UUID) (*models.MediaAsset, *models.Project, error) {
 	asset, project, err := s.mediaAssetWithProject(assetID)
 	if err != nil {
@@ -282,14 +316,30 @@ func (s *Service) mediaAssetForEdit(assetID uuid.UUID, userID uuid.UUID) (*model
 }
 
 func (s *Service) mediaAssetForRead(assetID uuid.UUID, userID uuid.UUID) (*models.MediaAsset, error) {
-	asset, project, err := s.mediaAssetWithProject(assetID)
-	if err != nil {
+	if assetID == uuid.Nil {
+		return nil, ErrInvalidMediaAsset
+	}
+	var asset models.MediaAsset
+	if err := s.db.First(&asset, "id = ?", assetID).Error; err != nil {
 		return nil, err
 	}
-	if _, err := s.projects.ProjectAccessRole(*project, userID); err != nil {
+	if asset.ProjectID != nil && *asset.ProjectID != uuid.Nil {
+		var project models.Project
+		if err := s.db.First(&project, "id = ?", *asset.ProjectID).Error; err != nil {
+			return nil, err
+		}
+		if _, err := s.projects.ProjectAccessRole(project, userID); err != nil {
+			return nil, err
+		}
+		return &asset, nil
+	}
+	if asset.WorkspaceID == nil || *asset.WorkspaceID == uuid.Nil {
+		return nil, ErrInvalidMediaAsset
+	}
+	if _, err := s.projects.WorkspaceProjectRole(*asset.WorkspaceID, userID); err != nil {
 		return nil, err
 	}
-	return asset, nil
+	return &asset, nil
 }
 
 func (s *Service) mediaAssetWithProject(assetID uuid.UUID) (*models.MediaAsset, *models.Project, error) {
