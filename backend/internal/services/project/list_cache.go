@@ -78,14 +78,21 @@ func (s *Service) cachedDashboardProjectList(ctx context.Context, cacheKey strin
 		}
 		return nil, false, err
 	}
+	if resp, ok := decodeDashboardProjectListPayload(cached, page, limit); ok {
+		return resp, true, nil
+	}
+	return nil, false, nil
+}
+
+func decodeDashboardProjectListPayload(cached []byte, page, limit int) (*dto.PaginationResponse, bool) {
 	var payload dashboardProjectListCachePayload
 	if err := json.Unmarshal(cached, &payload); err != nil {
-		return nil, false, nil
+		return nil, false
 	}
 	if !dashboardProjectListPayloadValid(payload, page, limit) {
-		return nil, false, nil
+		return nil, false
 	}
-	return dashboardProjectListPayloadToResponse(payload), true, nil
+	return dashboardProjectListPayloadToResponse(payload), true
 }
 
 func (s *Service) refreshDashboardProjectListCache(ctx context.Context, cacheKey string, page, limit int, status, filterUserID, platform string) (*dto.PaginationResponse, error) {
