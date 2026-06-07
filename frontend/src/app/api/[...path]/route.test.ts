@@ -203,4 +203,57 @@ describe("api proxy route", () => {
     const forwardedHeaders = init!.headers as Headers;
     expect(forwardedHeaders.get("authorization")).toBe("Bearer cookie-token");
   });
+
+  it("allows same-origin cookie writes when the public host differs from nextUrl", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const body = new TextEncoder().encode("payload").buffer;
+    const request = createRequest({
+      body,
+      cookies: { auth_token: "cookie-token" },
+      headers: {
+        host: "localhost:3000",
+        origin: "http://localhost:3000",
+      },
+      method: "POST",
+      url: "http://frontend:3000/api/dashboard/projects",
+    });
+
+    const response = await POST(
+      request,
+      createContext(["dashboard", "projects"]),
+    );
+
+    expect(response.status).toBe(204);
+    expect(request.arrayBuffer).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("allows same-origin fetch metadata when origin headers are unavailable", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const body = new TextEncoder().encode("payload").buffer;
+    const request = createRequest({
+      body,
+      cookies: { auth_token: "cookie-token" },
+      headers: {
+        "sec-fetch-site": "same-origin",
+      },
+      method: "POST",
+      url: "http://localhost:3000/api/dashboard/projects",
+    });
+
+    const response = await POST(
+      request,
+      createContext(["dashboard", "projects"]),
+    );
+
+    expect(response.status).toBe(204);
+    expect(request.arrayBuffer).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
 });
