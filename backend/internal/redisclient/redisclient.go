@@ -97,6 +97,9 @@ func poolConfigFromEnv() (poolConfig, error) {
 	if err != nil {
 		return poolConfig{}, err
 	}
+	if strings.TrimSpace(os.Getenv(connMaxIdleTimeEnv)) != "" && connMaxIdleTime == 0 {
+		return poolConfig{}, fmt.Errorf("invalid %s: must be positive; leave empty to use go-redis default idle timeout", connMaxIdleTimeEnv)
+	}
 	connMaxLifetime, err := nonNegativeDurationFromEnv(connMaxLifetimeEnv)
 	if err != nil {
 		return poolConfig{}, err
@@ -150,14 +153,14 @@ func nonNegativeIntFromEnv(name string) (int, error) {
 	if raw == "" {
 		return 0, nil
 	}
-	value, err := strconv.Atoi(raw)
+	value, err := strconv.ParseInt(raw, 10, 32)
 	if err != nil {
 		return 0, fmt.Errorf("invalid %s: %w", name, err)
 	}
 	if value < 0 {
 		return 0, fmt.Errorf("invalid %s: must be non-negative", name)
 	}
-	return value, nil
+	return int(value), nil
 }
 
 func nonNegativeDurationFromEnv(name string) (time.Duration, error) {
