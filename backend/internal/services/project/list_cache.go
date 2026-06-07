@@ -1,0 +1,177 @@
+package project
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
+	"github.com/kurodakayn/mpp-backend/internal/dto"
+)
+
+const dashboardProjectListCachePrefix = "mpp:dashboard:projects:list:v1"
+const dashboardProjectListRefreshTimeout = 15 * time.Second
+
+type dashboardProjectListCacheParams struct {
+	Page         int    `json:"page"`
+	Limit        int    `json:"limit"`
+	Status       string `json:"status,omitempty"`
+	FilterUserID string `json:"filter_user_id,omitempty"`
+	Platform     string `json:"platform,omitempty"`
+}
+
+type dashboardProjectListCachePayload struct {
+	Items      []dto.ProjectListItem `json:"items"`
+	Page       int                   `json:"page"`
+	Limit      int                   `json:"limit"`
+	Total      int64                 `json:"total"`
+	TotalPages int                   `json:"total_pages"`
+}
+
+func (s *Service) getCachedDashboardProjectList(page, limit int, status, filterUserID, platform string) (*dto.PaginationResponse, error) {
+	ctx := s.requestContext()
+	cacheKey := dashboardProjectListCacheKey(page, limit, status, filterUserID, platform)
+	if resp, hit, err := s.cachedDashboardProjectList(ctx, cacheKey, page, limit); hit {
+		return resp, nil
+	} else if err != nil {
+		return s.computeProjectList(page, limit, status, filterUserID, platform, nil)
+	}
+
+	resultCh := s.cacheGroup.DoChan(cacheKey, func() (any, error) {
+		refreshCtx, cancel := dashboardProjectListRefreshContext(ctx)
+		defer cancel()
+		refreshSvc := s.WithContext(refreshCtx)
+		if resp, hit, err := refreshSvc.cachedDashboardProjectList(refreshCtx, cacheKey, page, limit); hit {
+			return resp, nil
+		} else if err != nil {
+			return refreshSvc.computeProjectList(page, limit, status, filterUserID, platform, nil)
+		}
+
+		return refreshSvc.refreshDashboardProjectListCache(refreshCtx, cacheKey, page, limit, status, filterUserID, platform)
+	})
+
+	select {
+	case result := <-resultCh:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		if resp, ok := result.Val.(*dto.PaginationResponse); ok {
+			return resp, nil
+		}
+		return s.computeProjectList(page, limit, status, filterUserID, platform, nil)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (s *Service) cachedDashboardProjectList(ctx context.Context, cacheKey string, page, limit int) (*dto.PaginationResponse, bool, error) {
+	cached, err := s.cache.Get(ctx, cacheKey).Bytes()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	if resp, ok := decodeDashboardProjectListPayload(cached, page, limit); ok {
+		return resp, true, nil
+	}
+	return nil, false, nil
+}
+
+func decodeDashboardProjectListPayload(cached []byte, page, limit int) (*dto.PaginationResponse, bool) {
+	var payload dashboardProjectListCachePayload
+	if err := json.Unmarshal(cached, &payload); err != nil {
+		return nil, false
+	}
+	if !dashboardProjectListPayloadValid(payload, page, limit) {
+		return nil, false
+	}
+	return dashboardProjectListPayloadToResponse(payload), true
+}
+
+func (s *Service) refreshDashboardProjectListCache(ctx context.Context, cacheKey string, page, limit int, status, filterUserID, platform string) (*dto.PaginationResponse, error) {
+	resp, err := s.computeProjectList(page, limit, status, filterUserID, platform, nil)
+	if err != nil {
+		return nil, err
+	}
+	payload, ok := dashboardProjectListPayloadFromResponse(resp)
+	if !ok {
+		return resp, nil
+	}
+	encoded, err := json.Marshal(payload)
+	if err == nil {
+		_ = s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
+	}
+	return resp, nil
+}
+
+func (s *Service) canUseDashboardProjectListCache() bool {
+	if s.cache == nil || s.cacheTTL <= 0 {
+		return false
+	}
+	stickyUntil, sticky := dbrouter.StickyWriterUntil(s.requestContext())
+	return !sticky || !stickyUntil.After(time.Now())
+}
+
+func dashboardProjectListRefreshContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), dashboardProjectListRefreshTimeout)
+}
+
+func dashboardProjectListCacheKey(page, limit int, status, filterUserID, platform string) string {
+	params := dashboardProjectListCacheParams{
+		Page:         page,
+		Limit:        limit,
+		Status:       status,
+		FilterUserID: filterUserID,
+		Platform:     platform,
+	}
+	encoded, err := json.Marshal(params)
+	if err != nil {
+		return fmt.Sprintf("%s:%d:%d", dashboardProjectListCachePrefix, page, limit)
+	}
+	sum := sha256.Sum256(encoded)
+	return dashboardProjectListCachePrefix + ":" + hex.EncodeToString(sum[:])
+}
+
+func dashboardProjectListPayloadFromResponse(resp *dto.PaginationResponse) (dashboardProjectListCachePayload, bool) {
+	items, ok := resp.Items.([]dto.ProjectListItem)
+	if !ok {
+		return dashboardProjectListCachePayload{}, false
+	}
+	return dashboardProjectListCachePayload{
+		Items:      items,
+		Page:       resp.Page,
+		Limit:      resp.Limit,
+		Total:      resp.Total,
+		TotalPages: resp.TotalPages,
+	}, true
+}
+
+func dashboardProjectListPayloadValid(payload dashboardProjectListCachePayload, page, limit int) bool {
+	if payload.Items == nil {
+		return false
+	}
+	if payload.Page != page || payload.Limit != limit {
+		return false
+	}
+	if payload.Total < 0 || payload.TotalPages < 0 {
+		return false
+	}
+	return true
+}
+
+func dashboardProjectListPayloadToResponse(payload dashboardProjectListCachePayload) *dto.PaginationResponse {
+	return &dto.PaginationResponse{
+		Items:      payload.Items,
+		Page:       payload.Page,
+		Limit:      payload.Limit,
+		Total:      payload.Total,
+		TotalPages: payload.TotalPages,
+	}
+}

@@ -208,6 +208,7 @@ func (s *DashboardService) UseRedis(client *redis.Client) {
 	if client == nil {
 		return
 	}
+	s.Project.UseRedis(client)
 	s.AccountSettings.UseRedis(client)
 	s.Publisher.UseRedis(client)
 	s.Stats.UseRedis(client)
