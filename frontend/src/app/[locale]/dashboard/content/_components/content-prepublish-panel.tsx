@@ -133,13 +133,38 @@ function draftFromPublications(
     fallback.raw;
 
   return {
+    draftStatus: publication.draft_status,
     format,
     raw,
+    reviewStatus: publication.review_status,
+    syncRequired: publication.sync_required,
     syncedAt:
       adaptedContent.source_revision ??
       publication.updated_at ??
       fallback.syncedAt,
   };
+}
+
+function prepublishStatusKey(draft?: PrepublishDraft) {
+  if (!draft) {
+    return "content.prepublish.statusNotSynced";
+  }
+  if (draft.syncRequired || draft.draftStatus === "stale") {
+    return "content.prepublish.statusStale";
+  }
+  if (draft.draftStatus === "syncing") {
+    return "content.prepublish.statusSyncing";
+  }
+  if (draft.reviewStatus === "approved") {
+    return "content.prepublish.statusApproved";
+  }
+  if (draft.reviewStatus === "reviewing") {
+    return "content.prepublish.statusReviewing";
+  }
+  if (draft.reviewStatus === "changes_requested") {
+    return "content.prepublish.statusChangesRequested";
+  }
+  return "content.prepublish.statusSynced";
 }
 
 export function ContentPrepublishPanel({
@@ -247,9 +272,7 @@ export function ContentPrepublishPanel({
                 </span>
               </div>
               <div className="mt-1 text-[10px] text-muted-foreground">
-                {drafts[platform.value]
-                  ? t("content.prepublish.statusSynced")
-                  : t("content.prepublish.statusNotSynced")}
+                {t(prepublishStatusKey(drafts[platform.value]))}
               </div>
             </button>
           ))}

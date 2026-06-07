@@ -8,8 +8,11 @@ export type ContentView = "editor" | "preview";
 export type PrepublishFormat = "html" | "markdown" | "text";
 
 export type PrepublishDraft = {
+  draftStatus?: string;
   format: PrepublishFormat;
   raw: string;
+  reviewStatus?: string;
+  syncRequired?: boolean;
   syncedAt: string;
 };
 

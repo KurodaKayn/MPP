@@ -429,7 +429,7 @@
     },
     "userFallback": "Collaborator"
   },
-  "content": {
+    "content": {
     "header": {
       "titleCreate": "Content Creation",
       "titleEdit": "Edit Content",
@@ -476,6 +476,14 @@
         "viewer": "Can open read-only"
       }
     },
+    "setup": {
+      "template": "Template",
+      "brandProfile": "Brand profile",
+      "loading": "Loading...",
+      "noTemplate": "No template",
+      "noBrandProfile": "No brand profile",
+      "replaceConfirm": "Applying this template will replace the current title, content, and selected platforms. Continue?"
+    },
     "collaboration": {
       "title": "Collaboration Experience",
       "description": "Review comments, project activity, saved versions, and optional share links.",
@@ -497,6 +505,7 @@
       "restore": "Restore",
       "restoreFailed": "Unable to restore version",
       "versionRestored": "Version restored",
+      "versionRestoredDesc": "Platform drafts were marked stale. Sync them again before publishing.",
       "versionTitle": "Version {{number}}",
       "createViewerLink": "Create viewer link",
       "createShareLink": "Create share link",
@@ -552,6 +561,12 @@
       "shareLinkStatus": {
         "active": "Active",
         "revoked": "Revoked"
+      },
+      "permissionSource": {
+        "owner": "Owner",
+        "direct_share": "Direct share",
+        "workspace": "Workspace",
+        "share_link": "Share link"
       }
     },
     "shareProject": {
@@ -571,6 +586,11 @@
       "syncAll": "Sync to All Platforms",
       "statusSynced": "Synced",
       "statusNotSynced": "Not Synced",
+      "statusStale": "Needs sync",
+      "statusSyncing": "Syncing",
+      "statusApproved": "Approved",
+      "statusReviewing": "In review",
+      "statusChangesRequested": "Changes requested",
       "pleaseFillContent": "Please fill in content before syncing platform drafts.",
       "targetFormat": "{{format}} · Synced {{date}}",
       "notSyncedTarget": "Not yet synced. Target format: {{format}}.",

@@ -44,7 +44,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
     requiresWorkspace: !projectId,
     selectedWorkspace: workspaceSelection.selectedWorkspace,
   });
-  const { editor, header, prepublish, publishing } = contentPage;
+  const { editor, header, prepublish, publishing, setup } = contentPage;
   const { contentView, setContentView } = useContentPageStore();
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
@@ -137,6 +137,72 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         </div>
       ) : null}
 
+      {!projectId && workspaceCanCreate ? (
+        <div className="grid gap-3 rounded-lg border bg-background p-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label
+              className="text-sm font-medium"
+              htmlFor="content-template"
+            >
+              {tDashboard("content.setup.template")}
+            </label>
+            <select
+              id="content-template"
+              value={setup.selectedTemplateId}
+              disabled={setup.isLoading || !setup.contentTemplates.length}
+              onChange={(event) => setup.onTemplateChange(event.target.value)}
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">
+                {setup.isLoading
+                  ? tDashboard("content.setup.loading")
+                  : tDashboard("content.setup.noTemplate")}
+              </option>
+              {setup.contentTemplates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label
+              className="text-sm font-medium"
+              htmlFor="brand-profile"
+            >
+              {tDashboard("content.setup.brandProfile")}
+            </label>
+            <select
+              id="brand-profile"
+              value={setup.selectedBrandProfileId}
+              disabled={setup.isLoading || !setup.brandProfiles.length}
+              onChange={(event) =>
+                setup.onBrandProfileChange(event.target.value)
+              }
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">
+                {setup.isLoading
+                  ? tDashboard("content.setup.loading")
+                  : tDashboard("content.setup.noBrandProfile")}
+              </option>
+              {setup.brandProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {setup.error ? (
+            <p className="text-sm text-destructive sm:col-span-2">
+              {setup.error}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {contentView === "editor" ? (
         <div className="space-y-4">
           <ContentEditor
@@ -162,6 +228,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
                 editor.restoreVersionContent(project);
                 setCollabReconnectKey((current) => current + 1);
               }}
+              permissionSources={editor.permissionSources}
               projectId={projectId}
               projectRole={header.projectRole}
             />

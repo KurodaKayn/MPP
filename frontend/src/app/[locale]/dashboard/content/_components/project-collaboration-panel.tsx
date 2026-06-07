@@ -36,6 +36,7 @@ import {
   type ProjectActivity,
   type ProjectComment,
   type ProjectCollaboratorRole,
+  type ProjectPermissionSource,
   type ProjectRole,
   type ProjectShareLink,
   type ProjectVersion,
@@ -48,6 +49,7 @@ type ProjectCollaborationPanelProps = {
     title: string;
     source_content: string;
   }) => void;
+  permissionSources?: ProjectPermissionSource[];
   projectId: string;
   projectRole: ProjectRole | null;
 };
@@ -55,6 +57,7 @@ type ProjectCollaborationPanelProps = {
 export function ProjectCollaborationPanel({
   canEdit,
   onVersionRestore,
+  permissionSources = [],
   projectId,
   projectRole,
 }: ProjectCollaborationPanelProps) {
@@ -161,7 +164,9 @@ export function ProjectCollaborationPanel({
     try {
       const restored = await restoreProjectVersion(projectId, version.id);
       onVersionRestore(restored.project);
-      toast.success(t("content.collaboration.versionRestored"));
+      toast.success(t("content.collaboration.versionRestored"), {
+        description: t("content.collaboration.versionRestoredDesc"),
+      });
       void loadAll();
     } catch (error) {
       toast.error(t("content.collaboration.restoreFailed"), {
@@ -274,6 +279,21 @@ export function ProjectCollaborationPanel({
           </Button>
         </CardHeader>
         <CardContent>
+          {permissionSources.length > 0 ? (
+            <div className="mb-4 flex flex-wrap gap-2">
+              {permissionSources.map((source, index) => (
+                <Badge key={`${source.source}-${source.role}-${index}`} variant="outline">
+                  {t(`content.collaboration.permissionSource.${source.source}`, {
+                    defaultValue: source.source,
+                  })}
+                  {" - "}
+                  {t(`content.header.role.${source.role}`, {
+                    defaultValue: source.role,
+                  })}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
           <Tabs defaultValue="comments">
             <TabsList className="flex w-full flex-wrap justify-start">
               <TabsTrigger value="comments">
