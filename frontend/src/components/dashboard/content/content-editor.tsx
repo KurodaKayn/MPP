@@ -1,7 +1,7 @@
 "use client";
 
 import { UsersRound } from "lucide-react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { AIEditAssistant } from "@/components/dashboard/content/ai/ai-edit-assistant";
 import { getCurrentBlockLabel } from "@/components/dashboard/content/editor/content-editor-block-menu";
@@ -34,6 +34,9 @@ type ContentEditorProps = {
   content: ContentValue;
   onTitleChange: (title: string) => void;
   onContentChange: (content: ContentValue) => void;
+  onPrepareContentForSaveChange?: (
+    handler: (() => Promise<ContentValue>) | null,
+  ) => void;
   projectId?: string;
   viewSwitcher?: React.ReactNode;
 };
@@ -53,20 +56,34 @@ export function ContentEditor({
   content,
   onTitleChange,
   onContentChange,
+  onPrepareContentForSaveChange,
   projectId,
   viewSwitcher,
 }: ContentEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "common");
-  const { editor, handleImageSelect, imageCount, setLink } =
-    useContentTipTapEditor({
-      collaboration,
-      content,
-      editable: canEdit,
-      onContentChange,
-      projectId,
-    });
+  const {
+    editor,
+    handleImageSelect,
+    imageCount,
+    prepareContentForSave,
+    setLink,
+  } = useContentTipTapEditor({
+    collaboration,
+    content,
+    editable: canEdit,
+    onContentChange,
+    projectId,
+  });
+
+  useEffect(() => {
+    onPrepareContentForSaveChange?.(prepareContentForSave);
+
+    return () => {
+      onPrepareContentForSaveChange?.(null);
+    };
+  }, [onPrepareContentForSaveChange, prepareContentForSave]);
   const canEditContent = canEdit && (!collaboration || collaboration.canEdit);
   const blockLabel = getCurrentBlockLabel(editor, t);
   const aiSource = editor?.getMarkdown?.() || content.text || content.html;

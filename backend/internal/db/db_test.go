@@ -305,6 +305,16 @@ func TestPostgresDSNFromEnvUsesDefaultSSLMode(t *testing.T) {
 	require.NotContains(t, dsn, "sslrootcert")
 }
 
+func TestPostgresDSNFromEnvDoesNotQuoteRuntimeTimeZone(t *testing.T) {
+	setDatabaseConnectionEnv(t)
+
+	dsn, err := postgresDSNFromEnv()
+
+	require.NoError(t, err)
+	require.Contains(t, dsn, "TimeZone=Asia/Shanghai")
+	require.NotContains(t, dsn, "TimeZone='Asia/Shanghai'")
+}
+
 func TestPostgresDSNFromEnvUsesVerifiedTLSSettings(t *testing.T) {
 	setDatabaseConnectionEnv(t)
 	t.Setenv(dbSSLModeEnv, "verify-full")
