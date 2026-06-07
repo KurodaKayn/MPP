@@ -1,8 +1,15 @@
+import { backendConfig } from "./config";
+
 export const extensionAuthTokenStorageKeys = [
   "sevenoxcloud.auth_token",
   "auth_token",
   "access_token",
   "mpp.web_auth_token",
+] as const;
+const extensionAuthTokenCookieKeys = [
+  "sevenoxcloud.auth_token",
+  "auth_token",
+  "access_token",
 ] as const;
 
 const canonicalExtensionAuthTokenStorageKey = extensionAuthTokenStorageKeys[0];
@@ -17,6 +24,19 @@ export interface ExtensionAuthTokenWritableStorage {
 
 export interface ExtensionAuthTokenClearableStorage {
   remove(keys: string[]): Promise<void>;
+}
+
+export interface ExtensionAuthCookieStorage {
+  get(details: {
+    name: string;
+    url: string;
+  }): Promise<{ value?: string } | null | undefined>;
+}
+
+export interface ExtensionAuthTokenOptions {
+  cookies?: ExtensionAuthCookieStorage | null;
+  storage?: ExtensionAuthTokenStorage;
+  webBaseUrl?: string;
 }
 
 export interface WebAuthTokenStorage {
@@ -65,6 +85,56 @@ export async function getStoredExtensionAuthToken(
   }
 
   return null;
+}
+
+function getDefaultCookieStorage(): ExtensionAuthCookieStorage | null {
+  return browser.cookies ?? null;
+}
+
+function getCookieLookupUrl(webBaseUrl: string): string {
+  try {
+    return new URL(webBaseUrl).origin;
+  } catch {
+    return webBaseUrl;
+  }
+}
+
+async function getExtensionAuthCookieToken(
+  cookies: ExtensionAuthCookieStorage,
+  webBaseUrl: string,
+): Promise<string | null> {
+  const url = getCookieLookupUrl(webBaseUrl);
+
+  for (const name of extensionAuthTokenCookieKeys) {
+    const cookie = await cookies.get({ name, url });
+    const token = normalizeToken(cookie?.value);
+
+    if (token) {
+      return token;
+    }
+  }
+
+  return null;
+}
+
+export async function getExtensionAuthToken(
+  options: ExtensionAuthTokenOptions = {},
+): Promise<string | null> {
+  const cookies =
+    "cookies" in options ? options.cookies : getDefaultCookieStorage();
+
+  if (cookies) {
+    const token = await getExtensionAuthCookieToken(
+      cookies,
+      options.webBaseUrl ?? backendConfig.webBaseUrl,
+    ).catch(() => null);
+
+    if (token) {
+      return token;
+    }
+  }
+
+  return getStoredExtensionAuthToken(options.storage);
 }
 
 export async function persistExtensionAuthToken(
