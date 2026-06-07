@@ -340,10 +340,18 @@ jobs:
         with:
           version: v1.33.9
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
+
+      - name: Install kubeconform
+        run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
 
       - name: Build Kubernetes manifest packages
         shell: bash
@@ -356,6 +364,7 @@ jobs:
             echo "::group::kubectl kustomize $dir"
             kubectl kustomize "$dir" > "$rendered"
             ruby script/kubernetes/validate-rendered-manifests.rb "$dir" "$rendered"
+            ruby script/kubernetes/validate-rendered-schema.rb "$dir" "$rendered"
             echo "::endgroup::"
           done
 
@@ -364,6 +373,8 @@ jobs:
           ruby script/env/generate_examples.rb --check
           ruby script/kubernetes/smoke/test_smoke.rb
           ruby script/kubernetes/test_app_secret_materializer.rb
+          ruby script/kubernetes/test_validate_rendered_manifests.rb
+          ruby script/kubernetes/test_validate_rendered_schema.rb
 
   ci-result:
     name: CI result

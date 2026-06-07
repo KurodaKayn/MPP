@@ -245,6 +245,12 @@ func (m *Manager) runtimePod(request browserruntime.StartSessionRequest) *corev1
 			AutomountServiceAccountToken: &automountServiceAccountToken,
 			ActiveDeadlineSeconds:        &activeDeadlineSeconds,
 			RestartPolicy:                corev1.RestartPolicyNever,
+			SecurityContext: &corev1.PodSecurityContext{
+				RunAsNonRoot:   &runAsNonRoot,
+				RunAsUser:      &runAsUser,
+				RunAsGroup:     &runAsGroup,
+				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+			},
 			Containers: []corev1.Container{
 				{
 					Name:  "browser-runtime",
