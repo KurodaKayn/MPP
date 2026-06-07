@@ -145,10 +145,6 @@ function getWorkbenchStatusVariant(
   return "secondary";
 }
 
-function formatSelectedPlatformCount(count: number): string {
-  return `${count} ready ${count === 1 ? "platform" : "platforms"} selected`;
-}
-
 export function usePrepublishWorkbench(
   loadPrepublish: LoadPrepublish,
   enabled: boolean,
@@ -464,9 +460,6 @@ function LoadedWorkbench({
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">
               {selectedProject.title}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {formatSelectedPlatformCount(selectedPlatformList.length)}
             </p>
           </div>
           <Badge variant={canStart ? "info" : "secondary"}>
