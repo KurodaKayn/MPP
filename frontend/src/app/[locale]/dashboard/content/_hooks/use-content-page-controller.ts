@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { hasPendingLocalMedia } from "@/components/dashboard/content/editor/content-editor-media";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import { emptyContentValue, type ContentValue } from "@/lib/content/types";
 import { canCreateWorkspaceProject } from "../../_hooks/use-dashboard-workspace-selection";
@@ -105,6 +106,8 @@ export function useContentPageController(
   const hasRequiredContent = Boolean(
     !isPageLoading && title.trim() && hasBodyContent,
   );
+  const hasUnsavedLocalMedia = hasPendingLocalMedia(content.html);
+  const isSaveBlockedAction = isSaving || hasUnsavedLocalMedia;
   const automaticPublishPlatforms = selectedPlatforms.filter(
     (platform) => platform !== "douyin",
   );
@@ -129,11 +132,12 @@ export function useContentPageController(
     projectId &&
     canPublishProject &&
     hasRequiredContent &&
+    !isSaveBlockedAction &&
     automaticPublishPlatforms.length > 0 &&
     hasSyncedSelectedPlatforms,
   );
   const canSelectPlatforms = Boolean(
-    canEditProject && canCreateInWorkspace && hasRequiredContent,
+    canEditProject && canCreateInWorkspace && hasRequiredContent && !isSaving,
   );
   const canSave = Boolean(
     projectId &&
@@ -142,8 +146,29 @@ export function useContentPageController(
     selectedPlatforms.length > 0,
   );
   const canOpenXPostIntent = Boolean(
-    canPublishProject && canCreateInWorkspace && hasRequiredContent,
+    canPublishProject &&
+    canCreateInWorkspace &&
+    hasRequiredContent &&
+    !isSaveBlockedAction,
   );
+
+  const guardSaveBlockedAction = () => {
+    if (hasUnsavedLocalMedia) {
+      toast.error(t("project.savePendingMediaTitle"), {
+        description: t("project.savePendingMediaDesc"),
+      });
+      return true;
+    }
+
+    if (isSaving) {
+      toast.error(t("project.saveInProgressTitle"), {
+        description: t("project.saveInProgressDesc"),
+      });
+      return true;
+    }
+
+    return false;
+  };
 
   useEffect(() => {
     if (!projectId) {
@@ -389,12 +414,20 @@ export function useContentPageController(
     isLoading: isPageLoading,
     openPublishPanel,
     prepublish: {
-      canEdit: Boolean(canEditProject && canCreateInWorkspace),
+      canEdit: Boolean(
+        canEditProject && canCreateInWorkspace && !isSaveBlockedAction,
+      ),
       content,
       drafts: prepublishDrafts,
       isSyncing: isSyncingPrepublish,
       onDraftChange: workflow.updatePrepublishDraft,
-      onSync: workflow.syncPrepublish,
+      onSync: (platforms?: PublishPlatform[]) => {
+        if (guardSaveBlockedAction()) {
+          return;
+        }
+
+        return workflow.syncPrepublish(platforms);
+      },
       projectId,
       title,
     },
@@ -418,9 +451,27 @@ export function useContentPageController(
       douyinBrowserSession: workflow.douyinBrowserSession,
       isOpeningXPostIntent,
       isPublishing: workflow.isPublishing,
-      onOpenDouyinPublishSession: workflow.openDouyinPublishSession,
-      onOpenXPostIntent: workflow.openXPostIntent,
-      onPublish: workflow.publish,
+      onOpenDouyinPublishSession: () => {
+        if (guardSaveBlockedAction()) {
+          return;
+        }
+
+        return workflow.openDouyinPublishSession();
+      },
+      onOpenXPostIntent: () => {
+        if (guardSaveBlockedAction()) {
+          return;
+        }
+
+        return workflow.openXPostIntent();
+      },
+      onPublish: () => {
+        if (guardSaveBlockedAction()) {
+          return;
+        }
+
+        return workflow.publish();
+      },
       onSelectedPlatformsChange: setSelectedPlatforms,
       selectedPlatforms,
     },

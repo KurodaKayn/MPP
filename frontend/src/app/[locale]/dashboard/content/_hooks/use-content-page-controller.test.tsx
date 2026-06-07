@@ -3,6 +3,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ContentValue } from "@/lib/content/types";
 import type { Workspace } from "@/lib/dashboard/api";
 import { useContentPageStore } from "../_stores/content-page-store";
 import { useContentPageController } from "./use-content-page-controller";
@@ -493,6 +494,197 @@ describe("useContentPageController", () => {
       },
     );
     expect(mocks.toastSuccess).not.toHaveBeenCalled();
+
+    view.unmount();
+  });
+
+  it("prepares pending editor media before saving project changes", async () => {
+    mocks.getDashboardProject.mockResolvedValue({
+      created_at: "2026-05-30T12:00:00.000Z",
+      id: "project-1",
+      publications: [
+        { enabled: true, id: "pub-1", platform: "wechat", status: "draft" },
+      ],
+      role: "owner",
+      source_content: "<p>Old body</p>",
+      status: "ready",
+      title: "Old title",
+      updated_at: "2026-05-30T12:00:00.000Z",
+      user_id: "user-1",
+    });
+    mocks.getProjectPublications.mockResolvedValue({
+      items: [],
+      project_id: "project-1",
+    });
+    mocks.updateDashboardProject.mockResolvedValue({ id: "project-1" });
+    const preparedContent: ContentValue = {
+      firstImageSrc: "mpp://media/asset-1",
+      html: '<p><img src="mpp://media/asset-1" data-mpp-media-id="asset-1"></p>',
+      text: "",
+    };
+    const prepareContentForSave = vi.fn().mockResolvedValue(preparedContent);
+    const view = renderController("project-1");
+
+    await act(async () => {
+      await flushPromises();
+      await flushPromises();
+    });
+
+    act(() => {
+      useContentPageStore.setState({
+        content: {
+          firstImageSrc: "blob:http://localhost:3000/local-preview",
+          html: '<img src="blob:http://localhost:3000/local-preview" data-mpp-local-media-id="local-1">',
+          text: "",
+        },
+        selectedPlatforms: ["wechat"],
+        title: "Post title",
+      });
+    });
+
+    await act(async () => {
+      (
+        view.getController().header.onSave as
+          | ((options: {
+              prepareContentForSave: () => Promise<ContentValue>;
+            }) => void)
+          | undefined
+      )?.({ prepareContentForSave });
+      await flushPromises();
+      await flushPromises();
+    });
+
+    expect(prepareContentForSave).toHaveBeenCalledOnce();
+    expect(mocks.updateDashboardProject).toHaveBeenCalledWith("project-1", {
+      cover_image_url: "mpp://media/asset-1",
+      platforms: ["wechat"],
+      source_content: preparedContent.html,
+      summary: "",
+      title: "Post title",
+    });
+
+    view.unmount();
+  });
+
+  it("blocks prepublish and publish actions while editor media is unsaved", async () => {
+    mocks.getDashboardProject.mockResolvedValue({
+      created_at: "2026-05-30T12:00:00.000Z",
+      id: "project-1",
+      publications: [
+        { enabled: true, id: "pub-1", platform: "wechat", status: "draft" },
+      ],
+      role: "owner",
+      source_content: "<p>Old body</p>",
+      status: "ready",
+      title: "Old title",
+      updated_at: "2026-05-30T12:00:00.000Z",
+      user_id: "user-1",
+    });
+    mocks.getProjectPublications.mockResolvedValue({
+      items: [],
+      project_id: "project-1",
+    });
+    const view = renderController("project-1");
+
+    await act(async () => {
+      await flushPromises();
+      await flushPromises();
+    });
+
+    act(() => {
+      useContentPageStore.setState({
+        content: {
+          firstImageSrc: "blob:http://localhost:3000/local-preview",
+          html: '<p><img src="blob:http://localhost:3000/local-preview" data-mpp-local-media-id="local-1"></p>',
+          text: "Rendered body",
+        },
+        prepublishDrafts: {
+          wechat: {
+            format: "html",
+            raw: "<p>Rendered body</p>",
+            syncedAt: "2026-05-30T12:00:00.000Z",
+          },
+        },
+        selectedPlatforms: ["wechat"],
+        title: "Post title",
+      });
+    });
+
+    expect(view.getController().prepublish.canEdit).toBe(false);
+    expect(view.getController().publishing.canPublish).toBe(false);
+    expect(view.getController().publishing.canOpenXPostIntent).toBe(false);
+
+    await act(async () => {
+      await view.getController().prepublish.onSync(["wechat"]);
+      view.getController().publishing.onPublish();
+      view.getController().publishing.onOpenDouyinPublishSession();
+      await flushPromises();
+    });
+
+    expect(mocks.updateDashboardProject).not.toHaveBeenCalled();
+    expect(mocks.syncProjectPrepublish).not.toHaveBeenCalled();
+    expect(mocks.saveDashboardProjectContent).not.toHaveBeenCalled();
+    expect(mocks.publishProject).not.toHaveBeenCalled();
+    expect(mocks.startDouyinPublishSession).not.toHaveBeenCalled();
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      "project.savePendingMediaTitle",
+      {
+        description: "project.savePendingMediaDesc",
+      },
+    );
+
+    view.unmount();
+  });
+
+  it("disables prepublish and publishing controls while saving", async () => {
+    mocks.getDashboardProject.mockResolvedValue({
+      created_at: "2026-05-30T12:00:00.000Z",
+      id: "project-1",
+      publications: [
+        { enabled: true, id: "pub-1", platform: "wechat", status: "draft" },
+      ],
+      role: "owner",
+      source_content: "<p>Old body</p>",
+      status: "ready",
+      title: "Old title",
+      updated_at: "2026-05-30T12:00:00.000Z",
+      user_id: "user-1",
+    });
+    mocks.getProjectPublications.mockResolvedValue({
+      items: [],
+      project_id: "project-1",
+    });
+    const view = renderController("project-1");
+
+    await act(async () => {
+      await flushPromises();
+      await flushPromises();
+    });
+
+    act(() => {
+      useContentPageStore.setState({
+        content: {
+          firstImageSrc: "",
+          html: "<p>Rendered body</p>",
+          text: "Rendered body",
+        },
+        isSaving: true,
+        prepublishDrafts: {
+          wechat: {
+            format: "html",
+            raw: "<p>Rendered body</p>",
+            syncedAt: "2026-05-30T12:00:00.000Z",
+          },
+        },
+        selectedPlatforms: ["wechat"],
+        title: "Post title",
+      });
+    });
+
+    expect(view.getController().prepublish.canEdit).toBe(false);
+    expect(view.getController().publishing.canOpenXPostIntent).toBe(false);
+    expect(view.getController().publishing.canPublish).toBe(false);
+    expect(view.getController().publishing.canSelectPlatforms).toBe(false);
 
     view.unmount();
   });

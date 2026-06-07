@@ -24,6 +24,8 @@ deploy/kubernetes/app-baseline
 deploy/kubernetes/observability
 deploy/kubernetes/data-services/managed
 deploy/kubernetes/data-services/self-hosted
+deploy/kubernetes/overlays/staging-managed
+deploy/kubernetes/overlays/staging-self-hosted
 deploy/kubernetes/validation/app-baseline
 ```
 
@@ -32,6 +34,9 @@ Use `app-baseline` for the long-running application services. Add
 `observability` when the cluster has Loki, Alloy, and Prometheus Operator CRDs.
 Choose exactly one data-service mode: `managed` for production, or
 `self-hosted` for small test clusters and demos.
+Use `overlays/staging-managed` as a renderable starter when staging should use
+managed PostgreSQL and Redis endpoints, or `overlays/staging-self-hosted` when
+staging should run PostgreSQL and Redis inside the cluster.
 
 ## Required Overlays
 
@@ -54,6 +59,13 @@ The overlay must patch:
   and sizes for self-hosted StatefulSets.
 - `LOKI_WRITE_URL` in the observability package when Loki is not available at
   the included in-cluster service DNS name.
+
+The included `deploy/kubernetes/overlays/staging-managed` and
+`deploy/kubernetes/overlays/staging-self-hosted` overlays wire the baseline app,
+browser runtime controls, and one data-service mode together. They still contain
+example image tags, public host values, provider host values, and generated
+Secret literals, so patch those inputs through your environment workflow before
+applying either overlay to a shared cluster.
 
 ## Images
 
@@ -98,10 +110,42 @@ DB_PASSWORD
 COLLAB_TOKEN_SECRET
 COOKIE_ENCRYPTION_KEY
 LLM_PROVIDER_KEY
+AI_SERVICE_INTERNAL_TOKEN
+BROWSER_WORKER_INTERNAL_TOKEN
+CONTENT_PIPELINE_INTERNAL_TOKEN
 ```
 
 Add `REDIS_PASSWORD` when Redis auth is enabled. Use an external secret manager
 or sealed-secret workflow for production; do not commit real Secret values.
+
+For local staging or a one-time bootstrap, generate the app/internal random
+values, add provider-supplied values, and render a Secret manifest to a
+temporary file:
+
+```bash
+secrets_env="$(mktemp)"
+script/secret/gen_app_secrets.py app > "$secrets_env"
+script/secret/gen_app_secrets.py db >> "$secrets_env"
+printf 'LLM_PROVIDER_KEY=%s\n' "$LLM_PROVIDER_KEY" >> "$secrets_env"
+
+ruby script/kubernetes/render-app-secret.rb \
+  --env-file "$secrets_env" \
+  > /tmp/mpp-app-secrets.yaml
+kubectl apply -f /tmp/mpp-app-secrets.yaml
+```
+
+When Redis auth is enabled, add `REDIS_PASSWORD` and require it during render:
+
+```bash
+script/secret/gen_app_secrets.py redis >> "$secrets_env"
+ruby script/kubernetes/render-app-secret.rb \
+  --env-file "$secrets_env" \
+  --require-redis-password \
+  > /tmp/mpp-app-secrets.yaml
+```
+
+The renderer emits Kubernetes `stringData`, rejects placeholder-looking values
+by default, and ignores env keys that do not belong in `mpp-app-secrets`.
 
 ## Database And Redis
 
@@ -161,12 +205,37 @@ find deploy/kubernetes -name kustomization.yaml -print | sort | while IFS= read 
   dir="$(dirname "$package")"
   rendered="$(mktemp)"
   kubectl kustomize "$dir" > "$rendered"
-  node script/kubernetes/validate-rendered-manifests.mjs "$dir" "$rendered"
+  ruby script/kubernetes/validate-rendered-manifests.rb "$dir" "$rendered"
+  ruby script/kubernetes/validate-rendered-schema.rb "$dir" "$rendered"
 done
 ```
 
-For the final environment overlay, also run your cluster's schema or policy
-validator, such as kubeconform, kubeval, or admission dry-run.
+The repository Ruby validator rejects unresolved app images, `latest` tags,
+missing validation overlay secrets, app workload security-context regressions,
+missing probes or resource requests, broken Service and Ingress wiring, browser
+runtime RBAC or NetworkPolicy drift, missing observability rules, and malformed
+managed or self-hosted data-service packages.
+
+The schema validator wraps `kubeconform` in strict mode against Kubernetes
+1.33 schemas. It ignores missing schemas so Prometheus Operator CRDs such as
+`PodMonitor` and `PrometheusRule` can still be included while built-in
+Kubernetes resources receive API schema coverage. CI installs kubeconform
+`v0.8.0`; local validation can use the same binary or set `KUBECONFORM_BIN`.
+
+When validating a staging overlay after replacing the checked-in example values,
+enable deployable validation to reject `.example.invalid` hosts, all-zero SHA
+image tags, and generated example Secret values:
+
+```bash
+MPP_KUBERNETES_VALIDATE_DEPLOYABLE=1 \
+  ruby script/kubernetes/validate-rendered-manifests.rb \
+  deploy/kubernetes/overlays/staging-self-hosted \
+  /tmp/mpp-staging.yaml
+```
+
+For the final environment overlay, also run an admission dry-run against the
+target cluster to catch cluster-specific admission policies, enabled API
+versions, and CRD schemas that are outside the repository validation scope.
 
 ## Deploy
 
@@ -180,13 +249,59 @@ kubectl rollout status deployment/browser-worker -n mpp-system
 kubectl rollout status deployment/collab-service -n mpp-system
 ```
 
+For the included managed staging starter:
+
+```bash
+kubectl kustomize deploy/kubernetes/overlays/staging-managed > /tmp/mpp-staging.yaml
+ruby script/kubernetes/validate-rendered-manifests.rb \
+  deploy/kubernetes/overlays/staging-managed \
+  /tmp/mpp-staging.yaml
+```
+
+For the included self-hosted staging starter:
+
+```bash
+kubectl kustomize deploy/kubernetes/overlays/staging-self-hosted > /tmp/mpp-staging.yaml
+ruby script/kubernetes/validate-rendered-manifests.rb \
+  deploy/kubernetes/overlays/staging-self-hosted \
+  /tmp/mpp-staging.yaml
+```
+
+After replacing the example host, image tags, and Secret material, rerun the
+same command with `MPP_KUBERNETES_VALIDATE_DEPLOYABLE=1` before applying it to a
+shared cluster.
+
 Smoke test:
 
-- Open the public frontend URL.
-- Sign in and load the dashboard.
-- Create or open a collaborative document.
-- Start and stop a browser session.
-- Confirm runtime Pods disappear after completion or expiry.
+```bash
+ruby script/kubernetes/smoke-test.rb \
+  --public-url https://mpp.example.com
+```
+
+The smoke harness checks Deployment rollout status, Service endpoints,
+application ConfigMap and Secret shape, internal readiness paths, publish-worker
+dependencies, browser runtime RBAC, and runtime Pod cleanup metadata.
+
+Add authenticated user-flow probes when a disposable smoke user token is
+available:
+
+```bash
+MPP_SMOKE_AUTH_TOKEN=<bearer-token> \
+MPP_SMOKE_PROJECT_ID=<existing-project-id> \
+ruby script/kubernetes/smoke-test.rb \
+  --public-url https://mpp.example.com \
+  --run-user-flow-probes
+```
+
+Use the browser session probe only in environments where creating and cancelling
+a remote browser runtime session is acceptable:
+
+```bash
+MPP_SMOKE_AUTH_TOKEN=<bearer-token> \
+ruby script/kubernetes/smoke-test.rb \
+  --public-url https://mpp.example.com \
+  --run-browser-session-probe
+```
 
 ## Operations
 

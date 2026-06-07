@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  clearExtensionAuthSession,
   clearStoredExtensionAuthTokens,
+  getExtensionAuthToken,
   getWebAuthTokenFromStorage,
   getStoredExtensionAuthToken,
   persistExtensionAuthToken,
@@ -39,6 +41,50 @@ describe("getStoredExtensionAuthToken", () => {
     };
 
     await expect(getStoredExtensionAuthToken(storage)).resolves.toBeNull();
+  });
+});
+
+describe("getExtensionAuthToken", () => {
+  it("reads the MPP web login token from HttpOnly cookies", async () => {
+    const cookies = {
+      get: vi.fn().mockResolvedValue({ value: "Bearer cookie-token" }),
+    };
+    const storage = {
+      get: vi.fn().mockResolvedValue({}),
+    };
+
+    await expect(
+      getExtensionAuthToken({
+        cookies,
+        storage,
+        webBaseUrl: "http://localhost:3000",
+      }),
+    ).resolves.toBe("cookie-token");
+
+    expect(cookies.get).toHaveBeenCalledWith({
+      name: "sevenoxcloud.auth_token",
+      url: "http://localhost:3000",
+    });
+    expect(storage.get).not.toHaveBeenCalled();
+  });
+
+  it("falls back to extension storage when web login cookies are unavailable", async () => {
+    const cookies = {
+      get: vi.fn().mockResolvedValue(null),
+    };
+    const storage = {
+      get: vi.fn().mockResolvedValue({
+        "sevenoxcloud.auth_token": "stored-token",
+      }),
+    };
+
+    await expect(
+      getExtensionAuthToken({
+        cookies,
+        storage,
+        webBaseUrl: "http://localhost:3000",
+      }),
+    ).resolves.toBe("stored-token");
   });
 });
 
@@ -82,6 +128,42 @@ describe("clearStoredExtensionAuthTokens", () => {
       "access_token",
       "mpp.web_auth_token",
     ]);
+  });
+});
+
+describe("clearExtensionAuthSession", () => {
+  it("removes extension tokens and MPP web auth cookies", async () => {
+    const storage = {
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    const cookies = {
+      remove: vi.fn().mockResolvedValue(null),
+    };
+
+    await clearExtensionAuthSession({
+      cookies,
+      storage,
+      webBaseUrl: "http://localhost:3000/zh/login",
+    });
+
+    expect(storage.remove).toHaveBeenCalledWith([
+      "sevenoxcloud.auth_token",
+      "auth_token",
+      "access_token",
+      "mpp.web_auth_token",
+    ]);
+    expect(cookies.remove).toHaveBeenCalledWith({
+      name: "sevenoxcloud.auth_token",
+      url: "http://localhost:3000",
+    });
+    expect(cookies.remove).toHaveBeenCalledWith({
+      name: "auth_token",
+      url: "http://localhost:3000",
+    });
+    expect(cookies.remove).toHaveBeenCalledWith({
+      name: "access_token",
+      url: "http://localhost:3000",
+    });
   });
 });
 

@@ -2,8 +2,8 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import "../../src/styles.css";
 import {
-  clearStoredExtensionAuthTokens,
-  getStoredExtensionAuthToken,
+  clearExtensionAuthSession,
+  getExtensionAuthToken,
 } from "../../src/backend/auth";
 import {
   createBackendClient,
@@ -26,7 +26,7 @@ import { usePrepublishWorkbench } from "../../src/publish/prepublish";
 import { PublishWorkbenchScreen } from "../../src/publish/workbench-screen";
 
 const backendClient = createBackendClient({
-  authTokenProvider: getStoredExtensionAuthToken,
+  authTokenProvider: getExtensionAuthToken,
 });
 
 interface MonitorState {
@@ -99,7 +99,7 @@ function PublishMonitor() {
 
   const signOut = async () => {
     try {
-      await clearStoredExtensionAuthTokens();
+      await clearExtensionAuthSession();
       setHandoffStartError("");
       await Promise.all([refreshSession(), load()]);
       setError("");

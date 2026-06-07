@@ -83,7 +83,7 @@ jobs:
           mark ai_service "^(ai-service/|${shared_pattern#^})"
           mark collab_service "^(collab-service/|${shared_pattern#^})"
           mark content_pipeline_service "^(content-pipeline-service/|${shared_pattern#^})"
-          mark kubernetes "^(deploy/kubernetes/|script/kubernetes/|${shared_pattern#^})"
+          mark kubernetes "^(deploy/kubernetes/|script/kubernetes/|script/env/|script/secret/|contracts/env\.schema\.yaml|${shared_pattern#^})"
 
   frontend:
     name: Frontend
@@ -340,10 +340,18 @@ jobs:
         with:
           version: v1.33.9
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          node-version: 24
+          go-version: "1.24"
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Install kubeconform
+        run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
 
       - name: Build Kubernetes manifest packages
         shell: bash
@@ -355,9 +363,18 @@ jobs:
             rendered="$(mktemp)"
             echo "::group::kubectl kustomize $dir"
             kubectl kustomize "$dir" > "$rendered"
-            node script/kubernetes/validate-rendered-manifests.mjs "$dir" "$rendered"
+            ruby script/kubernetes/validate-rendered-manifests.rb "$dir" "$rendered"
+            ruby script/kubernetes/validate-rendered-schema.rb "$dir" "$rendered"
             echo "::endgroup::"
           done
+
+      - name: Run Kubernetes Ruby helper tests
+        run: |
+          ruby script/env/generate_examples.rb --check
+          ruby script/kubernetes/smoke/test_smoke.rb
+          ruby script/kubernetes/test_app_secret_materializer.rb
+          ruby script/kubernetes/test_validate_rendered_manifests.rb
+          ruby script/kubernetes/test_validate_rendered_schema.rb
 
   ci-result:
     name: CI result

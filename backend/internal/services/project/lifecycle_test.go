@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
 
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
@@ -94,6 +95,138 @@ func TestListProjectsIncludesCollaboratorProjectsWithRoles(t *testing.T) {
 	require.Equal(t, models.ProjectAccessSourceOwner, accessSources[ownedProject.ID])
 	require.Equal(t, models.ProjectRoleViewer, roles[sharedProject.ID])
 	require.Equal(t, models.ProjectAccessSourceDirectShare, accessSources[sharedProject.ID])
+}
+
+func TestListProjectsUsesReaderForAdminList(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	s := services.NewDashboardServiceWithRouter(writer, dbrouter.NewRouter(writer, dbrouter.WithReader(reader)))
+
+	user := models.User{Username: "reader-owner", Email: "reader-owner@example.com"}
+	require.NoError(t, reader.Create(&user).Error)
+	project := models.Project{UserID: user.ID, Title: "Reader project", SourceContent: "content", Status: models.ProjectStatusReady, CreatedAt: time.Now()}
+	require.NoError(t, reader.Create(&project).Error)
+	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Status:    models.PublicationStatusPublished,
+	}).Error)
+
+	var writerProjects int64
+	require.NoError(t, writer.Model(&models.Project{}).Count(&writerProjects).Error)
+	require.Equal(t, int64(0), writerProjects)
+
+	res, err := s.ListProjects(1, 10, "", "", "", nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), res.Total)
+	items := res.Items.([]dto.ProjectListItem)
+	require.Len(t, items, 1)
+	require.Equal(t, project.ID, items[0].ID)
+}
+
+func TestListProjectsUsesWriterForStickyAdminList(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	router := dbrouter.NewRouter(writer, dbrouter.WithReader(reader))
+	stickyCtx := dbrouter.WithStickyWriter(context.Background(), time.Now().Add(time.Minute))
+	s := services.NewDashboardServiceWithRouter(writer, router).WithContext(stickyCtx)
+
+	writerUser := models.User{Username: "writer-owner", Email: "writer-owner@example.com", PasswordHash: "hash"}
+	require.NoError(t, writer.Create(&writerUser).Error)
+	writerProject := models.Project{
+		UserID:        writerUser.ID,
+		Title:         "Writer project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+		CreatedAt:     time.Now(),
+	}
+	require.NoError(t, writer.Create(&writerProject).Error)
+
+	readerUser := models.User{Username: "stale-reader-owner", Email: "stale-reader-owner@example.com", PasswordHash: "hash"}
+	require.NoError(t, reader.Create(&readerUser).Error)
+	staleReaderProject := models.Project{
+		UserID:        readerUser.ID,
+		Title:         "Stale reader project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+		CreatedAt:     time.Now().Add(time.Hour),
+	}
+	require.NoError(t, reader.Create(&staleReaderProject).Error)
+
+	res, err := s.ListProjects(1, 10, "", "", "", nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), res.Total)
+	items := res.Items.([]dto.ProjectListItem)
+	require.Len(t, items, 1)
+	require.Equal(t, writerProject.ID, items[0].ID)
+}
+
+func TestListProjectsUsesWriterForScopedList(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	s := services.NewDashboardServiceWithRouter(writer, dbrouter.NewRouter(writer, dbrouter.WithReader(reader)))
+
+	user := models.User{Username: "scoped-owner", Email: "scoped-owner@example.com"}
+	require.NoError(t, writer.Create(&user).Error)
+	currentProject := models.Project{UserID: user.ID, Title: "Current project", SourceContent: "content", Status: models.ProjectStatusReady, CreatedAt: time.Now()}
+	require.NoError(t, writer.Create(&currentProject).Error)
+
+	staleProject := models.Project{UserID: user.ID, Title: "Stale reader project", SourceContent: "content", Status: models.ProjectStatusReady, CreatedAt: time.Now().Add(time.Hour)}
+	require.NoError(t, reader.Create(&staleProject).Error)
+
+	res, err := s.ListProjects(1, 10, "", "", "", &user.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), res.Total)
+	items := res.Items.([]dto.ProjectListItem)
+	require.Len(t, items, 1)
+	require.Equal(t, currentProject.ID, items[0].ID)
+}
+
+func TestGetProjectUsesReaderForAdminDetail(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	s := services.NewDashboardServiceWithRouter(writer, dbrouter.NewRouter(writer, dbrouter.WithReader(reader)))
+
+	user := models.User{Username: "reader-detail-owner", Email: "reader-detail-owner@example.com"}
+	require.NoError(t, reader.Create(&user).Error)
+	project := models.Project{UserID: user.ID, Title: "Reader detail", SourceContent: "content", Status: models.ProjectStatusReady}
+	require.NoError(t, reader.Create(&project).Error)
+	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
+		ProjectID:  project.ID,
+		Platform:   "wechat",
+		Status:     models.PublicationStatusPublished,
+		PublishURL: "https://example.test/reader",
+	}).Error)
+
+	detail, err := s.GetProject(project.ID, nil)
+	require.NoError(t, err)
+	require.Equal(t, project.ID, detail.ID)
+	require.Equal(t, "Reader detail", detail.Title)
+	require.Len(t, detail.Publications, 1)
+	require.Equal(t, "wechat", detail.Publications[0].Platform)
+}
+
+func TestGetProjectUsesWriterForStickyAdminDetail(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	router := dbrouter.NewRouter(writer, dbrouter.WithReader(reader))
+	stickyCtx := dbrouter.WithStickyWriter(context.Background(), time.Now().Add(time.Minute))
+	s := services.NewDashboardServiceWithRouter(writer, router).WithContext(stickyCtx)
+
+	writerUser := models.User{Username: "writer-detail-owner", Email: "writer-detail-owner@example.com"}
+	require.NoError(t, writer.Create(&writerUser).Error)
+	writerProject := models.Project{UserID: writerUser.ID, Title: "Writer detail", SourceContent: "content", Status: models.ProjectStatusReady}
+	require.NoError(t, writer.Create(&writerProject).Error)
+
+	readerUser := models.User{Username: "reader-detail-owner", Email: "reader-detail-owner@example.com"}
+	require.NoError(t, reader.Create(&readerUser).Error)
+	staleReaderProject := models.Project{UserID: readerUser.ID, Title: "Stale reader detail", SourceContent: "content", Status: models.ProjectStatusReady}
+	require.NoError(t, reader.Create(&staleReaderProject).Error)
+
+	detail, err := s.GetProject(writerProject.ID, nil)
+	require.NoError(t, err)
+	require.Equal(t, writerProject.ID, detail.ID)
+	require.Equal(t, "Writer detail", detail.Title)
 }
 
 func TestCreateProjectCreatesSelectedPublications(t *testing.T) {

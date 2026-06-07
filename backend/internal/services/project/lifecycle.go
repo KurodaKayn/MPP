@@ -144,7 +144,7 @@ func (s *Service) CreateProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid
 
 func (s *Service) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUID) (*dto.ProjectDetail, error) {
 	var project models.Project
-	if err := s.db.
+	if err := s.projectDetailReadDB(scopeUserID).
 		Preload("Publications", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, project_id, platform, enabled, status, draft_status, review_status, sync_required, publish_url").Order("platform asc")
 		}).
@@ -168,6 +168,13 @@ func (s *Service) GetProject(projectID uuid.UUID, scopeUserID *uuid.UUID) (*dto.
 		return nil, err
 	}
 	return detail, nil
+}
+
+func (s *Service) projectDetailReadDB(scopeUserID *uuid.UUID) *gorm.DB {
+	if scopeUserID != nil {
+		return s.strongReadDB()
+	}
+	return s.eventualReadDB()
 }
 
 func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.UpdateProjectRequest) (*dto.ProjectDetail, error) {
@@ -656,7 +663,7 @@ func TruncateRunes(value string, limit int) string {
 }
 
 func (s *Service) ListProjects(page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
-	query := s.db.Model(&models.Project{})
+	query := s.projectListReadDB(scopeUserID).Model(&models.Project{})
 
 	// Apply scope (User dashboard enforces scopeUserID, overriding any filterUserID)
 	if scopeUserID != nil {
@@ -679,6 +686,13 @@ func (s *Service) ListProjects(page, limit int, status, filterUserID, platform s
 	}
 
 	return s.ListProjectPage(query, page, limit, scopeUserID)
+}
+
+func (s *Service) projectListReadDB(scopeUserID *uuid.UUID) *gorm.DB {
+	if scopeUserID != nil {
+		return s.strongReadDB()
+	}
+	return s.eventualReadDB()
 }
 
 func (s *Service) ListProjectPage(query *gorm.DB, page, limit int, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {

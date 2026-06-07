@@ -10,9 +10,11 @@ import (
 )
 
 func (s *Service) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.UUID, includeContent bool) (*dto.ProjectPublicationsResponse, error) {
+	readDB := s.projectDetailReadDB(scopeUserID)
+
 	// Verify project exists and access
 	var proj models.Project
-	if err := s.db.Select("id", "user_id", "workspace_id").Where("id = ?", projectID).First(&proj).Error; err != nil {
+	if err := readDB.Select("id", "user_id", "workspace_id").Where("id = ?", projectID).First(&proj).Error; err != nil {
 		return nil, err
 	}
 
@@ -23,7 +25,7 @@ func (s *Service) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.
 	}
 
 	var publications []models.ProjectPlatformPublication
-	if err := s.db.Where("project_id = ?", projectID).Find(&publications).Error; err != nil {
+	if err := readDB.Where("project_id = ?", projectID).Find(&publications).Error; err != nil {
 		return nil, err
 	}
 

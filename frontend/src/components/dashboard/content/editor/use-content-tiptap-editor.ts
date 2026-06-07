@@ -22,8 +22,11 @@ import {
   sanitizeClipboardHtml,
 } from "@/components/dashboard/content/editor/content-editor-utils";
 import {
+  collectLocalMediaIds,
   collectMediaAssetIds,
+  createLocalMediaId,
   hydrateMediaAssetRefs,
+  replaceLocalMediaRefs,
   serializeMediaAssetRefs,
 } from "@/components/dashboard/content/editor/content-editor-media";
 import {
@@ -74,6 +77,9 @@ export function useContentTipTapEditor({
   const canEdit = editable && (!collaboration || collaboration.canEdit);
   const lastEmittedHtmlRef = useRef("");
   const onContentChangeRef = useRef(onContentChange);
+  const pendingLocalMediaRef = useRef<
+    Map<string, { file: File; previewURL: string }>
+  >(new Map());
   const pendingContentUpdateRef = useRef<ReturnType<
     typeof globalThis.setTimeout
   > | null>(null);
@@ -232,6 +238,10 @@ export function useContentTipTapEditor({
         globalThis.clearTimeout(pendingContentUpdateRef.current);
         pendingContentUpdateRef.current = null;
       }
+      pendingLocalMediaRef.current.forEach((media) => {
+        URL.revokeObjectURL(media.previewURL);
+      });
+      pendingLocalMediaRef.current.clear();
     };
   }, []);
 
@@ -323,91 +333,106 @@ export function useContentTipTapEditor({
     }
 
     imageFiles.forEach((file) => {
-      if (projectId) {
-        void uploadAndInsertImage(file, projectId, activeEditor);
-        return;
-      }
-
-      const reader = new FileReader();
-
-      reader.onload = () => {
-        if (typeof reader.result !== "string") {
-          return;
-        }
-
-        activeEditor
-          .chain()
-          .focus()
-          .setImage({
-            alt: file.name || t("toolbar.insertImage"),
-            src: reader.result,
-          })
-          .run();
-      };
-
-      reader.readAsDataURL(file);
+      insertLocalImageFile(file, activeEditor);
     });
 
     return true;
   }
 
-  async function uploadAndInsertImage(
-    file: File,
-    activeProjectId: string,
-    activeEditor: Editor,
-  ) {
+  function insertLocalImageFile(file: File, activeEditor: Editor) {
     if (activeEditor.isDestroyed) {
       return;
     }
 
-    try {
-      const upload = await createProjectMediaUpload(activeProjectId, {
-        filename: file.name || "image",
-        mime_type: file.type,
-        size_bytes: file.size,
-        usage: "editor_image",
-      });
+    const localMediaId = createLocalMediaId();
+    const previewURL = URL.createObjectURL(file);
+    pendingLocalMediaRef.current.set(localMediaId, { file, previewURL });
 
-      const uploadResponse = await fetch(upload.upload_url, {
-        body: file,
-        headers: upload.headers,
-        method: "PUT",
-      });
+    activeEditor
+      .chain()
+      .focus()
+      .insertContent({
+        attrs: {
+          alt: file.name || t("toolbar.insertImage"),
+          mppLocalMediaId: localMediaId,
+          mppUploadStatus: "pending",
+          src: previewURL,
+        },
+        type: "image",
+      })
+      .run();
+  }
 
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed (${uploadResponse.status})`);
-      }
-
-      const completed = await completeMediaUpload(upload.asset_id);
-      const resolved = await resolveMediaAssets([completed.asset_id]);
-      const previewUrl =
-        resolved.items.find((asset) => asset.asset_id === completed.asset_id)
-          ?.url ?? completed.object_ref;
-
-      if (activeEditor.isDestroyed) {
-        return;
-      }
-
-      activeEditor
-        .chain()
-        .focus()
-        .insertContent({
-          attrs: {
-            alt: file.name || t("toolbar.insertImage"),
-            mppMediaId: completed.asset_id,
-            src: previewUrl,
-          },
-          type: "image",
-        })
-        .run();
-    } catch (requestError) {
-      toast.error(t("editor.imageUploadError"), {
-        description:
-          requestError instanceof Error
-            ? requestError.message
-            : t("common.retryLater"),
-      });
+  async function prepareContentForSave() {
+    if (!editor || editor.isDestroyed) {
+      return content;
     }
+
+    const localMediaIds = collectLocalMediaIds(editor.getHTML());
+
+    if (localMediaIds.length === 0) {
+      return contentValueFromHtml(editor.getHTML());
+    }
+
+    if (!projectId) {
+      throw new Error(t("editor.imageUploadError"));
+    }
+
+    const completedRefs = [];
+
+    for (const localMediaId of localMediaIds) {
+      const pendingMedia = pendingLocalMediaRef.current.get(localMediaId);
+
+      if (!pendingMedia) {
+        throw new Error(t("editor.imageUploadError"));
+      }
+
+      setLocalMediaUploadStatus(editor, localMediaId, "pending");
+
+      try {
+        const upload = await createProjectMediaUpload(projectId, {
+          filename: pendingMedia.file.name || "image",
+          mime_type: pendingMedia.file.type,
+          size_bytes: pendingMedia.file.size,
+          usage: "editor_image",
+        });
+        const uploadResponse = await fetch(upload.upload_url, {
+          body: pendingMedia.file,
+          headers: upload.headers,
+          method: "PUT",
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload failed (${uploadResponse.status})`);
+        }
+
+        const completed = await completeMediaUpload(upload.asset_id);
+        completedRefs.push({
+          assetId: completed.asset_id,
+          localMediaId,
+        });
+        URL.revokeObjectURL(pendingMedia.previewURL);
+        pendingLocalMediaRef.current.delete(localMediaId);
+      } catch (uploadError) {
+        setLocalMediaUploadStatus(editor, localMediaId, "failed");
+        throw uploadError;
+      }
+    }
+
+    const savedHtml = replaceLocalMediaRefs(editor.getHTML(), completedRefs);
+    const preparedContent = contentValueFromHtml(savedHtml);
+    const resolved = await resolveMediaAssets(
+      completedRefs.map((ref) => ref.assetId),
+    );
+    const previewHtml = normalizeStoredHtml(
+      hydrateMediaAssetRefs(savedHtml, resolved.items),
+    );
+
+    lastEmittedHtmlRef.current = serializeMediaAssetRefs(previewHtml);
+    editor.commands.setContent(previewHtml, { emitUpdate: false });
+    onContentChangeRef.current(preparedContent);
+
+    return preparedContent;
   }
 
   function handleImageSelect(event: ChangeEvent<HTMLInputElement>) {
@@ -460,6 +485,7 @@ export function useContentTipTapEditor({
     editor,
     handleImageSelect,
     imageCount: countImages(editor),
+    prepareContentForSave,
     setLink,
   };
 }
@@ -480,4 +506,45 @@ function countImages(editor: Editor | null) {
   });
 
   return imageCount;
+}
+
+function setLocalMediaUploadStatus(
+  editor: Editor,
+  localMediaId: string,
+  status: "failed" | "pending",
+) {
+  if (editor.isDestroyed) {
+    return;
+  }
+
+  const updates: Array<{ attrs: Record<string, unknown>; pos: number }> = [];
+
+  editor.state.doc.descendants((node, pos) => {
+    if (
+      node.type.name !== "image" ||
+      node.attrs.mppLocalMediaId !== localMediaId
+    ) {
+      return;
+    }
+
+    updates.push({
+      attrs: {
+        ...node.attrs,
+        mppUploadStatus: status,
+      },
+      pos,
+    });
+  });
+
+  if (updates.length === 0) {
+    return;
+  }
+
+  const transaction = editor.state.tr;
+
+  updates.forEach(({ attrs, pos }) => {
+    transaction.setNodeMarkup(pos, undefined, attrs);
+  });
+
+  editor.view.dispatch(transaction);
 }

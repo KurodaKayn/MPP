@@ -31,6 +31,10 @@ import { type PrepublishDraft } from "../_stores/content-page-store";
 
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
 
+export type ContentSaveOptions = {
+  prepareContentForSave?: (() => Promise<ContentValue>) | null;
+};
+
 export type DouyinBrowserSessionState = {
   completing: boolean;
   error?: string;
@@ -228,18 +232,19 @@ export function useContentPublishWorkflow({
 
   const buildProjectInput = (
     platforms: PublishPlatform[] = selectedPlatforms,
+    sourceContent: ContentValue = content,
   ): CreateProjectInput => ({
     brand_profile_id: selectedBrandProfileId || undefined,
-    cover_image_url: content.firstImageSrc || undefined,
+    cover_image_url: sourceContent.firstImageSrc || undefined,
     platforms,
-    source_content: content.html || content.text,
-    summary: content.text,
+    source_content: sourceContent.html || sourceContent.text,
+    summary: sourceContent.text,
     template_id: selectedTemplateId || undefined,
     title: title.trim(),
   });
 
-  const buildProjectContentInput = () => {
-    const input = buildProjectInput();
+  const buildProjectContentInput = (sourceContent: ContentValue = content) => {
+    const input = buildProjectInput(selectedPlatforms, sourceContent);
     return {
       cover_image_url: input.cover_image_url,
       source_content: input.source_content,
@@ -296,14 +301,21 @@ export function useContentPublishWorkflow({
     return { id: project.id, isNew: true };
   };
 
-  const save = async () => {
+  const save = async (options: ContentSaveOptions = {}) => {
     if (!projectId || !validateContent()) {
       return;
     }
 
     setIsSaving(true);
     try {
-      await updateDashboardProject(projectId, buildProjectInput());
+      const preparedContent = options.prepareContentForSave
+        ? await options.prepareContentForSave()
+        : content;
+
+      await updateDashboardProject(
+        projectId,
+        buildProjectInput(selectedPlatforms, preparedContent),
+      );
       setPrepublishDrafts({});
       toast.success(t("project.saveSuccess"));
     } catch (requestError) {
@@ -661,7 +673,7 @@ export function useContentPublishWorkflow({
     openDouyinPublishSession: () => void openDouyinPublishSession(),
     openXPostIntent: () => void openXPostIntent(),
     publish: () => void publish(),
-    save: () => void save(),
+    save: (options?: ContentSaveOptions) => void save(options),
     syncPrepublish,
     updatePrepublishDraft,
   };

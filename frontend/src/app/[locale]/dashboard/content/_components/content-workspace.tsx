@@ -5,7 +5,7 @@ import { ContentEditor } from "@/components/dashboard/content/content-editor";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useProjectCollabConnection } from "@/features/collab-editor/use-collab-document";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { DashboardErrorCard } from "../../_components/dashboard-error-card";
 import { WorkspaceSwitcher } from "../../_components/workspace-switcher";
 import {
@@ -21,6 +21,7 @@ import { ProjectCollaborationPanel } from "./project-collaboration-panel";
 import { RemoteBrowserSessionModal } from "../../auth/_components/remote-browser-session-modal";
 import { useContentPageController } from "../_hooks/use-content-page-controller";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
+import type { ContentValue } from "@/lib/content/types";
 import {
   type ContentView,
   useContentPageStore,
@@ -33,6 +34,9 @@ type ContentWorkspaceProps = {
 export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
   const { session } = useAuth();
   const [collabReconnectKey, setCollabReconnectKey] = useState(0);
+  const prepareContentForSaveRef = useRef<(() => Promise<ContentValue>) | null>(
+    null,
+  );
   const workspaceSelection = useDashboardWorkspaceSelection({
     enabled: !projectId,
   });
@@ -55,6 +59,18 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
     projectId ||
     (selectedWorkspace && canCreateWorkspaceProject(selectedWorkspace.role)),
   );
+  const handlePrepareContentForSaveChange = useCallback(
+    (handler: (() => Promise<ContentValue>) | null) => {
+      prepareContentForSaveRef.current = handler;
+    },
+    [],
+  );
+  const handleSave = header.onSave
+    ? () =>
+        header.onSave?.({
+          prepareContentForSave: prepareContentForSaveRef.current,
+        })
+    : undefined;
 
   const isCollabInitialConnectionPending = Boolean(
     projectId &&
@@ -87,7 +103,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
         isSaving={header.isSaving}
         mode={header.mode}
         onOpenPublishPanel={contentPage.openPublishPanel}
-        onSave={header.onSave}
+        onSave={handleSave}
         projectId={header.projectId}
         projectRole={header.projectRole}
         workspaceControl={
@@ -196,6 +212,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
             content={editor.content}
             onTitleChange={editor.setTitle}
             onContentChange={editor.setContent}
+            onPrepareContentForSaveChange={handlePrepareContentForSaveChange}
             projectId={projectId}
             viewSwitcher={
               <ContentViewSwitcher

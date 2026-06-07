@@ -2,8 +2,12 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  collectLocalMediaIds,
   collectMediaAssetIds,
+  createLocalMediaId,
+  hasPendingLocalMedia,
   hydrateMediaAssetRefs,
+  replaceLocalMediaRefs,
   serializeMediaAssetRefs,
 } from "./content-editor-media";
 import { contentValueFromHtml } from "./content-editor-utils";
@@ -54,6 +58,40 @@ describe("content editor media refs", () => {
     expect(content.firstImageSrc).toBe("mpp://media/asset-1");
     expect(content.html).toBe(
       '<p><img src="mpp://media/asset-1" data-mpp-media-id="asset-1" alt="cover"></p>',
+    );
+  });
+
+  it("creates local media ids for pending editor images", () => {
+    expect(createLocalMediaId("draft-image-1")).toBe("local-draft-image-1");
+  });
+
+  it("collects pending local media ids without treating them as ready assets", () => {
+    const html = `
+      <p>body</p>
+      <img src="blob:http://localhost:3000/preview-one" data-mpp-local-media-id="local-1" data-mpp-upload-status="pending">
+      <img src="mpp://media/asset-1" data-mpp-media-id="asset-1">
+      <img src="blob:http://localhost:3000/preview-one-again" data-mpp-local-media-id="local-1">
+      <img src="blob:http://localhost:3000/preview-two" data-mpp-local-media-id="local-2">
+    `;
+
+    expect(collectLocalMediaIds(html)).toEqual(["local-1", "local-2"]);
+    expect(collectMediaAssetIds(html)).toEqual(["asset-1"]);
+    expect(hasPendingLocalMedia(html)).toBe(true);
+  });
+
+  it("replaces completed local media nodes with stable asset refs", () => {
+    const html =
+      '<p><img src="blob:http://localhost:3000/preview" data-mpp-local-media-id="local-1" data-mpp-upload-status="pending" alt="draft"></p>';
+
+    expect(
+      replaceLocalMediaRefs(html, [
+        {
+          assetId: "asset-1",
+          localMediaId: "local-1",
+        },
+      ]),
+    ).toBe(
+      '<p><img src="mpp://media/asset-1" alt="draft" data-mpp-media-id="asset-1"></p>',
     );
   });
 });

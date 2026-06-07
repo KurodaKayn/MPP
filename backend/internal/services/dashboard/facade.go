@@ -74,16 +74,17 @@ func (s *DashboardService) WithContext(ctx context.Context) *DashboardService {
 	if ctx == nil {
 		return s
 	}
+	draftCompiler := s.ServiceDraftCompiler()
 	scoped := *s
 	scoped.db = s.db.WithContext(ctx)
-	scoped.Project.Service = s.Project.WithContext(ctx)
-	scoped.Workspace.Service = workspacesvc.NewService(scoped.db, scoped.Project.Service)
-	scoped.Prepublish.Service = prepublishsvc.NewService(scoped.db, scoped.Project.Service, s.ServiceDraftCompiler())
-	scoped.Extension.Service = extensionsvc.NewService(scoped.db)
-	scoped.MediaAsset.Service = s.MediaAsset.WithContext(ctx)
-	scoped.Stats.Service = statssvc.NewServiceWithRouter(scoped.db, scoped.Project.Service, scoped.dbRouter)
-	scoped.AccountSettings.Service = s.AccountSettings.WithContext(ctx)
-	scoped.Publisher.Service = s.Publisher.WithContext(ctx)
+	scoped.Project = &Project{Service: s.Project.WithContext(ctx)}
+	scoped.Workspace = &Workspace{Service: workspacesvc.NewServiceWithRouter(scoped.db, scoped.Project.Service, scoped.dbRouter)}
+	scoped.Prepublish = &Prepublish{Service: prepublishsvc.NewService(scoped.db, scoped.Project.Service, draftCompiler)}
+	scoped.Extension = &Extension{Service: extensionsvc.NewService(scoped.db)}
+	scoped.MediaAsset = &MediaAsset{Service: s.MediaAsset.WithContext(ctx)}
+	scoped.Stats = &Stats{Service: statssvc.NewServiceWithRouter(scoped.db, scoped.Project.Service, scoped.dbRouter)}
+	scoped.AccountSettings = &AccountSettings{Service: s.AccountSettings.WithContext(ctx)}
+	scoped.Publisher = &Publisher{Service: s.Publisher.WithContext(ctx)}
 	return &scoped
 }
 
@@ -163,12 +164,12 @@ func newDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.
 	if router == nil {
 		router = dbrouter.NewRouter(db)
 	}
-	accounts := platformaccount.NewServiceWithPlatformTesters(db, tester, xTester)
-	projects := projectsvc.NewService(db)
+	accounts := platformaccount.NewServiceWithPlatformTestersAndRouter(db, tester, xTester, router)
+	projects := projectsvc.NewServiceWithRouter(db, router)
 	publisher := publishsvc.NewService(db, accounts)
 	return &DashboardService{
 		Project:         &Project{Service: projects},
-		Workspace:       &Workspace{Service: workspacesvc.NewService(db, projects)},
+		Workspace:       &Workspace{Service: workspacesvc.NewServiceWithRouter(db, projects, router)},
 		Prepublish:      &Prepublish{Service: prepublishsvc.NewService(db, projects, compiler.NewContentPipelineDraftCompiler())},
 		Extension:       &Extension{Service: extensionsvc.NewService(db)},
 		MediaAsset:      &MediaAsset{Service: mediaassetsvc.NewService(db, projects)},
@@ -181,13 +182,13 @@ func newDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.
 }
 
 func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider platformaccount.XOAuth2Provider) *DashboardService {
-	accounts := platformaccount.NewServiceWithXOAuth2Provider(db, provider)
-	projects := projectsvc.NewService(db)
-	publisher := publishsvc.NewService(db, accounts)
 	router := dbrouter.NewRouter(db)
+	accounts := platformaccount.NewServiceWithXOAuth2ProviderAndRouter(db, provider, router)
+	projects := projectsvc.NewServiceWithRouter(db, router)
+	publisher := publishsvc.NewService(db, accounts)
 	return &DashboardService{
 		Project:         &Project{Service: projects},
-		Workspace:       &Workspace{Service: workspacesvc.NewService(db, projects)},
+		Workspace:       &Workspace{Service: workspacesvc.NewServiceWithRouter(db, projects, router)},
 		Prepublish:      &Prepublish{Service: prepublishsvc.NewService(db, projects, compiler.NewContentPipelineDraftCompiler())},
 		Extension:       &Extension{Service: extensionsvc.NewService(db)},
 		MediaAsset:      &MediaAsset{Service: mediaassetsvc.NewService(db, projects)},
