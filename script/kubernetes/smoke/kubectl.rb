@@ -238,7 +238,7 @@ module KubernetesSmoke
               "labels" => {
                 "mpp.kurodakayn.dev/runtime-driver" => "kubernetes",
                 "mpp.kurodakayn.dev/session-id" => "dry-run-session",
-                "mpp.kurodakayn.dev/session-owner-hash" => "dry-run-owner",
+                "mpp.kurodakayn.dev/owner-hash" => "dry-run-owner",
               },
               "annotations" => {
                 "mpp.kurodakayn.dev/expires-at" => "2099-01-01T00:00:00Z",
