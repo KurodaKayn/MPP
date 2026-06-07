@@ -21,6 +21,9 @@ Required overlay inputs:
   paths to the Next.js frontend, which proxies backend API calls.
 - A TLS Secret referenced by the Ingress. Patch `spec.ingressClassName`, host,
   and `spec.tls[*].secretName` for the target cluster.
+- An Ingress controller namespace labeled
+  `mpp.kurodakayn.dev/public-ingress=true`; app NetworkPolicies use that label
+  to allow public traffic only to frontend and collaboration Pods.
 - LLM provider configuration through `LLM_PROVIDER_URL`, `LLM_MODEL`, and
   `LLM_PROVIDER_KEY`.
 - Browser runtime control resources from
@@ -43,3 +46,17 @@ patching an environment overlay.
 The optional data service packages under `deploy/kubernetes/data-services`
 provide either stable DNS aliases for managed PostgreSQL and Redis or minimal
 self-hosted StatefulSets for non-production clusters.
+
+The baseline denies ingress to `mpp-system` Pods by default and then opens
+only the expected public and service-to-service paths:
+
+- public ingress controller namespaces to `frontend` and `collab-service`
+- `frontend` to `backend`
+- `backend` and `publish-worker` to browser-worker, AI, content pipeline, and
+  collaboration services
+
+Metrics scrape access is intentionally owned by
+`deploy/kubernetes/observability` so clusters that omit observability do not
+carry unused metrics ingress rules. Treat observability metrics rules as a
+trusted namespace boundary: shared HTTP listener targets are port-level
+allowlists, not `/metrics` path-level ACLs.
