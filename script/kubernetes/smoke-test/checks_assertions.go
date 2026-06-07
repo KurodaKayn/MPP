@@ -15,6 +15,9 @@ func assertStatus(response Response, allowed []int, label string) error {
 	if len(body) > 300 {
 		body = body[:300]
 	}
+	if location := strings.TrimSpace(response.Headers.Get("Location")); location != "" {
+		return failure("%s returned HTTP %d with redirect Location %q: %s", label, response.Status, location, body)
+	}
 	return failure("%s returned HTTP %d: %s", label, response.Status, body)
 }
 
