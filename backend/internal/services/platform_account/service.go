@@ -11,6 +11,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
@@ -18,6 +19,7 @@ var ErrPlatformAccountForbidden = errors.New("platform account access denied")
 
 type Service struct {
 	db              *gorm.DB
+	router          *dbrouter.Router
 	wechatTester    WechatConnectionTester
 	xTester         XConnectionTester
 	xOAuth2Provider XOAuth2Provider
@@ -28,19 +30,31 @@ func NewService(db *gorm.DB) *Service {
 	return NewServiceWithPlatformTesters(db, WechatAPITester{}, XAPITester{})
 }
 
+func NewServiceWithRouter(db *gorm.DB, router *dbrouter.Router) *Service {
+	return NewServiceWithPlatformTestersAndRouter(db, WechatAPITester{}, XAPITester{}, router)
+}
+
 func NewServiceWithWechatTester(db *gorm.DB, tester WechatConnectionTester) *Service {
 	return NewServiceWithPlatformTesters(db, tester, XAPITester{})
 }
 
 func NewServiceWithPlatformTesters(db *gorm.DB, tester WechatConnectionTester, xTester XConnectionTester) *Service {
+	return NewServiceWithPlatformTestersAndRouter(db, tester, xTester, nil)
+}
+
+func NewServiceWithPlatformTestersAndRouter(db *gorm.DB, tester WechatConnectionTester, xTester XConnectionTester, router *dbrouter.Router) *Service {
 	if tester == nil {
 		tester = WechatAPITester{}
 	}
 	if xTester == nil {
 		xTester = XAPITester{}
 	}
+	if router == nil {
+		router = dbrouter.NewRouter(db)
+	}
 	return &Service{
 		db:              db,
+		router:          router,
 		wechatTester:    tester,
 		xTester:         xTester,
 		xOAuth2Provider: XOAuth2API{},
@@ -49,7 +63,11 @@ func NewServiceWithPlatformTesters(db *gorm.DB, tester WechatConnectionTester, x
 }
 
 func NewServiceWithXOAuth2Provider(db *gorm.DB, provider XOAuth2Provider) *Service {
-	service := NewService(db)
+	return NewServiceWithXOAuth2ProviderAndRouter(db, provider, nil)
+}
+
+func NewServiceWithXOAuth2ProviderAndRouter(db *gorm.DB, provider XOAuth2Provider, router *dbrouter.Router) *Service {
+	service := NewServiceWithRouter(db, router)
 	if provider != nil {
 		service.xOAuth2Provider = provider
 	}
@@ -63,6 +81,20 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 	scoped := *s
 	scoped.db = s.db.WithContext(ctx)
 	return &scoped
+}
+
+func (s *Service) requestContext() context.Context {
+	if s.db != nil && s.db.Statement != nil && s.db.Statement.Context != nil {
+		return s.db.Statement.Context
+	}
+	return context.Background()
+}
+
+func (s *Service) strongReadDB() *gorm.DB {
+	if s.router == nil {
+		return s.db
+	}
+	return s.router.Reader(s.requestContext(), dbrouter.StrongRead)
 }
 
 func (s *Service) UseRedis(client *redis.Client) {
@@ -122,8 +154,9 @@ func (s *Service) ResolvePublicationAccount(userID uuid.UUID, pub *models.Projec
 		return nil, ErrInvalidPlatformAccount
 	}
 	workspaceID := uuid.Nil
+	readDB := s.strongReadDB()
 	var project models.Project
-	if err := s.db.Select("workspace_id", "user_id").First(&project, "id = ?", pub.ProjectID).Error; err == nil {
+	if err := readDB.Select("workspace_id", "user_id").First(&project, "id = ?", pub.ProjectID).Error; err == nil {
 		if project.WorkspaceID != nil {
 			workspaceID = *project.WorkspaceID
 		} else {
@@ -135,7 +168,7 @@ func (s *Service) ResolvePublicationAccount(userID uuid.UUID, pub *models.Projec
 	}
 
 	var account models.PlatformAccount
-	query := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, pub.Platform)
+	query := readDB.Where("workspace_id = ? AND platform = ?", workspaceID, pub.Platform)
 	if pub.PlatformAccountID != nil && *pub.PlatformAccountID != uuid.Nil {
 		query = query.Where("id = ?", *pub.PlatformAccountID)
 		if err := query.First(&account).Error; err != nil {
@@ -231,8 +264,9 @@ func (s *Service) RequireAccountUse(userID uuid.UUID, account models.PlatformAcc
 		if account.WorkspaceID == nil {
 			return ErrPlatformAccountForbidden
 		}
+		readDB := s.strongReadDB()
 		var member models.WorkspaceMember
-		err := s.db.Select("role").First(&member, "workspace_id = ? AND user_id = ?", *account.WorkspaceID, userID).Error
+		err := readDB.Select("role").First(&member, "workspace_id = ? AND user_id = ?", *account.WorkspaceID, userID).Error
 		if err == nil && member.Role != models.WorkspaceRoleViewer {
 			return nil
 		}
@@ -241,8 +275,9 @@ func (s *Service) RequireAccountUse(userID uuid.UUID, account models.PlatformAcc
 		}
 	}
 	roles := []string{models.PlatformAccountGrantRoleManager, models.PlatformAccountGrantRolePublisher}
+	readDB := s.strongReadDB()
 	var grant models.PlatformAccountGrant
-	if err := s.db.Select("id").
+	if err := readDB.Select("id").
 		Where("platform_account_id = ? AND grantee_user_id = ? AND role IN ?", account.ID, userID, roles).
 		First(&grant).Error; err == nil {
 		return nil
@@ -250,7 +285,7 @@ func (s *Service) RequireAccountUse(userID uuid.UUID, account models.PlatformAcc
 		return err
 	}
 	if projectID != uuid.Nil {
-		if err := s.db.Select("id").
+		if err := readDB.Select("id").
 			Where("platform_account_id = ? AND project_id = ? AND role IN ?", account.ID, projectID, roles).
 			First(&grant).Error; err == nil {
 			return nil
@@ -266,7 +301,7 @@ func (s *Service) requireWorkspaceAccountMembership(userID uuid.UUID, workspaceI
 		return nil
 	}
 	var member models.WorkspaceMember
-	err := s.db.Select("role").First(&member, "workspace_id = ? AND user_id = ?", workspaceID, userID).Error
+	err := s.strongReadDB().Select("role").First(&member, "workspace_id = ? AND user_id = ?", workspaceID, userID).Error
 	if err == nil {
 		return nil
 	}
