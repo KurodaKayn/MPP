@@ -517,6 +517,7 @@ function LoadedWorkbench({
 
 export function PrepublishWorkbenchCard(props: PrepublishWorkbenchProps) {
   const { state, onRetry, onOpenLogin } = props;
+  const showWorkbenchStatus = state.status !== "loaded";
 
   return (
     <Card>
@@ -525,9 +526,11 @@ export function PrepublishWorkbenchCard(props: PrepublishWorkbenchProps) {
           <div className="min-w-0">
             <CardTitle>Pre-Publish Drafts</CardTitle>
           </div>
-          <Badge variant={getWorkbenchStatusVariant(state.status)}>
-            {getWorkbenchStatusLabel(state.status)}
-          </Badge>
+          {showWorkbenchStatus ? (
+            <Badge variant={getWorkbenchStatusVariant(state.status)}>
+              {getWorkbenchStatusLabel(state.status)}
+            </Badge>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent>
