@@ -125,6 +125,9 @@ describe("PrepublishWorkbenchCard", () => {
       0,
     );
     expect(screen.getAllByText("ready")).toHaveLength(1);
+    expect(
+      screen.queryByText("1 ready platform selected"),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("First draft preview")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /douyin ready/i }),
@@ -243,7 +246,9 @@ describe("PrepublishWorkbenchCard", () => {
     expect(
       screen.getByRole("button", { name: /start publishing/i }),
     ).toBeDisabled();
-    expect(screen.getByText("0 ready platforms selected")).toBeInTheDocument();
+    expect(
+      screen.queryByText("0 ready platforms selected"),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByText("Select Douyin to start publishing."),
     ).toBeInTheDocument();
