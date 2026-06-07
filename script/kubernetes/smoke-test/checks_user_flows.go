@@ -57,6 +57,16 @@ func (suite *Suite) authenticatedUserFlows() {
 		if err := assertStatus(response, []int{200}, "dashboard stats"); err != nil {
 			return "", err
 		}
+		if _, err := assertJSONFields(
+			response,
+			"dashboard stats",
+			"total_users",
+			"total_projects",
+			"total_published_publications",
+			"total_failed_publications",
+		); err != nil {
+			return "", err
+		}
 		return fmt.Sprintf("status=%d", response.Status), nil
 	})
 
@@ -66,6 +76,9 @@ func (suite *Suite) authenticatedUserFlows() {
 			return "", err
 		}
 		if err := assertStatus(response, []int{200}, "project list"); err != nil {
+			return "", err
+		}
+		if _, err := assertJSONFields(response, "project list", "items", "page", "limit", "total"); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("status=%d", response.Status), nil
@@ -112,6 +125,9 @@ func (suite *Suite) projectScopedUserFlows() {
 		if err := assertStatus(response, []int{200}, "project publications"); err != nil {
 			return "", err
 		}
+		if _, err := assertJSONFields(response, "project publications", "project_id", "items"); err != nil {
+			return "", err
+		}
 		return fmt.Sprintf("status=%d", response.Status), nil
 	})
 }
@@ -146,6 +162,9 @@ func (suite *Suite) browserSessionProbe() {
 			return "", err
 		}
 		if err := assertStatus(status, []int{200}, "browser session status"); err != nil {
+			return "", err
+		}
+		if _, err := assertJSONFields(status, "browser session status", "session_id", "status"); err != nil {
 			return "", err
 		}
 
