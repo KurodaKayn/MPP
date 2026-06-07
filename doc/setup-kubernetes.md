@@ -295,8 +295,11 @@ shared cluster.
 Smoke test:
 
 ```bash
-ruby script/kubernetes/smoke-test.rb \
-  --public-url https://mpp.example.com
+(
+  cd script/kubernetes/smoke-test
+  go run . \
+    --public-url https://mpp.example.com
+)
 ```
 
 The smoke harness checks Deployment rollout status, Service endpoints,
@@ -307,21 +310,27 @@ Add authenticated user-flow probes when a disposable smoke user token is
 available:
 
 ```bash
-MPP_SMOKE_AUTH_TOKEN=<bearer-token> \
-MPP_SMOKE_PROJECT_ID=<existing-project-id> \
-ruby script/kubernetes/smoke-test.rb \
-  --public-url https://mpp.example.com \
-  --run-user-flow-probes
+export MPP_SMOKE_AUTH_TOKEN=<bearer-token>
+export MPP_SMOKE_PROJECT_ID=<existing-project-id>
+(
+  cd script/kubernetes/smoke-test
+  go run . \
+    --public-url https://mpp.example.com \
+    --run-user-flow-probes
+)
 ```
 
 Use the browser session probe only in environments where creating and cancelling
 a remote browser runtime session is acceptable:
 
 ```bash
-MPP_SMOKE_AUTH_TOKEN=<bearer-token> \
-ruby script/kubernetes/smoke-test.rb \
-  --public-url https://mpp.example.com \
-  --run-browser-session-probe
+export MPP_SMOKE_AUTH_TOKEN=<bearer-token>
+(
+  cd script/kubernetes/smoke-test
+  go run . \
+    --public-url https://mpp.example.com \
+    --run-browser-session-probe
+)
 ```
 
 ## Operations
