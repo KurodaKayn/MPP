@@ -2,6 +2,7 @@ package stats_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -132,6 +133,15 @@ func TestGetStatsFallsBackToDatabaseWhenCachedPayloadIsInvalid(t *testing.T) {
 	assert.Equal(t, int64(1), stats.TotalProjects)
 	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
 	assert.Equal(t, int64(0), stats.TotalFailedPublications)
+
+	repairedPayload, err := redisClient.Get(context.Background(), cacheKey).Bytes()
+	require.NoError(t, err)
+	var repairedStats map[string]any
+	require.NoError(t, json.Unmarshal(repairedPayload, &repairedStats))
+	cacheTTL, err := redisClient.PTTL(context.Background(), cacheKey).Result()
+	require.NoError(t, err)
+	require.Positive(t, cacheTTL)
+	require.LessOrEqual(t, cacheTTL, 15*time.Second)
 }
 
 func TestGetStatsDoesNotCacheScopedCounts(t *testing.T) {
