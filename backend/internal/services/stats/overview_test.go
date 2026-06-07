@@ -53,7 +53,7 @@ func TestGetStats(t *testing.T) {
 
 func TestGetStatsCachesGlobalDashboardStats(t *testing.T) {
 	db := testsupport.SetupTestDB()
-	redisClient := newStatsRedisClient(t)
+	redisClient, redisServer := newStatsRedisClientWithServer(t)
 	s := services.NewDashboardService(db)
 	s.UseRedis(redisClient)
 
@@ -65,6 +65,11 @@ func TestGetStatsCachesGlobalDashboardStats(t *testing.T) {
 	assert.Equal(t, int64(1), stats.TotalProjects)
 	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
 	assert.Equal(t, int64(0), stats.TotalFailedPublications)
+	cacheKey := requireSingleStatsCacheKey(t, redisClient)
+	cacheTTL, err := redisClient.PTTL(context.Background(), cacheKey).Result()
+	require.NoError(t, err)
+	require.Positive(t, cacheTTL)
+	require.LessOrEqual(t, cacheTTL, 15*time.Second)
 
 	seedStatsOverviewProject(t, db, "cached-b", models.PublicationStatusFailed)
 
@@ -74,6 +79,15 @@ func TestGetStatsCachesGlobalDashboardStats(t *testing.T) {
 	assert.Equal(t, int64(1), cachedStats.TotalProjects)
 	assert.Equal(t, int64(1), cachedStats.TotalPublishedPublications)
 	assert.Equal(t, int64(0), cachedStats.TotalFailedPublications)
+
+	redisServer.FastForward(16 * time.Second)
+
+	refreshedStats, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), refreshedStats.TotalUsers)
+	assert.Equal(t, int64(2), refreshedStats.TotalProjects)
+	assert.Equal(t, int64(1), refreshedStats.TotalPublishedPublications)
+	assert.Equal(t, int64(1), refreshedStats.TotalFailedPublications)
 }
 
 func TestGetStatsBypassesCacheForStickyEventualCounts(t *testing.T) {
@@ -109,10 +123,8 @@ func TestGetStatsFallsBackToDatabaseWhenCachedPayloadIsInvalid(t *testing.T) {
 	seedStatsOverviewProject(t, db, "fallback", models.PublicationStatusPublished)
 	_, err := s.WithContext(context.Background()).GetStats(nil)
 	require.NoError(t, err)
-	cacheKeys, err := redisClient.Keys(context.Background(), "mpp:dashboard:stats:*").Result()
-	require.NoError(t, err)
-	require.Len(t, cacheKeys, 1)
-	require.NoError(t, redisClient.Set(context.Background(), cacheKeys[0], "not-json", time.Minute).Err())
+	cacheKey := requireSingleStatsCacheKey(t, redisClient)
+	require.NoError(t, redisClient.Set(context.Background(), cacheKey, "not-json", time.Minute).Err())
 
 	stats, err := s.WithContext(context.Background()).GetStats(nil)
 	require.NoError(t, err)
@@ -185,12 +197,28 @@ func TestGetStatsUsesReaderForEventualCounts(t *testing.T) {
 func newStatsRedisClient(t *testing.T) *redis.Client {
 	t.Helper()
 
+	client, _ := newStatsRedisClientWithServer(t)
+	return client
+}
+
+func newStatsRedisClientWithServer(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
+	t.Helper()
+
 	redisServer := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
 	t.Cleanup(func() {
 		require.NoError(t, client.Close())
 	})
-	return client
+	return client, redisServer
+}
+
+func requireSingleStatsCacheKey(t *testing.T, client *redis.Client) string {
+	t.Helper()
+
+	cacheKeys, err := client.Keys(context.Background(), "mpp:dashboard:stats:*").Result()
+	require.NoError(t, err)
+	require.Len(t, cacheKeys, 1)
+	return cacheKeys[0]
 }
 
 func seedStatsOverviewProject(t *testing.T, db *gorm.DB, prefix string, publicationStatus string) models.User {
