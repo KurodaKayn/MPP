@@ -1,6 +1,96 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: mpp-system-default-deny
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: network-boundary
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: public-frontend-access
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              mpp.kurodakayn.dev/public-ingress: "true"
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: public-collab-access
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: collab-service
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: collab-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              mpp.kurodakayn.dev/public-ingress: "true"
+      ports:
+        - protocol: TCP
+          port: 8090
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-backend-access
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: frontend
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: browser-worker-internal-access
   namespace: mpp-system
   labels:
@@ -27,3 +117,93 @@ spec:
       ports:
         - protocol: TCP
           port: 8081
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-service-internal-access
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: ai-service
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: ai-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: backend
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: publish-worker
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: content-pipeline-internal-access
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: content-pipeline-service
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: content-pipeline-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: backend
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: publish-worker
+      ports:
+        - protocol: TCP
+          port: 50051
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: collab-service-internal-access
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: collab-service
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: collab-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: backend
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: publish-worker
+      ports:
+        - protocol: TCP
+          port: 8090
