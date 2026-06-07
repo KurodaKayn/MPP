@@ -139,6 +139,8 @@ func SetupTestDB() *gorm.DB {
 		user_id TEXT NOT NULL,
 		workspace_id TEXT,
 		collab_document_id TEXT UNIQUE,
+		template_id TEXT,
+		brand_profile_id TEXT,
 		title TEXT NOT NULL,
 		source_content TEXT NOT NULL,
 		status TEXT NOT NULL,
@@ -165,6 +167,37 @@ func SetupTestDB() *gorm.DB {
 		joined_at DATETIME,
 		created_at DATETIME NOT NULL,
 		PRIMARY KEY (workspace_id, user_id)
+	)`)
+
+	db.Exec(`CREATE TABLE content_templates (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT,
+		owner_user_id TEXT,
+		scope TEXT NOT NULL,
+		name TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		title_template TEXT NOT NULL DEFAULT '',
+		source_template TEXT NOT NULL DEFAULT '',
+		default_platforms TEXT NOT NULL DEFAULT '[]',
+		platform_config TEXT NOT NULL DEFAULT '{}',
+		tags TEXT NOT NULL DEFAULT '[]',
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL
+	)`)
+
+	db.Exec(`CREATE TABLE brand_profiles (
+		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
+		created_by TEXT NOT NULL,
+		name TEXT NOT NULL,
+		voice TEXT NOT NULL DEFAULT '',
+		audience TEXT NOT NULL DEFAULT '',
+		banned_words TEXT NOT NULL DEFAULT '[]',
+		cta TEXT NOT NULL DEFAULT '',
+		link_strategy TEXT NOT NULL DEFAULT '',
+		default_tags TEXT NOT NULL DEFAULT '[]',
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL
 	)`)
 
 	db.Exec(`CREATE TABLE workspace_invites (
@@ -343,6 +376,9 @@ func SetupTestDB() *gorm.DB {
 		platform_account_id TEXT,
 		enabled BOOLEAN NOT NULL DEFAULT 1,
 		status TEXT NOT NULL,
+		draft_status TEXT NOT NULL DEFAULT 'unsynced',
+		review_status TEXT NOT NULL DEFAULT 'draft',
+		sync_required BOOLEAN NOT NULL DEFAULT 0,
 		config TEXT NOT NULL DEFAULT '{}',
 		adapted_content TEXT NOT NULL DEFAULT '{}',
 		remote_id TEXT,
@@ -353,6 +389,20 @@ func SetupTestDB() *gorm.DB {
 		published_at DATETIME,
 		created_at DATETIME,
 		updated_at DATETIME
+	)`)
+
+	db.Exec(`CREATE TABLE media_asset_usages (
+		id TEXT PRIMARY KEY,
+		media_asset_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
+		project_id TEXT,
+		publication_id TEXT,
+		template_id TEXT,
+		resource_type TEXT NOT NULL,
+		resource_id TEXT NOT NULL,
+		usage_kind TEXT NOT NULL DEFAULT '',
+		created_at DATETIME NOT NULL,
+		UNIQUE(media_asset_id, resource_type, resource_id)
 	)`)
 
 	db.Exec(`CREATE TABLE remote_browser_sessions (

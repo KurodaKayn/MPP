@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
@@ -79,6 +80,16 @@ func TestProjectVersionsRestoreSavedContent(t *testing.T) {
 		Status:        models.ProjectStatusReady,
 	}
 	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		DraftStatus:    models.PublicationDraftStatusReady,
+		ReviewStatus:   models.PublicationReviewStatusApproved,
+		SyncRequired:   false,
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
 
 	_, err := s.SaveProjectContent(project.ID, owner.ID, dto.SaveProjectContentRequest{
 		Title:         "Draft v2",
@@ -96,11 +107,27 @@ func TestProjectVersionsRestoreSavedContent(t *testing.T) {
 	require.Len(t, versions.Items, 2)
 	require.Equal(t, 2, versions.Items[0].VersionNumber)
 	require.Equal(t, 1, versions.Items[1].VersionNumber)
+	require.NoError(t, db.Model(&models.ProjectPlatformPublication{}).
+		Where("project_id = ? AND platform = ?", project.ID, "wechat").
+		Updates(map[string]any{
+			"draft_status":  models.PublicationDraftStatusReady,
+			"review_status": models.PublicationReviewStatusApproved,
+			"sync_required": false,
+		}).Error)
 
 	restored, err := s.RestoreProjectVersion(project.ID, owner.ID, versions.Items[1].ID)
 	require.NoError(t, err)
 	require.Equal(t, "Draft v2", restored.Project.Title)
 	require.Equal(t, "<p>v2</p>", restored.Project.SourceContent)
+	require.Len(t, restored.Project.Publications, 1)
+	require.Equal(t, models.PublicationDraftStatusStale, restored.Project.Publications[0].DraftStatus)
+	require.True(t, restored.Project.Publications[0].SyncRequired)
+
+	var publication models.ProjectPlatformPublication
+	require.NoError(t, db.First(&publication, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	require.Equal(t, models.PublicationDraftStatusStale, publication.DraftStatus)
+	require.Equal(t, models.PublicationReviewStatusDraft, publication.ReviewStatus)
+	require.True(t, publication.SyncRequired)
 
 	versions, err = s.ListProjectVersions(project.ID, owner.ID)
 	require.NoError(t, err)

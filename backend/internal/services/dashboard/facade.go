@@ -34,6 +34,7 @@ var ErrInvalidWorkspaceMember = workspacesvc.ErrInvalidWorkspaceMember
 var ErrProjectCollabUnavailable = projectsvc.ErrProjectCollabUnavailable
 var ErrPublicationDisabled = publishsvc.ErrPublicationDisabled
 var ErrPublicationRequiresSync = publishsvc.ErrPublicationRequiresSync
+var ErrPublishMediaAssetNotReady = publishsvc.ErrPublishMediaAssetNotReady
 var ErrManualPublishUnsupported = publishsvc.ErrManualPublishUnsupported
 var ErrExtensionCallbackTokenInvalid = extensionsvc.ErrExtensionCallbackTokenInvalid
 var ErrExtensionCallbackTokenExpired = extensionsvc.ErrExtensionCallbackTokenExpired

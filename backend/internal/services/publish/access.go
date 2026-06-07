@@ -45,7 +45,7 @@ func canPublishProjectWithDB(db *gorm.DB, project models.Project, userID uuid.UU
 			return false, err
 		}
 	} else {
-		return collaborator.Role == models.ProjectRoleOwner || collaborator.Role == models.ProjectRoleEditor, nil
+		return collaborator.Role == models.ProjectRoleOwner, nil
 	}
 
 	if project.WorkspaceID == nil || *project.WorkspaceID == uuid.Nil {
@@ -67,5 +67,5 @@ func canPublishProjectWithDB(db *gorm.DB, project models.Project, userID uuid.UU
 		}
 		return false, err
 	}
-	return member.Role == models.WorkspaceRoleAdmin || member.Role == models.WorkspaceRoleMember, nil
+	return member.Role == models.WorkspaceRoleAdmin, nil
 }

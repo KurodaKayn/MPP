@@ -149,6 +149,8 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 		user_id TEXT NOT NULL,
 		workspace_id TEXT,
 		collab_document_id TEXT UNIQUE,
+		template_id TEXT,
+		brand_profile_id TEXT,
 		title TEXT NOT NULL,
 		source_content TEXT NOT NULL,
 		status TEXT NOT NULL,
@@ -217,6 +219,9 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 		platform_account_id TEXT,
 		enabled BOOLEAN NOT NULL DEFAULT 1,
 		status TEXT NOT NULL,
+		draft_status TEXT NOT NULL DEFAULT 'unsynced',
+		review_status TEXT NOT NULL DEFAULT 'draft',
+		sync_required BOOLEAN NOT NULL DEFAULT 0,
 		config TEXT NOT NULL DEFAULT '{}',
 		adapted_content TEXT NOT NULL DEFAULT '{}',
 		remote_id TEXT,
@@ -227,6 +232,19 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 		published_at DATETIME,
 		created_at DATETIME,
 		updated_at DATETIME
+	)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE media_asset_usages (
+		id TEXT PRIMARY KEY,
+		media_asset_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
+		project_id TEXT,
+		publication_id TEXT,
+		template_id TEXT,
+		resource_type TEXT NOT NULL,
+		resource_id TEXT NOT NULL,
+		usage_kind TEXT NOT NULL DEFAULT '',
+		created_at DATETIME NOT NULL,
+		UNIQUE(media_asset_id, resource_type, resource_id)
 	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE publish_events (
 		id TEXT PRIMARY KEY,
@@ -325,7 +343,7 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 	require.Equal(t, resp["job_id"], duplicate["job_id"])
 }
 
-func TestEnqueuePublishProjectAllowsProjectEditor(t *testing.T) {
+func TestEnqueuePublishProjectRejectsProjectEditor(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
 	service := newPublishTestService(db)
 	queue := newTestPublishQueue()
@@ -370,9 +388,9 @@ func TestEnqueuePublishProjectAllowsProjectEditor(t *testing.T) {
 
 	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &editor.ID, PublishRequest{IdempotencyKey: "click-editor"})
 
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.Len(t, queue.jobs, 1)
+	require.ErrorIs(t, err, ErrForbidden)
+	require.Nil(t, resp)
+	require.Empty(t, queue.jobs)
 }
 
 func TestEnqueuePublishProjectRejectsProjectViewer(t *testing.T) {

@@ -105,7 +105,14 @@ func (s *Service) publishMediaAssetForProject(ctx context.Context, project model
 		}
 		return nil, err
 	}
-	if asset.ProjectID == nil || *asset.ProjectID != project.ID {
+	projectWorkspaceID := models.PersonalWorkspaceID(project.UserID)
+	if project.WorkspaceID != nil && *project.WorkspaceID != uuid.Nil {
+		projectWorkspaceID = *project.WorkspaceID
+	}
+	assetInProject := asset.ProjectID != nil && *asset.ProjectID == project.ID
+	assetInWorkspace := asset.WorkspaceID != nil && *asset.WorkspaceID == projectWorkspaceID &&
+		(asset.LibraryScope == models.MediaAssetLibraryScopeWorkspace || asset.LibraryScope == models.MediaAssetLibraryScopePersonal)
+	if !assetInProject && !assetInWorkspace {
 		return nil, ErrForbidden
 	}
 	if asset.Status != models.MediaAssetStatusReady {
