@@ -87,8 +87,9 @@ func (s *Service) workspaceAccessRole(workspaceID uuid.UUID, userID uuid.UUID) (
 		return "", ErrInvalidWorkspace
 	}
 
+	readDB := s.strongReadDB()
 	var workspace models.Workspace
-	if err := s.db.Select("id", "owner_user_id").First(&workspace, "id = ?", workspaceID).Error; err != nil {
+	if err := readDB.Select("id", "owner_user_id").First(&workspace, "id = ?", workspaceID).Error; err != nil {
 		return "", err
 	}
 	if workspace.OwnerUserID == userID {
@@ -96,7 +97,7 @@ func (s *Service) workspaceAccessRole(workspaceID uuid.UUID, userID uuid.UUID) (
 	}
 
 	var member models.WorkspaceMember
-	if err := s.db.
+	if err := readDB.
 		Select("workspace_id", "user_id", "role").
 		Where("workspace_id = ? AND user_id = ?", workspaceID, userID).
 		First(&member).Error; err != nil {
@@ -168,13 +169,14 @@ func (s *Service) ListWorkspaces(userID uuid.UUID) (*dto.WorkspacesResponse, err
 		return nil, err
 	}
 
-	memberWorkspaceIDs := s.db.
+	readDB := s.strongReadDB()
+	memberWorkspaceIDs := readDB.
 		Model(&models.WorkspaceMember{}).
 		Select("workspace_id").
 		Where("user_id = ?", userID)
 
 	var workspaces []models.Workspace
-	if err := s.db.
+	if err := readDB.
 		Where("owner_user_id = ? OR id IN (?)", userID, memberWorkspaceIDs).
 		Order("updated_at DESC").
 		Order("id ASC").
@@ -199,7 +201,7 @@ func (s *Service) ListWorkspaceProjects(workspaceID uuid.UUID, actorUserID uuid.
 		return nil, err
 	}
 
-	query := s.db.Model(&models.Project{}).Where("workspace_id = ?", workspaceID)
+	query := s.strongReadDB().Model(&models.Project{}).Where("workspace_id = ?", workspaceID)
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
@@ -271,7 +273,7 @@ func (s *Service) GetWorkspace(workspaceID uuid.UUID, actorUserID uuid.UUID) (*d
 	}
 
 	var workspace models.Workspace
-	if err := s.db.First(&workspace, "id = ?", workspaceID).Error; err != nil {
+	if err := s.strongReadDB().First(&workspace, "id = ?", workspaceID).Error; err != nil {
 		return nil, err
 	}
 	item := workspaceFromModel(workspace, role)
@@ -320,8 +322,9 @@ func (s *Service) ListWorkspaceMembers(workspaceID uuid.UUID, actorUserID uuid.U
 		return nil, err
 	}
 
+	readDB := s.strongReadDB()
 	var members []models.WorkspaceMember
-	if err := s.db.
+	if err := readDB.
 		Preload("User", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id", "username", "email")
 		}).
@@ -345,8 +348,9 @@ func (s *Service) ListWorkspaceActivities(workspaceID uuid.UUID, actorUserID uui
 		return nil, err
 	}
 
+	readDB := s.strongReadDB()
 	var activities []models.WorkspaceActivity
-	if err := s.db.
+	if err := readDB.
 		Preload("Actor", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id", "username", "email")
 		}).
@@ -500,8 +504,9 @@ func (s *Service) ListWorkspaceInvites(workspaceID uuid.UUID, actorUserID uuid.U
 		return nil, err
 	}
 
+	readDB := s.strongReadDB()
 	var invites []models.WorkspaceInvite
-	if err := s.db.
+	if err := readDB.
 		Where("workspace_id = ?", workspaceID).
 		Order("created_at DESC").
 		Find(&invites).Error; err != nil {
@@ -684,9 +689,10 @@ func (s *Service) RemoveWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.
 }
 
 func (s *Service) resolveWorkspaceMemberUser(req dto.AddWorkspaceMemberRequest) (*models.User, error) {
+	readDB := s.strongReadDB()
 	var user models.User
 	if req.UserID != uuid.Nil {
-		if err := s.db.Select("id", "username", "email").First(&user, "id = ?", req.UserID).Error; err != nil {
+		if err := readDB.Select("id", "username", "email").First(&user, "id = ?", req.UserID).Error; err != nil {
 			return nil, err
 		}
 		return &user, nil
@@ -696,7 +702,7 @@ func (s *Service) resolveWorkspaceMemberUser(req dto.AddWorkspaceMemberRequest) 
 	if email == "" {
 		return nil, ErrInvalidWorkspaceMember
 	}
-	if err := s.db.
+	if err := readDB.
 		Select("id", "username", "email").
 		Where("LOWER(email) = LOWER(?)", email).
 		First(&user).Error; err != nil {
@@ -706,8 +712,9 @@ func (s *Service) resolveWorkspaceMemberUser(req dto.AddWorkspaceMemberRequest) 
 }
 
 func (s *Service) getWorkspaceMember(workspaceID uuid.UUID, userID uuid.UUID) (*dto.WorkspaceMember, error) {
+	readDB := s.strongReadDB()
 	var member models.WorkspaceMember
-	if err := s.db.
+	if err := readDB.
 		Preload("User", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id", "username", "email")
 		}).
@@ -734,7 +741,7 @@ func (s *Service) workspaceRolesForUser(workspaces []models.Workspace, userID uu
 	}
 
 	var members []models.WorkspaceMember
-	if err := s.db.
+	if err := s.strongReadDB().
 		Select("workspace_id", "role").
 		Where("user_id = ? AND workspace_id IN ?", userID, memberWorkspaceIDs).
 		Find(&members).Error; err != nil {
