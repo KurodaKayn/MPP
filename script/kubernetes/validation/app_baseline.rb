@@ -46,6 +46,34 @@ module KubernetesValidation
       "CONTENT_PIPELINE_INTERNAL_TOKEN",
     ].freeze
 
+    INTERNAL_INGRESS_POLICIES = {
+      "frontend-backend-access" => ["backend", 8080, ["frontend"]],
+      "browser-worker-internal-access" => ["browser-worker", 8081, ["backend", "publish-worker"]],
+      "ai-service-internal-access" => ["ai-service", 8000, ["backend", "publish-worker"]],
+      "content-pipeline-internal-access" => [
+        "content-pipeline-service",
+        50051,
+        ["backend", "publish-worker"],
+      ],
+      "collab-service-internal-access" => ["collab-service", 8090, ["backend", "publish-worker"]],
+    }.freeze
+
+    PUBLIC_INGRESS_POLICIES = {
+      "public-frontend-access" => ["frontend", 3000],
+      "public-collab-access" => ["collab-service", 8090],
+    }.freeze
+
+    APP_NETWORK_POLICIES = [
+      "mpp-system-default-deny",
+      *PUBLIC_INGRESS_POLICIES.keys,
+      *INTERNAL_INGRESS_POLICIES.keys,
+    ].freeze
+
+    SELF_HOSTED_DATA_NETWORK_POLICIES = [
+      "postgres-app-access",
+      "redis-app-access",
+    ].freeze
+
     module_function
 
     def validate_overlay(context)
@@ -125,7 +153,7 @@ module KubernetesValidation
       validate_config_map(context)
       validate_ingress(context)
       validate_availability(context)
-      validate_browser_worker_policy(context)
+      validate_network_policies(context)
     end
 
     def validate_deployment(context, deployment)
@@ -277,20 +305,147 @@ module KubernetesValidation
       end
     end
 
-    def validate_browser_worker_policy(context)
-      policy = context.require_document("NetworkPolicy", "browser-worker-internal-access", "mpp-system")
+    def validate_network_policies(context)
+      validate_expected_network_policy_set(context)
+      validate_default_deny_policy(context)
+
+      PUBLIC_INGRESS_POLICIES.each do |name, (target_component, port)|
+        validate_public_ingress_policy(context, name, target_component, port)
+      end
+
+      INTERNAL_INGRESS_POLICIES.each do |name, (target_component, port, allowed_components)|
+        validate_internal_ingress_policy(context, name, target_component, port, allowed_components)
+      end
+    end
+
+    def validate_expected_network_policy_set(context)
+      expected = APP_NETWORK_POLICIES.dup
+      if context.path_suffix?("deploy/kubernetes/overlays/staging-self-hosted")
+        expected.concat(SELF_HOSTED_DATA_NETWORK_POLICIES)
+      end
+
+      actual = context.documents
+        .select { |document| document.kind == "NetworkPolicy" && document.namespace == "mpp-system" }
+        .map(&:name)
+      duplicates = actual.select { |name| actual.count(name) > 1 }.uniq
+      unless duplicates.empty?
+        context.add_error(
+          "#{context.package_dir} must not include duplicate mpp-system NetworkPolicies: #{duplicates.sort.join(', ')}",
+        )
+      end
+
+      unexpected = actual - expected
+      return if unexpected.empty?
+
+      context.add_error(
+        "#{context.package_dir} must not include unexpected mpp-system NetworkPolicies: #{unexpected.sort.join(', ')}",
+      )
+    end
+
+    def validate_default_deny_policy(context)
+      policy = context.require_document("NetworkPolicy", "mpp-system-default-deny", "mpp-system")
       return unless policy
 
+      context.add_error("mpp-system-default-deny must select all Pods") unless policy.spec["podSelector"] == {}
+
       types = Array(policy.spec["policyTypes"])
-      context.add_error("browser-worker-internal-access must be an ingress policy") unless types.include?("Ingress")
+      context.add_error("mpp-system-default-deny must deny ingress by default") unless types.include?("Ingress")
+      ingress = Array(policy.spec["ingress"])
+      context.add_error("mpp-system-default-deny must not define ingress allow rules") unless ingress.empty?
+    end
 
-      from_entries = Array(policy.spec["ingress"]).flat_map { |rule| Array(rule["from"]) }
-      components = from_entries.map { |entry| entry.dig("podSelector", "matchLabels", "app.kubernetes.io/component") }.compact
-      context.add_error("browser-worker-internal-access must allow backend ingress") unless components.include?("backend")
-      context.add_error("browser-worker-internal-access must allow publish-worker ingress") unless components.include?("publish-worker")
+    def validate_public_ingress_policy(context, name, target_component, port)
+      policy = context.require_document("NetworkPolicy", name, "mpp-system")
+      return unless policy
 
-      ports = Array(policy.spec["ingress"]).flat_map { |rule| Array(rule["ports"]) }.map { |port| port["port"] }
-      context.add_error("browser-worker-internal-access must target browser-worker port 8081") unless ports.include?(8081)
+      validate_policy_target(context, policy, name, target_component)
+      validate_policy_ingress_type(context, policy, name)
+      validate_exact_ingress_rule(
+        context,
+        policy,
+        name,
+        [{
+          "namespaceSelector" => {
+            "matchLabels" => { "mpp.kurodakayn.dev/public-ingress" => "true" },
+          },
+        }],
+        port,
+        "public-ingress namespaces",
+      )
+    end
+
+    def validate_internal_ingress_policy(context, name, target_component, port, allowed_components)
+      policy = context.require_document("NetworkPolicy", name, "mpp-system")
+      return unless policy
+
+      validate_policy_target(context, policy, name, target_component)
+      validate_policy_ingress_type(context, policy, name)
+      expected_sources = allowed_components.map do |component|
+        {
+          "podSelector" => {
+            "matchLabels" => {
+              "app.kubernetes.io/name" => "mpp",
+              "app.kubernetes.io/component" => component,
+            },
+          },
+        }
+      end
+      validate_exact_ingress_rule(
+        context,
+        policy,
+        name,
+        expected_sources,
+        port,
+        "#{allowed_components.join(', ')} Pods",
+      )
+    end
+
+    def validate_policy_target(context, policy, name, target_component)
+      expected = {
+        "matchLabels" => {
+          "app.kubernetes.io/name" => "mpp",
+          "app.kubernetes.io/component" => target_component,
+        },
+      }
+      unless policy.spec["podSelector"] == expected
+        context.add_error("#{name} must select #{target_component} Pods")
+      end
+    end
+
+    def validate_policy_ingress_type(context, policy, name)
+      types = Array(policy.spec["policyTypes"])
+      context.add_error("#{name} must be an ingress policy") unless types.include?("Ingress")
+    end
+
+    def validate_exact_ingress_rule(context, policy, name, expected_sources, port, source_label)
+      ingress = Array(policy.spec["ingress"])
+      unless ingress.length == 1
+        context.add_error("#{name} must define exactly one ingress allow rule")
+        return
+      end
+
+      rule = ingress.first
+      unless same_entries?(Array(rule["from"]), expected_sources)
+        context.add_error("#{name} must allow only #{source_label}")
+      end
+
+      expected_ports = [{ "protocol" => "TCP", "port" => port }]
+      unless same_entries?(Array(rule["ports"]), expected_ports)
+        context.add_error("#{name} must target only TCP port #{port}")
+      end
+    end
+
+    def same_entries?(actual, expected)
+      return false unless actual.length == expected.length
+
+      remaining = expected.dup
+      actual.each do |entry|
+        index = remaining.index(entry)
+        return false unless index
+
+        remaining.delete_at(index)
+      end
+      remaining.empty?
     end
 
     def ingress_hosts(ingress)
