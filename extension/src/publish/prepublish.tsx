@@ -14,6 +14,12 @@ import type {
   ExtensionPrepublishResponse,
 } from "../backend/types";
 import type { PlatformKey } from "../types/platform";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "../components/ui/accordion";
 import { Alert, AlertDescription } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -237,6 +243,18 @@ function formatDateTime(value: string): string {
   return date.toLocaleString();
 }
 
+function getProjectPreview(item: ExtensionPrepublishItem): string {
+  const enabledPreview = item.platforms.find(
+    (platform) => platform.enabled && platform.preview.trim(),
+  )?.preview;
+
+  return (
+    enabledPreview ??
+    item.platforms.find((platform) => platform.preview.trim())?.preview ??
+    ""
+  );
+}
+
 function ProjectList({
   items,
   selectedProjectId,
@@ -247,38 +265,58 @@ function ProjectList({
   onProjectSelect: (projectId: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-2">
+    <Accordion
+      type="single"
+      value={selectedProjectId ?? undefined}
+      onValueChange={(projectId) => {
+        if (projectId) {
+          onProjectSelect(projectId);
+        }
+      }}
+      className="flex flex-col gap-2"
+    >
       {items.map((item) => {
         const selected = item.project_id === selectedProjectId;
+        const preview = getProjectPreview(item);
 
         return (
-          <button
+          <AccordionItem
             key={item.project_id}
-            type="button"
+            value={item.project_id}
             className={[
-              "flex w-full items-start gap-3 rounded-md border px-3 py-2 text-left transition-colors",
+              "rounded-md border px-3 transition-colors",
               selected
                 ? "border-primary bg-primary/5"
                 : "border-border bg-background hover:bg-muted",
             ].join(" ")}
-            onClick={() => onProjectSelect(item.project_id)}
           >
-            <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium">
-                {item.title}
+            <AccordionTrigger className="py-2 hover:no-underline">
+              <span className="flex min-w-0 flex-1 items-start gap-3">
+                <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">
+                    {item.title}
+                  </span>
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                    {formatDateTime(item.updated_at)}
+                  </span>
+                </span>
+                {selected ? (
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-700" />
+                ) : null}
               </span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                {formatDateTime(item.updated_at)}
-              </span>
-            </span>
-            {selected ? (
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-700" />
-            ) : null}
-          </button>
+            </AccordionTrigger>
+            <AccordionContent className="pl-7 pr-7">
+              {selected && preview ? (
+                <p className="line-clamp-3 text-xs text-muted-foreground">
+                  {preview}
+                </p>
+              ) : null}
+            </AccordionContent>
+          </AccordionItem>
         );
       })}
-    </div>
+    </Accordion>
   );
 }
 
@@ -368,11 +406,6 @@ function PlatformSelection({
               <span className="block truncate text-sm font-medium">
                 {platform.label}
               </span>
-              {backendPlatform?.preview ? (
-                <span className="mt-2 line-clamp-2 block text-xs text-muted-foreground">
-                  {backendPlatform.preview}
-                </span>
-              ) : null}
             </span>
           </button>
         );
