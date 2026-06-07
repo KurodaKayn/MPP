@@ -61,7 +61,7 @@ func (s *Service) GetXAccount(userID uuid.UUID) (*dto.XAccountResponse, error) {
 func (s *Service) GetWorkspaceXAccount(userID uuid.UUID, workspaceID uuid.UUID) (*dto.XAccountResponse, error) {
 	var account models.PlatformAccount
 	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
-	err := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, xPlatform).Order("updated_at DESC").First(&account).Error
+	err := s.strongReadDB().Where("workspace_id = ? AND platform = ?", workspaceID, xPlatform).Order("updated_at DESC").First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		resp := emptyXAccountResponse()
 		return &resp, nil
