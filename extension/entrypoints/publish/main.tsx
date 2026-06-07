@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import "../../src/styles.css";
 import {
   clearStoredExtensionAuthTokens,
-  getStoredExtensionAuthToken,
+  getExtensionAuthToken,
 } from "../../src/backend/auth";
 import {
   createBackendClient,
@@ -26,7 +26,7 @@ import { usePrepublishWorkbench } from "../../src/publish/prepublish";
 import { PublishWorkbenchScreen } from "../../src/publish/workbench-screen";
 
 const backendClient = createBackendClient({
-  authTokenProvider: getStoredExtensionAuthToken,
+  authTokenProvider: getExtensionAuthToken,
 });
 
 interface MonitorState {

@@ -10,7 +10,14 @@ export default defineConfig({
     name: "MPP Extension Publisher",
     description:
       "Local browser publishing bridge for Multi-platform Poster drafts.",
-    permissions: ["activeTab", "tabs", "scripting", "storage", "sidePanel"],
+    permissions: [
+      "activeTab",
+      "tabs",
+      "scripting",
+      "storage",
+      "sidePanel",
+      "cookies",
+    ],
     host_permissions: [
       "https://mpp.example.com/*",
       "http://localhost/*",
