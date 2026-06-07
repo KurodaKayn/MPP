@@ -28,7 +28,9 @@ Before applying this overlay to a shared staging cluster:
 - Keep `DB_HOST` equal to the managed PostgreSQL provider hostname when
   `DB_SSLMODE=verify-full` so PostgreSQL certificate hostname verification
   succeeds.
-- Replace every generated Secret literal through your staging secret workflow.
+- Replace every generated Secret literal through your staging secret workflow;
+  `ruby script/kubernetes/render-app-secret.rb --require-redis-password` can
+  render the `mpp-app-secrets` manifest from a temporary env file.
 
 Render and validate:
 

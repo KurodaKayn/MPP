@@ -23,7 +23,9 @@ Before applying this overlay to a shared staging cluster:
   registry-published `sha-<full-git-sha>` tags.
 - Replace the public host and TLS Secret inputs for the target Ingress
   controller.
-- Replace every generated Secret literal through your staging secret workflow.
+- Replace every generated Secret literal through your staging secret workflow;
+  `ruby script/kubernetes/render-app-secret.rb --require-redis-password` can
+  render the `mpp-app-secrets` manifest from a temporary env file.
 - Patch storage classes, storage sizes, and data-service resource limits if the
   cluster defaults are not appropriate.
 - Configure backup and retention outside these manifests before keeping useful
