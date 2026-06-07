@@ -53,17 +53,43 @@ print_secret() {
         collab)
             printf 'COLLAB_TOKEN_SECRET=%s\n' "$(hex_secret)"
             ;;
+        ai)
+            printf 'AI_SERVICE_INTERNAL_TOKEN=%s\n' "$(hex_secret)"
+            ;;
         pipeline)
             printf 'CONTENT_PIPELINE_INTERNAL_TOKEN=%s\n' "$(hex_secret)"
             ;;
-        all)
+        browser)
+            printf 'BROWSER_WORKER_INTERNAL_TOKEN=%s\n' "$(hex_secret)"
+            ;;
+        db)
+            printf 'DB_PASSWORD=%s\n' "$(hex_secret)"
+            ;;
+        redis)
+            printf 'REDIS_PASSWORD=%s\n' "$(hex_secret)"
+            ;;
+        grafana)
+            printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "$(hex_secret)"
+            ;;
+        app)
             print_secret jwt
             print_secret cookie
             print_secret collab
+            print_secret ai
             print_secret pipeline
+            print_secret browser
+            ;;
+        infra)
+            print_secret db
+            print_secret redis
+            print_secret grafana
+            ;;
+        all)
+            print_secret app
+            print_secret infra
             ;;
         *)
-            echo "usage: $0 [jwt|cookie|collab|pipeline|all]" >&2
+            echo "usage: $0 [jwt|cookie|collab|ai|pipeline|browser|db|redis|grafana|app|infra|all]" >&2
             exit 2
             ;;
     esac

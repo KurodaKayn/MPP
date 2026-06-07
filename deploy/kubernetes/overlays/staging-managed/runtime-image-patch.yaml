@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: browser-worker
+  namespace: mpp-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: browser-worker
+          env:
+            - name: BROWSER_RUNTIME_IMAGE
+              value: ghcr.io/kurodakayn/mpp-browser-runtime:sha-0000000000000000000000000000000000000000
