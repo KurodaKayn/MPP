@@ -57,11 +57,18 @@ access to the target cluster context.
 | `mpp-app-secrets` | `mpp-system` | Runtime secrets for app workloads. |
 | `mpp-public-gateway` | `mpp-system` | Public Ingress for frontend and `/collab`. |
 | `browser-worker-runtime-manager` | `mpp-system` | ServiceAccount used by browser-worker. |
+| `mpp-system-default-deny` | `mpp-system` | Default deny ingress NetworkPolicy for app Pods. |
+| `public-frontend-access` | `mpp-system` | Allows labeled public Ingress namespaces to reach frontend. |
+| `public-collab-access` | `mpp-system` | Allows labeled public Ingress namespaces to reach collaboration traffic. |
+| `frontend-backend-access` | `mpp-system` | Allows frontend to reach backend. |
 | `browser-runtime-manager` | `mpp-browser-runtime` | Role and RoleBinding for runtime Pods. |
 | `browser-runtime-default-deny` | `mpp-browser-runtime` | Default deny NetworkPolicy. |
 | `browser-runtime-private-access` | `mpp-browser-runtime` | Allows CDP and stream ingress from browser-worker. |
 | `browser-worker-internal-access` | `mpp-system` | Allows backend and publish-worker to reach browser-worker. |
-| `browser-worker-observability-metrics` | `mpp-system` | Allows metrics scrapers to reach browser-worker metrics. |
+| `ai-service-internal-access` | `mpp-system` | Allows backend and publish-worker to reach AI service. |
+| `content-pipeline-internal-access` | `mpp-system` | Allows backend and publish-worker to reach content pipeline gRPC. |
+| `collab-service-internal-access` | `mpp-system` | Allows backend and publish-worker to reach collaboration service. |
+| `*-observability-metrics` | `mpp-system` | Allows trusted metrics namespaces to reach app metrics ports. Shared HTTP listeners are L4 port allowlists, not `/metrics` path ACLs. |
 | `mpp-browser-runtime-alerts` | `mpp-observability` | PrometheusRule group for runtime and service alerts. |
 
 ## Alert Inventory
@@ -990,21 +997,41 @@ Symptoms:
 
 - Service works through port-forward but not from another Pod.
 - Browser-worker cannot reach runtime Pods.
-- Prometheus cannot scrape browser-worker.
+- Prometheus cannot scrape app metrics.
 
 Checks:
 
 ```bash
 kubectl get netpol -n "$MPP_APP_NS"
 kubectl get netpol -n "$MPP_RUNTIME_NS"
+kubectl get namespace --show-labels | grep 'mpp.kurodakayn.dev/public-ingress=true'
+kubectl get namespace --show-labels | grep 'mpp.kurodakayn.dev/metrics-scraper=true'
+kubectl describe netpol -n "$MPP_APP_NS" mpp-system-default-deny
+kubectl describe netpol -n "$MPP_APP_NS" public-frontend-access
+kubectl describe netpol -n "$MPP_APP_NS" public-collab-access
+kubectl describe netpol -n "$MPP_APP_NS" frontend-backend-access
 kubectl describe netpol -n "$MPP_APP_NS" browser-worker-internal-access
+kubectl describe netpol -n "$MPP_APP_NS" ai-service-internal-access
+kubectl describe netpol -n "$MPP_APP_NS" content-pipeline-internal-access
+kubectl describe netpol -n "$MPP_APP_NS" collab-service-internal-access
+kubectl describe netpol -n "$MPP_APP_NS" backend-worker-observability-metrics
 kubectl describe netpol -n "$MPP_APP_NS" browser-worker-observability-metrics
+kubectl describe netpol -n "$MPP_APP_NS" ai-service-observability-metrics
+kubectl describe netpol -n "$MPP_APP_NS" collab-service-observability-metrics
+kubectl describe netpol -n "$MPP_APP_NS" content-pipeline-observability-metrics
 kubectl describe netpol -n "$MPP_RUNTIME_NS" browser-runtime-private-access
 ```
 
 Mitigation:
 
 - Restore labels on source Pods and namespaces.
+- Restore `mpp.kurodakayn.dev/public-ingress=true` on the Ingress controller
+  namespace.
+- Restore `mpp.kurodakayn.dev/metrics-scraper=true` on the Prometheus
+  namespace.
+- Confirm only trusted Prometheus namespaces carry
+  `mpp.kurodakayn.dev/metrics-scraper=true`; shared HTTP listener metrics
+  policies allow that namespace to reach the full service port.
 - Restore policy selectors from the baseline manifests.
 - Roll back policy-only changes first when the app images did not change.
 

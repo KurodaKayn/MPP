@@ -60,6 +60,24 @@ The overlay must patch:
 - `LOKI_WRITE_URL` in the observability package when Loki is not available at
   the included in-cluster service DNS name.
 
+Label the namespace that runs the public Ingress controller before applying the
+app baseline:
+
+```bash
+kubectl label namespace <ingress-controller-namespace> \
+  mpp.kurodakayn.dev/public-ingress=true --overwrite
+```
+
+The app namespace denies ingress to MPP Pods by default. The baseline allows
+only the public Ingress namespace to reach `frontend` and `collab-service`, and
+allows expected service-to-service traffic from `frontend`, `backend`, and
+`publish-worker`. The optional observability package separately opens metrics
+scrape ports to namespaces labeled `mpp.kurodakayn.dev/metrics-scraper=true`.
+Use that label only on trusted Prometheus namespaces. NetworkPolicy is a layer
+4 control, so shared HTTP listener services expose the full service port to
+that namespace, not only the `/metrics` path; content-pipeline uses a dedicated
+metrics listener on `9090`.
+
 The included `deploy/kubernetes/overlays/staging-managed` and
 `deploy/kubernetes/overlays/staging-self-hosted` overlays wire the baseline app,
 browser runtime controls, and one data-service mode together. They still contain
@@ -190,9 +208,12 @@ The package also adds PodMonitor resources for application metrics and
 PrometheusRule alerts for browser runtime startup failures, cleanup failures,
 cleanup lag, service readiness failures, Redis-dependent readiness failures,
 and publish-worker job failures. It labels `mpp-observability` as a
-metrics-scraper namespace and allows that namespace to scrape browser-worker
-metrics; if Prometheus runs elsewhere, add
-`mpp.kurodakayn.dev/metrics-scraper=true` to its namespace. Install the
+metrics-scraper namespace and allows that namespace to scrape app metrics. If
+Prometheus runs elsewhere, add `mpp.kurodakayn.dev/metrics-scraper=true` to its
+namespace only when that namespace is trusted to reach the selected app ports.
+The NetworkPolicies are L4 port allowlists, so backend, publish-worker,
+browser-worker, AI, and collaboration metrics reuse their shared HTTP listeners;
+only content-pipeline exposes a dedicated metrics listener. Install the
 Prometheus Operator CRDs before applying this package, or omit it from overlays
 that use another metrics discovery mechanism.
 

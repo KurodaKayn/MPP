@@ -19,7 +19,13 @@ Required overlay inputs:
 - Install the Prometheus Operator CRDs before applying the PodMonitor and
   PrometheusRule resources.
 - Run Prometheus in `mpp-observability`, or label the Prometheus namespace with
-  `mpp.kurodakayn.dev/metrics-scraper=true` so it can scrape browser-worker.
+  `mpp.kurodakayn.dev/metrics-scraper=true`. That label allows scraping app
+  metrics for backend and publish-worker (`8080`), browser-worker (`8081`),
+  ai-service (`8000`), collab-service (`8090`), and content-pipeline (`9090`).
+  Treat that namespace label as a trusted metrics boundary: Kubernetes
+  NetworkPolicy is layer 4 only, so shared HTTP listener targets allow the
+  labeled namespace to reach the full service port rather than only `/metrics`.
+  Content-pipeline uses a dedicated metrics listener on `9090`.
 - Add this package to the same environment overlay that deploys
   `browser-runtime-control` and `app-baseline`.
 
