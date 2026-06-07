@@ -57,7 +57,9 @@ func TestPoolConfigFromEnvRejectsInvalidValues(t *testing.T) {
 		{name: "negative pool size", envName: poolSizeEnv, value: "-1"},
 		{name: "invalid min idle conns", envName: minIdleConnsEnv, value: "many"},
 		{name: "negative max idle conns", envName: maxIdleConnsEnv, value: "-1"},
+		{name: "pool size over int32", envName: poolSizeEnv, value: "2147483648"},
 		{name: "invalid idle time", envName: connMaxIdleTimeEnv, value: "30"},
+		{name: "zero idle time", envName: connMaxIdleTimeEnv, value: "0s"},
 		{name: "negative lifetime", envName: connMaxLifetimeEnv, value: "-1s"},
 	}
 
