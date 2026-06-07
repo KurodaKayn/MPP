@@ -343,7 +343,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version-file: script/kubernetes/smoke-test/go.mod
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
@@ -371,10 +371,13 @@ jobs:
       - name: Run Kubernetes Ruby helper tests
         run: |
           ruby script/env/generate_examples.rb --check
-          ruby script/kubernetes/smoke/test_smoke.rb
           ruby script/kubernetes/test_app_secret_materializer.rb
           ruby script/kubernetes/test_validate_rendered_manifests.rb
           ruby script/kubernetes/test_validate_rendered_schema.rb
+
+      - name: Run Kubernetes smoke Go tests
+        run: go test ./...
+        working-directory: script/kubernetes/smoke-test
 
   ci-result:
     name: CI result
