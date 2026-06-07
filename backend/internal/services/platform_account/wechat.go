@@ -43,7 +43,7 @@ func (s *Service) GetWechatAccount(userID uuid.UUID) (*dto.WechatAccountResponse
 func (s *Service) GetWorkspaceWechatAccount(userID uuid.UUID, workspaceID uuid.UUID) (*dto.WechatAccountResponse, error) {
 	var account models.PlatformAccount
 	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
-	err := s.db.Where("workspace_id = ? AND platform = ?", workspaceID, wechatPlatform).Order("updated_at DESC").First(&account).Error
+	err := s.strongReadDB().Where("workspace_id = ? AND platform = ?", workspaceID, wechatPlatform).Order("updated_at DESC").First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		resp := emptyWechatAccountResponse()
 		return &resp, nil
