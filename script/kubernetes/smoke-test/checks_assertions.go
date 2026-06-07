@@ -29,6 +29,24 @@ func parseJSON(body string) (Object, error) {
 	return result, nil
 }
 
+func assertJSONFields(response Response, label string, fields ...string) (Object, error) {
+	body, err := parseJSON(response.Body)
+	if err != nil {
+		return nil, failure("%s returned non-JSON body: %s", label, err)
+	}
+
+	missing := make([]string, 0)
+	for _, field := range fields {
+		if _, ok := body[field]; !ok {
+			missing = append(missing, field)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, failure("%s JSON body missing fields: %s", label, strings.Join(missing, ", "))
+	}
+	return body, nil
+}
+
 func firstPresent(object Object, keys ...string) string {
 	for _, key := range keys {
 		value := strings.TrimSpace(stringValue(object[key]))
