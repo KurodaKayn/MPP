@@ -118,6 +118,35 @@ CONTENT_PIPELINE_INTERNAL_TOKEN
 Add `REDIS_PASSWORD` when Redis auth is enabled. Use an external secret manager
 or sealed-secret workflow for production; do not commit real Secret values.
 
+For local staging or a one-time bootstrap, generate the app/internal random
+values, add provider-supplied values, and render a Secret manifest to a
+temporary file:
+
+```bash
+secrets_env="$(mktemp)"
+script/secret/gen_app_secrets.py app > "$secrets_env"
+script/secret/gen_app_secrets.py db >> "$secrets_env"
+printf 'LLM_PROVIDER_KEY=%s\n' "$LLM_PROVIDER_KEY" >> "$secrets_env"
+
+ruby script/kubernetes/render-app-secret.rb \
+  --env-file "$secrets_env" \
+  > /tmp/mpp-app-secrets.yaml
+kubectl apply -f /tmp/mpp-app-secrets.yaml
+```
+
+When Redis auth is enabled, add `REDIS_PASSWORD` and require it during render:
+
+```bash
+script/secret/gen_app_secrets.py redis >> "$secrets_env"
+ruby script/kubernetes/render-app-secret.rb \
+  --env-file "$secrets_env" \
+  --require-redis-password \
+  > /tmp/mpp-app-secrets.yaml
+```
+
+The renderer emits Kubernetes `stringData`, rejects placeholder-looking values
+by default, and ignores env keys that do not belong in `mpp-app-secrets`.
+
 ## Database And Redis
 
 Production deployments should use managed PostgreSQL and Redis.
