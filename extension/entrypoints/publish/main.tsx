@@ -2,7 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import "../../src/styles.css";
 import {
-  clearStoredExtensionAuthTokens,
+  clearExtensionAuthSession,
   getExtensionAuthToken,
 } from "../../src/backend/auth";
 import {
@@ -99,7 +99,7 @@ function PublishMonitor() {
 
   const signOut = async () => {
     try {
-      await clearStoredExtensionAuthTokens();
+      await clearExtensionAuthSession();
       setHandoffStartError("");
       await Promise.all([refreshSession(), load()]);
       setError("");
