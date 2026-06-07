@@ -124,6 +124,7 @@ describe("PrepublishWorkbenchCard", () => {
     expect(screen.getAllByText("Douyin article draft").length).toBeGreaterThan(
       0,
     );
+    expect(screen.getAllByText("ready")).toHaveLength(1);
     expect(screen.getByText("First draft preview")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /douyin ready/i }),
