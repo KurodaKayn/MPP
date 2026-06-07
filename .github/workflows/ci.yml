@@ -83,7 +83,7 @@ jobs:
           mark ai_service "^(ai-service/|${shared_pattern#^})"
           mark collab_service "^(collab-service/|${shared_pattern#^})"
           mark content_pipeline_service "^(content-pipeline-service/|${shared_pattern#^})"
-          mark kubernetes "^(deploy/kubernetes/|script/kubernetes/|${shared_pattern#^})"
+          mark kubernetes "^(deploy/kubernetes/|script/kubernetes/|script/env/|script/secret/|contracts/env\.schema\.yaml|${shared_pattern#^})"
 
   frontend:
     name: Frontend
@@ -358,6 +358,12 @@ jobs:
             ruby script/kubernetes/validate-rendered-manifests.rb "$dir" "$rendered"
             echo "::endgroup::"
           done
+
+      - name: Run Kubernetes Ruby helper tests
+        run: |
+          ruby script/env/generate_examples.rb --check
+          ruby script/kubernetes/smoke/test_smoke.rb
+          ruby script/kubernetes/test_app_secret_materializer.rb
 
   ci-result:
     name: CI result

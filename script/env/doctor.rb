@@ -2,10 +2,10 @@
 # frozen_string_literal: true
 
 require "optparse"
-require "set"
 require "uri"
 
 require_relative "env_contract"
+require_relative "env_file"
 
 BOOLEAN_VALUES = %w[1 0 true false yes no y n on off].freeze
 PLACEHOLDER_PATTERNS = [
@@ -86,42 +86,8 @@ class EnvDoctor
   end
 
   def parse_env_file(path)
-    env = {}
-    parse_errors = []
-    seen = Set.new
-    duplicate_keys = Set.new
-
-    File.readlines(path).each_with_index do |line, index|
-      raw = line.chomp
-      stripped = raw.strip
-      next if stripped.empty? || stripped.start_with?("#")
-
-      stripped = stripped.sub(/\Aexport\s+/, "")
-      unless stripped.include?("=")
-        parse_errors << "line #{index + 1} is not KEY=VALUE"
-        next
-      end
-
-      key, value = stripped.split("=", 2)
-      key = key.strip
-      unless key.match?(/\A[A-Za-z_][A-Za-z0-9_]*\z/)
-        parse_errors << "line #{index + 1} has invalid key #{key.inspect}"
-        next
-      end
-
-      duplicate_keys << key if seen.include?(key)
-      seen << key
-      env[key] = unquote_env_value(value.strip)
-    end
-
-    [env, parse_errors, duplicate_keys.to_a.sort]
-  end
-
-  def unquote_env_value(value)
-    return value[1...-1] if value.length >= 2 && value.start_with?('"') && value.end_with?('"')
-    return value[1...-1] if value.length >= 2 && value.start_with?("'") && value.end_with?("'")
-
-    value
+    result = EnvFile.parse_lines(File.readlines(path))
+    [result.env, result.parse_errors, result.duplicate_keys]
   end
 
   def validate_required(path, env, variables)
