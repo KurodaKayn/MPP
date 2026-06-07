@@ -11,13 +11,13 @@
 - `未开始`：尚未发现明确实现。
 - `暂缓`：当前业务阶段不建议投入，只保留触发条件。
 
-当前总体进度：约 `26%`。这个数字按阶段权重人工估算，后续可按实际完成项调整。
+当前总体进度：约 `28%`。这个数字按阶段权重人工估算，后续可按实际完成项调整。
 
 | 阶段                                         | 权重 | 当前完成度 | 状态   | 已完成                                                                         | 未完成/下一步                                                                          |
 | -------------------------------------------- | ---- | ---------- | ------ | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | 阶段 0：数据层基线盘点                       | 10%  | 55%        | 进行中 | GORM 查询观测、`mpp_db_*` 指标、dashboard 查询计划审计脚本、`pg_stat_statements`、数据库基线审计脚本 | 表增长面板、读写一致性分类、版本化迁移规范                                            |
 | 阶段 1：单库连接池、索引、分页和生命周期治理 | 15%  | 50%        | 进行中 | 应用层 `DB_MAX_*` 连接池、Redis 客户端连接池、组合索引、列表分页、列表避开 `source_content` 大字段 | PgBouncer、keyset pagination、事件保留期、归档 worker                                  |
-| 阶段 2：读模型与缓存优先                     | 15%  | 25%        | 进行中 | Redis、Asynq 基础依赖可复用；admin dashboard stats 已有短 TTL Redis 缓存        | dashboard 读模型、list/account 摘要缓存、精细失效策略、读模型重建任务                  |
+| 阶段 2：读模型与缓存优先                     | 15%  | 35%        | 进行中 | Redis、Asynq 基础依赖可复用；admin dashboard stats 和 admin project list 已有短 TTL Redis 缓存；project list 缓存 miss 已用 singleflight 合并 | dashboard 读模型、account 摘要缓存、精细失效策略、读模型重建任务                      |
 | 阶段 3：读写分离                             | 15%  | 45%        | 进行中 | `DB_READER_*` 可选连接、应用层 DB Router、签名 sticky writer、project/stats/workspace/platform_account 一致性路由 | 生产 read replica/PgBouncer、剩余服务一致性标注、replica lag 降级                      |
 | 阶段 4：单库分区、归档和冷热分层             | 15%  | 10%        | 未开始 | 协作编辑已有 state + update batch + compaction 基础                            | 事件表时间分区、协作 batch hash 分区、R2/S3 归档、恢复流程                             |
 | 阶段 5：Citus 化准备                         | 20%  | 5%         | 未开始 | Workspace 模型、`projects.workspace_id`、个人工作区 ID 已存在                  | 全域 `workspace_id`、Citus 分布列/colocation 设计、唯一约束与外键复审、迁移演练        |
@@ -62,7 +62,7 @@
 | Dashboard 查询审计 | 完成     | 已有 dashboard Count、列表、平台过滤、publication preload、账号查询、活跃会话查询计划审计脚本                         | 还未形成定期 CI/运维门禁                                              | `script/db/audit_dashboard_query_plans.sql`                                                   |
 | 租户边界           | 进行中   | 已有 `workspaces`、`workspace_members`、`projects.workspace_id`、个人工作区规则                                       | 发布事件、协作状态、媒体元数据等还没有全部显式带 `workspace_id`       | `backend/internal/models/models.go`                                                           |
 | Dashboard 读模型   | 未开始   | 无业务读模型表；当前仍以事实表聚合查询为主                                                                            | `workspace_dashboard_stats`、`project_list_summaries`、重建任务未实现 | `backend/internal/services/stats/overview.go`                                                 |
-| Redis 读缓存       | 进行中   | Redis 已用于队列、锁、OAuth、browser session 等短期协调；admin dashboard stats 已接入 15s TTL 缓存，并绕过 scoped/sticky writer 强一致路径 | dashboard list/account 摘要缓存、细粒度失效策略未实现                 | `backend/internal/services/stats/overview.go`、`backend/internal/services/stats/overview_test.go` |
+| Redis 读缓存       | 进行中   | Redis 已用于队列、锁、OAuth、browser session 等短期协调；admin dashboard stats 与 admin project list 已接入 15s TTL 缓存，并绕过 scoped/sticky writer 强一致路径；project list 缓存 miss 已用 singleflight 做进程内防击穿 | dashboard account 摘要缓存、细粒度失效策略未实现                     | `backend/internal/services/stats/overview.go`、`backend/internal/services/stats/overview_test.go`、`backend/internal/services/project/list_cache.go`、`backend/internal/services/project/list_cache_test.go` |
 | 读写分离           | 进行中   | 已支持 `DB_READER_*` 可选读副本连接、`DefaultRouter`、签名 sticky writer；project/stats/workspace/platform_account 已接入 strong/eventual 路由和 stale replica 回归测试 | 生产 read replica、PgBouncer reader/writer pool、剩余服务一致性标注、replica lag fallback 未实现 | `backend/internal/db/db.go`、`backend/internal/db/router.go`、`backend/internal/middleware/sticky_writer.go` |
 | 事件表分区与归档   | 未开始   | `publish_events`、`extension_execution_events` 等事件表已存在部分基础                                                 | 时间分区、归档 worker、恢复流程未实现                                 | `backend/internal/models/models.go`                                                           |
 | 协作批次治理       | 进行中   | `collab_document_states`、`collab_document_update_batches`、compaction/retention 基础已存在                           | `document_id` hash 分区、冷归档未实现                                 | `backend/internal/models/collab.go`、`collab-service/src/persistence/document-persistence.ts` |
@@ -99,7 +99,8 @@
 - [ ] 新增 `project_list_summaries` 或等价读模型。
 - [ ] 在项目保存、平台同步、发布完成、成员变更后异步更新读模型。
 - [x] 为 admin dashboard stats 摘要增加 Redis TTL 缓存。
-- [ ] 为 dashboard list/account 摘要增加 Redis TTL 缓存。
+- [x] 为 admin dashboard project list 增加 Redis TTL 缓存，并用 singleflight 合并同 key 并发 miss。
+- [ ] 为 dashboard account 摘要增加 Redis TTL 缓存。
 - [ ] 为 dashboard Redis 缓存增加精细失效策略。
 - [ ] 增加读模型全量重建任务。
 
