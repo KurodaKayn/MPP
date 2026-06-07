@@ -48,6 +48,24 @@ func TestBrowserSessionProbeFailureIsRequired(t *testing.T) {
 	}
 }
 
+func TestAuthenticatedProbeRejectsFrontendFallbackBody(t *testing.T) {
+	reporter := NewReporter(&bytes.Buffer{}, false)
+	suite := suiteWith(t, reporter, fakeKubectl{secretData: requiredSecretData()}, fakeHTTP{
+		getResponse: Response{Status: 200, Body: "<html>login</html>"},
+	})
+	suite.config.RunUserFlowProbes = true
+
+	suite.authenticatedUserFlows()
+
+	if !hasResult(reporter.Failures, "authenticated dashboard session") {
+		t.Fatalf("expected authenticated dashboard failure, got %#v", reporter.Failures)
+	}
+	detail := resultDetail(reporter.Failures, "authenticated dashboard session")
+	if !strings.Contains(detail, "non-JSON") {
+		t.Fatalf("expected non-JSON failure detail, got %q", detail)
+	}
+}
+
 func TestDryRunExitsSuccessfullyAndPrintsKubectlIntent(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -127,10 +145,14 @@ func (kubectl fakeKubectl) CurlFromEphemeralPod(namespace string, image string, 
 }
 
 type fakeHTTP struct {
+	getResponse  Response
 	postResponse Response
 }
 
 func (http fakeHTTP) Get(targetURL string, headers map[string]string) (Response, error) {
+	if http.getResponse.Status != 0 {
+		return http.getResponse, nil
+	}
 	return Response{Status: 200, Body: `{"status":"ready"}`}, nil
 }
 
