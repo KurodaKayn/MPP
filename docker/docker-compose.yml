@@ -204,6 +204,10 @@ services:
     build:
       context: ../browser-worker/runtime
       dockerfile: Dockerfile
+      args:
+        BROWSER_RUNTIME_BASE_IMAGE: ${BROWSER_RUNTIME_BASE_IMAGE:-debian:bookworm-slim}
+        BROWSER_RUNTIME_APT_MIRROR: ${BROWSER_RUNTIME_APT_MIRROR:-}
+        BROWSER_RUNTIME_APT_SECURITY_MIRROR: ${BROWSER_RUNTIME_APT_SECURITY_MIRROR:-}
     entrypoint:
       - /bin/sh
       - -c
