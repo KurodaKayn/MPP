@@ -23,7 +23,12 @@ type HTTPClient struct {
 
 func NewHTTPClient(timeoutSeconds int) *HTTPClient {
 	return &HTTPClient{
-		client: &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second},
+		client: &http.Client{
+			Timeout: time.Duration(timeoutSeconds) * time.Second,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 }
 
