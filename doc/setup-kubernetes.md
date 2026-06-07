@@ -24,6 +24,7 @@ deploy/kubernetes/app-baseline
 deploy/kubernetes/observability
 deploy/kubernetes/data-services/managed
 deploy/kubernetes/data-services/self-hosted
+deploy/kubernetes/overlays/staging-managed
 deploy/kubernetes/overlays/staging-self-hosted
 deploy/kubernetes/validation/app-baseline
 ```
@@ -33,8 +34,9 @@ Use `app-baseline` for the long-running application services. Add
 `observability` when the cluster has Loki, Alloy, and Prometheus Operator CRDs.
 Choose exactly one data-service mode: `managed` for production, or
 `self-hosted` for small test clusters and demos.
-Use `overlays/staging-self-hosted` as a renderable starter when staging should
-run PostgreSQL and Redis inside the cluster.
+Use `overlays/staging-managed` as a renderable starter when staging should use
+managed PostgreSQL and Redis endpoints, or `overlays/staging-self-hosted` when
+staging should run PostgreSQL and Redis inside the cluster.
 
 ## Required Overlays
 
@@ -58,11 +60,12 @@ The overlay must patch:
 - `LOKI_WRITE_URL` in the observability package when Loki is not available at
   the included in-cluster service DNS name.
 
-The included `deploy/kubernetes/overlays/staging-self-hosted` overlay wires the
-baseline app, browser runtime controls, and self-hosted data services together.
-It still contains example image tags, public host values, and generated Secret
-literals, so patch those inputs through your environment workflow before
-applying it to a shared cluster.
+The included `deploy/kubernetes/overlays/staging-managed` and
+`deploy/kubernetes/overlays/staging-self-hosted` overlays wire the baseline app,
+browser runtime controls, and one data-service mode together. They still contain
+example image tags, public host values, provider host values, and generated
+Secret literals, so patch those inputs through your environment workflow before
+applying either overlay to a shared cluster.
 
 ## Images
 
@@ -208,6 +211,15 @@ kubectl rollout status deployment/frontend -n mpp-system
 kubectl rollout status deployment/backend -n mpp-system
 kubectl rollout status deployment/browser-worker -n mpp-system
 kubectl rollout status deployment/collab-service -n mpp-system
+```
+
+For the included managed staging starter:
+
+```bash
+kubectl kustomize deploy/kubernetes/overlays/staging-managed > /tmp/mpp-staging.yaml
+ruby script/kubernetes/validate-rendered-manifests.rb \
+  deploy/kubernetes/overlays/staging-managed \
+  /tmp/mpp-staging.yaml
 ```
 
 For the included self-hosted staging starter:
