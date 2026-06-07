@@ -399,6 +399,32 @@ function getSelectedHandoffPlatforms(
   );
 }
 
+function hasSelectedUiOnlyPlatform(
+  selectedPlatforms: Set<PlatformUiKey>,
+): boolean {
+  return PLATFORM_UI_CONFIGS.some(
+    (platform) =>
+      platform.implementationStatus === "ui_only" &&
+      selectedPlatforms.has(platform.key),
+  );
+}
+
+function formatHandoffPlatformList(platforms: PlatformKey[]): string {
+  const labels = platforms.map((handoffPlatform) => {
+    const config = PLATFORM_UI_CONFIGS.find(
+      (platform) => platform.handoffPlatform === handoffPlatform,
+    );
+
+    return config?.label ?? handoffPlatform;
+  });
+
+  if (labels.length <= 2) {
+    return labels.join(" and ");
+  }
+
+  return `${labels.slice(0, -1).join(", ")}, and ${labels.at(-1)}`;
+}
+
 function LoadedWorkbench({
   state,
   selectedProjectId,
@@ -423,6 +449,9 @@ function LoadedWorkbench({
     Boolean(selectedProject.project_id) &&
     selectedPlatformList.length > 0 &&
     !startingHandoff;
+  const showUiOnlyPlatformNotice =
+    selectedPlatformList.length > 0 &&
+    hasSelectedUiOnlyPlatform(selectedPlatforms);
 
   return (
     <div className="flex flex-col gap-4">
@@ -454,6 +483,15 @@ function LoadedWorkbench({
           <Alert variant="destructive" className="mt-3">
             <AlertCircle data-icon="inline-start" />
             <AlertDescription>{startError}</AlertDescription>
+          </Alert>
+        ) : null}
+        {showUiOnlyPlatformNotice ? (
+          <Alert variant="warning" className="mt-3">
+            <AlertCircle data-icon="inline-start" />
+            <AlertDescription>
+              Only {formatHandoffPlatformList(selectedPlatformList)} will start
+              now.
+            </AlertDescription>
           </Alert>
         ) : null}
         {!selectedPlatformList.length ? (
