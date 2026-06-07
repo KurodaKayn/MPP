@@ -5,8 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -48,6 +51,110 @@ func TestGetStats(t *testing.T) {
 	assert.Equal(t, int64(0), statsScoped.TotalFailedPublications)
 }
 
+func TestGetStatsCachesGlobalDashboardStats(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	seedStatsOverviewProject(t, db, "cached-a", models.PublicationStatusPublished)
+
+	stats, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalUsers)
+	assert.Equal(t, int64(1), stats.TotalProjects)
+	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
+	assert.Equal(t, int64(0), stats.TotalFailedPublications)
+
+	seedStatsOverviewProject(t, db, "cached-b", models.PublicationStatusFailed)
+
+	cachedStats, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), cachedStats.TotalUsers)
+	assert.Equal(t, int64(1), cachedStats.TotalProjects)
+	assert.Equal(t, int64(1), cachedStats.TotalPublishedPublications)
+	assert.Equal(t, int64(0), cachedStats.TotalFailedPublications)
+}
+
+func TestGetStatsBypassesCacheForStickyEventualCounts(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	router := dbrouter.NewRouter(writer, dbrouter.WithReader(reader))
+	s := services.NewDashboardServiceWithRouter(writer, router)
+	s.UseRedis(redisClient)
+
+	seedStatsOverviewProject(t, reader, "reader", models.PublicationStatusFailed)
+	readerStats, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), readerStats.TotalFailedPublications)
+
+	seedStatsOverviewProject(t, writer, "writer", models.PublicationStatusPublished)
+	stickyCtx := dbrouter.WithStickyWriter(context.Background(), time.Now().Add(time.Minute))
+
+	stickyStats, err := s.WithContext(stickyCtx).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stickyStats.TotalUsers)
+	assert.Equal(t, int64(1), stickyStats.TotalProjects)
+	assert.Equal(t, int64(1), stickyStats.TotalPublishedPublications)
+	assert.Equal(t, int64(0), stickyStats.TotalFailedPublications)
+}
+
+func TestGetStatsFallsBackToDatabaseWhenCachedPayloadIsInvalid(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	seedStatsOverviewProject(t, db, "fallback", models.PublicationStatusPublished)
+	_, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	cacheKeys, err := redisClient.Keys(context.Background(), "mpp:dashboard:stats:*").Result()
+	require.NoError(t, err)
+	require.Len(t, cacheKeys, 1)
+	require.NoError(t, redisClient.Set(context.Background(), cacheKeys[0], "not-json", time.Minute).Err())
+
+	stats, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalUsers)
+	assert.Equal(t, int64(1), stats.TotalProjects)
+	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
+	assert.Equal(t, int64(0), stats.TotalFailedPublications)
+}
+
+func TestGetStatsDoesNotCacheScopedCounts(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	user := seedStatsOverviewProject(t, db, "scoped-a", models.PublicationStatusPublished)
+
+	stats, err := s.WithContext(context.Background()).GetStats(&user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalProjects)
+
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "scoped-b-project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "zhihu",
+		Status:    models.PublicationStatusFailed,
+	}).Error)
+
+	freshStats, err := s.WithContext(context.Background()).GetStats(&user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), freshStats.TotalUsers)
+	assert.Equal(t, int64(2), freshStats.TotalProjects)
+	assert.Equal(t, int64(1), freshStats.TotalPublishedPublications)
+	assert.Equal(t, int64(1), freshStats.TotalFailedPublications)
+}
+
 func TestGetStatsUsesReaderForEventualCounts(t *testing.T) {
 	writer := testsupport.SetupTestDB()
 	reader := testsupport.SetupTestDB()
@@ -73,6 +180,41 @@ func TestGetStatsUsesReaderForEventualCounts(t *testing.T) {
 	assert.Equal(t, int64(1), stats.TotalProjects)
 	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
 	assert.Equal(t, int64(0), stats.TotalFailedPublications)
+}
+
+func newStatsRedisClient(t *testing.T) *redis.Client {
+	t.Helper()
+
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+	return client
+}
+
+func seedStatsOverviewProject(t *testing.T, db *gorm.DB, prefix string, publicationStatus string) models.User {
+	t.Helper()
+
+	user := models.User{
+		Username:     prefix + "-user",
+		Email:        prefix + "@example.com",
+		PasswordHash: "hash",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         prefix + "-project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Status:    publicationStatus,
+	}).Error)
+	return user
 }
 
 func TestGetStatsUsesWriterForStickyEventualCounts(t *testing.T) {
