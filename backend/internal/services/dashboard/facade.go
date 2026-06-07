@@ -77,7 +77,7 @@ func (s *DashboardService) WithContext(ctx context.Context) *DashboardService {
 	scoped := *s
 	scoped.db = s.db.WithContext(ctx)
 	scoped.Project = &Project{Service: s.Project.WithContext(ctx)}
-	scoped.Workspace = &Workspace{Service: workspacesvc.NewService(scoped.db, scoped.Project.Service)}
+	scoped.Workspace = &Workspace{Service: workspacesvc.NewServiceWithRouter(scoped.db, scoped.Project.Service, scoped.dbRouter)}
 	scoped.Prepublish = &Prepublish{Service: prepublishsvc.NewService(scoped.db, scoped.Project.Service, draftCompiler)}
 	scoped.Extension = &Extension{Service: extensionsvc.NewService(scoped.db)}
 	scoped.MediaAsset = &MediaAsset{Service: s.MediaAsset.WithContext(ctx)}
@@ -168,7 +168,7 @@ func newDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.
 	publisher := publishsvc.NewService(db, accounts)
 	return &DashboardService{
 		Project:         &Project{Service: projects},
-		Workspace:       &Workspace{Service: workspacesvc.NewService(db, projects)},
+		Workspace:       &Workspace{Service: workspacesvc.NewServiceWithRouter(db, projects, router)},
 		Prepublish:      &Prepublish{Service: prepublishsvc.NewService(db, projects, compiler.NewContentPipelineDraftCompiler())},
 		Extension:       &Extension{Service: extensionsvc.NewService(db)},
 		MediaAsset:      &MediaAsset{Service: mediaassetsvc.NewService(db, projects)},
@@ -187,7 +187,7 @@ func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider platformaccoun
 	publisher := publishsvc.NewService(db, accounts)
 	return &DashboardService{
 		Project:         &Project{Service: projects},
-		Workspace:       &Workspace{Service: workspacesvc.NewService(db, projects)},
+		Workspace:       &Workspace{Service: workspacesvc.NewServiceWithRouter(db, projects, router)},
 		Prepublish:      &Prepublish{Service: prepublishsvc.NewService(db, projects, compiler.NewContentPipelineDraftCompiler())},
 		Extension:       &Extension{Service: extensionsvc.NewService(db)},
 		MediaAsset:      &MediaAsset{Service: mediaassetsvc.NewService(db, projects)},
