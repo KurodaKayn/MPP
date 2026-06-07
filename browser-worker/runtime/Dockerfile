@@ -1,14 +1,23 @@
-# 使用国内可用的镜像源替代官方 docker.io
-FROM docker.m.daocloud.io/library/debian:bookworm-slim
+ARG BROWSER_RUNTIME_BASE_IMAGE=debian:bookworm-slim
+FROM ${BROWSER_RUNTIME_BASE_IMAGE}
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Switch to Tsinghua mirror (more stable for security blobs)
-RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources
+ARG BROWSER_RUNTIME_APT_MIRROR=
+ARG BROWSER_RUNTIME_APT_SECURITY_MIRROR=
+
+RUN set -eux; \
+    if [ -n "$BROWSER_RUNTIME_APT_MIRROR" ]; then \
+        sed -i "s|^URIs: http://deb.debian.org/debian$|URIs: $BROWSER_RUNTIME_APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -n "$BROWSER_RUNTIME_APT_SECURITY_MIRROR" ]; then \
+        sed -i "s|^URIs: http://deb.debian.org/debian-security$|URIs: $BROWSER_RUNTIME_APT_SECURITY_MIRROR|g" /etc/apt/sources.list.d/debian.sources; \
+    fi
 
 # Install Chromium, Xvfb, x11vnc, Openbox, and noVNC
-RUN apt-get update && apt-get install -y \
+RUN set -eux; \
+    apt-get update && apt-get install -y \
     chromium \
     xvfb \
     x11vnc \
