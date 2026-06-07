@@ -1,8 +1,46 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: backend-worker-observability-metrics
+  namespace: mpp-system
+  annotations:
+    mpp.kurodakayn.dev/networkpolicy-layer: "l4-port-allowlist"
+    mpp.kurodakayn.dev/metrics-scraper-trust: "trusted-namespace"
+    mpp.kurodakayn.dev/metrics-port-scope: "shared-http-listener"
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - backend
+          - publish-worker
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              mpp.kurodakayn.dev/metrics-scraper: "true"
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: browser-worker-observability-metrics
   namespace: mpp-system
+  annotations:
+    mpp.kurodakayn.dev/networkpolicy-layer: "l4-port-allowlist"
+    mpp.kurodakayn.dev/metrics-scraper-trust: "trusted-namespace"
+    mpp.kurodakayn.dev/metrics-port-scope: "shared-http-listener"
   labels:
     app.kubernetes.io/name: mpp
     app.kubernetes.io/component: observability
@@ -22,3 +60,90 @@ spec:
       ports:
         - protocol: TCP
           port: 8081
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-service-observability-metrics
+  namespace: mpp-system
+  annotations:
+    mpp.kurodakayn.dev/networkpolicy-layer: "l4-port-allowlist"
+    mpp.kurodakayn.dev/metrics-scraper-trust: "trusted-namespace"
+    mpp.kurodakayn.dev/metrics-port-scope: "shared-http-listener"
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: ai-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              mpp.kurodakayn.dev/metrics-scraper: "true"
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: collab-service-observability-metrics
+  namespace: mpp-system
+  annotations:
+    mpp.kurodakayn.dev/networkpolicy-layer: "l4-port-allowlist"
+    mpp.kurodakayn.dev/metrics-scraper-trust: "trusted-namespace"
+    mpp.kurodakayn.dev/metrics-port-scope: "shared-http-listener"
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: collab-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              mpp.kurodakayn.dev/metrics-scraper: "true"
+      ports:
+        - protocol: TCP
+          port: 8090
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: content-pipeline-observability-metrics
+  namespace: mpp-system
+  annotations:
+    mpp.kurodakayn.dev/networkpolicy-layer: "l4-port-allowlist"
+    mpp.kurodakayn.dev/metrics-scraper-trust: "trusted-namespace"
+    mpp.kurodakayn.dev/metrics-port-scope: "dedicated-metrics-listener"
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: content-pipeline-service
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              mpp.kurodakayn.dev/metrics-scraper: "true"
+      ports:
+        - protocol: TCP
+          port: 9090
