@@ -33,9 +33,19 @@ export interface ExtensionAuthCookieStorage {
   }): Promise<{ value?: string } | null | undefined>;
 }
 
+export interface ExtensionAuthCookieClearableStorage {
+  remove(details: { name: string; url: string }): Promise<unknown>;
+}
+
 export interface ExtensionAuthTokenOptions {
   cookies?: ExtensionAuthCookieStorage | null;
   storage?: ExtensionAuthTokenStorage;
+  webBaseUrl?: string;
+}
+
+export interface ExtensionAuthSessionClearOptions {
+  cookies?: ExtensionAuthCookieClearableStorage | null;
+  storage?: ExtensionAuthTokenClearableStorage;
   webBaseUrl?: string;
 }
 
@@ -88,6 +98,10 @@ export async function getStoredExtensionAuthToken(
 }
 
 function getDefaultCookieStorage(): ExtensionAuthCookieStorage | null {
+  return browser.cookies ?? null;
+}
+
+function getDefaultCookieClearableStorage(): ExtensionAuthCookieClearableStorage | null {
   return browser.cookies ?? null;
 }
 
@@ -158,4 +172,27 @@ export async function clearStoredExtensionAuthTokens(
   storage: ExtensionAuthTokenClearableStorage = browser.storage.local,
 ): Promise<void> {
   await storage.remove([...extensionAuthTokenStorageKeys]);
+}
+
+export async function clearExtensionAuthSession(
+  options: ExtensionAuthSessionClearOptions = {},
+): Promise<void> {
+  await clearStoredExtensionAuthTokens(options.storage);
+
+  const cookies =
+    "cookies" in options ? options.cookies : getDefaultCookieClearableStorage();
+
+  if (!cookies) {
+    return;
+  }
+
+  const url = getCookieLookupUrl(
+    options.webBaseUrl ?? backendConfig.webBaseUrl,
+  );
+
+  await Promise.all(
+    extensionAuthTokenCookieKeys.map((name) =>
+      cookies.remove({ name, url }).catch(() => undefined),
+    ),
+  );
 }
