@@ -53,7 +53,9 @@ type ContentPublishWorkflowOptions = {
   navigateToProject: (projectId: string) => void;
   prepublishDrafts: Partial<Record<PublishPlatform, PrepublishDraft>>;
   projectId?: string;
+  selectedBrandProfileId?: string;
   selectedPlatforms: PublishPlatform[];
+  selectedTemplateId?: string;
   setIsOpeningXPostIntent: (isOpeningXPostIntent: boolean) => void;
   setIsSaving: (isSaving: boolean) => void;
   setIsSyncingPrepublish: (isSyncingPrepublish: boolean) => void;
@@ -149,8 +151,11 @@ export function draftsFromPublications(publications: ProjectPublications) {
     }
 
     drafts[publication.platform] = {
+      draftStatus: publication.draft_status,
       format: adaptedContent.format,
       raw,
+      reviewStatus: publication.review_status,
+      syncRequired: publication.sync_required,
       syncedAt:
         adaptedContent.source_revision ??
         publication.updated_at ??
@@ -169,7 +174,9 @@ export function useContentPublishWorkflow({
   navigateToProject,
   prepublishDrafts,
   projectId,
+  selectedBrandProfileId,
   selectedPlatforms,
+  selectedTemplateId,
   setIsOpeningXPostIntent,
   setIsSaving,
   setIsSyncingPrepublish,
@@ -227,10 +234,12 @@ export function useContentPublishWorkflow({
     platforms: PublishPlatform[] = selectedPlatforms,
     sourceContent: ContentValue = content,
   ): CreateProjectInput => ({
+    brand_profile_id: selectedBrandProfileId || undefined,
     cover_image_url: sourceContent.firstImageSrc || undefined,
     platforms,
     source_content: sourceContent.html || sourceContent.text,
     summary: sourceContent.text,
+    template_id: selectedTemplateId || undefined,
     title: title.trim(),
   });
 

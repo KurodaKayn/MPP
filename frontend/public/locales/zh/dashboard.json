@@ -476,6 +476,14 @@
         "viewer": "只能只读打开"
       }
     },
+    "setup": {
+      "template": "模板",
+      "brandProfile": "品牌资料",
+      "loading": "加载中...",
+      "noTemplate": "不使用模板",
+      "noBrandProfile": "不使用品牌资料",
+      "replaceConfirm": "应用此模板会替换当前标题、内容和已选平台。是否继续？"
+    },
     "collaboration": {
       "title": "协作体验",
       "description": "查看评论、项目活动、保存版本和可选分享链接。",
@@ -497,6 +505,7 @@
       "restore": "恢复",
       "restoreFailed": "无法恢复版本",
       "versionRestored": "版本已恢复",
+      "versionRestoredDesc": "平台草稿已标记为过期，发布前需要重新同步。",
       "versionTitle": "版本 {{number}}",
       "createViewerLink": "创建查看链接",
       "createShareLink": "创建分享链接",
@@ -552,6 +561,12 @@
       "shareLinkStatus": {
         "active": "生效中",
         "revoked": "已撤销"
+      },
+      "permissionSource": {
+        "owner": "所有者",
+        "direct_share": "直接分享",
+        "workspace": "工作区",
+        "share_link": "分享链接"
       }
     },
     "shareProject": {
@@ -571,6 +586,11 @@
       "syncAll": "一键同步到所有平台",
       "statusSynced": "已同步",
       "statusNotSynced": "未同步",
+      "statusStale": "需重新同步",
+      "statusSyncing": "同步中",
+      "statusApproved": "已通过",
+      "statusReviewing": "审核中",
+      "statusChangesRequested": "需修改",
       "pleaseFillContent": "请先填写内容，再同步平台草稿。",
       "targetFormat": "{{format}} · 已同步 {{date}}",
       "notSyncedTarget": "尚未同步。目标格式：{{format}}。",

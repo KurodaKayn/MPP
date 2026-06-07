@@ -8,6 +8,8 @@ import {
   cancelBrowserSession,
   completeBrowserSession,
   completeMediaUpload,
+  createBrandProfile,
+  createContentTemplate,
   createDashboardProject,
   createProjectMediaUpload,
   createProjectComment,
@@ -16,6 +18,8 @@ import {
   createWorkspace,
   createWorkspaceProject,
   getBrowserSession,
+  getBrandProfiles,
+  getContentTemplates,
   getDashboardProject,
   getDashboardProjects,
   getDashboardStats,
@@ -28,6 +32,8 @@ import {
   getProjectVersions,
   getWorkspace,
   getWorkspaceActivities,
+  getWorkspaceBrandProfiles,
+  getWorkspaceContentTemplates,
   getWorkspaceMembers,
   getWorkspaceProjects,
   getWorkspaces,
@@ -540,6 +546,100 @@ describe("dashboard api client", () => {
     );
   });
 
+  it("lists and creates content templates and brand profiles", async () => {
+    const templates = {
+      items: [
+        {
+          created_at: "2026-06-06T12:00:00Z",
+          default_platforms: ["wechat"],
+          description: "Launch content",
+          id: "template-1",
+          name: "Launch",
+          platform_config: {},
+          scope: "workspace",
+          source_template: "<p>Body</p>",
+          tags: ["launch"],
+          title_template: "Launch title",
+          updated_at: "2026-06-06T12:00:00Z",
+          workspace_id: "workspace-1",
+        },
+      ],
+    };
+    const template = templates.items[0];
+    const profiles = {
+      items: [
+        {
+          audience: "Founders",
+          banned_words: [],
+          created_at: "2026-06-06T12:00:00Z",
+          created_by: "user-1",
+          cta: "Book a demo",
+          default_tags: ["saas"],
+          id: "brand-1",
+          link_strategy: "Primary CTA",
+          name: "MPP",
+          updated_at: "2026-06-06T12:00:00Z",
+          voice: "Clear",
+          workspace_id: "workspace-1",
+        },
+      ],
+    };
+    const profile = profiles.items[0];
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(templates))
+      .mockResolvedValueOnce(jsonResponse(template, { status: 201 }))
+      .mockResolvedValueOnce(jsonResponse(profiles))
+      .mockResolvedValueOnce(jsonResponse(profile, { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getContentTemplates()).resolves.toEqual(templates);
+    await expect(
+      createContentTemplate({
+        default_platforms: ["wechat"],
+        name: "Launch",
+        source_template: "<p>Body</p>",
+        title_template: "Launch title",
+      }),
+    ).resolves.toEqual(template);
+    await expect(getBrandProfiles()).resolves.toEqual(profiles);
+    await expect(createBrandProfile({ name: "MPP" })).resolves.toEqual(
+      profile,
+    );
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/user/dashboard/content-templates",
+      expect.objectContaining({ credentials: "same-origin" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/user/dashboard/content-templates",
+      expect.objectContaining({
+        body: JSON.stringify({
+          default_platforms: ["wechat"],
+          name: "Launch",
+          source_template: "<p>Body</p>",
+          title_template: "Launch title",
+        }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/user/dashboard/brand-profiles",
+      expect.objectContaining({ credentials: "same-origin" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/user/dashboard/brand-profiles",
+      expect.objectContaining({
+        body: JSON.stringify({ name: "MPP" }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("fetches a project detail for editing", async () => {
     const project = {
       created_at: "2026-05-29T12:00:00Z",
@@ -721,9 +821,13 @@ describe("dashboard api client", () => {
 
     await expect(
       createProjectMediaUpload("project-1", {
+        alt_text: "Cover image",
         filename: "cover.png",
+        library_scope: "workspace",
         mime_type: "image/png",
         size_bytes: 1024,
+        source: "upload",
+        tags: ["launch"],
         usage: "editor_image",
       }),
     ).resolves.toEqual(upload);
@@ -735,9 +839,13 @@ describe("dashboard api client", () => {
       "/api/user/dashboard/projects/project-1/media/uploads",
       expect.objectContaining({
         body: JSON.stringify({
+          alt_text: "Cover image",
           filename: "cover.png",
+          library_scope: "workspace",
           mime_type: "image/png",
           size_bytes: 1024,
+          source: "upload",
+          tags: ["launch"],
           usage: "editor_image",
         }),
         credentials: "same-origin",
@@ -1173,6 +1281,68 @@ describe("dashboard api client", () => {
         headers: expect.any(Headers),
         method: "POST",
       }),
+    );
+  });
+
+  it("lists workspace content templates and brand profiles", async () => {
+    const templates = {
+      items: [
+        {
+          created_at: "2026-06-06T12:00:00Z",
+          default_platforms: ["wechat"],
+          description: "Workspace launch",
+          id: "template-1",
+          name: "Workspace template",
+          platform_config: {},
+          scope: "workspace",
+          source_template: "<p>Workspace body</p>",
+          tags: [],
+          title_template: "Workspace title",
+          updated_at: "2026-06-06T12:00:00Z",
+          workspace_id: "workspace-1",
+        },
+      ],
+    };
+    const profiles = {
+      items: [
+        {
+          audience: "Teams",
+          banned_words: [],
+          created_at: "2026-06-06T12:00:00Z",
+          created_by: "user-1",
+          cta: "",
+          default_tags: [],
+          id: "brand-1",
+          link_strategy: "",
+          name: "Workspace brand",
+          updated_at: "2026-06-06T12:00:00Z",
+          voice: "Focused",
+          workspace_id: "workspace-1",
+        },
+      ],
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(templates))
+      .mockResolvedValueOnce(jsonResponse(profiles));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getWorkspaceContentTemplates("workspace-1")).resolves.toEqual(
+      templates,
+    );
+    await expect(getWorkspaceBrandProfiles("workspace-1")).resolves.toEqual(
+      profiles,
+    );
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/workspaces/workspace-1/content-templates",
+      expect.objectContaining({ credentials: "same-origin" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/workspaces/workspace-1/brand-profiles",
+      expect.objectContaining({ credentials: "same-origin" }),
     );
   });
 
