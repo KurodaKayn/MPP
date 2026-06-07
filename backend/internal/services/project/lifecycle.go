@@ -663,6 +663,13 @@ func TruncateRunes(value string, limit int) string {
 }
 
 func (s *Service) ListProjects(page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
+	if scopeUserID == nil && s.canUseDashboardProjectListCache() {
+		return s.getCachedDashboardProjectList(page, limit, status, filterUserID, platform)
+	}
+	return s.computeProjectList(page, limit, status, filterUserID, platform, scopeUserID)
+}
+
+func (s *Service) computeProjectList(page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
 	query := s.projectListReadDB(scopeUserID).Model(&models.Project{})
 
 	// Apply scope (User dashboard enforces scopeUserID, overriding any filterUserID)
