@@ -88,11 +88,8 @@ func (s *Service) getCachedStats() (*dto.DashboardStatsResponse, error) {
 		return nil, err
 	}
 	encoded, err := json.Marshal(stats)
-	if err != nil {
-		return stats, nil
-	}
-	if err := s.cache.Set(ctx, dashboardStatsCacheKey, encoded, s.cacheTTL).Err(); err != nil {
-		return stats, nil
+	if err == nil {
+		_ = s.cache.Set(ctx, dashboardStatsCacheKey, encoded, s.cacheTTL).Err()
 	}
 	return stats, nil
 }
