@@ -20,7 +20,6 @@ import { Button } from "../components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
@@ -525,9 +524,6 @@ export function PrepublishWorkbenchCard(props: PrepublishWorkbenchProps) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle>Pre-Publish Drafts</CardTitle>
-            <CardDescription>
-              Choose a draft and platform to prepare.
-            </CardDescription>
           </div>
           <Badge variant={getWorkbenchStatusVariant(state.status)}>
             {getWorkbenchStatusLabel(state.status)}
