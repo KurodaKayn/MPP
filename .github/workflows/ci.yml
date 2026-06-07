@@ -373,6 +373,8 @@ jobs:
           ruby script/env/generate_examples.rb --check
           ruby script/kubernetes/smoke/test_smoke.rb
           ruby script/kubernetes/test_app_secret_materializer.rb
+          ruby script/kubernetes/test_validate_rendered_manifests.rb
+          ruby script/kubernetes/test_validate_rendered_schema.rb
 
   ci-result:
     name: CI result
