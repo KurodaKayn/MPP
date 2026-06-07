@@ -192,6 +192,9 @@ describe("PrepublishWorkbenchCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /start publishing/i }));
 
     expect(startHandoff).toHaveBeenCalledWith("project-1", ["douyin"]);
+    expect(
+      screen.queryByText("Only Douyin will start now."),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps UI-only platform selections out of handoff", () => {
@@ -216,6 +219,7 @@ describe("PrepublishWorkbenchCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /start publishing/i }));
 
     expect(startHandoff).toHaveBeenCalledWith("project-1", ["douyin"]);
+    expect(screen.getByText("Only Douyin will start now.")).toBeInTheDocument();
   });
 
   it("keeps start disabled until at least one platform is selected", () => {
