@@ -99,6 +99,14 @@ func (c *Client) GetToken() (string, error) {
 }
 
 func (c *Client) UploadImage(imageBytes []byte, filename string) (*MediaResponse, error) {
+	return c.uploadMaterial(imageBytes, filename, "image")
+}
+
+func (c *Client) UploadThumb(imageBytes []byte, filename string) (*MediaResponse, error) {
+	return c.uploadMaterial(imageBytes, filename, "thumb")
+}
+
+func (c *Client) uploadMaterial(imageBytes []byte, filename string, mediaType string) (*MediaResponse, error) {
 	token, err := c.GetToken()
 	if err != nil {
 		return nil, err
@@ -117,7 +125,7 @@ func (c *Client) UploadImage(imageBytes []byte, filename string) (*MediaResponse
 		return nil, err
 	}
 
-	u := fmt.Sprintf("%s/material/add_material?access_token=%s&type=image", BaseURL, token)
+	u := fmt.Sprintf("%s/material/add_material?access_token=%s&type=%s", BaseURL, token, mediaType)
 	req, err := http.NewRequest(http.MethodPost, u, body)
 	if err != nil {
 		return nil, err

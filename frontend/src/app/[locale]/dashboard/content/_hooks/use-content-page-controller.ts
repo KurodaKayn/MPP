@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { hasPendingLocalMedia } from "@/components/dashboard/content/editor/content-editor-media";
@@ -61,7 +60,6 @@ export function useContentPageController(
 ) {
   const { requiresWorkspace = false, selectedWorkspace = null } =
     workspaceContext;
-  const router = useRouter();
   const {
     content,
     isLoading,
@@ -333,8 +331,11 @@ export function useContentPageController(
       return createDashboardProject(input);
     },
     hasBodyContent,
-    navigateToProject: (targetProjectId) =>
-      router.replace(`/dashboard/content/${targetProjectId}`),
+    navigateToProject: (targetProjectId) => {
+      window.location.replace(
+        `/${locale}/dashboard/content?projectId=${encodeURIComponent(targetProjectId)}`,
+      );
+    },
     prepublishDrafts,
     projectId,
     selectedBrandProfileId,

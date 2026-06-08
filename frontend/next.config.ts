@@ -19,8 +19,27 @@ function isTurbopackFileSystemCacheEnabledForDev() {
   return true;
 }
 
+function getAllowedDevOrigins() {
+  const origins = new Set(["127.0.0.1"]);
+  const configuredBaseUrl =
+    process.env.FRONTEND_BASE_URL ?? process.env.NEXT_PUBLIC_SITE_URL;
+
+  if (configuredBaseUrl) {
+    try {
+      const hostname = new URL(configuredBaseUrl).hostname;
+      if (hostname && hostname !== "localhost") {
+        origins.add(hostname);
+      }
+    } catch {
+      // Ignore malformed local dev URLs; Next will keep the default allowlist.
+    }
+  }
+
+  return [...origins];
+}
+
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["127.0.0.1"],
+  allowedDevOrigins: getAllowedDevOrigins(),
   experimental: {
     turbopackFileSystemCacheForDev: isTurbopackFileSystemCacheEnabledForDev(),
   },

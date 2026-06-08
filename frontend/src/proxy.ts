@@ -27,6 +27,28 @@ export function proxy(req: NextRequest) {
   if (!lng) lng = acceptLanguage.get(req.headers.get("Accept-Language"));
   if (!lng) lng = fallbackLng;
 
+  const projectContentMatch = req.nextUrl.pathname.match(
+    new RegExp(`^/(${languages.join("|")})/dashboard/content/([^/]+)$`),
+  );
+  if (projectContentMatch) {
+    const [, locale, projectId] = projectContentMatch;
+    const redirectURL = req.nextUrl.clone();
+    redirectURL.pathname = `/${locale}/dashboard/content`;
+    redirectURL.searchParams.set("projectId", projectId);
+    return NextResponse.redirect(redirectURL);
+  }
+
+  const shareProjectMatch = req.nextUrl.pathname.match(
+    new RegExp(`^(?:/(${languages.join("|")}))?/share/projects/([^/]+)$`),
+  );
+  if (shareProjectMatch) {
+    const [, locale, token] = shareProjectMatch;
+    const redirectURL = req.nextUrl.clone();
+    redirectURL.pathname = `/${locale ?? lng}/share/projects`;
+    redirectURL.searchParams.set("token", token);
+    return NextResponse.redirect(redirectURL);
+  }
+
   // Redirect if lng in path is not supported
   if (!localeInPath && !req.nextUrl.pathname.startsWith("/_next")) {
     const response = NextResponse.redirect(
