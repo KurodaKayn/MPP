@@ -3,6 +3,8 @@ package stats_test
 import (
 	"context"
 	"encoding/json"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
+	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
@@ -136,12 +139,57 @@ func TestGetStatsFallsBackToDatabaseWhenCachedPayloadIsInvalid(t *testing.T) {
 
 	repairedPayload, err := redisClient.Get(context.Background(), cacheKey).Bytes()
 	require.NoError(t, err)
-	var repairedStats map[string]any
-	require.NoError(t, json.Unmarshal(repairedPayload, &repairedStats))
+	var repairedPayloadBody struct {
+		Version int `json:"version"`
+		Stats   struct {
+			TotalUsers                 int64 `json:"total_users"`
+			TotalProjects              int64 `json:"total_projects"`
+			TotalPublishedPublications int64 `json:"total_published_publications"`
+			TotalFailedPublications    int64 `json:"total_failed_publications"`
+		} `json:"stats"`
+	}
+	require.NoError(t, json.Unmarshal(repairedPayload, &repairedPayloadBody))
+	assert.Equal(t, 1, repairedPayloadBody.Version)
+	assert.Equal(t, int64(1), repairedPayloadBody.Stats.TotalUsers)
+	assert.Equal(t, int64(1), repairedPayloadBody.Stats.TotalProjects)
 	cacheTTL, err := redisClient.PTTL(context.Background(), cacheKey).Result()
 	require.NoError(t, err)
 	require.Positive(t, cacheTTL)
 	require.LessOrEqual(t, cacheTTL, 15*time.Second)
+}
+
+func TestGetStatsRepairsSemanticallyInvalidCachedPayload(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	seedStatsOverviewProject(t, db, "semantic-invalid-a", models.PublicationStatusPublished)
+	_, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	cacheKey := requireSingleStatsCacheKey(t, redisClient)
+	require.NoError(t, redisClient.Set(context.Background(), cacheKey, `{}`, time.Minute).Err())
+
+	seedStatsOverviewProject(t, db, "semantic-invalid-b", models.PublicationStatusFailed)
+
+	stats, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), stats.TotalUsers)
+	assert.Equal(t, int64(2), stats.TotalProjects)
+	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
+	assert.Equal(t, int64(1), stats.TotalFailedPublications)
+
+	repairedPayload, err := redisClient.Get(context.Background(), cacheKey).Bytes()
+	require.NoError(t, err)
+	var payload struct {
+		Version int `json:"version"`
+		Stats   struct {
+			TotalProjects int64 `json:"total_projects"`
+		} `json:"stats"`
+	}
+	require.NoError(t, json.Unmarshal(repairedPayload, &payload))
+	assert.Equal(t, 1, payload.Version)
+	assert.Equal(t, int64(2), payload.Stats.TotalProjects)
 }
 
 func TestGetStatsDoesNotCacheScopedCounts(t *testing.T) {
@@ -204,6 +252,62 @@ func TestGetStatsUsesReaderForEventualCounts(t *testing.T) {
 	assert.Equal(t, int64(0), stats.TotalFailedPublications)
 }
 
+func TestGetStatsCollapsesConcurrentCacheMisses(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	seedStatsOverviewProject(t, db, "stats-singleflight", models.PublicationStatusPublished)
+
+	queryCount := registerBlockingStatsQueryCounter(t, db)
+	results := runConcurrentStatsRequests(t, s, queryCount.firstQuery, queryCount.releaseFirstQuery)
+
+	for err := range results.errs {
+		require.NoError(t, err)
+	}
+	for stats := range results.stats {
+		assert.Equal(t, int64(1), stats.TotalUsers)
+		assert.Equal(t, int64(1), stats.TotalProjects)
+		assert.Equal(t, int64(1), stats.TotalPublishedPublications)
+		assert.Equal(t, int64(0), stats.TotalFailedPublications)
+	}
+	assert.Equal(t, int64(4), queryCount.count.Load())
+	requireSingleStatsCacheKey(t, redisClient)
+}
+
+func TestGetStatsCollapsesConcurrentRedisReadErrors(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+
+	redisClient, redisServer := newStatsRedisClientWithServer(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	seedStatsOverviewProject(t, db, "stats-redis-error", models.PublicationStatusFailed)
+	redisServer.SetError("ERR forced")
+
+	queryCount := registerBlockingStatsQueryCounter(t, db)
+	results := runConcurrentStatsRequests(t, s, queryCount.firstQuery, queryCount.releaseFirstQuery)
+
+	for err := range results.errs {
+		require.NoError(t, err)
+	}
+	for stats := range results.stats {
+		assert.Equal(t, int64(1), stats.TotalUsers)
+		assert.Equal(t, int64(1), stats.TotalProjects)
+		assert.Equal(t, int64(0), stats.TotalPublishedPublications)
+		assert.Equal(t, int64(1), stats.TotalFailedPublications)
+	}
+	assert.Equal(t, int64(4), queryCount.count.Load())
+}
+
 func newStatsRedisClient(t *testing.T) *redis.Client {
 	t.Helper()
 
@@ -229,6 +333,74 @@ func requireSingleStatsCacheKey(t *testing.T, client *redis.Client) string {
 	require.NoError(t, err)
 	require.Len(t, cacheKeys, 1)
 	return cacheKeys[0]
+}
+
+type statsQueryCounter struct {
+	count             atomic.Int64
+	firstQuery        chan struct{}
+	releaseFirstQuery chan struct{}
+}
+
+func registerBlockingStatsQueryCounter(t *testing.T, db *gorm.DB) *statsQueryCounter {
+	t.Helper()
+
+	counter := &statsQueryCounter{
+		firstQuery:        make(chan struct{}),
+		releaseFirstQuery: make(chan struct{}),
+	}
+	var closeFirstQuery sync.Once
+	callbackName := "test:dashboard_stats_singleflight:" + t.Name()
+	require.NoError(t, db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		count := counter.count.Add(1)
+		if count == 1 {
+			closeFirstQuery.Do(func() { close(counter.firstQuery) })
+			<-counter.releaseFirstQuery
+		}
+	}))
+	t.Cleanup(func() {
+		_ = db.Callback().Query().Remove(callbackName)
+	})
+	return counter
+}
+
+type concurrentStatsResults struct {
+	errs  chan error
+	stats chan *dto.DashboardStatsResponse
+}
+
+func runConcurrentStatsRequests(t *testing.T, s *services.DashboardService, firstQuery <-chan struct{}, releaseFirstQuery chan<- struct{}) concurrentStatsResults {
+	t.Helper()
+
+	const callers = 8
+	start := make(chan struct{})
+	errs := make(chan error, callers)
+	statsCh := make(chan *dto.DashboardStatsResponse, callers)
+	var wg sync.WaitGroup
+	wg.Add(callers)
+	for range callers {
+		go func() {
+			defer wg.Done()
+			<-start
+			stats, err := s.WithContext(context.Background()).GetStats(nil)
+			if err != nil {
+				errs <- err
+				return
+			}
+			statsCh <- stats
+		}()
+	}
+
+	close(start)
+	select {
+	case <-firstQuery:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first stats query")
+	}
+	close(releaseFirstQuery)
+	wg.Wait()
+	close(errs)
+	close(statsCh)
+	return concurrentStatsResults{errs: errs, stats: statsCh}
 }
 
 func seedStatsOverviewProject(t *testing.T, db *gorm.DB, prefix string, publicationStatus string) models.User {
