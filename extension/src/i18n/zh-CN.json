@@ -13,7 +13,8 @@
       "articleSummaryPlaceholder": "添加内容摘要",
       "articleHighlightPlaceholder": "文章精彩部分",
       "articleButtonText": "我要发文",
-      "articleImageUploadText": "点击上传图片"
+      "articleImageUploadText": "点击上传图片",
+      "articleAiGenerateText": "AI生成"
     },
     "xiaohongshu": {
       "descriptionPlaceholder": "描述"

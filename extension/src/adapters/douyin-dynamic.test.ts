@@ -25,6 +25,7 @@ const {
 } = zhCn.tests.douyinDynamic;
 const articleButtonText = douyin.articleButtonText;
 const articleImageUploadText = douyin.articleImageUploadText;
+const articleAiGenerateText = douyin.articleAiGenerateText;
 const titlePlaceholder = douyin.articleTitlePlaceholder;
 const summaryPlaceholder = douyin.articleSummaryPlaceholder;
 const bodyPlaceholder = douyin.bodyPlaceholder;
@@ -153,6 +154,29 @@ describe("runDouyinDynamicAdapter", () => {
       document.querySelector<HTMLElement>('[contenteditable="true"]')
         ?.textContent,
     ).toBe(articleText);
+  });
+
+  it("clicks the Douyin article AI image generation button after filling text", async () => {
+    renderDouyinArticleEditor();
+    let aiGenerateClicked = false;
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<div class="aiButton-x4dXs_"><span>${articleAiGenerateText}</span></div>`,
+    );
+    document
+      .querySelector(".aiButton-x4dXs_")
+      ?.addEventListener("click", () => {
+        aiGenerateClicked = true;
+      });
+
+    const result = await runDouyinDynamicAdapter(
+      createDouyinPlatform(articleText),
+      articleTitle,
+    );
+
+    expect(result.status).toBe("user_review");
+    expect(aiGenerateClicked).toBe(true);
+    expect(result.metadata?.ai_image_generation_clicked).toBe(true);
   });
 
   it("clicks the upload page article button before filling the editor", async () => {

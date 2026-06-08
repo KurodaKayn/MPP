@@ -45,6 +45,8 @@ const FILE_INPUT_SELECTORS = [
 ];
 const ARTICLE_BUTTON_TEXT = douyin.articleButtonText;
 const ARTICLE_IMAGE_UPLOAD_TEXT = douyin.articleImageUploadText;
+const ARTICLE_AI_GENERATE_TEXT = douyin.articleAiGenerateText;
+const ARTICLE_AI_GENERATE_SELECTORS = ['[class*="aiButton"]', "button"];
 const DOUYIN_ARTICLE_PATH = "/creator-micro/content/post/article";
 const ELEMENT_WAIT_TIMEOUT_MS = 10_000;
 const ELEMENT_WAIT_INTERVAL_MS = 250;
@@ -268,6 +270,20 @@ async function uploadArticleAssets(assets: HandoffAsset[]): Promise<number> {
   return uploadAssets(assets);
 }
 
+function clickArticleAiGenerateButton(): boolean {
+  const aiGenerateButton = findElementByText<HTMLElement>(
+    ARTICLE_AI_GENERATE_SELECTORS,
+    ARTICLE_AI_GENERATE_TEXT,
+  );
+
+  if (!aiGenerateButton) {
+    return false;
+  }
+
+  aiGenerateButton.click();
+  return true;
+}
+
 function limitDouyinArticleText(value: string): string {
   return value.trim().slice(0, 30);
 }
@@ -331,6 +347,8 @@ export async function runDouyinDynamicAdapter(
       return failed("Could not find the Douyin editor.", error);
     }
 
+    const aiImageGenerationClicked = clickArticleAiGenerateButton();
+
     let uploadedAssets = 0;
 
     try {
@@ -345,6 +363,7 @@ export async function runDouyinDynamicAdapter(
       assets_uploaded: uploadedAssets,
       asset_types: [...new Set(platform.assets.map((asset) => asset.type))],
       auto_publish: false,
+      ai_image_generation_clicked: aiImageGenerationClicked,
       content_kind: platform.content_kind,
     });
   }
