@@ -121,7 +121,8 @@ tag. Production overlays should pin the `sha-*` tags for app images and set
 `mpp-backend` image contains both the backend API and publish-worker binaries;
 the Deployment command selects the runtime role.
 
-Use the image pinner to promote one Git SHA across an environment overlay:
+Use the image pinner to promote one Git SHA across the production-managed
+overlay:
 
 ```bash
 ruby script/kubernetes/pin-overlay-images.rb \
@@ -129,9 +130,9 @@ ruby script/kubernetes/pin-overlay-images.rb \
   --git-sha <full-git-sha>
 ```
 
-The helper updates every app image in the overlay plus the
-`BROWSER_RUNTIME_IMAGE` patch to the GHCR image namespace used by the repository
-image publishing workflow.
+The helper updates every app image plus the `BROWSER_RUNTIME_IMAGE` patch in
+`deploy/kubernetes/overlays/production-managed/kustomization.yaml` to the GHCR
+image namespace used by the repository image publishing workflow.
 
 Set the repository variables `FRONTEND_BASE_URL` and `BACKEND_API_BASE_URL`
 before publishing images when the frontend build should use values other than
