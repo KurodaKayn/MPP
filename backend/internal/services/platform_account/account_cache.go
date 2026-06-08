@@ -15,6 +15,7 @@ import (
 const dashboardAccountCachePrefix = "mpp:dashboard:accounts:v1"
 const dashboardAccountCacheVersion = 1
 const dashboardAccountRefreshTimeout = 15 * time.Second
+const dashboardAccountInvalidateTimeout = 2 * time.Second
 
 type dashboardAccountCachePayload[T any] struct {
 	Version     int       `json:"version"`
@@ -31,10 +32,8 @@ func getCachedDashboardAccount[T any](s *Service, userID uuid.UUID, workspaceID 
 
 	ctx := s.requestContext()
 	cacheKey := dashboardAccountCacheKey(workspaceID, platform)
-	if resp, hit, err := cachedDashboardAccount(ctx, s, cacheKey, workspaceID, platform, valid); hit {
+	if resp, hit, _ := cachedDashboardAccount(ctx, s, cacheKey, workspaceID, platform, valid); hit {
 		return resp, nil
-	} else if err != nil {
-		return compute(s, workspaceID)
 	}
 
 	if s.cacheGroup == nil {
@@ -114,7 +113,9 @@ func (s *Service) invalidateDashboardAccountCache(workspaceID uuid.UUID, platfor
 	if s.cache == nil {
 		return
 	}
-	_ = s.cache.Del(s.requestContext(), dashboardAccountCacheKey(workspaceID, platform)).Err()
+	ctx, cancel := dashboardAccountInvalidationContext(s.requestContext())
+	defer cancel()
+	_ = s.cache.Del(ctx, dashboardAccountCacheKey(workspaceID, platform)).Err()
 }
 
 func (s *Service) canUseDashboardAccountCache() bool {
@@ -131,6 +132,10 @@ func dashboardAccountCacheKey(workspaceID uuid.UUID, platform string) string {
 
 func dashboardAccountRefreshContext(parent context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(parent), dashboardAccountRefreshTimeout)
+}
+
+func dashboardAccountInvalidationContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), dashboardAccountInvalidateTimeout)
 }
 
 func dashboardAccountPayloadValid[T any](payload dashboardAccountCachePayload[T], workspaceID uuid.UUID, platform string, valid func(T) bool) bool {
