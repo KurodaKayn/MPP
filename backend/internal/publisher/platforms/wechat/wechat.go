@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	htmlutil "github.com/kurodakayn/mpp-backend/internal/pkg/html"
@@ -21,6 +23,8 @@ type WechatConfig struct {
 	Digest        string `json:"digest"`
 	CoverImageURL string `json:"cover_image_url"`
 }
+
+const defaultCoverImagePath = "Assets/132461906_p0_master1200.jpg"
 
 func (w *WechatPublisher) ValidateConfig(config []byte) error {
 	var cfg WechatConfig
@@ -59,16 +63,18 @@ func (w *WechatPublisher) Publish(_ context.Context, pub *models.ProjectPlatform
 		processedHTML = string(pub.AdaptedContent)
 	}
 
-	// 2. Upload Cover Image for thumb_media_id
-	var thumbMediaID string
-	if cfg.CoverImageURL != "" {
-		coverData, err := media.DownloadAndProcess(cfg.CoverImageURL)
-		if err == nil {
-			res, err := client.UploadImage(coverData, "cover.jpg")
-			if err == nil {
-				thumbMediaID = res.MediaID
-			}
-		}
+	// 2. Upload cover image for thumb_media_id.
+	coverData, err := loadCoverImage(cfg.CoverImageURL)
+	if err != nil {
+		return "", "", err
+	}
+	res, err := client.UploadThumb(coverData, "cover.jpg")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to upload wechat cover image: %w", err)
+	}
+	thumbMediaID := res.MediaID
+	if strings.TrimSpace(thumbMediaID) == "" {
+		return "", "", fmt.Errorf("failed to upload wechat cover image: empty thumb media id")
 	}
 
 	// 3. Create Draft
@@ -96,12 +102,27 @@ func (w *WechatPublisher) Publish(_ context.Context, pub *models.ProjectPlatform
 
 	// Handle special error code 48001 (Unauthorized API publishing)
 	if errCode == 48001 {
-		warningMsg := "Draft created successfully (MediaID: " + draftMediaID + "), but your account requires manual publication via WeChat Dashboard (Error 48001)."
-		return draftMediaID, "", fmt.Errorf("%s", warningMsg)
+		return draftMediaID, "", fmt.Errorf("缺乏企业或个人认证统一发布资格，请自行前往草稿箱发布（文章已撰写完成）")
 	}
 
 	publishURL := fmt.Sprintf("https://mp.weixin.qq.com/s?publish_id=%s", publishID)
 	return draftMediaID, publishURL, nil
+}
+
+func loadCoverImage(coverImageURL string) ([]byte, error) {
+	if strings.TrimSpace(coverImageURL) != "" {
+		coverData, err := media.DownloadAndProcess(coverImageURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to download wechat cover image: %w", err)
+		}
+		return coverData, nil
+	}
+
+	coverData, err := os.ReadFile(defaultCoverImagePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read default wechat cover image: %w", err)
+	}
+	return coverData, nil
 }
 
 func extractWechatHTML(adaptedContent []byte) string {
