@@ -149,7 +149,7 @@ function ProjectCard({
           nativeButton={false}
           render={(buttonProps) => (
             <Link
-              href={`/${locale}/dashboard/content/${project.id}`}
+              href={`/${locale}/dashboard/content?projectId=${encodeURIComponent(project.id)}`}
               {...buttonProps}
             >
               <ArrowRight className="size-4" />

@@ -149,7 +149,7 @@ function PostProjectCard({
           nativeButton={false}
           render={(buttonProps) => (
             <Link
-              href={`/${locale}/dashboard/content/${project.id}`}
+              href={`/${locale}/dashboard/content?projectId=${encodeURIComponent(project.id)}`}
               {...buttonProps}
             >
               <Pencil className="h-4 w-4" />

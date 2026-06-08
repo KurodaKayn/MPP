@@ -1,5 +1,9 @@
 import { ContentWorkspace } from "./content-workspace";
 
-export function ContentPageContent() {
-  return <ContentWorkspace />;
+type ContentPageContentProps = {
+  projectId?: string;
+};
+
+export function ContentPageContent({ projectId }: ContentPageContentProps) {
+  return <ContentWorkspace projectId={projectId} />;
 }
