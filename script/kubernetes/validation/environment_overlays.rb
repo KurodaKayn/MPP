@@ -10,6 +10,22 @@ module KubernetesValidation
     ALL_ZERO_SHA_TAG = "sha-0000000000000000000000000000000000000000"
     EXAMPLE_COOKIE_ENCRYPTION_KEY = "12345678901234567890123456789012"
     EXAMPLE_SECRET_PREFIX = "staging-example-"
+    EXAMPLE_LLM_MODELS = [
+      "staging-validation-model",
+      "production-provider-model",
+      "replace-with-production-model",
+    ].freeze
+    REQUIRED_EXTERNAL_SECRET_KEYS = [
+      "JWT_SECRET",
+      "DB_PASSWORD",
+      "COLLAB_TOKEN_SECRET",
+      "COOKIE_ENCRYPTION_KEY",
+      "LLM_PROVIDER_KEY",
+      "BROWSER_WORKER_INTERNAL_TOKEN",
+      "AI_SERVICE_INTERNAL_TOKEN",
+      "CONTENT_PIPELINE_INTERNAL_TOKEN",
+    ].freeze
+    OPTIONAL_EXTERNAL_SECRET_KEYS = ["REDIS_PASSWORD"].freeze
     APP_IMAGES = {
       "frontend" => ["frontend", "ghcr.io/kurodakayn/mpp-frontend"],
       "backend" => ["backend", "ghcr.io/kurodakayn/mpp-backend"],
@@ -36,8 +52,18 @@ module KubernetesValidation
 
     def validate_staging_managed(context)
       overlay = "staging-managed"
-      validate_managed_config(context, overlay)
+      validate_managed_config(context, overlay, app_env: "staging")
       validate_secret(context, overlay)
+      validate_ingress(context, overlay)
+      validate_runtime_image(context, overlay)
+      validate_app_images(context, overlay)
+      validate_managed_services(context, overlay)
+    end
+
+    def validate_production_managed(context)
+      overlay = "production-managed"
+      validate_managed_config(context, overlay, app_env: "production")
+      validate_external_secret_contract(context, overlay)
       validate_ingress(context, overlay)
       validate_runtime_image(context, overlay)
       validate_app_images(context, overlay)
@@ -63,14 +89,13 @@ module KubernetesValidation
       validate_common_config(context, config, overlay)
     end
 
-    def validate_managed_config(context, overlay)
+    def validate_managed_config(context, overlay, app_env:)
       config = context.require_document("ConfigMap", "mpp-app-config", "mpp-system")
       return unless config
 
       {
-        "APP_ENV" => "staging",
+        "APP_ENV" => app_env,
         "DB_SSLMODE" => "verify-full",
-        "REDIS_ADDR" => "redis:6379",
         "REDIS_TLS" => "true",
       }.each do |key, value|
         unless config.data[key] == value
@@ -89,6 +114,18 @@ module KubernetesValidation
         context.add_error("#{overlay} mpp-app-config DB_HOST must not use example.invalid in deployable validation")
       end
 
+      redis = context.document("Service", "redis", "mpp-system")
+      redis_host = redis&.spec&.fetch("externalName", nil).to_s
+      redis_addr = config.data["REDIS_ADDR"].to_s
+      redis_addr_host = address_host(redis_addr)
+      context.add_error("#{overlay} mpp-app-config REDIS_ADDR must be set") if redis_addr.empty?
+      unless redis_host.empty? || redis_addr_host == redis_host
+        context.add_error("#{overlay} mpp-app-config REDIS_ADDR host must match the managed redis ExternalName")
+      end
+      if deployable_validation? && example_host?(redis_addr_host)
+        context.add_error("#{overlay} mpp-app-config REDIS_ADDR must not use example.invalid in deployable validation")
+      end
+
       validate_common_config(context, config, overlay)
     end
 
@@ -98,7 +135,7 @@ module KubernetesValidation
 
       llm_model = config.data["LLM_MODEL"].to_s.strip
       context.add_error("#{overlay} mpp-app-config LLM_MODEL must be set") if llm_model.empty?
-      if deployable_validation? && llm_model == "staging-validation-model"
+      if deployable_validation? && example_llm_model?(llm_model)
         context.add_error("#{overlay} mpp-app-config LLM_MODEL must not use the example model in deployable validation")
       end
     end
@@ -124,6 +161,43 @@ module KubernetesValidation
         elsif deployable_validation? && example_secret_value?(value)
           context.add_error("#{overlay} mpp-app-secrets #{key} must not use an example value in deployable validation")
         end
+      end
+    end
+
+    def validate_external_secret_contract(context, overlay)
+      if context.document("Secret", "mpp-app-secrets", "mpp-system")
+        context.add_error(
+          "#{overlay} must not render mpp-app-secrets; materialize it through the production secret workflow",
+        )
+      end
+
+      refs = secret_refs(context)
+      mpp_refs = refs.select { |ref| ref[:secret_name] == "mpp-app-secrets" }
+      required_refs = mpp_refs.reject { |ref| ref[:optional] }.map { |ref| ref[:key] }.uniq.sort
+      optional_refs = mpp_refs.select { |ref| ref[:optional] }.map { |ref| ref[:key] }.uniq.sort
+      missing_required = REQUIRED_EXTERNAL_SECRET_KEYS - required_refs
+      unexpected_required = required_refs - REQUIRED_EXTERNAL_SECRET_KEYS
+      unexpected_optional = optional_refs - OPTIONAL_EXTERNAL_SECRET_KEYS
+      tracked_keys = REQUIRED_EXTERNAL_SECRET_KEYS + OPTIONAL_EXTERNAL_SECRET_KEYS
+      wrong_secret_refs = refs.select do |ref|
+        tracked_keys.include?(ref[:key]) && ref[:secret_name] != "mpp-app-secrets"
+      end
+
+      unless missing_required.empty?
+        context.add_error("#{overlay} external secret contract is missing required refs: #{missing_required.join(', ')}")
+      end
+      unless unexpected_required.empty?
+        context.add_error("#{overlay} external secret contract has unexpected required refs: #{unexpected_required.join(', ')}")
+      end
+      unless unexpected_optional.empty?
+        context.add_error("#{overlay} external secret contract has unexpected optional refs: #{unexpected_optional.join(', ')}")
+      end
+      unless wrong_secret_refs.empty?
+        formatted = wrong_secret_refs
+          .map { |ref| "#{ref[:env_name]}->#{ref[:secret_name]}/#{ref[:key]}" }
+          .uniq
+          .sort
+        context.add_error("#{overlay} external secret contract must use mpp-app-secrets for refs: #{formatted.join(', ')}")
       end
     end
 
@@ -245,8 +319,38 @@ module KubernetesValidation
       value.start_with?(EXAMPLE_SECRET_PREFIX) || value == EXAMPLE_COOKIE_ENCRYPTION_KEY
     end
 
+    def example_llm_model?(value)
+      EXAMPLE_LLM_MODELS.include?(value) || value.start_with?("replace-with-")
+    end
+
     def example_host?(host)
       host.end_with?(".example.invalid") || host == "example.invalid"
+    end
+
+    def address_host(value)
+      raw = value.to_s.strip
+      uri = parse_uri(raw)
+      return uri.host.to_s if uri&.scheme && !uri.host.to_s.empty?
+
+      raw.split(":", 2).first.to_s
+    end
+
+    def secret_refs(context)
+      context.documents.flat_map do |document|
+        document.containers.flat_map do |container|
+          Array(container["env"]).filter_map do |entry|
+            secret_ref = entry.dig("valueFrom", "secretKeyRef")
+            next unless secret_ref
+
+            {
+              env_name: entry["name"].to_s,
+              secret_name: secret_ref["name"].to_s,
+              key: secret_ref["key"].to_s,
+              optional: secret_ref["optional"] == true,
+            }
+          end
+        end
+      end
     end
 
     def deployable_validation?
