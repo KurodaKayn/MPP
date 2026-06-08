@@ -8,7 +8,7 @@ require "tempfile"
 class ValidateRenderedSchemaTest < Minitest::Test
   def test_invokes_kubeconform_with_strict_kubernetes_schema_flags
     with_tempfile("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: test\n") do |rendered|
-      with_fake_kubeconform(<<~RUBY) do |kubeconform, log|
+      with_fake_kubeconform(<<~RUBY) do |kubeconform, log, stdin_log|
         puts "schema ok"
         exit 0
       RUBY
@@ -24,14 +24,16 @@ class ValidateRenderedSchemaTest < Minitest::Test
         assert_includes args, "-ignore-missing-schemas"
         assert_includes args, "-kubernetes-version"
         assert_includes args, "1.33.0"
-        assert_includes args, rendered.path
+        assert_includes args, "-"
+        refute_includes args, rendered.path
+        assert_includes File.read(stdin_log), "kind: Namespace"
       end
     end
   end
 
   def test_allows_kubernetes_version_override
     with_tempfile("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: test\n") do |rendered|
-      with_fake_kubeconform("exit 0") do |kubeconform, log|
+      with_fake_kubeconform("exit 0") do |kubeconform, log, _stdin_log|
         _stdout, stderr, status = run_validator(
           rendered.path,
           kubeconform,
@@ -91,19 +93,23 @@ class ValidateRenderedSchemaTest < Minitest::Test
   def with_fake_kubeconform(body)
     log = Tempfile.new("mpp-kubeconform-args")
     log.close
+    stdin_log = Tempfile.new("mpp-kubeconform-stdin")
+    stdin_log.close
 
     executable = Tempfile.new("mpp-kubeconform")
     executable.write(<<~RUBY)
       #!#{RbConfig.ruby}
       File.write(#{log.path.inspect}, ARGV.join("\\n"))
+      File.write(#{stdin_log.path.inspect}, STDIN.read)
       #{body}
     RUBY
     executable.close
     File.chmod(0o755, executable.path)
 
-    yield executable.path, log.path
+    yield executable.path, log.path, stdin_log.path
   ensure
     executable&.unlink
     log&.unlink
+    stdin_log&.unlink
   end
 end

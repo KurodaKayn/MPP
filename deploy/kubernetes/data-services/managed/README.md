@@ -12,7 +12,11 @@ Required overlay inputs:
 - Patch the `redis` ExternalName to the managed Redis host.
 - Set `DB_HOST` to the managed PostgreSQL provider hostname when
   `DB_SSLMODE=verify-full`, because hostname verification must match the
-  provider certificate. Set `REDIS_ADDR=redis:6379` in `mpp-app-config`.
+  provider certificate.
+- Set `REDIS_ADDR` to the managed Redis provider hostname and port when
+  `REDIS_TLS=true`, because Redis TLS hostname verification must match the
+  provider certificate. Keep the `redis` ExternalName Service for stable
+  in-cluster discovery when TLS verification is not hostname-sensitive.
 - Keep `DB_SSLMODE=verify-full` for production managed PostgreSQL. Set
   `DB_SSLROOTCERT` when the provider requires a custom CA bundle mounted into
   the app pods.
