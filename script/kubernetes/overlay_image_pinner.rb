@@ -101,6 +101,9 @@ module KubernetesOverlayImages
     def validate_inputs
       add_error("overlay must be set") if overlay.strip.empty?
       add_error("overlay directory does not exist: #{overlay}") unless File.directory?(overlay)
+      unless File.basename(overlay) == "production-managed"
+        add_error("image pinning currently supports only the production-managed overlay")
+      end
       unless git_sha.match?(/\A[0-9a-f]{40}\z/)
         add_error("git SHA must be 40 lowercase hexadecimal characters")
       end
