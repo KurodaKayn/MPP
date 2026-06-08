@@ -17,35 +17,28 @@ module KubernetesOverlayImages
   BROWSER_RUNTIME_REPOSITORY = "mpp-browser-runtime"
 
   class AtomicYamlWriter
-    def write(updates)
-      originals = snapshot_originals(updates.keys)
-      temp_paths = write_temp_files(updates)
-      temp_paths.each { |target, source| move_file(source, target) }
+    def write(path, document)
+      temp_path = write_temp_file(path, document)
+      move_file(temp_path, path)
       []
     rescue SystemCallError, IOError => error
-      restore_errors = restore_originals(originals || {})
-      ["failed to write pinned overlay images: #{error.message}", *restore_errors]
+      ["failed to write pinned overlay images: #{error.message}"]
     ensure
-      cleanup_temp_files(temp_paths || {})
+      cleanup_temp_file(temp_path)
     end
 
     private
 
-    def snapshot_originals(paths)
-      paths.to_h { |path| [path, File.binread(path)] }
-    end
-
-    def write_temp_files(updates)
-      temp_paths = {}
-      updates.each do |path, document|
-        temp = Tempfile.create(["#{File.basename(path)}.", ".tmp"], File.dirname(path))
-        temp.write(YAML.dump(document))
-        temp.close
-        temp_paths[path] = temp.path
-      end
-      temp_paths
+    def write_temp_file(path, document)
+      stat = File.stat(path)
+      temp = Tempfile.create(["#{File.basename(path)}.", ".tmp"], File.dirname(path))
+      temp.write(YAML.dump(document))
+      temp.close
+      File.chmod(stat.mode & 0o7777, temp.path)
+      temp.path
     rescue SystemCallError, IOError
-      cleanup_temp_files(temp_paths)
+      temp&.close
+      FileUtils.rm_f(temp&.path)
       raise
     end
 
@@ -53,17 +46,8 @@ module KubernetesOverlayImages
       FileUtils.mv(source, target)
     end
 
-    def restore_originals(originals)
-      originals.filter_map do |path, content|
-        File.binwrite(path, content)
-        nil
-      rescue SystemCallError, IOError => error
-        "failed to restore #{path}: #{error.message}"
-      end
-    end
-
-    def cleanup_temp_files(temp_paths)
-      temp_paths.each_value { |path| FileUtils.rm_f(path) }
+    def cleanup_temp_file(path)
+      FileUtils.rm_f(path) if path
     end
   end
 
@@ -93,23 +77,17 @@ module KubernetesOverlayImages
       return result([]) unless errors.empty?
 
       kustomization_path = File.join(overlay, "kustomization.yaml")
-      runtime_patch_path = File.join(overlay, "runtime-image-patch.yaml")
       kustomization = load_yaml(kustomization_path)
-      runtime_patch = load_yaml(runtime_patch_path)
 
       validate_kustomization(kustomization)
-      validate_runtime_patch(runtime_patch)
       return result([]) unless errors.empty?
 
       pin_app_images(kustomization)
-      pin_runtime_image(runtime_patch)
-      writer.write(
-        kustomization_path => kustomization,
-        runtime_patch_path => runtime_patch,
-      ).each { |message| add_error(message) }
+      pin_runtime_image(kustomization)
+      writer.write(kustomization_path, kustomization).each { |message| add_error(message) }
       return result([]) unless errors.empty?
 
-      result([kustomization_path, runtime_patch_path])
+      result([kustomization_path])
     end
 
     private
@@ -144,16 +122,9 @@ module KubernetesOverlayImages
       unless missing_images.empty?
         add_error("#{kustomization_path_label} is missing image entries: #{missing_images.join(', ')}")
       end
-    end
 
-    def validate_runtime_patch(document)
-      unless document.is_a?(Hash)
-        add_error("#{runtime_patch_path_label} must be a YAML mapping")
-        return
-      end
-
-      unless runtime_image_env(document)
-        add_error("#{runtime_patch_path_label} must set BROWSER_RUNTIME_IMAGE")
+      unless runtime_patch(document)
+        add_error("#{kustomization_path_label} must set BROWSER_RUNTIME_IMAGE")
       end
     end
 
@@ -166,8 +137,10 @@ module KubernetesOverlayImages
       end
     end
 
-    def pin_runtime_image(document)
-      runtime_image_env(document)["value"] = "#{DEFAULT_REGISTRY}/#{BROWSER_RUNTIME_REPOSITORY}:#{image_tag}"
+    def pin_runtime_image(kustomization)
+      patch_entry, patch_document = runtime_patch(kustomization)
+      runtime_image_env(patch_document)["value"] = "#{DEFAULT_REGISTRY}/#{BROWSER_RUNTIME_REPOSITORY}:#{image_tag}"
+      patch_entry["patch"] = YAML.dump(patch_document).sub(/\A---\s*\n/, "")
     end
 
     def runtime_image_env(document)
@@ -181,6 +154,28 @@ module KubernetesOverlayImages
       return nil unless env.is_a?(Array)
 
       env.find { |entry| entry["name"] == "BROWSER_RUNTIME_IMAGE" }
+    end
+
+    def runtime_patch(kustomization)
+      patches = kustomization["patches"]
+      return nil unless patches.is_a?(Array)
+
+      patches.filter_map { |entry| parse_runtime_patch(entry) }.first
+    end
+
+    def parse_runtime_patch(entry)
+      patch = entry["patch"]
+      return nil unless patch.is_a?(String) && patch.include?("BROWSER_RUNTIME_IMAGE")
+
+      document = YAML.safe_load(
+        patch,
+        permitted_classes: [],
+        permitted_symbols: [],
+        aliases: true,
+      )
+      [entry, document] if document.is_a?(Hash) && runtime_image_env(document)
+    rescue Psych::Exception
+      nil
     end
 
     def image_tag
@@ -205,10 +200,6 @@ module KubernetesOverlayImages
 
     def kustomization_path_label
       File.join(overlay, "kustomization.yaml")
-    end
-
-    def runtime_patch_path_label
-      File.join(overlay, "runtime-image-patch.yaml")
     end
 
     def add_error(message)
