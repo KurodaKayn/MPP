@@ -59,8 +59,13 @@ func (s *Service) GetXAccount(userID uuid.UUID) (*dto.XAccountResponse, error) {
 }
 
 func (s *Service) GetWorkspaceXAccount(userID uuid.UUID, workspaceID uuid.UUID) (*dto.XAccountResponse, error) {
+	return getCachedDashboardAccount(s, userID, workspaceID, xPlatform, func(svc *Service, workspaceID uuid.UUID) (*dto.XAccountResponse, error) {
+		return svc.computeWorkspaceXAccount(workspaceID)
+	}, validXAccountResponse)
+}
+
+func (s *Service) computeWorkspaceXAccount(workspaceID uuid.UUID) (*dto.XAccountResponse, error) {
 	var account models.PlatformAccount
-	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
 	err := s.strongReadDB().Where("workspace_id = ? AND platform = ?", workspaceID, xPlatform).Order("updated_at DESC").First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		resp := emptyXAccountResponse()
@@ -149,6 +154,7 @@ func (s *Service) UpsertWorkspaceXAccount(userID uuid.UUID, workspaceID uuid.UUI
 	if err != nil {
 		return nil, err
 	}
+	s.invalidateDashboardAccountCache(workspaceID, xPlatform)
 	return &resp, nil
 }
 
@@ -183,6 +189,7 @@ func (s *Service) TestWorkspaceXAccount(userID uuid.UUID, workspaceID uuid.UUID,
 
 	result := s.xTester.Test(context.Background(), merged.clientCredentials())
 
+	accountUpdated := false
 	if accountExists && xCredentialsMatch(savedCredentials, merged) {
 		status := models.PlatformAccountStatusFailed
 		errMessage := result.Message
@@ -223,6 +230,10 @@ func (s *Service) TestWorkspaceXAccount(userID uuid.UUID, workspaceID uuid.UUID,
 		if err := s.db.Model(&account).Updates(updates).Error; err != nil {
 			return nil, err
 		}
+		accountUpdated = true
+	}
+	if accountUpdated {
+		s.invalidateDashboardAccountCache(workspaceID, xPlatform)
 	}
 
 	return &result, nil
@@ -335,6 +346,11 @@ func accountToXResponse(account *models.PlatformAccount) (dto.XAccountResponse, 
 		AccountAuth:          xAccountAuthHintForStatus(account.Status, username),
 		PublishAccess:        xPublishAccessHintForStatus(account.Status),
 	}, nil
+}
+
+func validXAccountResponse(resp dto.XAccountResponse) bool {
+	return resp.Platform == xPlatform && resp.AuthType != "" && resp.Status != "" &&
+		resp.AccountAuth.Status != "" && resp.PublishAccess.Status != ""
 }
 
 func parseXCredentials(raw datatypes.JSON) (xCredentials, error) {

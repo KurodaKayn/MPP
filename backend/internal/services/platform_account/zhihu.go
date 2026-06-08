@@ -17,8 +17,13 @@ func (s *Service) GetZhihuAccount(userID uuid.UUID) (*dto.ZhihuAccountResponse, 
 }
 
 func (s *Service) GetWorkspaceZhihuAccount(userID uuid.UUID, workspaceID uuid.UUID) (*dto.ZhihuAccountResponse, error) {
+	return getCachedDashboardAccount(s, userID, workspaceID, zhihuPlatform, func(svc *Service, workspaceID uuid.UUID) (*dto.ZhihuAccountResponse, error) {
+		return svc.computeWorkspaceZhihuAccount(workspaceID)
+	}, validZhihuAccountResponse)
+}
+
+func (s *Service) computeWorkspaceZhihuAccount(workspaceID uuid.UUID) (*dto.ZhihuAccountResponse, error) {
 	var account models.PlatformAccount
-	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
 	err := s.strongReadDB().Where("workspace_id = ? AND platform = ?", workspaceID, zhihuPlatform).Order("updated_at DESC").First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		resp := emptyZhihuAccountResponse()
@@ -38,6 +43,10 @@ func (s *Service) GetWorkspaceZhihuAccount(userID uuid.UUID, workspaceID uuid.UU
 		UpdatedAt:     &account.UpdatedAt,
 	}
 	return &resp, nil
+}
+
+func validZhihuAccountResponse(resp dto.ZhihuAccountResponse) bool {
+	return resp.Platform == zhihuPlatform && resp.Status != ""
 }
 
 func emptyZhihuAccountResponse() dto.ZhihuAccountResponse {
