@@ -1,0 +1,79 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../browser-runtime-control
+  - ../../app-baseline
+  - ../../data-services/managed
+
+patches:
+  - path: runtime-image-patch.yaml
+  - target:
+      version: v1
+      kind: Service
+      name: postgres
+      namespace: mpp-system
+    patch: |-
+      - op: replace
+        path: /spec/externalName
+        value: postgres.production.db.example.invalid
+  - target:
+      version: v1
+      kind: Service
+      name: redis
+      namespace: mpp-system
+    patch: |-
+      - op: replace
+        path: /spec/externalName
+        value: redis.production.cache.example.invalid
+  - target:
+      group: networking.k8s.io
+      version: v1
+      kind: Ingress
+      name: mpp-public-gateway
+      namespace: mpp-system
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: mpp.example.invalid
+      - op: replace
+        path: /spec/rules/0/host
+        value: mpp.example.invalid
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: mpp-app-config
+    namespace: mpp-system
+    behavior: merge
+    literals:
+      - APP_ENV=production
+      - DB_HOST=postgres.production.db.example.invalid
+      - DB_SSLMODE=verify-full
+      - REDIS_ADDR=redis.production.cache.example.invalid:6379
+      - REDIS_TLS=true
+      - COLLAB_WEBSOCKET_URL_BASE=wss://mpp.example.invalid
+      - LLM_PROVIDER_URL=https://llm.production.example.invalid/v1
+      - LLM_MODEL=replace-with-production-model
+      - CONTENT_PIPELINE_MEDIA_ENABLED=false
+      - CONTENT_PIPELINE_DRAFTS_ENABLED=false
+
+images:
+  - name: registry.example.invalid/kurodakayn/mpp-frontend
+    newName: ghcr.io/kurodakayn/mpp-frontend
+    newTag: sha-0000000000000000000000000000000000000000
+  - name: registry.example.invalid/kurodakayn/mpp-backend
+    newName: ghcr.io/kurodakayn/mpp-backend
+    newTag: sha-0000000000000000000000000000000000000000
+  - name: registry.example.invalid/kurodakayn/mpp-browser-worker
+    newName: ghcr.io/kurodakayn/mpp-browser-worker
+    newTag: sha-0000000000000000000000000000000000000000
+  - name: registry.example.invalid/kurodakayn/mpp-ai-service
+    newName: ghcr.io/kurodakayn/mpp-ai-service
+    newTag: sha-0000000000000000000000000000000000000000
+  - name: registry.example.invalid/kurodakayn/mpp-content-pipeline-service
+    newName: ghcr.io/kurodakayn/mpp-content-pipeline-service
+    newTag: sha-0000000000000000000000000000000000000000
+  - name: registry.example.invalid/kurodakayn/mpp-collab-service
+    newName: ghcr.io/kurodakayn/mpp-collab-service
+    newTag: sha-0000000000000000000000000000000000000000
