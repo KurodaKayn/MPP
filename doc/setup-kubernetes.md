@@ -26,6 +26,7 @@ deploy/kubernetes/data-services/managed
 deploy/kubernetes/data-services/self-hosted
 deploy/kubernetes/overlays/staging-managed
 deploy/kubernetes/overlays/staging-self-hosted
+deploy/kubernetes/overlays/production-managed
 deploy/kubernetes/validation/app-baseline
 ```
 
@@ -37,6 +38,9 @@ Choose exactly one data-service mode: `managed` for production, or
 Use `overlays/staging-managed` as a renderable starter when staging should use
 managed PostgreSQL and Redis endpoints, or `overlays/staging-self-hosted` when
 staging should run PostgreSQL and Redis inside the cluster.
+Use `overlays/production-managed` as the production starter for managed
+PostgreSQL and Redis deployments that materialize `mpp-app-secrets` through an
+external secret manager or controlled bootstrap workflow.
 
 ## Required Overlays
 
@@ -84,6 +88,11 @@ browser runtime controls, and one data-service mode together. They still contain
 example image tags, public host values, provider host values, and generated
 Secret literals, so patch those inputs through your environment workflow before
 applying either overlay to a shared cluster.
+The included `deploy/kubernetes/overlays/production-managed` overlay wires the
+same baseline to managed PostgreSQL and Redis without rendering
+`mpp-app-secrets`; create that Secret through the production secret workflow
+before applying app workloads, then replace the checked-in example hosts and
+image tags.
 
 ## Images
 
@@ -176,7 +185,11 @@ into app Pods and set `DB_SSLROOTCERT` to the mounted file path. For self-hosted
 PostgreSQL, either configure TLS on the StatefulSet or patch
 `DB_SSLMODE=disable`.
 
-For managed Redis, set `REDIS_TLS=true` when the provider requires TLS.
+For managed Redis, set `REDIS_TLS=true` when the provider requires TLS and set
+`REDIS_ADDR` to the provider hostname and port, not the `redis` in-cluster
+alias, so Redis TLS certificate hostname verification succeeds. Keep the
+managed Redis ExternalName Service patched to the same provider hostname for
+tooling and non-verifying discovery paths.
 
 Schema migration remains a backend startup responsibility. Do not run database
 migrations as Kubernetes manifest side effects.
@@ -253,6 +266,12 @@ MPP_KUBERNETES_VALIDATE_DEPLOYABLE=1 \
   deploy/kubernetes/overlays/staging-self-hosted \
   /tmp/mpp-staging.yaml
 ```
+
+For `deploy/kubernetes/overlays/production-managed`, deployable validation
+rejects `.example.invalid` hosts, all-zero SHA image tags, and example model
+values. The overlay does not render `mpp-app-secrets`, so secret value
+validation belongs to the external secret manager, sealed-secret, or bootstrap
+workflow that creates the Secret.
 
 For the final environment overlay, also run an admission dry-run against the
 target cluster to catch cluster-specific admission policies, enabled API
