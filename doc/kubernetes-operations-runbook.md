@@ -1124,7 +1124,9 @@ kubectl logs -n "$MPP_APP_NS" deployment/backend --tail=100
 Promotion checklist:
 
 - Container Images workflow completed for the target Git SHA.
-- All image tags use `sha-<full-git-sha>`.
+- For production-managed releases, pin the overlay with
+  `ruby script/kubernetes/pin-overlay-images.rb --overlay deploy/kubernetes/overlays/production-managed --git-sha <full-git-sha>`.
+- All app and browser runtime image tags use `sha-<full-git-sha>`.
 - The staging overlay has run successfully with the target images.
 - Kubernetes render validation passes.
 - Smoke tests passed in staging.
