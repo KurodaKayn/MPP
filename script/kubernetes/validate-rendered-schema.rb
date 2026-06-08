@@ -25,11 +25,11 @@ command = [
   "-ignore-missing-schemas",
   "-kubernetes-version",
   kubernetes_version,
-  rendered_path,
+  "-",
 ]
 
 begin
-  stdout, stderr, status = Open3.capture3(*command)
+  stdout, stderr, status = Open3.capture3(*command, stdin_data: File.read(rendered_path))
 rescue Errno::ENOENT
   warn "kubeconform binary not found. Install kubeconform or set KUBECONFORM_BIN."
   exit 127
