@@ -19,10 +19,7 @@ module KubernetesOverlayImages
         result = Pinner.new(overlay: overlay, git_sha: SHA).pin
 
         assert result.valid?, result.errors.join("\n")
-        assert_equal [
-          File.join(overlay, "kustomization.yaml"),
-          File.join(overlay, "runtime-image-patch.yaml"),
-        ], result.updated_files
+        assert_equal [File.join(overlay, "kustomization.yaml")], result.updated_files
 
         images = load_yaml(File.join(overlay, "kustomization.yaml")).fetch("images")
         APP_IMAGE_REPOSITORIES.values.each do |repository|
@@ -31,7 +28,7 @@ module KubernetesOverlayImages
           assert_equal TAG, image["newTag"]
         end
 
-        runtime_image = runtime_image_value(File.join(overlay, "runtime-image-patch.yaml"))
+        runtime_image = runtime_image_value(File.join(overlay, "kustomization.yaml"))
         assert_equal "#{DEFAULT_REGISTRY}/#{BROWSER_RUNTIME_REPOSITORY}:#{TAG}", runtime_image
       end
     end
@@ -65,34 +62,42 @@ module KubernetesOverlayImages
       end
     end
 
-    def test_rejects_empty_runtime_patch
+    def test_rejects_missing_runtime_image_patch
       with_overlay_copy do |overlay|
-        File.write(File.join(overlay, "runtime-image-patch.yaml"), "")
+        kustomization_path = File.join(overlay, "kustomization.yaml")
+        kustomization = load_yaml(kustomization_path)
+        kustomization["patches"].reject! { |entry| entry["patch"].to_s.include?("BROWSER_RUNTIME_IMAGE") }
+        File.write(kustomization_path, YAML.dump(kustomization))
 
         result = Pinner.new(overlay: overlay, git_sha: SHA).pin
 
         refute result.valid?
-        assert_includes result.errors.join("\n"), "runtime-image-patch.yaml must set BROWSER_RUNTIME_IMAGE"
+        assert_includes result.errors.join("\n"), "kustomization.yaml must set BROWSER_RUNTIME_IMAGE"
       end
     end
 
-    def test_rolls_back_when_second_file_replace_fails
+    def test_preserves_kustomization_file_mode
       with_overlay_copy do |overlay|
         kustomization_path = File.join(overlay, "kustomization.yaml")
-        runtime_patch_path = File.join(overlay, "runtime-image-patch.yaml")
-        original_kustomization = File.read(kustomization_path)
-        original_runtime_patch = File.read(runtime_patch_path)
+        File.chmod(0o644, kustomization_path)
 
-        result = Pinner.new(
-          overlay: overlay,
-          git_sha: SHA,
-          writer: FailingSecondMoveWriter.new,
-        ).pin
+        result = Pinner.new(overlay: overlay, git_sha: SHA).pin
+
+        assert result.valid?, result.errors.join("\n")
+        assert_equal 0o644, File.stat(kustomization_path).mode & 0o777
+      end
+    end
+
+    def test_does_not_write_when_writer_reports_failure
+      with_overlay_copy do |overlay|
+        kustomization_path = File.join(overlay, "kustomization.yaml")
+        original_kustomization = File.read(kustomization_path)
+
+        result = Pinner.new(overlay: overlay, git_sha: SHA, writer: FailingWriter.new).pin
 
         refute result.valid?
         assert_includes result.errors.join("\n"), "failed to write pinned overlay images"
         assert_equal original_kustomization, File.read(kustomization_path)
-        assert_equal original_runtime_patch, File.read(runtime_patch_path)
       end
     end
 
@@ -110,7 +115,7 @@ module KubernetesOverlayImages
         assert_includes stdout, "pinned #{File.join(overlay, 'kustomization.yaml')}"
         assert_empty stderr
         assert_equal "#{DEFAULT_REGISTRY}/#{BROWSER_RUNTIME_REPOSITORY}:#{TAG}",
-                     runtime_image_value(File.join(overlay, "runtime-image-patch.yaml"))
+                     runtime_image_value(File.join(overlay, "kustomization.yaml"))
       end
     end
 
@@ -128,14 +133,9 @@ module KubernetesOverlayImages
       refute_includes stderr, "OptionParser::InvalidOption"
     end
 
-    class FailingSecondMoveWriter < AtomicYamlWriter
-      private
-
-      def move_file(source, target)
-        @move_count = @move_count.to_i + 1
-        raise Errno::EACCES, target if @move_count == 2
-
-        super
+    class FailingWriter
+      def write(_path, _document)
+        ["failed to write pinned overlay images: permission denied"]
       end
     end
 
@@ -159,7 +159,14 @@ module KubernetesOverlayImages
     end
 
     def runtime_image_value(path)
-      document = load_yaml(path)
+      kustomization = load_yaml(path)
+      patch = kustomization.fetch("patches").find { |entry| entry["patch"].to_s.include?("BROWSER_RUNTIME_IMAGE") }
+      document = YAML.safe_load(
+        patch.fetch("patch"),
+        permitted_classes: [],
+        permitted_symbols: [],
+        aliases: true,
+      )
       container = document.dig("spec", "template", "spec", "containers").find do |entry|
         entry["name"] == "browser-worker"
       end
