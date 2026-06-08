@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"time"
@@ -15,6 +16,13 @@ import (
 )
 
 const dashboardStatsCacheKey = "mpp:dashboard:stats:global:v1"
+const dashboardStatsCacheVersion = 1
+const dashboardStatsRefreshTimeout = 15 * time.Second
+
+type dashboardStatsCachePayload struct {
+	Version int                        `json:"version"`
+	Stats   dto.DashboardStatsResponse `json:"stats"`
+}
 
 func (s *Service) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
 	if scopeUserID == nil && s.canUseDashboardStatsCache() {
@@ -74,24 +82,93 @@ func (s *Service) computeStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsRespo
 
 func (s *Service) getCachedStats() (*dto.DashboardStatsResponse, error) {
 	ctx := s.requestContext()
-	if cached, err := s.cache.Get(ctx, dashboardStatsCacheKey).Result(); err == nil {
-		var stats dto.DashboardStatsResponse
-		if err := json.Unmarshal([]byte(cached), &stats); err == nil {
-			return &stats, nil
-		}
-	} else if !errors.Is(err, redis.Nil) {
-		return s.computeStats(nil)
+	if stats, hit, _ := s.cachedDashboardStats(ctx); hit {
+		return stats, nil
 	}
 
+	if s.cacheGroup == nil {
+		return s.refreshDashboardStatsCache(ctx)
+	}
+
+	resultCh := s.cacheGroup.DoChan(dashboardStatsCacheKey, func() (any, error) {
+		refreshCtx, cancel := dashboardStatsRefreshContext(ctx)
+		defer cancel()
+		refreshSvc := s.WithContext(refreshCtx)
+		if stats, hit, err := refreshSvc.cachedDashboardStats(refreshCtx); hit {
+			return stats, nil
+		} else if err != nil {
+			return refreshSvc.computeStats(nil)
+		}
+		return refreshSvc.refreshDashboardStatsCache(refreshCtx)
+	})
+
+	select {
+	case result := <-resultCh:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		if stats, ok := result.Val.(*dto.DashboardStatsResponse); ok {
+			return stats, nil
+		}
+		return s.computeStats(nil)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (s *Service) cachedDashboardStats(ctx context.Context) (*dto.DashboardStatsResponse, bool, error) {
+	cached, err := s.cache.Get(ctx, dashboardStatsCacheKey).Bytes()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	if stats, ok := decodeDashboardStatsCachePayload(cached); ok {
+		return stats, true, nil
+	}
+	return nil, false, nil
+}
+
+func decodeDashboardStatsCachePayload(cached []byte) (*dto.DashboardStatsResponse, bool) {
+	var payload dashboardStatsCachePayload
+	if err := json.Unmarshal(cached, &payload); err != nil {
+		return nil, false
+	}
+	if !dashboardStatsPayloadValid(payload) {
+		return nil, false
+	}
+	return &payload.Stats, true
+}
+
+func (s *Service) refreshDashboardStatsCache(ctx context.Context) (*dto.DashboardStatsResponse, error) {
 	stats, err := s.computeStats(nil)
 	if err != nil {
 		return nil, err
 	}
-	encoded, err := json.Marshal(stats)
+	payload := dashboardStatsCachePayload{
+		Version: dashboardStatsCacheVersion,
+		Stats:   *stats,
+	}
+	encoded, err := json.Marshal(payload)
 	if err == nil {
 		_ = s.cache.Set(ctx, dashboardStatsCacheKey, encoded, s.cacheTTL).Err()
 	}
 	return stats, nil
+}
+
+func dashboardStatsRefreshContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), dashboardStatsRefreshTimeout)
+}
+
+func dashboardStatsPayloadValid(payload dashboardStatsCachePayload) bool {
+	if payload.Version != dashboardStatsCacheVersion {
+		return false
+	}
+	return payload.Stats.TotalUsers >= 0 &&
+		payload.Stats.TotalProjects >= 0 &&
+		payload.Stats.TotalPublishedPublications >= 0 &&
+		payload.Stats.TotalFailedPublications >= 0
 }
 
 func (s *Service) GetWorkspaceStats(workspaceID uuid.UUID, scopeUserID uuid.UUID) (*dto.DashboardStatsResponse, error) {

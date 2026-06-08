@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
@@ -14,11 +15,12 @@ import (
 const dashboardStatsCacheTTL = 15 * time.Second
 
 type Service struct {
-	db       *gorm.DB
-	router   *dbrouter.Router
-	projects *projectsvc.Service
-	cache    *redis.Client
-	cacheTTL time.Duration
+	db         *gorm.DB
+	router     *dbrouter.Router
+	projects   *projectsvc.Service
+	cache      *redis.Client
+	cacheTTL   time.Duration
+	cacheGroup *singleflight.Group
 }
 
 func NewService(db *gorm.DB, projects *projectsvc.Service) *Service {
@@ -29,7 +31,12 @@ func NewServiceWithRouter(db *gorm.DB, projects *projectsvc.Service, router *dbr
 	if router == nil {
 		router = dbrouter.NewRouter(db)
 	}
-	return &Service{db: db, router: router, projects: projects}
+	return &Service{
+		db:         db,
+		router:     router,
+		projects:   projects,
+		cacheGroup: &singleflight.Group{},
+	}
 }
 
 func (s *Service) WithContext(ctx context.Context) *Service {
@@ -41,6 +48,7 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 	if s.projects != nil {
 		scoped.projects = s.projects.WithContext(ctx)
 	}
+	scoped.cacheGroup = s.cacheGroup
 	return &scoped
 }
 
@@ -50,6 +58,9 @@ func (s *Service) UseRedis(client *redis.Client) {
 	}
 	s.cache = client
 	s.cacheTTL = dashboardStatsCacheTTL
+	if s.cacheGroup == nil {
+		s.cacheGroup = &singleflight.Group{}
+	}
 }
 
 func (s *Service) eventualReadDB() *gorm.DB {
