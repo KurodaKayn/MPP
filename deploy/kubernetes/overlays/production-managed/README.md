@@ -22,7 +22,8 @@ The checked-in values are renderable placeholders only:
 Before applying this overlay to production:
 
 - Replace every `sha-0000000000000000000000000000000000000000` image tag with
-  registry-published `sha-<full-git-sha>` tags.
+  registry-published `sha-<full-git-sha>` tags:
+  `ruby script/kubernetes/pin-overlay-images.rb --overlay deploy/kubernetes/overlays/production-managed --git-sha <full-git-sha>`.
 - Replace the public host and ingress class for the target Ingress controller.
 - Create or sync the `mpp-public-tls` Secret for the production public host.
 - Replace managed PostgreSQL and Redis ExternalName targets with provider
