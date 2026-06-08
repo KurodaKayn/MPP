@@ -8,7 +8,9 @@ const traceIdHeader = "x-trace-id";
 const hopByHopHeaders = [
   "connection",
   "content-length",
+  "expect",
   "keep-alive",
+  "proxy-connection",
   "proxy-authenticate",
   "proxy-authorization",
   "te",
