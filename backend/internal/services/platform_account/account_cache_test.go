@@ -233,6 +233,75 @@ func TestDashboardAccountCacheCollapsesConcurrentMisses(t *testing.T) {
 	requireSingleAccountCacheKey(t, redisClient)
 }
 
+func TestDashboardAccountCacheCollapsesConcurrentRedisReadErrors(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+
+	redisClient, redisServer := newAccountCacheRedisClientWithServer(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	user := seedAccountCacheUser(t, db, "cache-redis-error")
+	seedAccountCacheAccount(t, db, user, "douyin", "redis-error")
+	redisServer.SetError("ERR forced")
+
+	var queryCount atomic.Int64
+	firstQuery := make(chan struct{})
+	releaseFirstQuery := make(chan struct{})
+	var closeFirstQuery sync.Once
+	const callbackName = "test:dashboard_account_redis_error_singleflight"
+	require.NoError(t, db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		count := queryCount.Add(1)
+		if count == 1 {
+			closeFirstQuery.Do(func() { close(firstQuery) })
+			<-releaseFirstQuery
+		}
+	}))
+	t.Cleanup(func() {
+		_ = db.Callback().Query().Remove(callbackName)
+	})
+
+	const callers = 8
+	start := make(chan struct{})
+	errs := make(chan error, callers)
+	usernames := make(chan string, callers)
+	var wg sync.WaitGroup
+	wg.Add(callers)
+	for range callers {
+		go func() {
+			defer wg.Done()
+			<-start
+			resp, err := s.WithContext(context.Background()).GetDouyinAccount(user.ID)
+			if err != nil {
+				errs <- err
+				return
+			}
+			usernames <- resp.Username
+		}()
+	}
+
+	close(start)
+	select {
+	case <-firstQuery:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first account query")
+	}
+	close(releaseFirstQuery)
+	wg.Wait()
+	close(errs)
+	close(usernames)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	for username := range usernames {
+		require.Equal(t, "redis-error", username)
+	}
+	require.Equal(t, int64(1), queryCount.Load())
+}
+
 func TestDashboardAccountCacheRefreshSurvivesFirstCallerCancel(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	redisClient := newAccountCacheRedisClient(t)
