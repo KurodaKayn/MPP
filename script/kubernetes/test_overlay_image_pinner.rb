@@ -46,6 +46,18 @@ module KubernetesOverlayImages
       end
     end
 
+    def test_rejects_non_production_managed_overlay
+      Dir.mktmpdir("mpp-overlay-image-pinner") do |dir|
+        overlay = File.join(dir, "staging-managed")
+        FileUtils.cp_r("deploy/kubernetes/overlays/staging-managed", overlay)
+
+        result = Pinner.new(overlay: overlay, git_sha: SHA).pin
+
+        refute result.valid?
+        assert_includes result.errors.join("\n"), "supports only the production-managed overlay"
+      end
+    end
+
     def test_rejects_missing_image_entry
       with_overlay_copy do |overlay|
         kustomization_path = File.join(overlay, "kustomization.yaml")
