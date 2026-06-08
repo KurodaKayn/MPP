@@ -50,7 +50,7 @@ configMapGenerator:
       - APP_ENV=staging
       - DB_HOST=postgres.staging.db.example.invalid
       - DB_SSLMODE=verify-full
-      - REDIS_ADDR=redis:6379
+      - REDIS_ADDR=redis.staging.cache.example.invalid:6379
       - REDIS_TLS=true
       - COLLAB_WEBSOCKET_URL_BASE=wss://mpp-managed-staging.example.invalid
       - LLM_PROVIDER_URL=https://llm.staging.example.invalid/v1
