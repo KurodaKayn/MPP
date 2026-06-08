@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/singleflight"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
@@ -24,7 +26,12 @@ type Service struct {
 	xTester         XConnectionTester
 	xOAuth2Provider XOAuth2Provider
 	xOAuth2States   XOAuth2StateStore
+	cache           *redis.Client
+	cacheTTL        time.Duration
+	cacheGroup      *singleflight.Group
 }
+
+const dashboardAccountCacheTTL = 15 * time.Second
 
 func NewService(db *gorm.DB) *Service {
 	return NewServiceWithPlatformTesters(db, WechatAPITester{}, XAPITester{})
@@ -59,6 +66,7 @@ func NewServiceWithPlatformTestersAndRouter(db *gorm.DB, tester WechatConnection
 		xTester:         xTester,
 		xOAuth2Provider: XOAuth2API{},
 		xOAuth2States:   NewMemoryXOAuth2StateStore(),
+		cacheGroup:      &singleflight.Group{},
 	}
 }
 
@@ -80,6 +88,7 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 	}
 	scoped := *s
 	scoped.db = s.db.WithContext(ctx)
+	scoped.cacheGroup = s.cacheGroup
 	return &scoped
 }
 
@@ -102,6 +111,11 @@ func (s *Service) UseRedis(client *redis.Client) {
 		return
 	}
 	s.xOAuth2States = NewRedisXOAuth2StateStore(client)
+	s.cache = client
+	s.cacheTTL = dashboardAccountCacheTTL
+	if s.cacheGroup == nil {
+		s.cacheGroup = &singleflight.Group{}
+	}
 }
 
 func (s *Service) ApplySavedCredentialsToPublication(userID uuid.UUID, pub *models.ProjectPlatformPublication) error {

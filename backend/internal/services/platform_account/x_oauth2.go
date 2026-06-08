@@ -217,6 +217,7 @@ func (s *Service) saveXOAuth2Account(userID uuid.UUID, workspaceID uuid.UUID, to
 	if err != nil {
 		return nil, err
 	}
+	s.invalidateDashboardAccountCache(workspaceID, xPlatform)
 	return &resp, nil
 }
 

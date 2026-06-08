@@ -41,8 +41,13 @@ func (s *Service) GetWechatAccount(userID uuid.UUID) (*dto.WechatAccountResponse
 }
 
 func (s *Service) GetWorkspaceWechatAccount(userID uuid.UUID, workspaceID uuid.UUID) (*dto.WechatAccountResponse, error) {
+	return getCachedDashboardAccount(s, userID, workspaceID, wechatPlatform, func(svc *Service, workspaceID uuid.UUID) (*dto.WechatAccountResponse, error) {
+		return svc.computeWorkspaceWechatAccount(workspaceID)
+	}, validWechatAccountResponse)
+}
+
+func (s *Service) computeWorkspaceWechatAccount(workspaceID uuid.UUID) (*dto.WechatAccountResponse, error) {
 	var account models.PlatformAccount
-	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
 	err := s.strongReadDB().Where("workspace_id = ? AND platform = ?", workspaceID, wechatPlatform).Order("updated_at DESC").First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		resp := emptyWechatAccountResponse()
@@ -135,6 +140,7 @@ func (s *Service) UpsertWorkspaceWechatAccount(userID uuid.UUID, workspaceID uui
 	if err != nil {
 		return nil, err
 	}
+	s.invalidateDashboardAccountCache(workspaceID, wechatPlatform)
 	return &resp, nil
 }
 
@@ -178,6 +184,7 @@ func (s *Service) TestWorkspaceWechatAccount(userID uuid.UUID, workspaceID uuid.
 
 	result := s.wechatTester.Test(appID, appSecret)
 
+	accountUpdated := false
 	if accountExists && appID == savedCredentials.AppID && appSecret == savedCredentials.AppSecret {
 		status := models.PlatformAccountStatusFailed
 		errMessage := result.Message
@@ -195,6 +202,10 @@ func (s *Service) TestWorkspaceWechatAccount(userID uuid.UUID, workspaceID uuid.
 		}).Error; err != nil {
 			return nil, err
 		}
+		accountUpdated = true
+	}
+	if accountUpdated {
+		s.invalidateDashboardAccountCache(workspaceID, wechatPlatform)
 	}
 
 	return &result, nil
@@ -267,6 +278,11 @@ func accountToWechatResponse(account *models.PlatformAccount) (dto.WechatAccount
 		IPWhitelist:   ipWhitelistHintForStatus(account.Status),
 		AccountAuth:   accountAuthHintForStatus(account.Status),
 	}, nil
+}
+
+func validWechatAccountResponse(resp dto.WechatAccountResponse) bool {
+	return resp.Platform == wechatPlatform && resp.Status != "" &&
+		resp.IPWhitelist.Status != "" && resp.AccountAuth.Status != ""
 }
 
 func parseWechatCredentials(raw datatypes.JSON) (wechatCredentials, error) {

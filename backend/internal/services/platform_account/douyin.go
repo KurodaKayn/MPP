@@ -17,8 +17,13 @@ func (s *Service) GetDouyinAccount(userID uuid.UUID) (*dto.DouyinAccountResponse
 }
 
 func (s *Service) GetWorkspaceDouyinAccount(userID uuid.UUID, workspaceID uuid.UUID) (*dto.DouyinAccountResponse, error) {
+	return getCachedDashboardAccount(s, userID, workspaceID, douyinPlatform, func(svc *Service, workspaceID uuid.UUID) (*dto.DouyinAccountResponse, error) {
+		return svc.computeWorkspaceDouyinAccount(workspaceID)
+	}, validDouyinAccountResponse)
+}
+
+func (s *Service) computeWorkspaceDouyinAccount(workspaceID uuid.UUID) (*dto.DouyinAccountResponse, error) {
 	var account models.PlatformAccount
-	workspaceID = s.WorkspaceIDForUser(userID, workspaceID)
 	err := s.strongReadDB().Where("workspace_id = ? AND platform = ?", workspaceID, douyinPlatform).Order("updated_at DESC").First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		resp := emptyDouyinAccountResponse()
@@ -38,6 +43,10 @@ func (s *Service) GetWorkspaceDouyinAccount(userID uuid.UUID, workspaceID uuid.U
 		UpdatedAt:     &account.UpdatedAt,
 	}
 	return &resp, nil
+}
+
+func validDouyinAccountResponse(resp dto.DouyinAccountResponse) bool {
+	return resp.Platform == douyinPlatform && resp.Status != ""
 }
 
 func emptyDouyinAccountResponse() dto.DouyinAccountResponse {
