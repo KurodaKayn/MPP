@@ -11,6 +11,7 @@ class ValidateRenderedManifestsTest < Minitest::Test
     "deploy/kubernetes/overlays/staging-managed",
     "deploy/kubernetes/overlays/staging-self-hosted",
   ].freeze
+  PRODUCTION_MANAGED_OVERLAY = "deploy/kubernetes/overlays/production-managed"
 
   def test_deployable_validation_rejects_checked_in_staging_examples
     STAGING_OVERLAYS.each do |overlay|
@@ -25,6 +26,97 @@ class ValidateRenderedManifestsTest < Minitest::Test
     ensure
       rendered&.unlink
     end
+  end
+
+  def test_production_managed_overlay_uses_external_secret_contract
+    rendered = render_overlay(PRODUCTION_MANAGED_OVERLAY)
+    documents = parse_documents(File.read(rendered.path))
+
+    assert_nil documents.find { |document| document["kind"] == "Secret" && document.dig("metadata", "name") == "mpp-app-secrets" }
+
+    _stdout, stderr, status = run_validator(PRODUCTION_MANAGED_OVERLAY, rendered.path)
+
+    assert status.success?, "production-managed validation failed: #{stderr}"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_production_managed_rejects_rendered_app_secret
+    rendered = mutated_render(PRODUCTION_MANAGED_OVERLAY) do |documents|
+      documents << {
+        "apiVersion" => "v1",
+        "kind" => "Secret",
+        "metadata" => {
+          "name" => "mpp-app-secrets",
+          "namespace" => "mpp-system",
+        },
+        "data" => {},
+      }
+    end
+
+    _stdout, stderr, status = run_validator(PRODUCTION_MANAGED_OVERLAY, rendered.path)
+
+    refute status.success?, "production-managed validation unexpectedly accepted a rendered app Secret"
+    assert_includes stderr, "must not render mpp-app-secrets"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_production_managed_rejects_unknown_required_app_secret_ref
+    rendered = mutated_render(PRODUCTION_MANAGED_OVERLAY) do |documents|
+      deployment = document(documents, "Deployment", "backend", "mpp-system")
+      container = deployment.dig("spec", "template", "spec", "containers").find { |entry| entry["name"] == "backend" }
+      container["env"] << {
+        "name" => "EXTRA_REQUIRED_SECRET",
+        "valueFrom" => {
+          "secretKeyRef" => {
+            "name" => "mpp-app-secrets",
+            "key" => "EXTRA_REQUIRED_SECRET",
+          },
+        },
+      }
+    end
+
+    _stdout, stderr, status = run_validator(PRODUCTION_MANAGED_OVERLAY, rendered.path)
+
+    refute status.success?, "production-managed validation unexpectedly accepted an unknown app Secret ref"
+    assert_includes stderr, "external secret contract has unexpected required refs: EXTRA_REQUIRED_SECRET"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_production_managed_rejects_required_secret_ref_from_other_secret
+    rendered = mutated_render(PRODUCTION_MANAGED_OVERLAY) do |documents|
+      deployment = document(documents, "Deployment", "backend", "mpp-system")
+      container = deployment.dig("spec", "template", "spec", "containers").find { |entry| entry["name"] == "backend" }
+      jwt_env = container["env"].find { |entry| entry["name"] == "JWT_SECRET" }
+      jwt_env.dig("valueFrom", "secretKeyRef")["name"] = "other-secret"
+    end
+
+    _stdout, stderr, status = run_validator(PRODUCTION_MANAGED_OVERLAY, rendered.path)
+
+    refute status.success?, "production-managed validation unexpectedly accepted an app Secret ref from another Secret"
+    assert_includes stderr, "external secret contract must use mpp-app-secrets for refs"
+    assert_includes stderr, "JWT_SECRET->other-secret/JWT_SECRET"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_deployable_validation_rejects_checked_in_production_managed_examples
+    rendered = render_overlay(PRODUCTION_MANAGED_OVERLAY)
+
+    _stdout, stderr, status = run_validator(
+      PRODUCTION_MANAGED_OVERLAY,
+      rendered.path,
+      { "MPP_KUBERNETES_VALIDATE_DEPLOYABLE" => "1" },
+    )
+
+    refute status.success?, "production-managed unexpectedly passed deployable validation"
+    assert_includes stderr, "must not use example.invalid"
+    assert_includes stderr, "must not use the all-zero example sha tag"
+    refute_includes stderr, "must not use an example value"
+  ensure
+    rendered&.unlink
   end
 
   def test_app_network_policy_rejects_extra_internal_sources
