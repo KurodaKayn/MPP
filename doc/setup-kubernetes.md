@@ -130,8 +130,8 @@ ruby script/kubernetes/pin-overlay-images.rb \
 ```
 
 The helper updates every app image in the overlay plus the
-`BROWSER_RUNTIME_IMAGE` patch. It defaults to `ghcr.io/kurodakayn` and can pin
-another registry namespace with `--registry <registry>/<owner>`.
+`BROWSER_RUNTIME_IMAGE` patch to the GHCR image namespace used by the repository
+image publishing workflow.
 
 Set the repository variables `FRONTEND_BASE_URL` and `BACKEND_API_BASE_URL`
 before publishing images when the frontend build should use values other than
