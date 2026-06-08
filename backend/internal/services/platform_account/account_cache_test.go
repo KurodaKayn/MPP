@@ -250,43 +250,69 @@ func TestDashboardAccountCacheCollapsesConcurrentRedisReadErrors(t *testing.T) {
 	var queryCount atomic.Int64
 	firstQuery := make(chan struct{})
 	releaseFirstQuery := make(chan struct{})
+	duplicateQuery := make(chan struct{})
 	var closeFirstQuery sync.Once
+	var closeDuplicateQuery sync.Once
 	const callbackName = "test:dashboard_account_redis_error_singleflight"
 	require.NoError(t, db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
 		count := queryCount.Add(1)
 		if count == 1 {
 			closeFirstQuery.Do(func() { close(firstQuery) })
 			<-releaseFirstQuery
+			return
 		}
+		closeDuplicateQuery.Do(func() { close(duplicateQuery) })
 	}))
 	t.Cleanup(func() {
 		_ = db.Callback().Query().Remove(callbackName)
 	})
 
-	const callers = 8
-	start := make(chan struct{})
-	errs := make(chan error, callers)
-	usernames := make(chan string, callers)
+	const waitingCallers = 7
+	errs := make(chan error, waitingCallers+1)
+	usernames := make(chan string, waitingCallers+1)
 	var wg sync.WaitGroup
-	wg.Add(callers)
-	for range callers {
-		go func() {
-			defer wg.Done()
+	wg.Go(func() {
+		resp, err := s.WithContext(context.Background()).GetDouyinAccount(user.ID)
+		if err != nil {
+			errs <- err
+			return
+		}
+		usernames <- resp.Username
+	})
+
+	select {
+	case <-firstQuery:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first account query")
+	}
+
+	start := make(chan struct{})
+	ready := make(chan struct{}, waitingCallers)
+	for range waitingCallers {
+		wg.Go(func() {
 			<-start
+			ready <- struct{}{}
 			resp, err := s.WithContext(context.Background()).GetDouyinAccount(user.ID)
 			if err != nil {
 				errs <- err
 				return
 			}
 			usernames <- resp.Username
-		}()
+		})
 	}
 
 	close(start)
+	for range waitingCallers {
+		select {
+		case <-ready:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for waiting account caller")
+		}
+	}
 	select {
-	case <-firstQuery:
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for first account query")
+	case <-duplicateQuery:
+		t.Fatal("redis read-error fallback should share the active singleflight query")
+	case <-time.After(50 * time.Millisecond):
 	}
 	close(releaseFirstQuery)
 	wg.Wait()
