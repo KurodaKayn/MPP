@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "fileutils"
+require "tempfile"
 require "yaml"
 
 module KubernetesOverlayImages
@@ -13,6 +15,57 @@ module KubernetesOverlayImages
     "registry.example.invalid/kurodakayn/mpp-collab-service" => "mpp-collab-service",
   }.freeze
   BROWSER_RUNTIME_REPOSITORY = "mpp-browser-runtime"
+
+  class AtomicYamlWriter
+    def write(updates)
+      originals = snapshot_originals(updates.keys)
+      temp_paths = write_temp_files(updates)
+      temp_paths.each { |target, source| move_file(source, target) }
+      []
+    rescue SystemCallError, IOError => error
+      restore_errors = restore_originals(originals || {})
+      ["failed to write pinned overlay images: #{error.message}", *restore_errors]
+    ensure
+      cleanup_temp_files(temp_paths || {})
+    end
+
+    private
+
+    def snapshot_originals(paths)
+      paths.to_h { |path| [path, File.binread(path)] }
+    end
+
+    def write_temp_files(updates)
+      temp_paths = {}
+      updates.each do |path, document|
+        temp = Tempfile.create(["#{File.basename(path)}.", ".tmp"], File.dirname(path))
+        temp.write(YAML.dump(document))
+        temp.close
+        temp_paths[path] = temp.path
+      end
+      temp_paths
+    rescue SystemCallError, IOError
+      cleanup_temp_files(temp_paths)
+      raise
+    end
+
+    def move_file(source, target)
+      FileUtils.mv(source, target)
+    end
+
+    def restore_originals(originals)
+      originals.filter_map do |path, content|
+        File.binwrite(path, content)
+        nil
+      rescue SystemCallError, IOError => error
+        "failed to restore #{path}: #{error.message}"
+      end
+    end
+
+    def cleanup_temp_files(temp_paths)
+      temp_paths.each_value { |path| FileUtils.rm_f(path) }
+    end
+  end
 
   class PinResult
     attr_reader :updated_files, :errors
@@ -28,10 +81,10 @@ module KubernetesOverlayImages
   end
 
   class Pinner
-    def initialize(overlay:, git_sha:, registry: DEFAULT_REGISTRY)
+    def initialize(overlay:, git_sha:, writer: AtomicYamlWriter.new)
       @overlay = overlay.to_s
       @git_sha = git_sha.to_s
-      @registry = registry.to_s.sub(%r{/+\z}, "")
+      @writer = writer
       @errors = []
     end
 
@@ -50,14 +103,18 @@ module KubernetesOverlayImages
 
       pin_app_images(kustomization)
       pin_runtime_image(runtime_patch)
-      write_yaml(kustomization_path, kustomization)
-      write_yaml(runtime_patch_path, runtime_patch)
+      writer.write(
+        kustomization_path => kustomization,
+        runtime_patch_path => runtime_patch,
+      ).each { |message| add_error(message) }
+      return result([]) unless errors.empty?
+
       result([kustomization_path, runtime_patch_path])
     end
 
     private
 
-    attr_reader :overlay, :git_sha, :registry, :errors
+    attr_reader :overlay, :git_sha, :writer, :errors
 
     def result(updated_files)
       PinResult.new(updated_files: updated_files, errors: errors)
@@ -66,7 +123,6 @@ module KubernetesOverlayImages
     def validate_inputs
       add_error("overlay must be set") if overlay.strip.empty?
       add_error("overlay directory does not exist: #{overlay}") unless File.directory?(overlay)
-      add_error("registry must be set") if registry.strip.empty?
       unless git_sha.match?(/\A[0-9a-f]{40}\z/)
         add_error("git SHA must be 40 lowercase hexadecimal characters")
       end
@@ -105,13 +161,13 @@ module KubernetesOverlayImages
       images = document["images"]
       APP_IMAGE_REPOSITORIES.each do |source_name, repository|
         image = images.find { |entry| entry["name"] == source_name }
-        image["newName"] = "#{registry}/#{repository}"
+        image["newName"] = "#{DEFAULT_REGISTRY}/#{repository}"
         image["newTag"] = image_tag
       end
     end
 
     def pin_runtime_image(document)
-      runtime_image_env(document)["value"] = "#{registry}/#{BROWSER_RUNTIME_REPOSITORY}:#{image_tag}"
+      runtime_image_env(document)["value"] = "#{DEFAULT_REGISTRY}/#{BROWSER_RUNTIME_REPOSITORY}:#{image_tag}"
     end
 
     def runtime_image_env(document)
@@ -145,10 +201,6 @@ module KubernetesOverlayImages
     rescue Psych::Exception => error
       add_error("#{path} failed to parse: #{error.message}")
       {}
-    end
-
-    def write_yaml(path, document)
-      File.write(path, YAML.dump(document))
     end
 
     def kustomization_path_label
