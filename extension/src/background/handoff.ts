@@ -3,6 +3,7 @@ import { createExecutionEvent } from "../types/events";
 import type {
   ExtensionExecutionEvent,
   ExtensionExecutionEventInput,
+  PublishExecutionStatus,
 } from "../types/events";
 import {
   HANDOFF_SCHEMA_VERSION,
@@ -29,6 +30,68 @@ const executionEventsItem = storage.defineItem<ExtensionExecutionEvent[]>(
   "session:mpp.execution_events",
   { fallback: [] },
 );
+const executionQueueItem = storage.defineItem<StoredExecutionQueue | null>(
+  "session:mpp.execution_queue",
+  { fallback: null },
+);
+
+export type ExecutionQueueTaskStatus =
+  | "queued"
+  | Extract<
+      PublishExecutionStatus,
+      | "opening_tabs"
+      | "injecting"
+      | "user_review"
+      | "submitted"
+      | "succeeded"
+      | "failed"
+      | "cancelled"
+      | "expired"
+    >;
+
+export interface StoredExecutionQueueTask {
+  platform: ExtensionPublishPlatformHandoff["platform"];
+  adapter_key: ExtensionPublishPlatformHandoff["adapter_key"];
+  status: ExecutionQueueTaskStatus;
+  tab_id?: number;
+  error_message?: string;
+  updated_at: string;
+}
+
+export interface StoredExecutionQueue {
+  execution_id: string;
+  project_id: string;
+  active_platform: ExtensionPublishPlatformHandoff["platform"] | null;
+  tasks: StoredExecutionQueueTask[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type ExecutionQueueTaskUpdate = Partial<
+  Pick<StoredExecutionQueueTask, "tab_id" | "error_message">
+> & {
+  status: ExecutionQueueTaskStatus;
+};
+
+const TERMINAL_QUEUE_TASK_STATUSES = new Set<ExecutionQueueTaskStatus>([
+  "user_review",
+  "submitted",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "expired",
+]);
+const EXECUTION_QUEUE_TASK_STATUSES = new Set<ExecutionQueueTaskStatus>([
+  "queued",
+  "opening_tabs",
+  "injecting",
+  "user_review",
+  "submitted",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "expired",
+]);
 
 interface HandoffValidationSuccess {
   ok: true;
@@ -95,6 +158,53 @@ function isExpiredTimestamp(value: string): boolean {
 
 export function isHandoffExpired(handoff: ExtensionPublishHandoff): boolean {
   return isExpiredTimestamp(handoff.expires_at);
+}
+
+function getActiveQueuePlatform(
+  tasks: StoredExecutionQueueTask[],
+): StoredExecutionQueue["active_platform"] {
+  return (
+    tasks.find(
+      (task) =>
+        task.status !== "queued" &&
+        !TERMINAL_QUEUE_TASK_STATUSES.has(task.status),
+    )?.platform ?? null
+  );
+}
+
+function createExecutionQueue(
+  handoff: ExtensionPublishHandoff,
+): StoredExecutionQueue {
+  const now = new Date().toISOString();
+
+  return {
+    execution_id: handoff.execution_id,
+    project_id: handoff.project.id,
+    active_platform: null,
+    tasks: handoff.platforms.map((platform) => ({
+      platform: platform.platform,
+      adapter_key: platform.adapter_key,
+      status: "queued",
+      updated_at: now,
+    })),
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+export function isExecutionQueueTaskStatus(
+  value: string,
+): value is ExecutionQueueTaskStatus {
+  return EXECUTION_QUEUE_TASK_STATUSES.has(value as ExecutionQueueTaskStatus);
+}
+
+export function isExecutionQueueActive(
+  queue: StoredExecutionQueue | null,
+): boolean {
+  return (
+    queue !== null &&
+    queue.tasks.some((task) => !TERMINAL_QUEUE_TASK_STATUSES.has(task.status))
+  );
 }
 
 function validateAdaptedContent(
@@ -346,10 +456,15 @@ export async function storeAcceptedHandoff(
     source_origin: sourceOrigin,
   });
   await executionEventsItem.setValue([]);
+  await executionQueueItem.setValue(createExecutionQueue(handoff));
 }
 
 export async function getCurrentHandoff(): Promise<StoredHandoff | null> {
   return currentHandoffItem.getValue();
+}
+
+export async function getExecutionQueue(): Promise<StoredExecutionQueue | null> {
+  return executionQueueItem.getValue();
 }
 
 export async function getExecutionEvents(): Promise<ExtensionExecutionEvent[]> {
@@ -372,7 +487,40 @@ export async function appendStoredExecutionEvent(
   return event;
 }
 
+export async function updateExecutionQueueTask(
+  executionId: string,
+  platform: ExtensionPublishPlatformHandoff["platform"],
+  update: ExecutionQueueTaskUpdate,
+): Promise<StoredExecutionQueue | null> {
+  const queue = await executionQueueItem.getValue();
+
+  if (!queue || queue.execution_id !== executionId) {
+    return queue;
+  }
+
+  const now = new Date().toISOString();
+  const tasks = queue.tasks.map((task) =>
+    task.platform === platform
+      ? {
+          ...task,
+          ...update,
+          updated_at: now,
+        }
+      : task,
+  );
+  const nextQueue: StoredExecutionQueue = {
+    ...queue,
+    active_platform: getActiveQueuePlatform(tasks),
+    tasks,
+    updated_at: now,
+  };
+
+  await executionQueueItem.setValue(nextQueue);
+  return nextQueue;
+}
+
 export async function clearExecutionState(): Promise<void> {
   await currentHandoffItem.setValue(null);
   await executionEventsItem.setValue([]);
+  await executionQueueItem.setValue(null);
 }

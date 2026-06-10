@@ -1,5 +1,5 @@
 import {
-  ADAPTER_SCRIPT_FILES,
+  getAdapterScriptFile,
   isCapabilityInjectUrl,
 } from "../platforms/capabilities";
 import type { ExtensionExecutionEventInput } from "../types/events";
@@ -9,7 +9,10 @@ import type {
 } from "../types/handoff";
 import type { AdapterRunMessage } from "../types/messages";
 import { createExecutionEvent } from "../types/events";
-import { appendStoredExecutionEvent } from "./handoff";
+import {
+  appendStoredExecutionEvent,
+  updateExecutionQueueTask,
+} from "./handoff";
 import { sanitizeError, sendEventCallback } from "./callback";
 
 const TAB_LOAD_TIMEOUT_MS = 45_000;
@@ -87,7 +90,7 @@ async function injectPlatformAdapter(
   tabId: number,
   platform: ExtensionPublishPlatformHandoff,
 ): Promise<void> {
-  const scriptFile = ADAPTER_SCRIPT_FILES[platform.adapter_key];
+  const scriptFile = getAdapterScriptFile(platform.adapter_key);
 
   await browser.scripting.executeScript({
     target: { tabId },
@@ -109,6 +112,9 @@ async function openAndInjectPlatform(
   handoff: ExtensionPublishHandoff,
   platform: ExtensionPublishPlatformHandoff,
 ): Promise<void> {
+  await updateExecutionQueueTask(handoff.execution_id, platform.platform, {
+    status: "opening_tabs",
+  });
   await recordAndCallbackEvent(platform, {
     platform: platform.platform,
     status: "opening_tabs",
@@ -127,9 +133,17 @@ async function openAndInjectPlatform(
     throw new Error("Platform tab did not return an id.");
   }
 
+  await updateExecutionQueueTask(handoff.execution_id, platform.platform, {
+    status: "opening_tabs",
+    tab_id: tab.id,
+  });
   await waitForTabComplete(tab.id);
   await assertInjectableTabUrl(tab.id, platform);
 
+  await updateExecutionQueueTask(handoff.execution_id, platform.platform, {
+    status: "injecting",
+    tab_id: tab.id,
+  });
   await recordAndCallbackEvent(platform, {
     platform: platform.platform,
     status: "injecting",
@@ -156,6 +170,10 @@ export async function startPublishingTabs(
     try {
       await openAndInjectPlatform(handoff, platform);
     } catch (error) {
+      await updateExecutionQueueTask(handoff.execution_id, platform.platform, {
+        status: "failed",
+        error_message: sanitizeError(error),
+      });
       await recordAndCallbackEvent(platform, {
         platform: platform.platform,
         status: "failed",

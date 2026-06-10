@@ -19,6 +19,7 @@ export default defineConfig({
       "@": path.resolve(__dirname, "."),
       "~": path.resolve(__dirname, "."),
       "~~": path.resolve(__dirname, "."),
+      "#imports": path.resolve(__dirname, "src/test/wxt-imports.ts"),
     },
   },
 });
