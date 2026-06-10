@@ -341,7 +341,9 @@ describe("useContentPageController", () => {
     expect(mocks.toastSuccess).toHaveBeenCalledWith("project.syncSuccess", {
       description: "project.syncDesc",
     });
-    expect(mocks.replace).toHaveBeenCalledWith("/dashboard/content/project-1");
+    expect(mocks.replace).toHaveBeenCalledWith(
+      "/en/dashboard/content?projectId=project-1",
+    );
 
     view.unmount();
   });
@@ -462,7 +464,9 @@ describe("useContentPageController", () => {
     expect(mocks.syncProjectPrepublish).toHaveBeenCalledWith("project-1", {
       platforms: ["wechat"],
     });
-    expect(mocks.replace).toHaveBeenCalledWith("/dashboard/content/project-1");
+    expect(mocks.replace).toHaveBeenCalledWith(
+      "/en/dashboard/content?projectId=project-1",
+    );
 
     view.unmount();
   });
