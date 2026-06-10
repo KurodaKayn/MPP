@@ -372,6 +372,146 @@ func TestRecordExtensionEventAcceptsKnownTokenAndDeduplicatesEventID(t *testing.
 	assert.Contains(t, string(events[0].Metadata), "DYNAMIC_DOUYIN")
 }
 
+func TestRecordExtensionEventMarksXPublicationReadyForUserReview(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "X post",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		DraftStatus:    models.PublicationDraftStatusReady,
+		ReviewStatus:   models.PublicationReviewStatusDraft,
+		ErrorMessage:   "old error",
+		AdaptedContent: datatypes.JSON(`{"format":"text","text":"ready text"}`),
+	}).Error)
+
+	handoff, err := s.CreateExtensionHandoff(user.ID, dto.CreateExtensionHandoffRequest{
+		ProjectID: project.ID,
+		Platforms: []string{"x"},
+	}, "https://mpp.example.com/api/user/dashboard/extension/events")
+	require.NoError(t, err)
+
+	resp, err := s.RecordExtensionEvent(dto.ExtensionEventCallbackRequest{
+		Token:      handoff.Platforms[0].Callback.Token,
+		EventID:    "x-user-review-1",
+		Platform:   "x",
+		Status:     "user_review",
+		Message:    "Draft prepared",
+		PublishURL: "https://x.com/compose/post",
+	})
+
+	require.NoError(t, err)
+	assert.False(t, resp.Duplicate)
+	var publication models.ProjectPlatformPublication
+	require.NoError(t, db.First(&publication, "project_id = ? AND platform = ?", project.ID, "x").Error)
+	assert.Equal(t, models.PublicationStatusAdapted, publication.Status)
+	assert.Equal(t, models.PublicationDraftStatusReady, publication.DraftStatus)
+	assert.Equal(t, models.PublicationReviewStatusReviewing, publication.ReviewStatus)
+	assert.Empty(t, publication.ErrorMessage)
+	assert.Equal(t, "https://x.com/compose/post", publication.PublishURL)
+}
+
+func TestRecordExtensionEventMarksXPublicationFailedWithMessage(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "X post",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		DraftStatus:    models.PublicationDraftStatusReady,
+		ReviewStatus:   models.PublicationReviewStatusDraft,
+		AdaptedContent: datatypes.JSON(`{"format":"text","text":"ready text"}`),
+	}).Error)
+
+	handoff, err := s.CreateExtensionHandoff(user.ID, dto.CreateExtensionHandoffRequest{
+		ProjectID: project.ID,
+		Platforms: []string{"x"},
+	}, "https://mpp.example.com/api/user/dashboard/extension/events")
+	require.NoError(t, err)
+
+	resp, err := s.RecordExtensionEvent(dto.ExtensionEventCallbackRequest{
+		Token:        handoff.Platforms[0].Callback.Token,
+		EventID:      "x-failed-1",
+		Platform:     "x",
+		Status:       "failed",
+		Message:      "Could not find composer.",
+		ErrorMessage: "Composer missing",
+	})
+
+	require.NoError(t, err)
+	assert.False(t, resp.Duplicate)
+	var publication models.ProjectPlatformPublication
+	require.NoError(t, db.First(&publication, "project_id = ? AND platform = ?", project.ID, "x").Error)
+	assert.Equal(t, models.PublicationStatusFailed, publication.Status)
+	assert.Equal(t, "Composer missing", publication.ErrorMessage)
+	assert.Equal(t, 1, publication.RetryCount)
+}
+
+func TestRecordExtensionEventDoesNotApplyDuplicatePublicationUpdate(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "X post",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: datatypes.JSON(`{"format":"text","text":"ready text"}`),
+	}).Error)
+
+	handoff, err := s.CreateExtensionHandoff(user.ID, dto.CreateExtensionHandoffRequest{
+		ProjectID: project.ID,
+		Platforms: []string{"x"},
+	}, "https://mpp.example.com/api/user/dashboard/extension/events")
+	require.NoError(t, err)
+	req := dto.ExtensionEventCallbackRequest{
+		Token:        handoff.Platforms[0].Callback.Token,
+		EventID:      "x-failed-duplicate",
+		Platform:     "x",
+		Status:       "failed",
+		ErrorMessage: "Composer missing",
+	}
+
+	first, err := s.RecordExtensionEvent(req)
+	require.NoError(t, err)
+	assert.False(t, first.Duplicate)
+	second, err := s.RecordExtensionEvent(req)
+	require.NoError(t, err)
+	assert.True(t, second.Duplicate)
+
+	var publication models.ProjectPlatformPublication
+	require.NoError(t, db.First(&publication, "project_id = ? AND platform = ?", project.ID, "x").Error)
+	assert.Equal(t, 1, publication.RetryCount)
+}
+
 func TestRecordExtensionEventRejectsUnknownToken(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)

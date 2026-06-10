@@ -13,6 +13,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
+	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 )
 
 const (
@@ -245,7 +246,7 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 		metadata = datatypes.JSON(payload)
 	}
 
-	if err := s.db.Create(&models.ExtensionExecutionEvent{
+	event := models.ExtensionExecutionEvent{
 		CallbackTokenID: token.ID,
 		ExecutionID:     token.ExecutionID,
 		ProjectID:       token.ProjectID,
@@ -258,11 +259,72 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 		PublishURL:      strings.TrimSpace(req.PublishURL),
 		ErrorMessage:    strings.TrimSpace(req.ErrorMessage),
 		Metadata:        metadata,
-	}).Error; err != nil {
+	}
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&event).Error; err != nil {
+			return err
+		}
+		return applyExtensionPublicationEvent(tx, token, event)
+	}); err != nil {
 		return nil, err
 	}
 
 	return &dto.ExtensionEventCallbackResponse{Accepted: true, Duplicate: false}, nil
+}
+
+func applyExtensionPublicationEvent(tx *gorm.DB, token models.ExtensionCallbackToken, event models.ExtensionExecutionEvent) error {
+	updates := extensionPublicationUpdatesForEvent(event)
+	if len(updates) == 0 {
+		return nil
+	}
+
+	return tx.Model(&models.ProjectPlatformPublication{}).
+		Where("project_id = ? AND platform = ?", token.ProjectID, token.Platform).
+		Updates(updates).Error
+}
+
+func extensionPublicationUpdatesForEvent(event models.ExtensionExecutionEvent) map[string]any {
+	switch event.Status {
+	case "user_review":
+		updates := map[string]any{
+			"status":        models.PublicationStatusAdapted,
+			"draft_status":  models.PublicationDraftStatusReady,
+			"review_status": models.PublicationReviewStatusReviewing,
+			"error_message": "",
+		}
+		addOptionalExtensionPublicationRefs(updates, event)
+		return updates
+	case "failed":
+		message := extensionEventErrorMessage(event)
+		updates := map[string]any{
+			"status":        models.PublicationStatusFailed,
+			"error_message": publishsvc.SanitizeUserFacingErrorMessage(message),
+			"retry_count":   gorm.Expr("retry_count + ?", 1),
+		}
+		addOptionalExtensionPublicationRefs(updates, event)
+		return updates
+	default:
+		return nil
+	}
+}
+
+func addOptionalExtensionPublicationRefs(updates map[string]any, event models.ExtensionExecutionEvent) {
+	if event.RemoteID != "" {
+		updates["remote_id"] = event.RemoteID
+	}
+	if event.PublishURL != "" {
+		updates["publish_url"] = event.PublishURL
+	}
+}
+
+func extensionEventErrorMessage(event models.ExtensionExecutionEvent) string {
+	if event.ErrorMessage != "" {
+		return event.ErrorMessage
+	}
+	if event.Message != "" {
+		return event.Message
+	}
+	return "extension adapter failed"
 }
 
 func normalizeExtensionHandoffPlatforms(input []string) ([]string, error) {
