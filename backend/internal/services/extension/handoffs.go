@@ -16,14 +16,32 @@ import (
 )
 
 const (
-	extensionDouyinAdapterKey     = "DYNAMIC_DOUYIN"
-	extensionArticleContentKind   = "article"
 	extensionPreviewLimit         = 80
 	extensionHandoffSchemaVersion = 1
 	extensionHandoffType          = "mpp.extension_publish_handoff"
-	extensionDouyinInjectURL      = "https://creator.douyin.com/creator-micro/content/upload?default-tab=5"
 	extensionHandoffTTL           = 10 * time.Minute
 )
+
+type extensionPlatformConfig struct {
+	AdapterKey  string
+	InjectURL   string
+	ContentKind string
+}
+
+var extensionPlatformConfigs = map[string]extensionPlatformConfig{
+	"douyin": {
+		AdapterKey:  "DYNAMIC_DOUYIN",
+		InjectURL:   "https://creator.douyin.com/creator-micro/content/upload?default-tab=5",
+		ContentKind: "article",
+	},
+	"x": {
+		AdapterKey:  "POST_X",
+		InjectURL:   "https://x.com/compose/post",
+		ContentKind: "dynamic_post",
+	},
+}
+
+var extensionPlatformKeys = []string{"douyin", "x"}
 
 func (s *Service) GetExtensionSession(userID uuid.UUID) (*dto.ExtensionSessionResponse, error) {
 	var user models.User
@@ -43,9 +61,10 @@ func (s *Service) GetExtensionSession(userID uuid.UUID) (*dto.ExtensionSessionRe
 func (s *Service) ListExtensionPrepublish(userID uuid.UUID) (*dto.ExtensionPrepublishResponse, error) {
 	var projects []models.Project
 	if err := s.db.
-		Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id AND ppp.platform = ?", "douyin").
+		Distinct("projects.*").
+		Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id AND ppp.platform IN ?", extensionPlatformKeys).
 		Where("projects.user_id = ?", userID).
-		Preload("Publications", "platform = ?", "douyin").
+		Preload("Publications", "platform IN ?", extensionPlatformKeys).
 		Order("projects.updated_at desc").
 		Find(&projects).Error; err != nil {
 		return nil, err
@@ -73,11 +92,13 @@ func (s *Service) ListExtensionPrepublish(userID uuid.UUID) (*dto.ExtensionPrepu
 }
 
 func extensionPrepublishPlatformFromPublication(publication models.ProjectPlatformPublication) dto.ExtensionPrepublishPlatform {
+	config := extensionPlatformConfigs[publication.Platform]
+
 	return dto.ExtensionPrepublishPlatform{
 		PublicationID: publication.ID,
 		Platform:      publication.Platform,
-		AdapterKey:    extensionDouyinAdapterKey,
-		ContentKind:   extensionArticleContentKind,
+		AdapterKey:    config.AdapterKey,
+		ContentKind:   config.ContentKind,
 		Status:        publication.Status,
 		Enabled:       publication.Enabled,
 		Preview:       extensionPrepublishPreview(publication.AdaptedContent),
@@ -126,6 +147,7 @@ func (s *Service) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensi
 	handoffPlatforms := make([]dto.ExtensionHandoffPlatform, 0, len(platforms))
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		for _, platform := range platforms {
+			config := extensionPlatformConfigs[platform]
 			var publication models.ProjectPlatformPublication
 			if err := tx.Where("project_id = ? AND platform = ?", project.ID, platform).First(&publication).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -153,9 +175,9 @@ func (s *Service) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensi
 			}
 			handoffPlatforms = append(handoffPlatforms, dto.ExtensionHandoffPlatform{
 				Platform:       platform,
-				AdapterKey:     extensionDouyinAdapterKey,
-				InjectURL:      extensionDouyinInjectURL,
-				ContentKind:    extensionArticleContentKind,
+				AdapterKey:     config.AdapterKey,
+				InjectURL:      config.InjectURL,
+				ContentKind:    config.ContentKind,
 				AutoPublish:    false,
 				RequiresReview: true,
 				AdaptedContent: adaptedContent,
@@ -251,7 +273,7 @@ func normalizeExtensionHandoffPlatforms(input []string) ([]string, error) {
 		if platform == "" {
 			continue
 		}
-		if platform != "douyin" {
+		if _, ok := extensionPlatformConfigs[platform]; !ok {
 			return nil, ErrInvalidProject
 		}
 		if _, ok := seen[platform]; ok {

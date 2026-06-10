@@ -133,6 +133,39 @@ func TestListExtensionPrepublishReturnsCurrentUserDouyinDrafts(t *testing.T) {
 	assert.Equal(t, strings.Repeat("a", 80), resp.Items[1].Platforms[0].Preview)
 }
 
+func TestListExtensionPrepublishReturnsXDrafts(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "X post",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: datatypes.JSON(`{"format":"text","text":"x draft"}`),
+	}).Error)
+
+	resp, err := s.ListExtensionPrepublish(user.ID)
+
+	require.NoError(t, err)
+	require.Len(t, resp.Items, 1)
+	assert.Equal(t, project.ID, resp.Items[0].ProjectID)
+	require.Len(t, resp.Items[0].Platforms, 1)
+	platform := resp.Items[0].Platforms[0]
+	assert.Equal(t, "x", platform.Platform)
+	assert.Equal(t, "POST_X", platform.AdapterKey)
+	assert.Equal(t, "dynamic_post", platform.ContentKind)
+	assert.Equal(t, "x draft", platform.Preview)
+}
+
 func TestCreateExtensionHandoffReturnsDouyinArticleHandoff(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
@@ -189,6 +222,96 @@ func TestCreateExtensionHandoffReturnsDouyinArticleHandoff(t *testing.T) {
 	assert.Equal(t, user.ID, token.UserID)
 	assert.Equal(t, "douyin", token.Platform)
 	assert.WithinDuration(t, handoff.ExpiresAt, token.ExpiresAt, time.Second)
+}
+
+func TestCreateExtensionHandoffReturnsXPostHandoff(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "X post",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: datatypes.JSON(`{"schema_version":1,"format":"text","text":"x ready text"}`),
+	}).Error)
+
+	handoff, err := s.CreateExtensionHandoff(user.ID, dto.CreateExtensionHandoffRequest{
+		ProjectID: project.ID,
+		Platforms: []string{"x"},
+	}, "https://mpp.example.com/api/user/dashboard/extension/events")
+
+	require.NoError(t, err)
+	require.Len(t, handoff.Platforms, 1)
+	platform := handoff.Platforms[0]
+	assert.Equal(t, "x", platform.Platform)
+	assert.Equal(t, "POST_X", platform.AdapterKey)
+	assert.Equal(t, "https://x.com/compose/post", platform.InjectURL)
+	assert.Equal(t, "dynamic_post", platform.ContentKind)
+	assert.False(t, platform.AutoPublish)
+	assert.True(t, platform.RequiresReview)
+	assert.Equal(t, "text", platform.AdaptedContent["format"])
+	assert.Equal(t, "x ready text", platform.AdaptedContent["text"])
+
+	var token models.ExtensionCallbackToken
+	require.NoError(t, db.First(&token, "token = ?", platform.Callback.Token).Error)
+	assert.Equal(t, handoff.ExecutionID, token.ExecutionID)
+	assert.Equal(t, "x", token.Platform)
+}
+
+func TestCreateExtensionHandoffReturnsMultiplePlatformHandoff(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Multi platform post",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "douyin",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: datatypes.JSON(`{"format":"text","text":"douyin ready"}`),
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "x",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: datatypes.JSON(`{"format":"text","text":"x ready"}`),
+	}).Error)
+
+	handoff, err := s.CreateExtensionHandoff(user.ID, dto.CreateExtensionHandoffRequest{
+		ProjectID: project.ID,
+		Platforms: []string{"douyin", "x"},
+	}, "https://mpp.example.com/api/user/dashboard/extension/events")
+
+	require.NoError(t, err)
+	require.Len(t, handoff.Platforms, 2)
+	assert.Equal(t, "douyin", handoff.Platforms[0].Platform)
+	assert.Equal(t, "DYNAMIC_DOUYIN", handoff.Platforms[0].AdapterKey)
+	assert.Equal(t, "x", handoff.Platforms[1].Platform)
+	assert.Equal(t, "POST_X", handoff.Platforms[1].AdapterKey)
+	assert.NotEqual(t, handoff.Platforms[0].Callback.Token, handoff.Platforms[1].Callback.Token)
+
+	var tokenCount int64
+	require.NoError(t, db.Model(&models.ExtensionCallbackToken{}).
+		Where("execution_id = ?", handoff.ExecutionID).
+		Count(&tokenCount).Error)
+	assert.Equal(t, int64(2), tokenCount)
 }
 
 func TestRecordExtensionEventAcceptsKnownTokenAndDeduplicatesEventID(t *testing.T) {
@@ -380,4 +503,25 @@ func TestCreateExtensionHandoffRejectsMissingAdaptedText(t *testing.T) {
 	}, "https://mpp.example.com/api/user/dashboard/extension/events")
 
 	assert.ErrorIs(t, err, services.ErrPublicationRequiresSync)
+}
+
+func TestCreateExtensionHandoffRejectsUnsupportedPlatform(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Unsupported platform",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+
+	_, err := s.CreateExtensionHandoff(user.ID, dto.CreateExtensionHandoffRequest{
+		ProjectID: project.ID,
+		Platforms: []string{"wechat"},
+	}, "https://mpp.example.com/api/user/dashboard/extension/events")
+
+	assert.ErrorIs(t, err, services.ErrInvalidProject)
 }
