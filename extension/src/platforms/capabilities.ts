@@ -51,17 +51,40 @@ export const PLATFORM_CAPABILITIES = [
     requires_review: true,
     auto_publish_allowed: false,
   },
+  {
+    platform: "x",
+    supported_modes: ["extension"],
+    preferred_mode: "extension",
+    adapter_key: "POST_X",
+    inject_url: "https://x.com/compose/post",
+    content_kinds: ["dynamic_post"],
+    target_formats: ["text"],
+    requires_review: true,
+    auto_publish_allowed: false,
+  },
 ] satisfies PlatformCapability[];
 
-export const ADAPTER_SCRIPT_FILES: Record<AdapterKey, ScriptPublicPath> = {
+export const ADAPTER_SCRIPT_FILES: Partial<
+  Record<AdapterKey, ScriptPublicPath>
+> = {
   ARTICLE_ZHIHU: "/content-scripts/zhihu-article.js",
   NOTE_XIAOHONGSHU: "/content-scripts/xiaohongshu-note.js",
   DYNAMIC_DOUYIN: "/content-scripts/douyin-dynamic.js",
   DYNAMIC_BILIBILI: "/content-scripts/bilibili-dynamic.js",
-};
+} satisfies Partial<Record<AdapterKey, ScriptPublicPath>>;
 
 export function isSupportedAdapterKey(value: string): value is AdapterKey {
-  return Object.hasOwn(ADAPTER_SCRIPT_FILES, value);
+  return PLATFORM_CAPABILITIES.some((item) => item.adapter_key === value);
+}
+
+export function getAdapterScriptFile(adapterKey: AdapterKey): ScriptPublicPath {
+  const scriptFile = ADAPTER_SCRIPT_FILES[adapterKey];
+
+  if (!scriptFile) {
+    throw new Error(`Adapter script is not available for ${adapterKey}.`);
+  }
+
+  return scriptFile;
 }
 
 export function getCapabilityByAdapterKey(

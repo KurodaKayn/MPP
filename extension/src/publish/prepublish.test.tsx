@@ -65,6 +65,63 @@ function createPrepublishResponse(): ExtensionPrepublishResponse {
   };
 }
 
+function createXPrepublishResponse(): ExtensionPrepublishResponse {
+  return {
+    items: [
+      {
+        project_id: "project-x",
+        title: "X draft",
+        status: "ready",
+        updated_at: "2026-06-03T12:00:00Z",
+        platforms: [
+          {
+            publication_id: "publication-x",
+            platform: "x",
+            adapter_key: "POST_X",
+            content_kind: "dynamic_post",
+            status: "adapted",
+            enabled: true,
+            preview: "X draft preview",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function createDouyinAndXPrepublishResponse(): ExtensionPrepublishResponse {
+  return {
+    items: [
+      {
+        project_id: "project-multi",
+        title: "Multi platform draft",
+        status: "ready",
+        updated_at: "2026-06-03T12:30:00Z",
+        platforms: [
+          {
+            publication_id: "publication-douyin",
+            platform: "douyin",
+            adapter_key: "DYNAMIC_DOUYIN",
+            content_kind: "article",
+            status: "adapted",
+            enabled: true,
+            preview: "Douyin draft preview",
+          },
+          {
+            publication_id: "publication-x",
+            platform: "x",
+            adapter_key: "POST_X",
+            content_kind: "dynamic_post",
+            status: "adapted",
+            enabled: true,
+            preview: "X draft preview",
+          },
+        ],
+      },
+    ],
+  };
+}
+
 describe("getPrepublishViewState", () => {
   it("maps backend prepublish items to loaded state", async () => {
     await expect(
@@ -154,7 +211,7 @@ describe("PrepublishWorkbenchCard", () => {
       screen.getByRole("button", { name: /wechat coming soon/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /x coming soon/i }),
+      screen.getByRole("button", { name: /x unavailable/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /zhihu coming soon/i }),
@@ -237,6 +294,62 @@ describe("PrepublishWorkbenchCard", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("starts handoff for X when the selected project has an enabled X draft", () => {
+    const startHandoff = vi.fn();
+
+    render(
+      <PrepublishWorkbenchCard
+        state={{
+          status: "loaded",
+          items: createXPrepublishResponse().items,
+        }}
+        selectedProjectId="project-x"
+        selectedPlatforms={new Set<PlatformUiKey>(["x"])}
+        onProjectSelect={vi.fn()}
+        onPlatformToggle={vi.fn()}
+        onRetry={vi.fn()}
+        onStartHandoff={startHandoff}
+        startingHandoff={false}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /x ready/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /start publishing/i }));
+
+    expect(startHandoff).toHaveBeenCalledWith("project-x", ["x"]);
+  });
+
+  it("starts handoff for Douyin and X together when both are selected", () => {
+    const startHandoff = vi.fn();
+
+    render(
+      <PrepublishWorkbenchCard
+        state={{
+          status: "loaded",
+          items: createDouyinAndXPrepublishResponse().items,
+        }}
+        selectedProjectId="project-multi"
+        selectedPlatforms={new Set<PlatformUiKey>(["douyin", "x"])}
+        onProjectSelect={vi.fn()}
+        onPlatformToggle={vi.fn()}
+        onRetry={vi.fn()}
+        onStartHandoff={startHandoff}
+        startingHandoff={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /start publishing/i }));
+
+    expect(startHandoff).toHaveBeenCalledWith("project-multi", ["douyin", "x"]);
+    expect(
+      screen.queryByText(/Only .* will start now/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps UI-only platform selections out of handoff", () => {
     const startHandoff = vi.fn();
 
@@ -286,7 +399,7 @@ describe("PrepublishWorkbenchCard", () => {
       screen.queryByText("0 ready platforms selected"),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText("Select Douyin to start publishing."),
+      screen.getByText("Select Douyin or X to start publishing."),
     ).toBeInTheDocument();
   });
 
@@ -311,7 +424,7 @@ describe("PrepublishWorkbenchCard", () => {
       screen.getByRole("button", { name: /start publishing/i }),
     ).toBeDisabled();
     expect(
-      screen.getByText("Select Douyin to start publishing."),
+      screen.getByText("Select Douyin or X to start publishing."),
     ).toBeInTheDocument();
   });
 

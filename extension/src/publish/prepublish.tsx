@@ -521,7 +521,7 @@ function LoadedWorkbench({
         ) : null}
         {!selectedPlatformList.length ? (
           <p className="mt-3 text-sm text-muted-foreground">
-            Select Douyin to start publishing.
+            Select Douyin or X to start publishing.
           </p>
         ) : null}
         <div className="mt-3 flex justify-end">

@@ -1,5 +1,5 @@
 import {
-  ADAPTER_SCRIPT_FILES,
+  getAdapterScriptFile,
   isCapabilityInjectUrl,
 } from "../platforms/capabilities";
 import type { ExtensionExecutionEventInput } from "../types/events";
@@ -87,7 +87,7 @@ async function injectPlatformAdapter(
   tabId: number,
   platform: ExtensionPublishPlatformHandoff,
 ): Promise<void> {
-  const scriptFile = ADAPTER_SCRIPT_FILES[platform.adapter_key];
+  const scriptFile = getAdapterScriptFile(platform.adapter_key);
 
   await browser.scripting.executeScript({
     target: { tabId },

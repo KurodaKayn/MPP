@@ -1,4 +1,4 @@
-export type PlatformKey = "zhihu" | "xiaohongshu" | "douyin" | "bilibili";
+export type PlatformKey = "zhihu" | "xiaohongshu" | "douyin" | "bilibili" | "x";
 
 export type PublishingMode = "remote" | "manual" | "extension";
 
@@ -6,7 +6,8 @@ export type AdapterKey =
   | "ARTICLE_ZHIHU"
   | "NOTE_XIAOHONGSHU"
   | "DYNAMIC_DOUYIN"
-  | "DYNAMIC_BILIBILI";
+  | "DYNAMIC_BILIBILI"
+  | "POST_X";
 
 export type ContentKind =
   | "article"
