@@ -70,17 +70,22 @@ MPP uses a separate FastAPI AI service with streaming responses and a proposal-c
 
 For platforms without stable public publishing APIs, MPP uses a backend-controlled virtualized browser runtime instead of browser plugins. This solves Zhihu- and Douyin-style publishing by keeping draft filling, media upload, and publish actions in an auditable server-side flow rather than scattering automation scripts across user browsers.
 
-## Architecture
+## For Developer
 
-![MPP Overall Architecture](./doc/assets/module-architecture/project-overall-architecture.png)
-
-For detailed design notes for each module, see [module-design.md](doc/module-design.md).
-For a module-by-module technology stack breakdown, see [tech-stack.md](doc/tech-stack.md).
-
-## Quick Start
+### Quick Start
 
 Choose the setup path that matches how you want to run MPP:
 
 - [Production setup](doc/setup.md)
 - [Docker development setup](doc/setup-dev.md)
 - [Standalone local development setup](doc/setup-standalone.md)
+
+### Architecture
+
+![MPP Overall Architecture](./doc/assets/module-architecture/project-overall-architecture.png)
+
+### Moudle Design
+
+For detailed design notes for each module, see [module-design.md](doc/module-design.md).
+For a module-by-module technology stack breakdown, see [tech-stack.md](doc/tech-stack.md).
+For module external interfaces and runtime parameters, see [module-interface.md](doc/module-interface.md)
