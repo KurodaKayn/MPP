@@ -92,7 +92,7 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 		AvatarURL:      captureResp.Account.AvatarURL,
 		PlatformUserID: captureResp.Account.PlatformUserID,
 	}
-	workspaceID := uuid.Nil
+	workspaceID := models.PersonalWorkspaceID(userID)
 	if session.WorkspaceID != nil {
 		workspaceID = *session.WorkspaceID
 	}
@@ -118,6 +118,7 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 		})
 		return nil, fmt.Errorf("failed to save cookies: %w", err)
 	}
+	s.invalidateDashboardAccountCache(ctx, workspaceID, session.Platform)
 
 	// 4. Finalize session
 	now := time.Now()
@@ -160,4 +161,11 @@ func (s *BrowserSessionService) CancelSession(ctx context.Context, userID uuid.U
 		"status":             models.BrowserSessionStatusExpired,
 		"connect_token_hash": "",
 	}).Error
+}
+
+func (s *BrowserSessionService) invalidateDashboardAccountCache(ctx context.Context, workspaceID uuid.UUID, platform string) {
+	if s.dashboardAccountCacheInvalidator == nil || workspaceID == uuid.Nil {
+		return
+	}
+	s.dashboardAccountCacheInvalidator.InvalidateDashboardAccountCache(ctx, workspaceID, platform)
 }

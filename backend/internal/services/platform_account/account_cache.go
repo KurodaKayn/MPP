@@ -118,6 +118,16 @@ func (s *Service) invalidateDashboardAccountCache(workspaceID uuid.UUID, platfor
 	_ = s.cache.Del(ctx, dashboardAccountCacheKey(workspaceID, platform)).Err()
 }
 
+func (s *Service) InvalidateDashboardAccountCache(ctx context.Context, workspaceID uuid.UUID, platform string) {
+	if s == nil {
+		return
+	}
+	if ctx != nil {
+		s = s.WithContext(ctx)
+	}
+	s.invalidateDashboardAccountCache(workspaceID, platform)
+}
+
 func (s *Service) canUseDashboardAccountCache() bool {
 	if s.cache == nil || s.cacheTTL <= 0 {
 		return false
