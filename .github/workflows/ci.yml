@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci-result:
-    name: CI result
+  frontend:
+    name: Frontend
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -22,95 +22,259 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect changed areas
-        id: changes
-        shell: bash
+      - name: Select area
+        id: select
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash script/ci/detect-changes.sh "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
+        run: bash script/ci/select-area.sh frontend "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
 
       - name: Setup pnpm
-        if: steps.changes.outputs.node == 'true'
+        if: steps.select.outputs.selected == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 11.5.0
           run_install: false
 
       - name: Setup Node.js
-        if: steps.changes.outputs.node == 'true'
+        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: |
-            frontend/pnpm-lock.yaml
-            extension/pnpm-lock.yaml
-            collab-service/pnpm-lock.yaml
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Run frontend CI
+        if: steps.select.outputs.selected == 'true'
+        run: bash script/ci/frontend.sh
+
+  extension:
+    name: Extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select area
+        id: select
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash script/ci/select-area.sh extension "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
+
+      - name: Setup pnpm
+        if: steps.select.outputs.selected == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.0
+          run_install: false
+
+      - name: Setup Node.js
+        if: steps.select.outputs.selected == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: extension/pnpm-lock.yaml
+
+      - name: Run extension CI
+        if: steps.select.outputs.selected == 'true'
+        run: bash script/ci/extension.sh
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select area
+        id: select
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash script/ci/select-area.sh backend "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
 
       - name: Setup Go
-        if: steps.changes.outputs.go == 'true'
+        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
-          cache-dependency-path: |
-            backend/go.sum
-            browser-worker/go.sum
-            script/kubernetes/smoke-test/go.mod
+          cache-dependency-path: backend/go.sum
 
       - name: Install golangci-lint
-        if: steps.changes.outputs.backend == 'true' || steps.changes.outputs.browser_worker == 'true'
+        if: steps.select.outputs.selected == 'true'
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 
+      - name: Run backend CI
+        if: steps.select.outputs.selected == 'true'
+        run: bash script/ci/backend.sh
+
+  browser_worker:
+    name: Browser worker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select area
+        id: select
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash script/ci/select-area.sh browser_worker "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
+
+      - name: Setup Go
+        if: steps.select.outputs.selected == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: browser-worker/go.mod
+          cache-dependency-path: browser-worker/go.sum
+
+      - name: Install golangci-lint
+        if: steps.select.outputs.selected == 'true'
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+
+      - name: Run browser worker CI
+        if: steps.select.outputs.selected == 'true'
+        run: bash script/ci/browser-worker.sh
+
+  ai_service:
+    name: AI service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select area
+        id: select
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash script/ci/select-area.sh ai_service "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
+
       - name: Setup Python
-        if: steps.changes.outputs.ai_service == 'true'
+        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-python@v5
         with:
           python-version-file: ai-service/.python-version
 
       - name: Setup uv
-        if: steps.changes.outputs.ai_service == 'true'
+        if: steps.select.outputs.selected == 'true'
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           cache-dependency-glob: ai-service/uv.lock
 
+      - name: Run AI service CI
+        if: steps.select.outputs.selected == 'true'
+        run: bash script/ci/ai-service.sh
+
+  collab_service:
+    name: Collab service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select area
+        id: select
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash script/ci/select-area.sh collab_service "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
+
+      - name: Setup pnpm
+        if: steps.select.outputs.selected == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.0
+          run_install: false
+
+      - name: Setup Node.js
+        if: steps.select.outputs.selected == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: collab-service/pnpm-lock.yaml
+
+      - name: Run collab service CI
+        if: steps.select.outputs.selected == 'true'
+        run: bash script/ci/collab-service.sh
+
+  content_pipeline_service:
+    name: Content pipeline service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select area
+        id: select
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash script/ci/select-area.sh content_pipeline_service "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
+
       - name: Setup Rust
-        if: steps.changes.outputs.content_pipeline_service == 'true'
+        if: steps.select.outputs.selected == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
       - name: Rust Cache
-        if: steps.changes.outputs.content_pipeline_service == 'true'
+        if: steps.select.outputs.selected == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: content-pipeline-service
 
+      - name: Run content pipeline service CI
+        if: steps.select.outputs.selected == 'true'
+        run: bash script/ci/content-pipeline-service.sh
+
+  kubernetes:
+    name: Kubernetes manifests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select area
+        id: select
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash script/ci/select-area.sh kubernetes "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
+
       - name: Setup kubectl
-        if: steps.changes.outputs.kubernetes == 'true'
+        if: steps.select.outputs.selected == 'true'
         uses: azure/setup-kubectl@v4
         with:
           version: v1.33.9
 
+      - name: Setup Go
+        if: steps.select.outputs.selected == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: script/kubernetes/smoke-test/go.mod
+
       - name: Setup Ruby
-        if: steps.changes.outputs.kubernetes == 'true'
+        if: steps.select.outputs.selected == 'true'
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
 
       - name: Install kubeconform
-        if: steps.changes.outputs.kubernetes == 'true'
+        if: steps.select.outputs.selected == 'true'
         run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
 
-      - name: Run selected CI
-        shell: bash
-        env:
-          CI_FRONTEND: ${{ steps.changes.outputs.frontend }}
-          CI_EXTENSION: ${{ steps.changes.outputs.extension }}
-          CI_BACKEND: ${{ steps.changes.outputs.backend }}
-          CI_BROWSER_WORKER: ${{ steps.changes.outputs.browser_worker }}
-          CI_AI_SERVICE: ${{ steps.changes.outputs.ai_service }}
-          CI_COLLAB_SERVICE: ${{ steps.changes.outputs.collab_service }}
-          CI_CONTENT_PIPELINE_SERVICE: ${{ steps.changes.outputs.content_pipeline_service }}
-          CI_KUBERNETES: ${{ steps.changes.outputs.kubernetes }}
-        run: bash script/ci/run-selected.sh
+      - name: Run Kubernetes CI
+        if: steps.select.outputs.selected == 'true'
+        run: bash script/ci/kubernetes.sh
