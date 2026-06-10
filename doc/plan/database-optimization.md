@@ -11,14 +11,14 @@
 - `未开始`：尚未发现明确实现。
 - `暂缓`：当前业务阶段不建议投入，只保留触发条件。
 
-当前总体进度：约 `31%`。这个数字按阶段权重人工估算，后续可按实际完成项调整。
+当前总体进度：约 `33%`。这个数字按阶段权重人工估算，后续可按实际完成项调整。
 
 | 阶段                                         | 权重 | 当前完成度 | 状态   | 已完成                                                                         | 未完成/下一步                                                                          |
 | -------------------------------------------- | ---- | ---------- | ------ | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | 阶段 0：数据层基线盘点                       | 10%  | 55%        | 进行中 | GORM 查询观测、`mpp_db_*` 指标、dashboard 查询计划审计脚本、`pg_stat_statements`、数据库基线审计脚本 | 表增长面板、读写一致性分类、版本化迁移规范                                            |
-| 阶段 1：单库连接池、索引、分页和生命周期治理 | 15%  | 50%        | 进行中 | 应用层 `DB_MAX_*` 连接池、Redis 客户端连接池、组合索引、列表分页、列表避开 `source_content` 大字段 | PgBouncer、keyset pagination、事件保留期、归档 worker                                  |
+| 阶段 1：单库连接池、索引、分页和生命周期治理 | 15%  | 62%        | 进行中 | 应用层 `DB_MAX_*` 连接池、Redis 客户端连接池、PgBouncer writer pool、组合索引、列表分页、列表避开 `source_content` 大字段 | keyset pagination、事件保留期、归档 worker                                             |
 | 阶段 2：读模型与缓存优先                     | 15%  | 50%        | 进行中 | Redis、Asynq 基础依赖可复用；admin dashboard stats、admin project list、dashboard account 摘要已有短 TTL Redis 缓存；stats/project list/account 缓存 miss 已用 singleflight 合并 | dashboard 读模型、全局精细失效策略、读模型重建任务                                    |
-| 阶段 3：读写分离                             | 15%  | 45%        | 进行中 | `DB_READER_*` 可选连接、应用层 DB Router、签名 sticky writer、project/stats/workspace/platform_account 一致性路由 | 生产 read replica/PgBouncer、剩余服务一致性标注、replica lag 降级                      |
+| 阶段 3：读写分离                             | 15%  | 45%        | 进行中 | `DB_READER_*` 可选连接、应用层 DB Router、签名 sticky writer、project/stats/workspace/platform_account 一致性路由 | 生产 read replica、PgBouncer reader pool、剩余服务一致性标注、replica lag 降级         |
 | 阶段 4：单库分区、归档和冷热分层             | 15%  | 10%        | 未开始 | 协作编辑已有 state + update batch + compaction 基础                            | 事件表时间分区、协作 batch hash 分区、R2/S3 归档、恢复流程                             |
 | 阶段 5：Citus 化准备                         | 20%  | 5%         | 未开始 | Workspace 模型、`projects.workspace_id`、个人工作区 ID 已存在                  | 全域 `workspace_id`、Citus 分布列/colocation 设计、唯一约束与外键复审、迁移演练        |
 | 阶段 6：Citus 分布式 PostgreSQL 运行         | 10%  | 0%         | 暂缓   | 无                                                                             | Citus 影子集群、小租户迁移演练、worker/coordinator 监控备份、大租户隔离策略            |
@@ -57,13 +57,13 @@
 
 | 能力               | 当前状态 | 已经做了什么                                                                                                          | 还没做什么                                                            | 验证/证据入口                                                                                 |
 | ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| 应用层连接池       | 完成     | backend/publish-worker 支持 `DB_MAX_OPEN_CONNS`、`DB_MAX_IDLE_CONNS`、`DB_CONN_MAX_LIFETIME`、`DB_CONN_MAX_IDLE_TIME`；Redis 客户端支持 `REDIS_POOL_SIZE`、`REDIS_MIN_IDLE_CONNS`、`REDIS_MAX_IDLE_CONNS`、`REDIS_CONN_MAX_IDLE_TIME`、`REDIS_CONN_MAX_LIFETIME` | PgBouncer 还未引入                                                    | `backend/internal/db/db.go`、`backend/internal/redisclient/redisclient.go`                    |
+| 应用层连接池       | 完成     | backend/publish-worker 支持 `DB_MAX_OPEN_CONNS`、`DB_MAX_IDLE_CONNS`、`DB_CONN_MAX_LIFETIME`、`DB_CONN_MAX_IDLE_TIME`；Redis 客户端支持 `REDIS_POOL_SIZE`、`REDIS_MIN_IDLE_CONNS`、`REDIS_MAX_IDLE_CONNS`、`REDIS_CONN_MAX_IDLE_TIME`、`REDIS_CONN_MAX_LIFETIME`；Docker Compose 和自托管 Kubernetes 已通过 PgBouncer writer pool 复用 PostgreSQL 连接，GORM PostgreSQL driver 使用 simple protocol 兼容 transaction pooling | PgBouncer reader pool 还未引入                                         | `backend/internal/db/db.go`、`backend/internal/redisclient/redisclient.go`、`docker/docker-compose.yml`、`deploy/kubernetes/data-services/self-hosted/pgbouncer.yaml` |
 | 查询观测           | 进行中   | GORM QueryObserver、慢查询日志、`mpp_db_queries_total`、`mpp_db_query_duration_seconds`、`mpp_db_slow_queries_total`、自托管 PostgreSQL `pg_stat_statements` | 表增长面板未补齐                                                      | `backend/internal/db/query_observer.go`、`backend/internal/observability/observability.go`、`script/db/audit_database_baseline.sql` |
 | Dashboard 查询审计 | 完成     | 已有 dashboard Count、列表、平台过滤、publication preload、账号查询、活跃会话查询计划审计脚本                         | 还未形成定期 CI/运维门禁                                              | `script/db/audit_dashboard_query_plans.sql`                                                   |
 | 租户边界           | 进行中   | 已有 `workspaces`、`workspace_members`、`projects.workspace_id`、个人工作区规则                                       | 发布事件、协作状态、媒体元数据等还没有全部显式带 `workspace_id`       | `backend/internal/models/models.go`                                                           |
 | Dashboard 读模型   | 未开始   | 无业务读模型表；当前仍以事实表聚合查询为主                                                                            | `workspace_dashboard_stats`、`project_list_summaries`、重建任务未实现 | `backend/internal/services/stats/overview.go`                                                 |
 | Redis 读缓存       | 进行中   | Redis 已用于队列、锁、OAuth、browser session 等短期协调；admin dashboard stats、admin project list 与 dashboard account 摘要已接入 15s TTL 缓存，并绕过 scoped/sticky writer 强一致路径；stats/project list/account 缓存 miss 已用 singleflight 做进程内防击穿；stats 和 account 缓存使用版本化 payload 和语义校验，Redis 读错误 fallback 也会合并为同 key 单次 DB 计算；平台账号保存、连接测试和 X OAuth2 成功回调后会删除对应工作区账号缓存 | 跨服务 CookieStore 更新账号后仍依赖短 TTL 兜底；dashboard 缓存全局精细失效策略未实现 | `backend/internal/services/stats/overview.go`、`backend/internal/services/stats/overview_test.go`、`backend/internal/services/project/list_cache.go`、`backend/internal/services/project/list_cache_test.go`、`backend/internal/services/platform_account/account_cache.go`、`backend/internal/services/platform_account/account_cache_test.go` |
-| 读写分离           | 进行中   | 已支持 `DB_READER_*` 可选读副本连接、`DefaultRouter`、签名 sticky writer；project/stats/workspace/platform_account 已接入 strong/eventual 路由和 stale replica 回归测试 | 生产 read replica、PgBouncer reader/writer pool、剩余服务一致性标注、replica lag fallback 未实现 | `backend/internal/db/db.go`、`backend/internal/db/router.go`、`backend/internal/middleware/sticky_writer.go` |
+| 读写分离           | 进行中   | 已支持 `DB_READER_*` 可选读副本连接、`DefaultRouter`、签名 sticky writer；project/stats/workspace/platform_account 已接入 strong/eventual 路由和 stale replica 回归测试；writer pool 已在 Docker Compose 和自托管 Kubernetes 落地 | 生产 read replica、PgBouncer reader pool、剩余服务一致性标注、replica lag fallback 未实现 | `backend/internal/db/db.go`、`backend/internal/db/router.go`、`backend/internal/middleware/sticky_writer.go`、`deploy/kubernetes/data-services/self-hosted/pgbouncer.yaml` |
 | 事件表分区与归档   | 未开始   | `publish_events`、`extension_execution_events` 等事件表已存在部分基础                                                 | 时间分区、归档 worker、恢复流程未实现                                 | `backend/internal/models/models.go`                                                           |
 | 协作批次治理       | 进行中   | `collab_document_states`、`collab_document_update_batches`、compaction/retention 基础已存在                           | `document_id` hash 分区、冷归档未实现                                 | `backend/internal/models/collab.go`、`collab-service/src/persistence/document-persistence.ts` |
 | Outbox/CDC/事件流  | 未开始   | Asynq 已承担发布任务队列；`PublishEvent` 已承担发布审计                                                               | 事务 Outbox、Debezium、Redpanda/Kafka CDC 未实现                      | `backend/internal/services/publish/queue.go`、`backend/internal/models/models.go`             |
@@ -87,7 +87,7 @@
 - [x] 增加并验证 Redis 客户端连接池配置。
 - [x] 保留项目列表分页和组合索引基础。
 - [x] 列表查询避开 `projects.source_content` 大字段。
-- [ ] 引入 PgBouncer writer pool。
+- [x] 引入 PgBouncer writer pool。
 - [ ] 将高频列表从 offset pagination 迁移到 keyset pagination。
 - [ ] 制定事件表和会话历史保留期。
 - [ ] 增加归档 worker，把冷事件导出到 R2/S3。

@@ -71,6 +71,7 @@ module KubernetesValidation
 
     SELF_HOSTED_DATA_NETWORK_POLICIES = [
       "postgres-app-access",
+      "pgbouncer-app-access",
       "redis-app-access",
     ].freeze
 

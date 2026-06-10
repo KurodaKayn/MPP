@@ -265,7 +265,7 @@ func TestGetStatsCollapsesConcurrentCacheMisses(t *testing.T) {
 	seedStatsOverviewProject(t, db, "stats-singleflight", models.PublicationStatusPublished)
 
 	queryCount := registerBlockingStatsQueryCounter(t, db)
-	results := runConcurrentStatsRequests(t, s, queryCount.firstQuery, queryCount.releaseFirstQuery)
+	results := runConcurrentStatsRequests(t, s, queryCount)
 
 	for err := range results.errs {
 		require.NoError(t, err)
@@ -294,7 +294,7 @@ func TestGetStatsCollapsesConcurrentRedisReadErrors(t *testing.T) {
 	redisServer.SetError("ERR forced")
 
 	queryCount := registerBlockingStatsQueryCounter(t, db)
-	results := runConcurrentStatsRequests(t, s, queryCount.firstQuery, queryCount.releaseFirstQuery)
+	results := runConcurrentStatsRequests(t, s, queryCount)
 
 	for err := range results.errs {
 		require.NoError(t, err)
@@ -337,7 +337,9 @@ func requireSingleStatsCacheKey(t *testing.T, client *redis.Client) string {
 
 type statsQueryCounter struct {
 	count             atomic.Int64
+	released          atomic.Bool
 	firstQuery        chan struct{}
+	duplicateQuery    chan struct{}
 	releaseFirstQuery chan struct{}
 }
 
@@ -346,15 +348,21 @@ func registerBlockingStatsQueryCounter(t *testing.T, db *gorm.DB) *statsQueryCou
 
 	counter := &statsQueryCounter{
 		firstQuery:        make(chan struct{}),
+		duplicateQuery:    make(chan struct{}),
 		releaseFirstQuery: make(chan struct{}),
 	}
 	var closeFirstQuery sync.Once
+	var closeDuplicateQuery sync.Once
 	callbackName := "test:dashboard_stats_singleflight:" + t.Name()
 	require.NoError(t, db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
 		count := counter.count.Add(1)
 		if count == 1 {
 			closeFirstQuery.Do(func() { close(counter.firstQuery) })
 			<-counter.releaseFirstQuery
+			return
+		}
+		if !counter.released.Load() {
+			closeDuplicateQuery.Do(func() { close(counter.duplicateQuery) })
 		}
 	}))
 	t.Cleanup(func() {
@@ -368,35 +376,59 @@ type concurrentStatsResults struct {
 	stats chan *dto.DashboardStatsResponse
 }
 
-func runConcurrentStatsRequests(t *testing.T, s *services.DashboardService, firstQuery <-chan struct{}, releaseFirstQuery chan<- struct{}) concurrentStatsResults {
+func runConcurrentStatsRequests(t *testing.T, s *services.DashboardService, queryCount *statsQueryCounter) concurrentStatsResults {
 	t.Helper()
 
-	const callers = 8
-	start := make(chan struct{})
-	errs := make(chan error, callers)
-	statsCh := make(chan *dto.DashboardStatsResponse, callers)
+	const waitingCallers = 7
+	errs := make(chan error, waitingCallers+1)
+	statsCh := make(chan *dto.DashboardStatsResponse, waitingCallers+1)
 	var wg sync.WaitGroup
-	wg.Add(callers)
-	for range callers {
-		go func() {
-			defer wg.Done()
+	wg.Go(func() {
+		stats, err := s.WithContext(context.Background()).GetStats(nil)
+		if err != nil {
+			errs <- err
+			return
+		}
+		statsCh <- stats
+	})
+
+	select {
+	case <-queryCount.firstQuery:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first stats query")
+	}
+
+	start := make(chan struct{})
+	ready := make(chan struct{}, waitingCallers)
+	for range waitingCallers {
+		wg.Go(func() {
 			<-start
+			ready <- struct{}{}
 			stats, err := s.WithContext(context.Background()).GetStats(nil)
 			if err != nil {
 				errs <- err
 				return
 			}
 			statsCh <- stats
-		}()
+		})
 	}
 
 	close(start)
-	select {
-	case <-firstQuery:
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for first stats query")
+	for range waitingCallers {
+		select {
+		case <-ready:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for waiting stats caller")
+		}
 	}
-	close(releaseFirstQuery)
+
+	select {
+	case <-queryCount.duplicateQuery:
+		t.Fatal("stats cache refresh should share the active singleflight query")
+	case <-time.After(50 * time.Millisecond):
+	}
+	queryCount.released.Store(true)
+	close(queryCount.releaseFirstQuery)
 	wg.Wait()
 	close(errs)
 	close(statsCh)

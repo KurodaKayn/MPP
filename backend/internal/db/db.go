@@ -92,7 +92,10 @@ func InitDB() {
 }
 
 func openPostgresDatabase(dsn string) (*gorm.DB, error) {
-	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	database, err := gorm.Open(postgres.New(postgres.Config{
+		DSN:                  dsn,
+		PreferSimpleProtocol: true,
+	}), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}
