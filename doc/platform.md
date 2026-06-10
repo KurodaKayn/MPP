@@ -2,6 +2,8 @@
 
 This document is used to determine whether the multi-platform publishing module should prioritize integrating the official API or can only manipulate the DOM through a browser extension to simulate manual publishing. Conclusions are not permanent: each platform's open capabilities, review thresholds, and interface permissions are subject to change. Re-verify official documentation and account qualifications before adding or refactoring platform adapters.
 
+For the data formats of platforms with implemented profiles, see [PROFILE_VERSIONS.md](../content-pipeline-service/PROFILE_VERSIONS.md).
+
 ## Platforms Supporting API Publishing
 
 | Platform                               | API Publishing Capability        | Remarks                                                                                                                                            |
