@@ -8,6 +8,29 @@ const EnvBoolean = z
       : ["1", "true", "yes", "on"].includes(value.trim().toLowerCase()),
   );
 
+const EmptyStringAsUndefined = (value: unknown) =>
+  typeof value === "string" && value.trim() === "" ? undefined : value;
+
+const EnvDurationMillis = (fallback: string) =>
+  z.preprocess(
+    EmptyStringAsUndefined,
+    z
+      .string()
+      .default(fallback)
+      .transform((value, ctx) => {
+        const millis = parseDurationMillis(value);
+        if (millis === undefined) {
+          ctx.addIssue({
+            code: "custom",
+            message:
+              "duration must be a non-negative value with ns, us, µs, ms, s, m, or h units",
+          });
+          return z.NEVER;
+        }
+        return millis;
+      }),
+  );
+
 const EnvSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -41,6 +64,12 @@ const EnvSchema = z.object({
     .enum(["disable", "allow", "prefer", "require", "verify-ca", "verify-full"])
     .default("disable"),
   DB_SSLROOTCERT: z.string().optional(),
+  DB_MAX_OPEN_CONNS: z.preprocess(
+    EmptyStringAsUndefined,
+    z.coerce.number().int().positive().default(10),
+  ),
+  DB_CONN_MAX_LIFETIME: EnvDurationMillis("30m"),
+  DB_CONN_MAX_IDLE_TIME: EnvDurationMillis("5m"),
   REDIS_ADDR: z.string().default("redis:6379"),
   REDIS_PASSWORD: z.string().default(""),
   REDIS_DB: z.coerce.number().int().nonnegative().default(0),
@@ -55,4 +84,46 @@ export type CollabConfig = z.infer<typeof EnvSchema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollabConfig {
   return EnvSchema.parse(env);
+}
+
+function parseDurationMillis(value: string): number | undefined {
+  const text = value.trim();
+  if (text === "") {
+    return undefined;
+  }
+  if (text.startsWith("-")) {
+    return undefined;
+  }
+
+  const unsigned = text.startsWith("+") ? text.slice(1) : text;
+  const pattern = /(\d+(?:\.\d+)?|\.\d+)(ns|us|µs|ms|s|m|h)/g;
+  const unitMillis: Record<string, number> = {
+    ns: 1 / 1_000_000,
+    us: 1 / 1_000,
+    µs: 1 / 1_000,
+    ms: 1,
+    s: 1_000,
+    m: 60_000,
+    h: 3_600_000,
+  };
+
+  let cursor = 0;
+  let total = 0;
+  let matched = false;
+  for (const match of unsigned.matchAll(pattern)) {
+    if (match.index !== cursor) {
+      return undefined;
+    }
+    matched = true;
+    total += Number(match[1]) * unitMillis[match[2]];
+    cursor += match[0].length;
+  }
+
+  if (!matched || cursor !== unsigned.length) {
+    return undefined;
+  }
+  if (total === 0) {
+    return 0;
+  }
+  return Math.max(1, Math.ceil(total));
 }

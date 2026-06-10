@@ -540,8 +540,71 @@ describe("postgresPoolConfigFromConfig", () => {
       user: "postgres",
       password: "postgres",
       database: "poster_db",
+      max: 10,
+      idleTimeoutMillis: 300_000,
+      maxLifetimeSeconds: 1_800,
     });
     expect(poolConfig.ssl).toBeUndefined();
+  });
+
+  it("maps postgres pool settings from environment", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      DB_MAX_OPEN_CONNS: "24",
+      DB_CONN_MAX_IDLE_TIME: "90s",
+      DB_CONN_MAX_LIFETIME: "1h30m",
+    });
+
+    const poolConfig = postgresPoolConfigFromConfig(config);
+
+    expect(poolConfig).toMatchObject({
+      max: 24,
+      idleTimeoutMillis: 90_000,
+      maxLifetimeSeconds: 5_400,
+    });
+  });
+
+  it("applies pool settings when using DATABASE_URL", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      DATABASE_URL: "postgres://postgres:postgres@db:5432/poster_db",
+      DB_MAX_OPEN_CONNS: "12",
+      DB_CONN_MAX_IDLE_TIME: "30s",
+      DB_CONN_MAX_LIFETIME: "0s",
+    });
+
+    const poolConfig = postgresPoolConfigFromConfig(config);
+
+    expect(poolConfig).toMatchObject({
+      connectionString: "postgres://postgres:postgres@db:5432/poster_db",
+      max: 12,
+      idleTimeoutMillis: 30_000,
+      maxLifetimeSeconds: 0,
+    });
+  });
+
+  it("rounds positive sub-millisecond pool durations up to one millisecond", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      DB_CONN_MAX_IDLE_TIME: "1ns",
+      DB_CONN_MAX_LIFETIME: "400us",
+    });
+
+    const poolConfig = postgresPoolConfigFromConfig(config);
+
+    expect(poolConfig).toMatchObject({
+      idleTimeoutMillis: 1,
+      maxLifetimeSeconds: 0.001,
+    });
+  });
+
+  it("rejects invalid postgres pool durations", () => {
+    expect(() =>
+      loadConfig({
+        NODE_ENV: "test",
+        DB_CONN_MAX_IDLE_TIME: "300",
+      }),
+    ).toThrow();
   });
 
   it("enables encrypted postgres connections for require mode", () => {
