@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getCapabilityByAdapterKey,
+  getAdapterScriptFile,
   isCapabilityInjectUrl,
   isSupportedAdapterKey,
 } from "./capabilities";
@@ -38,5 +39,9 @@ describe("isCapabilityInjectUrl", () => {
     expect(
       isCapabilityInjectUrl("POST_X", "https://x.com/compose/post?text=draft"),
     ).toBe(true);
+  });
+
+  it("maps X post handoffs to the X content script", () => {
+    expect(getAdapterScriptFile("POST_X")).toBe("/content-scripts/x-post.js");
   });
 });

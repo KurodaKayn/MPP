@@ -71,6 +71,7 @@ export const ADAPTER_SCRIPT_FILES: Partial<
   NOTE_XIAOHONGSHU: "/content-scripts/xiaohongshu-note.js",
   DYNAMIC_DOUYIN: "/content-scripts/douyin-dynamic.js",
   DYNAMIC_BILIBILI: "/content-scripts/bilibili-dynamic.js",
+  POST_X: "/content-scripts/x-post.js",
 } satisfies Partial<Record<AdapterKey, ScriptPublicPath>>;
 
 export function isSupportedAdapterKey(value: string): value is AdapterKey {
