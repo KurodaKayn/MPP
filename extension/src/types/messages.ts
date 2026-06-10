@@ -120,7 +120,8 @@ export interface HandoffRejectedResponse {
     | "expired"
     | "invalid_schema"
     | "unsupported_adapter"
-    | "invalid_handoff";
+    | "invalid_handoff"
+    | "active_execution";
   message: string;
   trust_url?: string;
 }

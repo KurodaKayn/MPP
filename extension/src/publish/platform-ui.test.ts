@@ -25,16 +25,22 @@ describe("platform UI config", () => {
     ]);
   });
 
-  it("marks only Douyin as connected to the handoff flow", () => {
+  it("marks Douyin and X as connected to the handoff flow", () => {
     expect(getPlatformUiConfig("douyin")).toMatchObject({
       handoffPlatform: "douyin",
       implementationStatus: "implemented",
       statusLabel: "Ready",
     });
+    expect(getPlatformUiConfig("x")).toMatchObject({
+      handoffPlatform: "x",
+      implementationStatus: "implemented",
+      statusLabel: "Ready",
+    });
     expect(isPlatformHandoffEnabled("douyin")).toBe(true);
-    expect(getImplementedHandoffPlatforms()).toEqual(["douyin"]);
+    expect(isPlatformHandoffEnabled("x")).toBe(true);
+    expect(getImplementedHandoffPlatforms()).toEqual(["douyin", "x"]);
 
-    for (const platform of ["wechat", "x", "zhihu"] as const) {
+    for (const platform of ["wechat", "zhihu"] as const) {
       expect(getPlatformUiConfig(platform)).toMatchObject({
         implementationStatus: "ui_only",
         statusLabel: "Coming soon",

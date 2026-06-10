@@ -28,6 +28,8 @@ export default defineConfig({
       "https://creator.douyin.com/*",
       "https://t.bilibili.com/*",
       "https://member.bilibili.com/*",
+      "https://x.com/*",
+      "https://twitter.com/*",
     ],
     action: {
       default_title: "MPP Extension Publisher",

@@ -15,20 +15,38 @@ const handoffMock = vi.hoisted(() => {
   const state: {
     currentHandoff: StoredHandoff | null;
     events: ExtensionExecutionEvent[];
+    executionQueue: unknown;
     expired: boolean;
   } = {
     currentHandoff: null,
     events: [],
+    executionQueue: null,
     expired: true,
   };
 
   return {
     state,
     clearExecutionState: vi.fn(),
+    getExecutionQueue: vi.fn(() => Promise.resolve(state.executionQueue)),
     getCurrentHandoff: vi.fn(() => Promise.resolve(state.currentHandoff)),
     getExecutionEvents: vi.fn(() => Promise.resolve(state.events)),
+    isExecutionQueueActive: vi.fn((queue: unknown) => queue !== null),
+    isExecutionQueueTaskStatus: vi.fn((status: string) =>
+      [
+        "queued",
+        "opening_tabs",
+        "injecting",
+        "user_review",
+        "submitted",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "expired",
+      ].includes(status),
+    ),
     isHandoffExpired: vi.fn(() => state.expired),
     storeAcceptedHandoff: vi.fn(),
+    updateExecutionQueueTask: vi.fn(),
     validateHandoff: vi.fn(),
   };
 });
@@ -160,6 +178,7 @@ describe("background expiration handling", () => {
   beforeEach(() => {
     handoffMock.state.currentHandoff = createStoredHandoff();
     handoffMock.state.events = [];
+    handoffMock.state.executionQueue = null;
     handoffMock.state.expired = true;
     originsMock.state.trusted = true;
     originsMock.state.trustable = true;
@@ -220,6 +239,7 @@ describe("acceptExtensionHandoff", () => {
   beforeEach(() => {
     handoffMock.state.currentHandoff = null;
     handoffMock.state.events = [];
+    handoffMock.state.executionQueue = null;
     handoffMock.state.expired = false;
     originsMock.state.trusted = true;
     originsMock.state.trustable = true;
@@ -253,12 +273,39 @@ describe("acceptExtensionHandoff", () => {
     );
     expect(tabsMock.startPublishingTabs).toHaveBeenCalledWith(storedHandoff);
   });
+
+  it("rejects new handoffs while a local execution queue is active", async () => {
+    const storedHandoff = createStoredHandoff().handoff;
+    handoffMock.state.executionQueue = {
+      execution_id: "active-execution",
+      tasks: [
+        {
+          platform: "douyin",
+          status: "injecting",
+        },
+      ],
+    };
+    handoffMock.validateHandoff.mockReturnValue({
+      ok: true,
+      handoff: storedHandoff,
+    });
+
+    await expect(acceptExtensionHandoff({})).resolves.toMatchObject({
+      accepted: false,
+      reason: "active_execution",
+      message: "Another extension publishing execution is already active.",
+    });
+
+    expect(handoffMock.storeAcceptedHandoff).not.toHaveBeenCalled();
+    expect(tabsMock.startPublishingTabs).not.toHaveBeenCalled();
+  });
 });
 
 describe("bridge compatibility", () => {
   beforeEach(() => {
     handoffMock.state.currentHandoff = createStoredHandoff();
     handoffMock.state.events = [];
+    handoffMock.state.executionQueue = null;
     handoffMock.state.expired = false;
     originsMock.state.trusted = true;
     originsMock.state.trustable = true;

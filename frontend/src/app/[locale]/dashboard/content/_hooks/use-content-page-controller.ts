@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { hasPendingLocalMedia } from "@/components/dashboard/content/editor/content-editor-media";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
@@ -82,6 +83,7 @@ export function useContentPageController(
     title,
   } = useContentPageStore();
   const locale = useAppLocale();
+  const router = useRouter();
   const { t } = useTranslation(locale, "common");
   const [projectRole, setProjectRole] = useState<ProjectRole | null>(null);
   const [contentTemplates, setContentTemplates] = useState<ContentTemplate[]>(
@@ -114,8 +116,8 @@ export function useContentPageController(
       const draft = prepublishDrafts[platform];
       return Boolean(
         draft &&
-          !draft.syncRequired &&
-          (draft.draftStatus === undefined || draft.draftStatus === "ready"),
+        !draft.syncRequired &&
+        (draft.draftStatus === undefined || draft.draftStatus === "ready"),
       );
     },
   );
@@ -332,7 +334,7 @@ export function useContentPageController(
     },
     hasBodyContent,
     navigateToProject: (targetProjectId) => {
-      window.location.replace(
+      router.replace(
         `/${locale}/dashboard/content?projectId=${encodeURIComponent(targetProjectId)}`,
       );
     },
@@ -351,9 +353,9 @@ export function useContentPageController(
   });
 
   const editor = {
-      canEdit: canEditProject,
-      content,
-      permissionSources,
+    canEdit: canEditProject,
+    content,
+    permissionSources,
     setContent: (nextContent: ContentValue) => {
       setContent(nextContent);
       setPrepublishDrafts({});
@@ -389,16 +391,17 @@ export function useContentPageController(
     const hasExistingDraft = Boolean(
       title.trim() || content.text.trim() || content.firstImageSrc,
     );
-    if (hasExistingDraft && !window.confirm(t("content.setup.replaceConfirm"))) {
+    if (
+      hasExistingDraft &&
+      !window.confirm(t("content.setup.replaceConfirm"))
+    ) {
       return;
     }
 
     setSelectedTemplateId(templateId);
     setTitle(template.title_template);
     setContent(contentValueFromSource(template.source_template));
-    setSelectedPlatforms(
-      template.default_platforms.filter(isPublishPlatform),
-    );
+    setSelectedPlatforms(template.default_platforms.filter(isPublishPlatform));
     setPrepublishDrafts({});
   };
 

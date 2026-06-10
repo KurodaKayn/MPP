@@ -1,9 +1,13 @@
 import {
   clearExecutionState,
   getCurrentHandoff,
+  getExecutionQueue,
   getExecutionEvents,
+  isExecutionQueueActive,
+  isExecutionQueueTaskStatus,
   isHandoffExpired,
   storeAcceptedHandoff,
+  updateExecutionQueueTask,
   validateHandoff,
 } from "../src/background/handoff";
 import {
@@ -120,6 +124,7 @@ async function getMonitorState() {
     extension_id: browser.runtime.id,
     version: getManifestVersion(),
     current_handoff: await getCurrentHandoff(),
+    execution_queue: await getExecutionQueue(),
     events: await getExecutionEvents(),
     trusted_origins: await listTrustedOrigins(),
   };
@@ -165,6 +170,13 @@ export async function recordCurrentHandoffExpiration(
         expires_at: currentHandoff.handoff.expires_at,
       },
     });
+    await updateExecutionQueueTask(
+      currentHandoff.handoff.execution_id,
+      platform.platform,
+      {
+        status: "expired",
+      },
+    );
     recordedExpiration = true;
   }
 
@@ -226,6 +238,14 @@ async function acceptValidatedHandoff(
 
   if (!validation.ok) {
     return validation.rejection;
+  }
+
+  if (isExecutionQueueActive(await getExecutionQueue())) {
+    return {
+      accepted: false,
+      reason: "active_execution",
+      message: "Another extension publishing execution is already active.",
+    };
   }
 
   await storeAcceptedHandoff(validation.handoff, sourceOrigin);
@@ -299,6 +319,16 @@ async function handleAdapterEvent(
   }
 
   await recordAndCallbackEvent(platform, message.event);
+  if (isExecutionQueueTaskStatus(message.event.status)) {
+    await updateExecutionQueueTask(
+      message.execution_id,
+      message.event.platform,
+      {
+        status: message.event.status,
+        error_message: message.event.error_message,
+      },
+    );
+  }
   return { ok: true };
 }
 

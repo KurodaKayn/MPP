@@ -40,11 +40,11 @@ export const PLATFORM_UI_CONFIGS: readonly PlatformUiConfig[] = [
     key: "x",
     label: "X",
     shortLabel: "X",
-    description:
-      "Platform selection UI is available before publishing support.",
+    description: "Prepare text drafts in the X composer.",
     iconPath: "/icon/platforms/x.svg",
-    implementationStatus: "ui_only",
-    statusLabel: "Coming soon",
+    implementationStatus: "implemented",
+    statusLabel: "Ready",
+    handoffPlatform: "x",
   },
   {
     key: "zhihu",

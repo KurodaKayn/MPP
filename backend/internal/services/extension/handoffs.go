@@ -13,17 +13,36 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
+	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 )
 
 const (
-	extensionDouyinAdapterKey     = "DYNAMIC_DOUYIN"
-	extensionArticleContentKind   = "article"
 	extensionPreviewLimit         = 80
 	extensionHandoffSchemaVersion = 1
 	extensionHandoffType          = "mpp.extension_publish_handoff"
-	extensionDouyinInjectURL      = "https://creator.douyin.com/creator-micro/content/upload?default-tab=5"
 	extensionHandoffTTL           = 10 * time.Minute
 )
+
+type extensionPlatformConfig struct {
+	AdapterKey  string
+	InjectURL   string
+	ContentKind string
+}
+
+var extensionPlatformConfigs = map[string]extensionPlatformConfig{
+	"douyin": {
+		AdapterKey:  "DYNAMIC_DOUYIN",
+		InjectURL:   "https://creator.douyin.com/creator-micro/content/upload?default-tab=5",
+		ContentKind: "article",
+	},
+	"x": {
+		AdapterKey:  "POST_X",
+		InjectURL:   "https://x.com/compose/post",
+		ContentKind: "dynamic_post",
+	},
+}
+
+var extensionPlatformKeys = []string{"douyin", "x"}
 
 func (s *Service) GetExtensionSession(userID uuid.UUID) (*dto.ExtensionSessionResponse, error) {
 	var user models.User
@@ -43,9 +62,10 @@ func (s *Service) GetExtensionSession(userID uuid.UUID) (*dto.ExtensionSessionRe
 func (s *Service) ListExtensionPrepublish(userID uuid.UUID) (*dto.ExtensionPrepublishResponse, error) {
 	var projects []models.Project
 	if err := s.db.
-		Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id AND ppp.platform = ?", "douyin").
+		Distinct("projects.*").
+		Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id AND ppp.platform IN ?", extensionPlatformKeys).
 		Where("projects.user_id = ?", userID).
-		Preload("Publications", "platform = ?", "douyin").
+		Preload("Publications", "platform IN ?", extensionPlatformKeys).
 		Order("projects.updated_at desc").
 		Find(&projects).Error; err != nil {
 		return nil, err
@@ -73,11 +93,13 @@ func (s *Service) ListExtensionPrepublish(userID uuid.UUID) (*dto.ExtensionPrepu
 }
 
 func extensionPrepublishPlatformFromPublication(publication models.ProjectPlatformPublication) dto.ExtensionPrepublishPlatform {
+	config := extensionPlatformConfigs[publication.Platform]
+
 	return dto.ExtensionPrepublishPlatform{
 		PublicationID: publication.ID,
 		Platform:      publication.Platform,
-		AdapterKey:    extensionDouyinAdapterKey,
-		ContentKind:   extensionArticleContentKind,
+		AdapterKey:    config.AdapterKey,
+		ContentKind:   config.ContentKind,
 		Status:        publication.Status,
 		Enabled:       publication.Enabled,
 		Preview:       extensionPrepublishPreview(publication.AdaptedContent),
@@ -126,6 +148,7 @@ func (s *Service) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensi
 	handoffPlatforms := make([]dto.ExtensionHandoffPlatform, 0, len(platforms))
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		for _, platform := range platforms {
+			config := extensionPlatformConfigs[platform]
 			var publication models.ProjectPlatformPublication
 			if err := tx.Where("project_id = ? AND platform = ?", project.ID, platform).First(&publication).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -153,9 +176,9 @@ func (s *Service) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensi
 			}
 			handoffPlatforms = append(handoffPlatforms, dto.ExtensionHandoffPlatform{
 				Platform:       platform,
-				AdapterKey:     extensionDouyinAdapterKey,
-				InjectURL:      extensionDouyinInjectURL,
-				ContentKind:    extensionArticleContentKind,
+				AdapterKey:     config.AdapterKey,
+				InjectURL:      config.InjectURL,
+				ContentKind:    config.ContentKind,
 				AutoPublish:    false,
 				RequiresReview: true,
 				AdaptedContent: adaptedContent,
@@ -223,7 +246,7 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 		metadata = datatypes.JSON(payload)
 	}
 
-	if err := s.db.Create(&models.ExtensionExecutionEvent{
+	event := models.ExtensionExecutionEvent{
 		CallbackTokenID: token.ID,
 		ExecutionID:     token.ExecutionID,
 		ProjectID:       token.ProjectID,
@@ -236,11 +259,72 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 		PublishURL:      strings.TrimSpace(req.PublishURL),
 		ErrorMessage:    strings.TrimSpace(req.ErrorMessage),
 		Metadata:        metadata,
-	}).Error; err != nil {
+	}
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&event).Error; err != nil {
+			return err
+		}
+		return applyExtensionPublicationEvent(tx, token, event)
+	}); err != nil {
 		return nil, err
 	}
 
 	return &dto.ExtensionEventCallbackResponse{Accepted: true, Duplicate: false}, nil
+}
+
+func applyExtensionPublicationEvent(tx *gorm.DB, token models.ExtensionCallbackToken, event models.ExtensionExecutionEvent) error {
+	updates := extensionPublicationUpdatesForEvent(event)
+	if len(updates) == 0 {
+		return nil
+	}
+
+	return tx.Model(&models.ProjectPlatformPublication{}).
+		Where("project_id = ? AND platform = ?", token.ProjectID, token.Platform).
+		Updates(updates).Error
+}
+
+func extensionPublicationUpdatesForEvent(event models.ExtensionExecutionEvent) map[string]any {
+	switch event.Status {
+	case "user_review":
+		updates := map[string]any{
+			"status":        models.PublicationStatusAdapted,
+			"draft_status":  models.PublicationDraftStatusReady,
+			"review_status": models.PublicationReviewStatusReviewing,
+			"error_message": "",
+		}
+		addOptionalExtensionPublicationRefs(updates, event)
+		return updates
+	case "failed":
+		message := extensionEventErrorMessage(event)
+		updates := map[string]any{
+			"status":        models.PublicationStatusFailed,
+			"error_message": publishsvc.SanitizeUserFacingErrorMessage(message),
+			"retry_count":   gorm.Expr("retry_count + ?", 1),
+		}
+		addOptionalExtensionPublicationRefs(updates, event)
+		return updates
+	default:
+		return nil
+	}
+}
+
+func addOptionalExtensionPublicationRefs(updates map[string]any, event models.ExtensionExecutionEvent) {
+	if event.RemoteID != "" {
+		updates["remote_id"] = event.RemoteID
+	}
+	if event.PublishURL != "" {
+		updates["publish_url"] = event.PublishURL
+	}
+}
+
+func extensionEventErrorMessage(event models.ExtensionExecutionEvent) string {
+	if event.ErrorMessage != "" {
+		return event.ErrorMessage
+	}
+	if event.Message != "" {
+		return event.Message
+	}
+	return "extension adapter failed"
 }
 
 func normalizeExtensionHandoffPlatforms(input []string) ([]string, error) {
@@ -251,7 +335,7 @@ func normalizeExtensionHandoffPlatforms(input []string) ([]string, error) {
 		if platform == "" {
 			continue
 		}
-		if platform != "douyin" {
+		if _, ok := extensionPlatformConfigs[platform]; !ok {
 			return nil, ErrInvalidProject
 		}
 		if _, ok := seen[platform]; ok {
