@@ -508,11 +508,23 @@ export function postgresPoolConfigFromConfig(config: CollabConfig): PoolConfig {
         password: config.DB_PASSWORD,
         database: config.DB_NAME,
       };
+  poolConfig.max = config.DB_MAX_OPEN_CONNS;
+  poolConfig.idleTimeoutMillis = config.DB_CONN_MAX_IDLE_TIME;
+  poolConfig.maxLifetimeSeconds = durationMillisToSeconds(
+    config.DB_CONN_MAX_LIFETIME,
+  );
   const ssl = postgresSSLConfigFromConfig(config);
   if (ssl !== undefined) {
     poolConfig.ssl = ssl;
   }
   return poolConfig;
+}
+
+function durationMillisToSeconds(millis: number): number {
+  if (millis <= 0) {
+    return 0;
+  }
+  return millis / 1_000;
 }
 
 function postgresSSLConfigFromConfig(
