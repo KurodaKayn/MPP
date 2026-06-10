@@ -76,8 +76,68 @@ async function waitForXComposer(): Promise<HTMLElement | null> {
   return findFirstElement<HTMLElement>(X_COMPOSER_SELECTORS);
 }
 
+function getDraftInsertionTarget(composer: HTMLElement): HTMLElement | null {
+  const textLeaf = composer.querySelector<HTMLElement>('[data-text="true"]');
+
+  if (!textLeaf) {
+    return null;
+  }
+
+  return textLeaf;
+}
+
+function selectComposerInsertionTarget(composer: HTMLElement): void {
+  const selection = window.getSelection();
+
+  if (!selection) {
+    return;
+  }
+
+  const target = getDraftInsertionTarget(composer) ?? composer;
+  const range = document.createRange();
+  if (target.tagName.toLowerCase() === "br") {
+    const wrapper =
+      target.closest<HTMLElement>("span[data-offset-key]") ??
+      target.parentElement ??
+      composer;
+    range.setStart(wrapper, 0);
+    range.collapse(true);
+  } else {
+    range.selectNodeContents(target);
+    range.collapse(false);
+  }
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function dispatchFallbackInputEvent(composer: HTMLElement, text: string): void {
+  composer.dispatchEvent(
+    new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      data: text,
+      inputType: "insertText",
+    }),
+  );
+  composer.dispatchEvent(
+    new InputEvent("input", {
+      bubbles: true,
+      data: text,
+      inputType: "insertText",
+    }),
+  );
+}
+
 function fillXComposer(composer: HTMLElement, text: string): void {
+  composer.focus();
+  selectComposerInsertionTarget(composer);
+
+  if (document.execCommand?.("insertText", false, text)) {
+    return;
+  }
+
   fillTextTarget(composer, text);
+  dispatchFallbackInputEvent(composer, text);
 }
 
 export async function runXPostAdapter(
