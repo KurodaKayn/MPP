@@ -75,7 +75,8 @@ services:
     environment:
       BACKEND_PROCESS_ROLE: api
       BACKEND_REQUIRE_REDIS: ${BACKEND_REQUIRE_REDIS:-true}
-      DB_HOST: ${DB_HOST:-db}
+      DB_HOST: pgbouncer
+      DB_PORT: "5432"
       DB_SSLMODE: ${DB_SSLMODE:-disable}
       DB_SSLROOTCERT: ${DB_SSLROOTCERT:-}
       DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-10}
@@ -98,7 +99,7 @@ services:
       COLLAB_INTERNAL_URL: ${COLLAB_INTERNAL_URL:-http://collab-service:8090}
       COLLAB_WEBSOCKET_URL_BASE: ${COLLAB_WEBSOCKET_URL_BASE:-ws://localhost}
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -126,7 +127,8 @@ services:
     env_file: .env
     environment:
       BACKEND_REQUIRE_REDIS: ${BACKEND_REQUIRE_REDIS:-true}
-      DB_HOST: ${DB_HOST:-db}
+      DB_HOST: pgbouncer
+      DB_PORT: "5432"
       DB_SSLMODE: ${DB_SSLMODE:-disable}
       DB_SSLROOTCERT: ${DB_SSLROOTCERT:-}
       DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-10}
@@ -146,7 +148,7 @@ services:
       CONTENT_PIPELINE_MEDIA_RESOLVER_URL: ${CONTENT_PIPELINE_MEDIA_RESOLVER_URL:-http://backend:8080/internal/media/resolve}
       CONTENT_PIPELINE_INTERNAL_TOKEN: ${CONTENT_PIPELINE_INTERNAL_TOKEN:-}
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -255,6 +257,8 @@ services:
     env_file: .env
     environment:
       COLLAB_PORT: "8090"
+      DB_HOST: pgbouncer
+      DB_PORT: "5432"
       DB_SSLMODE: ${DB_SSLMODE:-disable}
       DB_SSLROOTCERT: ${DB_SSLROOTCERT:-}
       REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
@@ -264,7 +268,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-      db:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -309,6 +313,30 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.1-p0
+    env_file: .env
+    environment:
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-poster_db}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "200"
+      DEFAULT_POOL_SIZE: "20"
+      RESERVE_POOL_SIZE: "5"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U \"$${DB_USER}\" -d \"$${DB_NAME}\""]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
   redis:
     image: redis:8-alpine

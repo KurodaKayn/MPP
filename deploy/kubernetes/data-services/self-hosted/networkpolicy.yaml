@@ -28,6 +28,44 @@ spec:
             matchLabels:
               app.kubernetes.io/name: mpp
               app.kubernetes.io/component: collab-service
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: pgbouncer
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pgbouncer-app-access
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: pgbouncer
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: pgbouncer
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: backend
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: publish-worker
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: collab-service
       ports:
         - protocol: TCP
           port: 5432

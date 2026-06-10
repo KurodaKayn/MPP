@@ -76,7 +76,7 @@ module KubernetesValidation
 
       {
         "APP_ENV" => "staging",
-        "DB_HOST" => "postgres",
+        "DB_HOST" => "pgbouncer",
         "DB_SSLMODE" => "disable",
         "REDIS_ADDR" => "redis:6379",
         "REDIS_TLS" => "false",

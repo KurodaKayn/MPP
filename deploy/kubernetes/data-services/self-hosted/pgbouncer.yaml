@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: pgbouncer
+    app.kubernetes.io/part-of: mpp
+spec:
+  selector:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: pgbouncer
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: pgbouncer
+    app.kubernetes.io/part-of: mpp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: pgbouncer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: pgbouncer
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: pgbouncer
+          image: docker.io/edoburu/pgbouncer:v1.25.1-p0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: DB_HOST
+              value: postgres
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: mpp-app-config
+                  key: DB_PORT
+            - name: DB_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: mpp-app-config
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: DB_PASSWORD
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: mpp-app-config
+                  key: DB_NAME
+            - name: AUTH_TYPE
+              value: scram-sha-256
+            - name: POOL_MODE
+              value: transaction
+            - name: MAX_CLIENT_CONN
+              value: "200"
+            - name: DEFAULT_POOL_SIZE
+              value: "20"
+            - name: RESERVE_POOL_SIZE
+              value: "5"
+            - name: IGNORE_STARTUP_PARAMETERS
+              value: extra_float_digits,options
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - pg_isready -h 127.0.0.1 -p 5432 -U "$DB_USER" -d "$DB_NAME"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - pg_isready -h 127.0.0.1 -p 5432 -U "$DB_USER" -d "$DB_NAME"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
