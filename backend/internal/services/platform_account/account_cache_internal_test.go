@@ -13,7 +13,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 )
 
-func TestDashboardAccountCacheInvalidationIgnoresRequestCancellation(t *testing.T) {
+func TestInvalidateDashboardAccountCacheIgnoresRequestCancellation(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	redisServer := miniredis.RunT(t)
 	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
@@ -27,10 +27,10 @@ func TestDashboardAccountCacheInvalidationIgnoresRequestCancellation(t *testing.
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	service := NewService(db).WithContext(ctx)
+	service := NewService(db)
 	service.UseRedis(redisClient)
 
-	service.invalidateDashboardAccountCache(workspaceID, douyinPlatform)
+	service.InvalidateDashboardAccountCache(ctx, workspaceID, douyinPlatform)
 
 	require.False(t, redisServer.Exists(cacheKey))
 }
