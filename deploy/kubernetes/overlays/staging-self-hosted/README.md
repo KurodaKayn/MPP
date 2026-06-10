@@ -16,6 +16,7 @@ The checked-in values are intentionally non-production:
   render and validate without committing real credentials.
 - PostgreSQL TLS is disabled because this overlay uses the self-hosted
   PostgreSQL Service.
+- App Pods connect to PostgreSQL through the in-cluster PgBouncer writer pool.
 
 Before applying this overlay to a shared staging cluster:
 
@@ -26,8 +27,8 @@ Before applying this overlay to a shared staging cluster:
 - Replace every generated Secret literal through your staging secret workflow;
   `ruby script/kubernetes/render-app-secret.rb --require-redis-password` can
   render the `mpp-app-secrets` manifest from a temporary env file.
-- Patch storage classes, storage sizes, and data-service resource limits if the
-  cluster defaults are not appropriate.
+- Patch storage classes, storage sizes, PgBouncer pool sizing, and data-service
+  resource limits if the cluster defaults are not appropriate.
 - Configure backup and retention outside these manifests before keeping useful
   staging data in the StatefulSets.
 
