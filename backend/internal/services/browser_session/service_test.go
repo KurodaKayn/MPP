@@ -74,6 +74,22 @@ func setRedisLiveSession(t *testing.T, client *redis.Client, state map[string]an
 	require.NoError(t, client.Set(context.Background(), "mpp:browser:session:"+sessionID, payload, ttl).Err())
 }
 
+type dashboardAccountCacheInvalidation struct {
+	workspaceID uuid.UUID
+	platform    string
+}
+
+type fakeDashboardAccountCacheInvalidator struct {
+	calls []dashboardAccountCacheInvalidation
+}
+
+func (f *fakeDashboardAccountCacheInvalidator) InvalidateDashboardAccountCache(_ context.Context, workspaceID uuid.UUID, platform string) {
+	f.calls = append(f.calls, dashboardAccountCacheInvalidation{
+		workspaceID: workspaceID,
+		platform:    platform,
+	})
+}
+
 func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	db, svc, _ := setupBrowserSessionTest(t)
 	userID := uuid.New()
@@ -152,6 +168,52 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 	// 5. Cancel the second session
 	err = svc.CancelSession(context.Background(), user2ID, resp2.SessionID)
 	require.NoError(t, err)
+}
+
+func TestBrowserSessionService_CompleteSessionInvalidatesDashboardAccountCache(t *testing.T) {
+	_, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	invalidator := &fakeDashboardAccountCacheInvalidator{}
+	svc.UseDashboardAccountCacheInvalidator(invalidator)
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	resp, err := svc.StartSessionForWorkspace(context.Background(), userID, "workspace", workspaceID, uuid.Nil, "douyin")
+	require.NoError(t, err)
+
+	_, err = svc.CompleteSession(context.Background(), userID, resp.SessionID)
+	require.NoError(t, err)
+
+	require.Equal(t, []dashboardAccountCacheInvalidation{
+		{
+			workspaceID: workspaceID,
+			platform:    "douyin",
+		},
+	}, invalidator.calls)
+}
+
+func TestBrowserSessionService_CompleteSessionInvalidatesPersonalWorkspaceCacheWhenSessionWorkspaceMissing(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	userID := uuid.New()
+	invalidator := &fakeDashboardAccountCacheInvalidator{}
+	svc.UseDashboardAccountCacheInvalidator(invalidator)
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	resp, err := svc.StartSession(context.Background(), userID, "douyin")
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&models.RemoteBrowserSession{}).
+		Where("id = ?", resp.SessionID).
+		Update("workspace_id", nil).Error)
+
+	_, err = svc.CompleteSession(context.Background(), userID, resp.SessionID)
+	require.NoError(t, err)
+
+	require.Equal(t, []dashboardAccountCacheInvalidation{
+		{
+			workspaceID: models.PersonalWorkspaceID(userID),
+			platform:    "douyin",
+		},
+	}, invalidator.calls)
 }
 
 func TestBrowserSessionService_GetStreamEndpointRejectsExpiredDatabaseToken(t *testing.T) {

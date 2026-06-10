@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
@@ -59,13 +60,18 @@ type BrowserSessionQuotaConfig struct {
 	TenantConcurrencyLimit int64
 }
 
+type DashboardAccountCacheInvalidator interface {
+	InvalidateDashboardAccountCache(ctx context.Context, workspaceID uuid.UUID, platform string)
+}
+
 type BrowserSessionService struct {
-	db           *gorm.DB
-	workerClient publisher.BrowserWorkerClient
-	cookieStore  *publisher.CookieStore
-	adapters     map[string]publisher.RemoteBrowserPlatformAdapter
-	redisClient  *redis.Client
-	quotaConfig  BrowserSessionQuotaConfig
+	db                               *gorm.DB
+	workerClient                     publisher.BrowserWorkerClient
+	cookieStore                      *publisher.CookieStore
+	adapters                         map[string]publisher.RemoteBrowserPlatformAdapter
+	redisClient                      *redis.Client
+	quotaConfig                      BrowserSessionQuotaConfig
+	dashboardAccountCacheInvalidator DashboardAccountCacheInvalidator
 }
 
 func NewBrowserSessionService(db *gorm.DB, worker publisher.BrowserWorkerClient, store *publisher.CookieStore) *BrowserSessionService {
@@ -133,6 +139,10 @@ func (s *BrowserSessionService) UseRedis(client *redis.Client) {
 		return
 	}
 	s.redisClient = client
+}
+
+func (s *BrowserSessionService) UseDashboardAccountCacheInvalidator(invalidator DashboardAccountCacheInvalidator) {
+	s.dashboardAccountCacheInvalidator = invalidator
 }
 
 func (s *BrowserSessionService) UseQuotaConfig(config BrowserSessionQuotaConfig) {

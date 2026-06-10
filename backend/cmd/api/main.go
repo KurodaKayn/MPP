@@ -88,6 +88,7 @@ func main() {
 
 	workerClient := app.NewBrowserWorkerClientFromEnv()
 	browserSessionService := browsersession.NewBrowserSessionService(db.DB, workerClient, publisher.NewCookieStore(db.DB))
+	browserSessionService.UseDashboardAccountCacheInvalidator(dashboardService.AccountSettings)
 	dashboardService.SetBrowserWorkerClient(workerClient)
 	dashboardService.SetBrowserSessionService(browserSessionService)
 
