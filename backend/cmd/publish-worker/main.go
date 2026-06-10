@@ -124,6 +124,7 @@ func newHealthServer(ready *atomic.Bool, redisClient *redis.Client, observabilit
 		if err := router.InstallQueryObserver(observabilitySuite.DatabaseQueryObserver()); err != nil {
 			return nil, err
 		}
+		router.InstallReplicaLagObserver(observabilitySuite.ReplicaLagObserver())
 	} else {
 		if err := db.InstallQueryObserver(db.DB, observabilitySuite.DatabaseQueryObserver()); err != nil {
 			return nil, err
