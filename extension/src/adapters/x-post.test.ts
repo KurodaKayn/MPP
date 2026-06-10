@@ -38,10 +38,80 @@ function renderXComposer(): HTMLElement {
   return composer;
 }
 
+function renderXDraftComposer(): HTMLElement {
+  document.body.innerHTML = `
+    <div
+      aria-label="Post text"
+      aria-multiline="true"
+      class="notranslate public-DraftEditor-content"
+      contenteditable="true"
+      data-testid="tweetTextarea_0"
+      role="textbox"
+      spellcheck="true"
+      tabindex="0"
+    >
+      <div data-contents="true">
+        <div data-block="true" data-editor="editor-id" data-offset-key="block-0-0">
+          <div data-offset-key="block-0-0" class="public-DraftStyleDefault-block public-DraftStyleDefault-ltr">
+            <span data-offset-key="block-0-0"><span data-text="true"></span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button data-testid="tweetButton" type="button" disabled>Post</button>
+  `;
+
+  const composer = document.querySelector<HTMLElement>(
+    '[data-testid="tweetTextarea_0"]',
+  );
+
+  if (!composer) {
+    throw new Error("Test Draft.js composer was not rendered.");
+  }
+
+  return composer;
+}
+
+function renderXEmptyDraftComposer(): HTMLElement {
+  document.body.innerHTML = `
+    <div
+      aria-label="Post text"
+      aria-multiline="true"
+      class="notranslate public-DraftEditor-content"
+      contenteditable="true"
+      data-testid="tweetTextarea_0"
+      role="textbox"
+      spellcheck="true"
+      tabindex="0"
+    >
+      <div data-contents="true">
+        <div data-block="true" data-editor="editor-id" data-offset-key="block-0-0">
+          <div data-offset-key="block-0-0" class="public-DraftStyleDefault-block public-DraftStyleDefault-ltr">
+            <span data-offset-key="block-0-0"><br data-text="true"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button data-testid="tweetButton" type="button" disabled>Post</button>
+  `;
+
+  const composer = document.querySelector<HTMLElement>(
+    '[data-testid="tweetTextarea_0"]',
+  );
+
+  if (!composer) {
+    throw new Error("Test empty Draft.js composer was not rendered.");
+  }
+
+  return composer;
+}
+
 describe("runXPostAdapter", () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(document, "execCommand");
     document.body.innerHTML = "";
     vi.stubGlobal("location", {
       hostname: "x.com",
@@ -72,6 +142,99 @@ describe("runXPostAdapter", () => {
     });
     expect(composer.textContent).toBe("Draft for X");
     expect(postClick).not.toHaveBeenCalled();
+  });
+
+  it("inserts text through the native editing path for Draft.js composers", async () => {
+    const composer = renderXDraftComposer();
+    const draftTextLeaf =
+      composer.querySelector<HTMLElement>('[data-text="true"]');
+    const selectedNodes: Node[] = [];
+    const inputEvents: InputEvent[] = [];
+    const originalSelectNodeContents = Range.prototype.selectNodeContents;
+    const execCommand = vi.fn(
+      (_command: string, _showUi: boolean, value?: string) => {
+        draftTextLeaf!.textContent = value ?? "";
+        composer.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            data: value,
+            inputType: "insertText",
+          }),
+        );
+        return true;
+      },
+    );
+    const selectNodeContents = vi.spyOn(Range.prototype, "selectNodeContents");
+
+    selectNodeContents.mockImplementation(function (this: Range, node: Node) {
+      selectedNodes.push(node);
+      return originalSelectNodeContents.call(this, node);
+    });
+
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommand,
+    });
+    composer.addEventListener("input", (event) => {
+      inputEvents.push(event as InputEvent);
+    });
+
+    const result = await runXPostAdapter(
+      createXPlatform("Draft for X"),
+      "Project title",
+    );
+
+    expect(result.status).toBe("user_review");
+    expect(execCommand).toHaveBeenCalledWith(
+      "insertText",
+      false,
+      "Draft for X",
+    );
+    expect(selectedNodes.at(-1)).toBe(draftTextLeaf);
+    expect(inputEvents.at(-1)).toMatchObject({
+      inputType: "insertText",
+      data: "Draft for X",
+    });
+    expect(composer.textContent).toContain("Draft for X");
+  });
+
+  it("selects the empty Draft.js text wrapper instead of its placeholder break", async () => {
+    const composer = renderXEmptyDraftComposer();
+    const placeholderBreak = composer.querySelector<HTMLElement>(
+      'br[data-text="true"]',
+    );
+    const offsetTextWrapper = placeholderBreak?.closest<HTMLElement>(
+      "span[data-offset-key]",
+    );
+    const setStartCalls: Array<{ node: Node; offset: number }> = [];
+    const originalSetStart = Range.prototype.setStart;
+    const execCommand = vi.fn(() => true);
+    const setStart = vi.spyOn(Range.prototype, "setStart");
+
+    setStart.mockImplementation(function (
+      this: Range,
+      node: Node,
+      offset: number,
+    ) {
+      setStartCalls.push({ node, offset });
+      return originalSetStart.call(this, node, offset);
+    });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommand,
+    });
+
+    const result = await runXPostAdapter(
+      createXPlatform("Draft for X"),
+      "Project title",
+    );
+
+    expect(result.status).toBe("user_review");
+    expect(setStartCalls.at(-1)).toEqual({
+      node: offsetTextWrapper,
+      offset: 0,
+    });
+    expect(setStartCalls.at(-1)?.node).not.toBe(placeholderBreak);
   });
 
   it("uses markdown content when text content is unavailable", async () => {
