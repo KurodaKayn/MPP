@@ -292,6 +292,79 @@ func TestConnectionPoolConfigFromEnvRejectsInvalidValues(t *testing.T) {
 	}
 }
 
+func TestReplicaLagMonitorConfigFromEnvDisabledWithoutMaxLag(t *testing.T) {
+	clearReplicaLagMonitorEnv(t)
+
+	config, enabled, err := replicaLagMonitorConfigFromEnv()
+
+	require.NoError(t, err)
+	require.False(t, enabled)
+	require.Zero(t, config)
+}
+
+func TestReplicaLagMonitorConfigFromEnvUsesOverrides(t *testing.T) {
+	clearReplicaLagMonitorEnv(t)
+	t.Setenv(dbReaderMaxLagEnv, "2s")
+	t.Setenv(dbReaderLagCheckEnv, "250ms")
+
+	config, enabled, err := replicaLagMonitorConfigFromEnv()
+
+	require.NoError(t, err)
+	require.True(t, enabled)
+	require.Equal(t, 2*time.Second, config.MaxLag)
+	require.Equal(t, 250*time.Millisecond, config.CheckInterval)
+}
+
+func TestReplicaLagMonitorConfigFromEnvUsesDefaultCheckInterval(t *testing.T) {
+	clearReplicaLagMonitorEnv(t)
+	t.Setenv(dbReaderMaxLagEnv, "2s")
+
+	config, enabled, err := replicaLagMonitorConfigFromEnv()
+
+	require.NoError(t, err)
+	require.True(t, enabled)
+	require.Equal(t, 2*time.Second, config.MaxLag)
+	require.Equal(t, defaultLagCheck, config.CheckInterval)
+}
+
+func TestReplicaLagMonitorConfigFromEnvRejectsInvalidValues(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     map[string]string
+		wantErr string
+	}{
+		{
+			name: "invalid max lag",
+			env: map[string]string{
+				dbReaderMaxLagEnv: "5",
+			},
+			wantErr: dbReaderMaxLagEnv,
+		},
+		{
+			name: "invalid check interval",
+			env: map[string]string{
+				dbReaderMaxLagEnv:   "2s",
+				dbReaderLagCheckEnv: "-1s",
+			},
+			wantErr: dbReaderLagCheckEnv,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearReplicaLagMonitorEnv(t)
+			for key, value := range tt.env {
+				t.Setenv(key, value)
+			}
+
+			_, _, err := replicaLagMonitorConfigFromEnv()
+
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
 func TestPostgresDSNFromEnvUsesDefaultSSLMode(t *testing.T) {
 	setDatabaseConnectionEnv(t)
 	t.Setenv(dbSSLModeEnv, "")
@@ -444,6 +517,12 @@ func clearConnectionPoolEnv(t *testing.T) {
 	t.Setenv(dbMaxIdleConnsEnv, "")
 	t.Setenv(dbConnMaxLifetimeEnv, "")
 	t.Setenv(dbConnMaxIdleTimeEnv, "")
+}
+
+func clearReplicaLagMonitorEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv(dbReaderMaxLagEnv, "")
+	t.Setenv(dbReaderLagCheckEnv, "")
 }
 
 func setDatabaseConnectionEnv(t *testing.T) {

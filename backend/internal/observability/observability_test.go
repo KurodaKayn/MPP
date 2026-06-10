@@ -112,6 +112,54 @@ func TestDatabaseObserverRecordsQueryMetricsAndSlowQueries(t *testing.T) {
 	})
 }
 
+func TestReplicaLagObserverRecordsReplicaMetrics(t *testing.T) {
+	e := echo.New()
+	suite := New("backend-test")
+	suite.RegisterRoutes(e)
+
+	suite.ReplicaLagObserver().ObserveReplicaLag(
+		context.Background(),
+		dbobs.ReplicaLagObservation{
+			Lag:     1500 * time.Millisecond,
+			MaxLag:  2 * time.Second,
+			Healthy: true,
+		},
+	)
+
+	metrics := scrapeMetrics(t, e)
+	assertMetricLineContains(t, metrics, "mpp_db_replica_lag_seconds", []string{
+		`service="backend-test"`,
+		"} 1.5",
+	})
+	assertMetricLineContains(t, metrics, "mpp_db_replica_healthy", []string{
+		`service="backend-test"`,
+		"} 1",
+	})
+}
+
+func TestReplicaLagObserverRecordsUnhealthyUnknownLag(t *testing.T) {
+	e := echo.New()
+	suite := New("backend-test")
+	suite.RegisterRoutes(e)
+
+	suite.ReplicaLagObserver().ObserveReplicaLag(
+		context.Background(),
+		dbobs.ReplicaLagObservation{
+			Err: dbobs.ErrReplicaLagUnknown,
+		},
+	)
+
+	metrics := scrapeMetrics(t, e)
+	assertMetricLineContains(t, metrics, "mpp_db_replica_lag_seconds", []string{
+		`service="backend-test"`,
+		"} -1",
+	})
+	assertMetricLineContains(t, metrics, "mpp_db_replica_healthy", []string{
+		`service="backend-test"`,
+		"} 0",
+	})
+}
+
 func TestPublishJobObserverRecordsPublishMetrics(t *testing.T) {
 	e := echo.New()
 	suite := New("publish-worker-test")

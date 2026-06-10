@@ -31,6 +31,40 @@ func TestRouterUsesReaderForEventualReads(t *testing.T) {
 	require.Equal(t, int64(1), strongCount)
 }
 
+func TestRouterUsesReaderWhenReplicaLagIsHealthy(t *testing.T) {
+	writer := newRouterTestDB(t)
+	reader := newRouterTestDB(t)
+
+	require.NoError(t, writer.Create(&models.User{Username: "writer", Email: "writer@example.com", PasswordHash: "hash"}).Error)
+	require.NoError(t, reader.Create(&models.User{Username: "reader-a", Email: "reader-a@example.com", PasswordHash: "hash"}).Error)
+	require.NoError(t, reader.Create(&models.User{Username: "reader-b", Email: "reader-b@example.com", PasswordHash: "hash"}).Error)
+
+	checker := &staticReplicaLagChecker{healthy: true}
+	router := NewRouter(writer, WithReader(reader), WithReplicaLagChecker(checker))
+
+	var count int64
+	require.NoError(t, router.Reader(context.Background(), EventualRead).Model(&models.User{}).Count(&count).Error)
+	require.Equal(t, int64(2), count)
+	require.Equal(t, 1, checker.calls)
+}
+
+func TestRouterFallsBackToWriterWhenReplicaLagIsUnhealthy(t *testing.T) {
+	writer := newRouterTestDB(t)
+	reader := newRouterTestDB(t)
+
+	require.NoError(t, writer.Create(&models.User{Username: "writer", Email: "writer@example.com", PasswordHash: "hash"}).Error)
+	require.NoError(t, reader.Create(&models.User{Username: "reader-a", Email: "reader-a@example.com", PasswordHash: "hash"}).Error)
+	require.NoError(t, reader.Create(&models.User{Username: "reader-b", Email: "reader-b@example.com", PasswordHash: "hash"}).Error)
+
+	checker := &staticReplicaLagChecker{healthy: false}
+	router := NewRouter(writer, WithReader(reader), WithReplicaLagChecker(checker))
+
+	var count int64
+	require.NoError(t, router.Reader(context.Background(), EventualRead).Model(&models.User{}).Count(&count).Error)
+	require.Equal(t, int64(1), count)
+	require.Equal(t, 1, checker.calls)
+}
+
 func TestRouterFallsBackToWriterWithoutReader(t *testing.T) {
 	writer := newRouterTestDB(t)
 
@@ -91,4 +125,14 @@ func newRouterTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	require.NoError(t, database.AutoMigrate(&models.User{}))
 	return database
+}
+
+type staticReplicaLagChecker struct {
+	healthy bool
+	calls   int
+}
+
+func (s *staticReplicaLagChecker) Healthy(context.Context) bool {
+	s.calls++
+	return s.healthy
 }
