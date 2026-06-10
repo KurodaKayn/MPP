@@ -1,6 +1,6 @@
 ---
 name: git-pr
-description: Draft concise Git PR titles and descriptions from committed branch diff. Keep metadata focused on actual changes, motivation, implementation, and verification.
+description: Draft concise Git PR titles and descriptions from committed branch diff, verify branch-triggered CI locally, and submit PRs with GitHub CLI after approval. Keep metadata focused on actual changes, motivation, implementation, and verification.
 ---
 
 # Git PR Writing
@@ -23,8 +23,9 @@ Draft PR metadata from committed branch diff. Do not invent context or verificat
    - `git diff --name-status <base>...HEAD`
    - `git diff --find-renames --find-copies <base>...HEAD`
 4. Read relevant commits/files until behavior, implementation, and verification are clear.
-5. Draft title/body.
-6. Create/edit PR only after explicit approval.
+5. Identify PR-triggered CI and run local equivalents where available.
+6. Draft title/body.
+7. Create/edit PR only after explicit approval.
 
 ## Hard Rules
 
@@ -35,6 +36,26 @@ Draft PR metadata from committed branch diff. Do not invent context or verificat
 - Keep reviewer-focused. Skip implementation trivia.
 - Do not create, edit, merge, close, or push PR without explicit approval.
 - Use English headings by default unless user requests localization.
+
+## Local CI Before PR
+
+- Inspect changed files, workflow triggers, path filters, package scripts, and local tool config to identify CI jobs the branch will trigger.
+- Derive and run the closest local equivalents before submitting. Prefer exact commands already defined by workflows or package manager scripts.
+- Do not hardcode repo-specific CI command lists in this skill; CI changes should be discovered from the repository at PR time.
+- Put exact commands and pass/fail results in PR `Testing`. If a local tool is unavailable, write `Not run (reason)`.
+
+## Submit With GitHub CLI
+
+After approval to create PR:
+
+```bash
+git push -u origin HEAD
+gh pr create --base <base-branch> --head "$(git branch --show-current)" --title "<type>(<scope>): <subject>" --body-file <body-file>
+```
+
+- Use `--draft` for draft PRs.
+- Use `--reviewer <handle>` when reviewer requested.
+- Use `--web` only when user wants browser completion.
 
 ## Title
 
