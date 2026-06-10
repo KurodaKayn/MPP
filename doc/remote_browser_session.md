@@ -116,6 +116,13 @@ Redis ownership rules:
 - Cookie payloads are captured through CDP and immediately passed to `CookieStore.Save`; do not persist raw cookies in Redis.
 - Every Redis lock value must include the `session_id`; release/refresh locks only when the stored value still matches the caller.
 
+Publishing boundary warning:
+
+- Remote browser sessions are only for interactive account login and Cookie capture.
+- Asynchronous publish jobs must not carry browser session IDs, stream URLs, CDP endpoints, worker session refs, container IDs, or stream tokens as executable state.
+- Publish workers may run in a different process or container minutes later; they must load durable identifiers from the job payload, decrypt saved cookies from PostgreSQL through `CookieStore`, and start their own publishing browser.
+- Do not "simplify" publishing by reusing the account-connection browser. That reintroduces Docker DNS, token synchronization, and live-session ownership coupling between the synchronous login path and the asynchronous worker path.
+
 Reuse `platform_accounts.cookies` for saved cookies, but do not let publishers or handlers read raw storage directly. Add a cookie-store boundary that decrypts, validates, and returns normalized cookie arrays.
 
 Suggested storage envelope:
@@ -639,6 +646,7 @@ Implementation boundary:
 - `CookieStore.Load(userID, platform)` decrypts and returns validated cookie arrays.
 - `CookieStore.Delete(userID, platform)` clears cookies, status, last test metadata, and profile metadata on disconnect.
 - Existing publishers should receive decrypted cookie arrays through service code. They should not parse encrypted `PlatformAccount.Cookies` directly.
+- Publish workers must use `CookieStore.Load` against durable PostgreSQL state and start a fresh publishing browser; they must not reuse remote browser sessions created for account connection.
 
 Refresh strategy:
 
