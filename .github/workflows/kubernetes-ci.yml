@@ -1,0 +1,125 @@
+name: Kubernetes CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect Kubernetes changes
+    runs-on: ubuntu-latest
+    outputs:
+      selected: ${{ steps.filter.outputs.selected }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "selected=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="${{ github.event.pull_request.base.sha }}"
+          git diff --name-only "$base" "$GITHUB_SHA" > changed-files.txt
+          cat changed-files.txt
+
+          if grep -Eq '^(deploy/kubernetes/|script/kubernetes/|script/env/|script/secret/|contracts/env\.schema\.yaml$|\.github/workflows/kubernetes-ci\.yml$)' changed-files.txt; then
+            echo "selected=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "selected=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  kubernetes:
+    name: Kubernetes manifests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.selected == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.33.9
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: script/kubernetes/smoke-test/go.mod
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Install kubeconform
+        run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
+
+      - name: Build Kubernetes manifest packages
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          find deploy/kubernetes -name kustomization.yaml -print | sort | while IFS= read -r package; do
+            dir="$(dirname "$package")"
+            rendered="$(mktemp)"
+            echo "::group::kubectl kustomize $dir"
+            kubectl kustomize "$dir" > "$rendered"
+            ruby script/kubernetes/validate-rendered-manifests.rb "$dir" "$rendered"
+            ruby script/kubernetes/validate-rendered-schema.rb "$dir" "$rendered"
+            echo "::endgroup::"
+          done
+
+      - name: Run Kubernetes Ruby helper tests
+        run: |
+          ruby script/env/generate_examples.rb --check
+          ruby script/kubernetes/test_app_secret_materializer.rb
+          ruby script/kubernetes/test_overlay_image_pinner.rb
+          ruby script/kubernetes/test_validate_rendered_manifests.rb
+          ruby script/kubernetes/test_validate_rendered_schema.rb
+
+      - name: Run Kubernetes smoke Go tests
+        run: go test ./...
+        working-directory: script/kubernetes/smoke-test
+
+  kubernetes-ci-result:
+    name: Kubernetes CI result
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - kubernetes
+    if: always()
+    steps:
+      - name: Check Kubernetes CI
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ needs.changes.result }}" == "failure" || "${{ needs.changes.result }}" == "cancelled" ]]; then
+            echo "Kubernetes change detection failed or was cancelled."
+            exit 1
+          fi
+
+          if [[ "${{ needs.changes.outputs.selected }}" == "true" && "${{ needs.kubernetes.result }}" != "success" ]]; then
+            echo "Kubernetes CI was selected but did not pass."
+            exit 1
+          fi
+
+          echo "Kubernetes CI passed or was not selected."
