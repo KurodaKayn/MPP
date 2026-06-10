@@ -13,12 +13,13 @@ const handoffMock = vi.hoisted(() => ({
   appendStoredExecutionEvent: vi.fn((event: ExtensionExecutionEvent) =>
     Promise.resolve(event),
   ),
+  updateExecutionQueueTask: vi.fn(),
 }));
 
 vi.mock("./callback", () => callbackMock);
 vi.mock("./handoff", () => handoffMock);
 
-const { recordAndCallbackEvent } = await import("./tabs");
+const { recordAndCallbackEvent, startPublishingTabs } = await import("./tabs");
 
 function createPlatform(): ExtensionPublishPlatformHandoff {
   return {
@@ -38,6 +39,23 @@ function createPlatform(): ExtensionPublishPlatformHandoff {
       url: "https://mpp.example.com/api/extension/events",
       token: "one-time-token",
     },
+  };
+}
+
+function createXPlatform(): ExtensionPublishPlatformHandoff {
+  return {
+    platform: "x",
+    adapter_key: "POST_X",
+    inject_url: "https://x.com/compose/post",
+    content_kind: "dynamic_post",
+    auto_publish: false,
+    requires_review: true,
+    adapted_content: {
+      schema_version: 1,
+      format: "text",
+      text: "x draft body",
+    },
+    assets: [],
   };
 }
 
@@ -106,6 +124,108 @@ describe("recordAndCallbackEvent", () => {
           callback_error: "Callback rejected event with HTTP 500.",
         },
       }),
+    );
+  });
+});
+
+describe("startPublishingTabs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    callbackMock.sendEventCallback.mockResolvedValue(undefined);
+  });
+
+  it("updates queue task status while processing platforms sequentially", async () => {
+    const douyin = createPlatform();
+    const x = createXPlatform();
+    const tabUrls = new Map<number, string>();
+    let nextTabId = 0;
+    let resolveFirstMessage: (() => void) | undefined;
+
+    vi.stubGlobal("browser", {
+      tabs: {
+        create: vi.fn(({ url }: { url: string }) => {
+          nextTabId += 1;
+          tabUrls.set(nextTabId, url);
+          return Promise.resolve({ id: nextTabId, url });
+        }),
+        get: vi.fn((tabId: number) =>
+          Promise.resolve({ id: tabId, url: tabUrls.get(tabId) }),
+        ),
+        onUpdated: {
+          addListener: vi.fn(
+            (
+              listener: (
+                tabId: number,
+                changeInfo: { status?: string },
+              ) => void,
+            ) => {
+              const tabId = nextTabId;
+              queueMicrotask(() => listener(tabId, { status: "complete" }));
+            },
+          ),
+          removeListener: vi.fn(),
+        },
+        sendMessage: vi.fn((tabId: number) => {
+          if (tabId === 1) {
+            return new Promise<void>((resolve) => {
+              resolveFirstMessage = resolve;
+            });
+          }
+
+          return Promise.resolve();
+        }),
+      },
+      scripting: {
+        executeScript: vi.fn(() => Promise.resolve()),
+      },
+    });
+
+    const runPromise = startPublishingTabs({
+      schema_version: 1,
+      type: "mpp.extension_publish_handoff",
+      execution_id: "execution-1",
+      expires_at: "2026-06-03T12:00:00Z",
+      project: {
+        id: "project-1",
+        title: "Project 1",
+      },
+      platforms: [douyin, x],
+    });
+
+    await vi.waitFor(() => {
+      expect(browser.tabs.create).toHaveBeenCalledTimes(1);
+    });
+    expect(handoffMock.updateExecutionQueueTask).toHaveBeenCalledWith(
+      "execution-1",
+      "douyin",
+      expect.objectContaining({ status: "opening_tabs" }),
+    );
+    expect(handoffMock.updateExecutionQueueTask).toHaveBeenCalledWith(
+      "execution-1",
+      "douyin",
+      expect.objectContaining({ status: "injecting", tab_id: 1 }),
+    );
+
+    resolveFirstMessage?.();
+    await runPromise;
+
+    expect(browser.tabs.create).toHaveBeenNthCalledWith(1, {
+      active: true,
+      url: douyin.inject_url,
+    });
+    expect(browser.tabs.create).toHaveBeenNthCalledWith(2, {
+      active: true,
+      url: x.inject_url,
+    });
+    expect(handoffMock.updateExecutionQueueTask).toHaveBeenCalledWith(
+      "execution-1",
+      "x",
+      expect.objectContaining({ status: "opening_tabs" }),
+    );
+    expect(handoffMock.updateExecutionQueueTask).toHaveBeenCalledWith(
+      "execution-1",
+      "x",
+      expect.objectContaining({ status: "injecting", tab_id: 2 }),
     );
   });
 });
