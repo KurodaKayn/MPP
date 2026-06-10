@@ -383,16 +383,14 @@ func runConcurrentStatsRequests(t *testing.T, s *services.DashboardService, quer
 	errs := make(chan error, waitingCallers+1)
 	statsCh := make(chan *dto.DashboardStatsResponse, waitingCallers+1)
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		stats, err := s.WithContext(context.Background()).GetStats(nil)
 		if err != nil {
 			errs <- err
 			return
 		}
 		statsCh <- stats
-	}()
+	})
 
 	select {
 	case <-queryCount.firstQuery:
@@ -402,10 +400,8 @@ func runConcurrentStatsRequests(t *testing.T, s *services.DashboardService, quer
 
 	start := make(chan struct{})
 	ready := make(chan struct{}, waitingCallers)
-	wg.Add(waitingCallers)
 	for range waitingCallers {
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			ready <- struct{}{}
 			stats, err := s.WithContext(context.Background()).GetStats(nil)
@@ -414,7 +410,7 @@ func runConcurrentStatsRequests(t *testing.T, s *services.DashboardService, quer
 				return
 			}
 			statsCh <- stats
-		}()
+		})
 	}
 
 	close(start)
