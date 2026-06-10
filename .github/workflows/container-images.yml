@@ -32,41 +32,93 @@ env:
   BACKEND_API_BASE_URL: ${{ vars.BACKEND_API_BASE_URL || 'http://backend:8080' }}
 
 jobs:
+  changes:
+    name: Detect image changes
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.filter.outputs.images }}
+      selected: ${{ steps.filter.outputs.selected }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect images to build
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          all_images='[{"name":"frontend","image":"mpp-frontend","context":"./frontend","file":"./frontend/Dockerfile"},{"name":"backend","image":"mpp-backend","context":"./backend","file":"./backend/Dockerfile"},{"name":"browser-worker","image":"mpp-browser-worker","context":"./browser-worker","file":"./browser-worker/Dockerfile"},{"name":"browser-runtime","image":"mpp-browser-runtime","context":"./browser-worker/runtime","file":"./browser-worker/runtime/Dockerfile"},{"name":"ai-service","image":"mpp-ai-service","context":"./ai-service","file":"./ai-service/Dockerfile"},{"name":"content-pipeline-service","image":"mpp-content-pipeline-service","context":"./content-pipeline-service","file":"./content-pipeline-service/Dockerfile"},{"name":"collab-service","image":"mpp-collab-service","context":"./collab-service","file":"./collab-service/Dockerfile"}]'
+
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            {
+              echo "selected=true"
+              echo "images={\"include\":${all_images}}"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="${{ github.event.pull_request.base.sha }}"
+          git diff --name-only "$base" "$GITHUB_SHA" > changed-files.txt
+          cat changed-files.txt
+
+          if grep -Eq '^\.github/workflows/container-images\.yml$' changed-files.txt; then
+            {
+              echo "selected=true"
+              echo "images={\"include\":${all_images}}"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          images=()
+          add_image() {
+            images+=("$1")
+          }
+
+          if grep -Eq '^frontend/' changed-files.txt; then
+            add_image '{"name":"frontend","image":"mpp-frontend","context":"./frontend","file":"./frontend/Dockerfile"}'
+          fi
+          if grep -Eq '^backend/' changed-files.txt; then
+            add_image '{"name":"backend","image":"mpp-backend","context":"./backend","file":"./backend/Dockerfile"}'
+          fi
+          if grep -Eq '^browser-worker/' changed-files.txt; then
+            add_image '{"name":"browser-worker","image":"mpp-browser-worker","context":"./browser-worker","file":"./browser-worker/Dockerfile"}'
+            add_image '{"name":"browser-runtime","image":"mpp-browser-runtime","context":"./browser-worker/runtime","file":"./browser-worker/runtime/Dockerfile"}'
+          fi
+          if grep -Eq '^ai-service/' changed-files.txt; then
+            add_image '{"name":"ai-service","image":"mpp-ai-service","context":"./ai-service","file":"./ai-service/Dockerfile"}'
+          fi
+          if grep -Eq '^content-pipeline-service/' changed-files.txt; then
+            add_image '{"name":"content-pipeline-service","image":"mpp-content-pipeline-service","context":"./content-pipeline-service","file":"./content-pipeline-service/Dockerfile"}'
+          fi
+          if grep -Eq '^collab-service/' changed-files.txt; then
+            add_image '{"name":"collab-service","image":"mpp-collab-service","context":"./collab-service","file":"./collab-service/Dockerfile"}'
+          fi
+
+          if (( ${#images[@]} == 0 )); then
+            {
+              echo "selected=false"
+              echo 'images={"include":[]}'
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          joined="$(IFS=,; echo "${images[*]}")"
+          {
+            echo "selected=true"
+            echo "images={\"include\":[${joined}]}"
+          } >> "$GITHUB_OUTPUT"
+
   publish:
     name: Publish ${{ matrix.name }}
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.selected == 'true'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: frontend
-            image: mpp-frontend
-            context: ./frontend
-            file: ./frontend/Dockerfile
-          - name: backend
-            image: mpp-backend
-            context: ./backend
-            file: ./backend/Dockerfile
-          - name: browser-worker
-            image: mpp-browser-worker
-            context: ./browser-worker
-            file: ./browser-worker/Dockerfile
-          - name: browser-runtime
-            image: mpp-browser-runtime
-            context: ./browser-worker/runtime
-            file: ./browser-worker/runtime/Dockerfile
-          - name: ai-service
-            image: mpp-ai-service
-            context: ./ai-service
-            file: ./ai-service/Dockerfile
-          - name: content-pipeline-service
-            image: mpp-content-pipeline-service
-            context: ./content-pipeline-service
-            file: ./content-pipeline-service/Dockerfile
-          - name: collab-service
-            image: mpp-collab-service
-            context: ./collab-service
-            file: ./collab-service/Dockerfile
+      matrix: ${{ fromJson(needs.changes.outputs.images) }}
 
     steps:
       - name: Checkout
