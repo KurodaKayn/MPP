@@ -304,6 +304,8 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_DB: ${DB_NAME:-poster_db}
+      POSTGRES_EXPORTER_USER: ${POSTGRES_EXPORTER_USER:-postgres_exporter}
+      POSTGRES_EXPORTER_PASSWORD: ${POSTGRES_EXPORTER_PASSWORD:-postgres_exporter}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 30s
@@ -384,6 +386,38 @@ services:
       - ai-service
       - browser-worker
       - collab-service
+      - postgres-exporter
+
+  postgres-exporter-init:
+    image: postgres:17-alpine
+    command: ["/bin/sh", "/docker-entrypoint-initdb.d/002_create_postgres_exporter.sh"]
+    environment:
+      POSTGRES_HOST: ${DB_HOST:-db}
+      POSTGRES_PORT: ${DB_PORT:-5432}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-poster_db}
+      POSTGRES_EXPORTER_USER: ${POSTGRES_EXPORTER_USER:-postgres_exporter}
+      POSTGRES_EXPORTER_PASSWORD: ${POSTGRES_EXPORTER_PASSWORD:-postgres_exporter}
+    volumes:
+      - ./postgres/init/002_create_postgres_exporter.sh:/docker-entrypoint-initdb.d/002_create_postgres_exporter.sh:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  postgres-exporter:
+    image: ${POSTGRES_EXPORTER_IMAGE:-quay.io/prometheuscommunity/postgres-exporter:v0.19.1}
+    command:
+      - --extend.query-path=/etc/postgres-exporter/queries.yml
+    environment:
+      DATA_SOURCE_URI: ${POSTGRES_EXPORTER_DATA_SOURCE_URI:-${DB_HOST:-db}:${DB_PORT:-5432}/${DB_NAME:-poster_db}?sslmode=${DB_SSLMODE:-disable}}
+      DATA_SOURCE_USER: ${POSTGRES_EXPORTER_USER:-postgres_exporter}
+      DATA_SOURCE_PASS: ${POSTGRES_EXPORTER_PASSWORD:-postgres_exporter}
+    volumes:
+      - ./observability/postgres-exporter/queries.yml:/etc/postgres-exporter/queries.yml:ro
+    depends_on:
+      postgres-exporter-init:
+        condition: service_completed_successfully
 
   loki:
     image: grafana/loki:3.7.0
