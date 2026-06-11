@@ -2,7 +2,6 @@ package project
 
 import (
 	"encoding/json"
-	"math"
 	"strings"
 
 	"github.com/google/uuid"
@@ -669,13 +668,17 @@ func TruncateRunes(value string, limit int) string {
 }
 
 func (s *Service) ListProjects(page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
-	if scopeUserID == nil && s.canUseDashboardProjectListCache() {
-		return s.getCachedDashboardProjectList(page, limit, status, filterUserID, platform)
-	}
-	return s.computeProjectList(page, limit, status, filterUserID, platform, scopeUserID)
+	return s.ListProjectsCursor("", page, limit, status, filterUserID, platform, scopeUserID)
 }
 
-func (s *Service) computeProjectList(page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
+func (s *Service) ListProjectsCursor(cursor string, page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
+	if scopeUserID == nil && s.canUseDashboardProjectListCache() {
+		return s.getCachedDashboardProjectList(cursor, page, limit, status, filterUserID, platform)
+	}
+	return s.computeProjectList(cursor, page, limit, status, filterUserID, platform, scopeUserID)
+}
+
+func (s *Service) computeProjectList(cursor string, page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
 	query := s.projectListReadDB(scopeUserID).Model(&models.Project{})
 
 	// Apply scope (User dashboard enforces scopeUserID, overriding any filterUserID)
@@ -698,7 +701,7 @@ func (s *Service) computeProjectList(page, limit int, status, filterUserID, plat
 			Group("projects.id")
 	}
 
-	return s.ListProjectPage(query, page, limit, scopeUserID)
+	return s.ListProjectPage(query, cursor, page, limit, scopeUserID)
 }
 
 func (s *Service) projectListReadDB(scopeUserID *uuid.UUID) *gorm.DB {
@@ -708,28 +711,30 @@ func (s *Service) projectListReadDB(scopeUserID *uuid.UUID) *gorm.DB {
 	return s.eventualReadDB()
 }
 
-func (s *Service) ListProjectPage(query *gorm.DB, page, limit int, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
+func (s *Service) ListProjectPage(query *gorm.DB, cursor string, page, limit int, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
 	var projects []models.Project
-	var total int64
 
-	// Count total before pagination
-	if err := query.Count(&total).Error; err != nil {
+	page, limit = normalizeProjectListPage(page, limit)
+	query, err := applyProjectListCursor(query, cursor)
+	if err != nil {
 		return nil, err
 	}
-
-	// Calculate pagination
-	offset := (page - 1) * limit
-	totalPages := int(math.Ceil(float64(total) / float64(limit)))
 
 	// Fetch data with specific fields and preload summary publications
 	if err := query.Omit("source_content").
 		Preload("Publications", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, project_id, platform, enabled, status, draft_status, review_status, sync_required, publish_url")
 		}).
-		Order("projects.created_at desc").
-		Limit(limit).Offset(offset).
+		Order("projects.created_at DESC").
+		Order("projects.id ASC").
+		Limit(limit + 1).
 		Find(&projects).Error; err != nil {
 		return nil, err
+	}
+
+	hasMore := len(projects) > limit
+	if hasMore {
+		projects = projects[:limit]
 	}
 
 	accessByProjectID := make(map[uuid.UUID]projectAccessResolution, len(projects))
@@ -754,11 +759,30 @@ func (s *Service) ListProjectPage(query *gorm.DB, page, limit int, scopeUserID *
 		items = append(items, projectListItemFromModel(p, accessByProjectID[p.ID]))
 	}
 
+	total := int64((page-1)*limit + len(items))
+	if hasMore {
+		total++
+	}
+	totalPages := page
+	if len(items) == 0 && page == 1 {
+		totalPages = 0
+	} else if hasMore {
+		totalPages = page + 1
+	}
+
+	nextCursor := ""
+	if hasMore && len(projects) > 0 {
+		nextCursor = encodeProjectListCursor(projects[len(projects)-1])
+	}
+
 	return &dto.PaginationResponse{
 		Items:      items,
 		Page:       page,
 		Limit:      limit,
 		Total:      total,
 		TotalPages: totalPages,
+		Cursor:     strings.TrimSpace(cursor),
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
 	}, nil
 }
