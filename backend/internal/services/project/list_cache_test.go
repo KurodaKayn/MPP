@@ -86,6 +86,38 @@ func TestCreateProjectInvalidatesDashboardProjectListCache(t *testing.T) {
 	require.Equal(t, int64(2), refreshed.Total)
 }
 
+func TestProjectListCacheIgnoresStaleRefillAfterInvalidation(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newProjectListRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+	ctx := context.Background()
+
+	user := createProjectListCacheUser(t, db, "cache-race")
+	seedProjectListCacheProject(t, db, user, "cached-a", models.ProjectStatusReady, "wechat")
+
+	first, err := s.WithContext(ctx).ListProjects(1, 10, "", "", "", nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), first.Total)
+	staleKey := requireSingleProjectListCacheKey(t, redisClient)
+	stalePayload, err := redisClient.Get(ctx, staleKey).Bytes()
+	require.NoError(t, err)
+
+	_, err = s.WithContext(ctx).CreateProject(user.ID, dto.CreateProjectRequest{
+		Title:         "cached-b",
+		SourceContent: "content",
+		Platforms:     []string{"zhihu"},
+	})
+	require.NoError(t, err)
+	requireProjectListCacheKeys(t, redisClient, 0)
+
+	require.NoError(t, redisClient.Set(ctx, staleKey, stalePayload, time.Minute).Err())
+
+	refreshed, err := s.WithContext(ctx).ListProjects(1, 10, "", "", "", nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), refreshed.Total)
+}
+
 func TestListProjectsCacheSeparatesFilters(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	redisClient := newProjectListRedisClient(t)
