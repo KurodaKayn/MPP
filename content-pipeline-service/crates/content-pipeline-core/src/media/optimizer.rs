@@ -78,83 +78,71 @@ pub(super) fn optimize_image_to_constraints(
     let mut smallest_encoded_size = bytes.len() as u64;
     let mut best = None;
 
-    if constraints.allows_output_mime_type(original_mime_type) {
-        consider_candidate(
-            &mut best,
-            ProcessedImage {
-                bytes: bytes.to_vec(),
-                mime_type: original_mime_type.to_string(),
-                width: 0,
-                height: 0,
-            },
-            max_bytes,
-            constraints,
-            original_mime_type,
-            1000,
-            &mut smallest_encoded_size,
-        );
-    }
-
     let image =
         image::load_from_memory_with_format(bytes, format).map_err(|_| MediaError::DecodeImage)?;
-    if let Some(candidate) = best.as_mut() {
-        candidate.image.width = image.width();
-        candidate.image.height = image.height();
-        candidate.pixel_count = u64::from(image.width()) * u64::from(image.height());
-    }
 
-    if format == ImageFormat::Png
-        && constraints.allows_output_mime_type("image/png")
-        && let Some(optimized) = optimize_png_lossless(bytes)
     {
-        consider_candidate(
+        let mut search = CandidateSearch::new(
             &mut best,
-            ProcessedImage {
-                bytes: optimized,
-                mime_type: "image/png".to_string(),
-                width: image.width(),
-                height: image.height(),
-            },
             max_bytes,
             constraints,
             original_mime_type,
-            1000,
             &mut smallest_encoded_size,
         );
-    }
 
-    if format == ImageFormat::Jpeg
-        && constraints.allows_output_mime_type("image/jpeg")
-        && let Some(stripped) = strip_jpeg_metadata_lossless(bytes)
-    {
-        consider_candidate(
-            &mut best,
-            ProcessedImage {
-                bytes: stripped,
-                mime_type: "image/jpeg".to_string(),
-                width: image.width(),
-                height: image.height(),
+        if constraints.allows_output_mime_type(original_mime_type) {
+            search.consider(
+                ProcessedImage {
+                    bytes: bytes.to_vec(),
+                    mime_type: original_mime_type.to_string(),
+                    width: image.width(),
+                    height: image.height(),
+                },
+                1000,
+            );
+        }
+
+        if format == ImageFormat::Png
+            && constraints.allows_output_mime_type("image/png")
+            && let Some(optimized) = optimize_png_lossless(bytes)
+        {
+            search.consider(
+                ProcessedImage {
+                    bytes: optimized,
+                    mime_type: "image/png".to_string(),
+                    width: image.width(),
+                    height: image.height(),
+                },
+                1000,
+            );
+        }
+
+        if format == ImageFormat::Jpeg
+            && constraints.allows_output_mime_type("image/jpeg")
+            && let Some(stripped) = strip_jpeg_metadata_lossless(bytes)
+        {
+            search.consider(
+                ProcessedImage {
+                    bytes: stripped,
+                    mime_type: "image/jpeg".to_string(),
+                    width: image.width(),
+                    height: image.height(),
+                },
+                1000,
+            );
+        }
+
+        add_encoded_candidates(
+            &mut search,
+            &image,
+            EncodeQualities {
+                jpeg_max: JPEG_VISUAL_MAX_QUALITY,
+                jpeg_min: JPEG_VISUAL_MIN_QUALITY,
+                webp: WEBP_VISUAL_QUALITIES,
+                avif: AVIF_VISUAL_QUALITIES,
             },
-            max_bytes,
-            constraints,
-            original_mime_type,
-            1000,
-            &mut smallest_encoded_size,
-        );
+        )?;
     }
-
-    add_encoded_candidates(
-        &mut best,
-        &image,
-        max_bytes,
-        constraints,
-        original_mime_type,
-        JPEG_VISUAL_MAX_QUALITY,
-        JPEG_VISUAL_MIN_QUALITY,
-        WEBP_VISUAL_QUALITIES,
-        AVIF_VISUAL_QUALITIES,
-        &mut smallest_encoded_size,
-    )?;
 
     if let Some(candidate) = best {
         return Ok(candidate.image);
@@ -166,36 +154,39 @@ pub(super) fn optimize_image_to_constraints(
         let resized = image.resize_exact(next_width, next_height, FilterType::Lanczos3);
         let mut step_best = None;
 
-        if constraints.allows_output_mime_type("image/png") && image.has_alpha() {
-            let encoded = encode_png(&resized)?;
-            consider_candidate(
+        {
+            let mut search = CandidateSearch::new(
                 &mut step_best,
-                ProcessedImage {
-                    bytes: encoded,
-                    mime_type: "image/png".to_string(),
-                    width: resized.width(),
-                    height: resized.height(),
-                },
                 max_bytes,
                 constraints,
                 original_mime_type,
-                900,
                 &mut smallest_encoded_size,
             );
-        }
 
-        add_encoded_candidates(
-            &mut step_best,
-            &resized,
-            max_bytes,
-            constraints,
-            original_mime_type,
-            JPEG_RESIZE_MAX_QUALITY,
-            JPEG_RESIZE_MIN_QUALITY,
-            WEBP_RESIZE_QUALITIES,
-            AVIF_RESIZE_QUALITIES,
-            &mut smallest_encoded_size,
-        )?;
+            if constraints.allows_output_mime_type("image/png") && image.has_alpha() {
+                let encoded = encode_png(&resized)?;
+                search.consider(
+                    ProcessedImage {
+                        bytes: encoded,
+                        mime_type: "image/png".to_string(),
+                        width: resized.width(),
+                        height: resized.height(),
+                    },
+                    900,
+                );
+            }
+
+            add_encoded_candidates(
+                &mut search,
+                &resized,
+                EncodeQualities {
+                    jpeg_max: JPEG_RESIZE_MAX_QUALITY,
+                    jpeg_min: JPEG_RESIZE_MIN_QUALITY,
+                    webp: WEBP_RESIZE_QUALITIES,
+                    avif: AVIF_RESIZE_QUALITIES,
+                },
+            )?;
+        }
 
         if let Some(candidate) = step_best {
             return Ok(candidate.image);
@@ -208,108 +199,105 @@ pub(super) fn optimize_image_to_constraints(
     })
 }
 
-fn consider_candidate(
-    best: &mut Option<CompressionCandidate>,
-    image: ProcessedImage,
+struct CandidateSearch<'a> {
+    best: &'a mut Option<CompressionCandidate>,
     max_bytes: u64,
-    constraints: &MediaConstraints,
-    original_mime_type: &str,
-    quality_score: u16,
-    smallest_encoded_size: &mut u64,
-) {
-    *smallest_encoded_size = (*smallest_encoded_size).min(image.byte_size());
-    if image.byte_size() > max_bytes || !constraints.allows_output_mime_type(&image.mime_type) {
-        return;
+    constraints: &'a MediaConstraints,
+    original_mime_type: &'a str,
+    smallest_encoded_size: &'a mut u64,
+}
+
+impl<'a> CandidateSearch<'a> {
+    fn new(
+        best: &'a mut Option<CompressionCandidate>,
+        max_bytes: u64,
+        constraints: &'a MediaConstraints,
+        original_mime_type: &'a str,
+        smallest_encoded_size: &'a mut u64,
+    ) -> Self {
+        Self {
+            best,
+            max_bytes,
+            constraints,
+            original_mime_type,
+            smallest_encoded_size,
+        }
     }
 
-    let candidate = CompressionCandidate::new(image, original_mime_type, quality_score);
-    if best
-        .as_ref()
-        .is_none_or(|current| candidate.better_than(current))
-    {
-        *best = Some(candidate);
+    fn consider(&mut self, image: ProcessedImage, quality_score: u16) {
+        *self.smallest_encoded_size = (*self.smallest_encoded_size).min(image.byte_size());
+        if image.byte_size() > self.max_bytes
+            || !self.constraints.allows_output_mime_type(&image.mime_type)
+        {
+            return;
+        }
+
+        let candidate = CompressionCandidate::new(image, self.original_mime_type, quality_score);
+        if self
+            .best
+            .as_ref()
+            .is_none_or(|current| candidate.better_than(current))
+        {
+            *self.best = Some(candidate);
+        }
     }
 }
 
+struct EncodeQualities<'a> {
+    jpeg_max: u8,
+    jpeg_min: u8,
+    webp: &'a [f32],
+    avif: &'a [u8],
+}
+
 fn add_encoded_candidates(
-    best: &mut Option<CompressionCandidate>,
+    search: &mut CandidateSearch<'_>,
     image: &DynamicImage,
-    max_bytes: u64,
-    constraints: &MediaConstraints,
-    original_mime_type: &str,
-    jpeg_max_quality: u8,
-    jpeg_min_quality: u8,
-    webp_qualities: &[f32],
-    avif_qualities: &[u8],
-    smallest_encoded_size: &mut u64,
+    qualities: EncodeQualities<'_>,
 ) -> Result<(), MediaError> {
-    if constraints.allows_output_mime_type("image/png") && image.has_alpha() {
+    if search.constraints.allows_output_mime_type("image/png") && image.has_alpha() {
         let encoded = encode_png(image)?;
-        consider_candidate(
-            best,
+        search.consider(
             ProcessedImage {
                 bytes: encoded,
                 mime_type: "image/png".to_string(),
                 width: image.width(),
                 height: image.height(),
             },
-            max_bytes,
-            constraints,
-            original_mime_type,
             1000,
-            smallest_encoded_size,
         );
     }
 
-    if constraints.allows_output_mime_type("image/jpeg") {
-        add_jpeg_candidate(
-            best,
-            image,
-            max_bytes,
-            constraints,
-            original_mime_type,
-            jpeg_max_quality,
-            jpeg_min_quality,
-            smallest_encoded_size,
-        )?;
+    if search.constraints.allows_output_mime_type("image/jpeg") {
+        add_jpeg_candidate(search, image, qualities.jpeg_max, qualities.jpeg_min)?;
     }
 
-    if constraints.allows_output_mime_type("image/webp") {
-        for quality in webp_qualities {
+    if search.constraints.allows_output_mime_type("image/webp") {
+        for quality in qualities.webp {
             let encoded = encode_webp(image, *quality)?;
-            consider_candidate(
-                best,
+            search.consider(
                 ProcessedImage {
                     bytes: encoded,
                     mime_type: "image/webp".to_string(),
                     width: image.width(),
                     height: image.height(),
                 },
-                max_bytes,
-                constraints,
-                original_mime_type,
                 (*quality * 10.0).round() as u16,
-                smallest_encoded_size,
             );
         }
     }
 
-    if constraints.allows_output_mime_type("image/avif") {
-        for quality in avif_qualities {
+    if search.constraints.allows_output_mime_type("image/avif") {
+        for quality in qualities.avif {
             let encoded = encode_avif(image, *quality)?;
-            consider_candidate(
-                best,
+            search.consider(
                 ProcessedImage {
                     bytes: encoded,
                     mime_type: "image/avif".to_string(),
                     width: image.width(),
                     height: image.height(),
                 },
-                max_bytes,
-                constraints,
-                original_mime_type,
                 u16::from(*quality) * 10,
-                smallest_encoded_size,
             );
         }
     }
@@ -318,14 +306,10 @@ fn add_encoded_candidates(
 }
 
 fn add_jpeg_candidate(
-    best: &mut Option<CompressionCandidate>,
+    search: &mut CandidateSearch<'_>,
     image: &DynamicImage,
-    max_bytes: u64,
-    constraints: &MediaConstraints,
-    original_mime_type: &str,
     max_quality: u8,
     min_quality: u8,
-    smallest_encoded_size: &mut u64,
 ) -> Result<(), MediaError> {
     let mut low = min_quality;
     let mut high = max_quality;
@@ -334,22 +318,17 @@ fn add_jpeg_candidate(
         let quality = low + (high - low) / 2;
         let encoded = encode_jpeg(image, quality)?;
         let encoded_size = encoded.len() as u64;
-        consider_candidate(
-            best,
+        search.consider(
             ProcessedImage {
                 bytes: encoded,
                 mime_type: "image/jpeg".to_string(),
                 width: image.width(),
                 height: image.height(),
             },
-            max_bytes,
-            constraints,
-            original_mime_type,
             jpeg_quality_score(image, quality),
-            smallest_encoded_size,
         );
 
-        if encoded_size <= max_bytes {
+        if encoded_size <= search.max_bytes {
             low = quality.saturating_add(1);
         } else if quality == 0 {
             break;
