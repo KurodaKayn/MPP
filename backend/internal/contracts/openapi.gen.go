@@ -20,14 +20,38 @@ const (
 	Content AIEditContentResponseChannel = "content"
 )
 
+// Defines values for AIEditPrepublishRequestPlatform.
+const (
+	AIEditPrepublishRequestPlatformDouyin AIEditPrepublishRequestPlatform = "douyin"
+	AIEditPrepublishRequestPlatformWechat AIEditPrepublishRequestPlatform = "wechat"
+	AIEditPrepublishRequestPlatformX      AIEditPrepublishRequestPlatform = "x"
+	AIEditPrepublishRequestPlatformZhihu  AIEditPrepublishRequestPlatform = "zhihu"
+)
+
 // Defines values for AIEditPrepublishResponseChannel.
 const (
 	Prepublish AIEditPrepublishResponseChannel = "prepublish"
 )
 
+// Defines values for AIEditPrepublishResponsePlatform.
+const (
+	AIEditPrepublishResponsePlatformDouyin AIEditPrepublishResponsePlatform = "douyin"
+	AIEditPrepublishResponsePlatformWechat AIEditPrepublishResponsePlatform = "wechat"
+	AIEditPrepublishResponsePlatformX      AIEditPrepublishResponsePlatform = "x"
+	AIEditPrepublishResponsePlatformZhihu  AIEditPrepublishResponsePlatform = "zhihu"
+)
+
 // Defines values for AdaptedAssetType.
 const (
 	Image AdaptedAssetType = "image"
+)
+
+// Defines values for BrowserSessionPlatform.
+const (
+	BrowserSessionPlatformDouyin BrowserSessionPlatform = "douyin"
+	BrowserSessionPlatformWechat BrowserSessionPlatform = "wechat"
+	BrowserSessionPlatformX      BrowserSessionPlatform = "x"
+	BrowserSessionPlatformZhihu  BrowserSessionPlatform = "zhihu"
 )
 
 // Defines values for BrowserSessionStatus.
@@ -64,10 +88,41 @@ const (
 	Active CollabDocumentStatus = "active"
 )
 
+// Defines values for CompleteBrowserSessionResultPlatform.
+const (
+	CompleteBrowserSessionResultPlatformDouyin CompleteBrowserSessionResultPlatform = "douyin"
+	CompleteBrowserSessionResultPlatformWechat CompleteBrowserSessionResultPlatform = "wechat"
+	CompleteBrowserSessionResultPlatformX      CompleteBrowserSessionResultPlatform = "x"
+	CompleteBrowserSessionResultPlatformZhihu  CompleteBrowserSessionResultPlatform = "zhihu"
+)
+
 // Defines values for ConnectionTestStatus.
 const (
 	ConnectionTestStatusConnected ConnectionTestStatus = "connected"
 	ConnectionTestStatusFailed    ConnectionTestStatus = "failed"
+)
+
+// Defines values for ContentTemplateDefaultPlatforms.
+const (
+	ContentTemplateDefaultPlatformsDouyin ContentTemplateDefaultPlatforms = "douyin"
+	ContentTemplateDefaultPlatformsWechat ContentTemplateDefaultPlatforms = "wechat"
+	ContentTemplateDefaultPlatformsX      ContentTemplateDefaultPlatforms = "x"
+	ContentTemplateDefaultPlatformsZhihu  ContentTemplateDefaultPlatforms = "zhihu"
+)
+
+// Defines values for ContentTemplateScope.
+const (
+	ContentTemplateScopePersonal  ContentTemplateScope = "personal"
+	ContentTemplateScopeSystem    ContentTemplateScope = "system"
+	ContentTemplateScopeWorkspace ContentTemplateScope = "workspace"
+)
+
+// Defines values for CreateContentTemplateRequestDefaultPlatforms.
+const (
+	CreateContentTemplateRequestDefaultPlatformsDouyin CreateContentTemplateRequestDefaultPlatforms = "douyin"
+	CreateContentTemplateRequestDefaultPlatformsWechat CreateContentTemplateRequestDefaultPlatforms = "wechat"
+	CreateContentTemplateRequestDefaultPlatformsX      CreateContentTemplateRequestDefaultPlatforms = "x"
+	CreateContentTemplateRequestDefaultPlatformsZhihu  CreateContentTemplateRequestDefaultPlatforms = "zhihu"
 )
 
 // Defines values for DouyinAccountPlatform.
@@ -87,6 +142,13 @@ const (
 	GeneratedByTypeAgent  GeneratedByType = "agent"
 	GeneratedByTypeSystem GeneratedByType = "system"
 	GeneratedByTypeUser   GeneratedByType = "user"
+)
+
+// Defines values for MediaAssetLibraryScope.
+const (
+	MediaAssetLibraryScopePersonal  MediaAssetLibraryScope = "personal"
+	MediaAssetLibraryScopeProject   MediaAssetLibraryScope = "project"
+	MediaAssetLibraryScopeWorkspace MediaAssetLibraryScope = "workspace"
 )
 
 // Defines values for PlatformAccountStatus.
@@ -155,6 +217,30 @@ const (
 	ProjectStatusReady      ProjectStatus = "ready"
 )
 
+// Defines values for PublicationDetailPlatform.
+const (
+	PublicationDetailPlatformDouyin PublicationDetailPlatform = "douyin"
+	PublicationDetailPlatformWechat PublicationDetailPlatform = "wechat"
+	PublicationDetailPlatformX      PublicationDetailPlatform = "x"
+	PublicationDetailPlatformZhihu  PublicationDetailPlatform = "zhihu"
+)
+
+// Defines values for PublicationDraftStatus.
+const (
+	PublicationDraftStatusReady    PublicationDraftStatus = "ready"
+	PublicationDraftStatusStale    PublicationDraftStatus = "stale"
+	PublicationDraftStatusSyncing  PublicationDraftStatus = "syncing"
+	PublicationDraftStatusUnsynced PublicationDraftStatus = "unsynced"
+)
+
+// Defines values for PublicationReviewStatus.
+const (
+	PublicationReviewStatusApproved         PublicationReviewStatus = "approved"
+	PublicationReviewStatusChangesRequested PublicationReviewStatus = "changes_requested"
+	PublicationReviewStatusDraft            PublicationReviewStatus = "draft"
+	PublicationReviewStatusReviewing        PublicationReviewStatus = "reviewing"
+)
+
 // Defines values for PublicationStatus.
 const (
 	PublicationStatusCancelled  PublicationStatus = "cancelled"
@@ -166,12 +252,28 @@ const (
 	PublicationStatusSyncing    PublicationStatus = "syncing"
 )
 
+// Defines values for PublicationSummaryPlatform.
+const (
+	PublicationSummaryPlatformDouyin PublicationSummaryPlatform = "douyin"
+	PublicationSummaryPlatformWechat PublicationSummaryPlatform = "wechat"
+	PublicationSummaryPlatformX      PublicationSummaryPlatform = "x"
+	PublicationSummaryPlatformZhihu  PublicationSummaryPlatform = "zhihu"
+)
+
 // Defines values for PublishPlatform.
 const (
 	PublishPlatformDouyin PublishPlatform = "douyin"
 	PublishPlatformWechat PublishPlatform = "wechat"
 	PublishPlatformX      PublishPlatform = "x"
 	PublishPlatformZhihu  PublishPlatform = "zhihu"
+)
+
+// Defines values for PublishResultPlatform.
+const (
+	PublishResultPlatformDouyin PublishResultPlatform = "douyin"
+	PublishResultPlatformWechat PublishResultPlatform = "wechat"
+	PublishResultPlatformX      PublishResultPlatform = "x"
+	PublishResultPlatformZhihu  PublishResultPlatform = "zhihu"
 )
 
 // Defines values for PublishResultStatus.
@@ -192,6 +294,14 @@ const (
 	RequirementStatusValueWarning RequirementStatusValue = "warning"
 )
 
+// Defines values for StartPublishBrowserSessionResultPlatform.
+const (
+	StartPublishBrowserSessionResultPlatformDouyin StartPublishBrowserSessionResultPlatform = "douyin"
+	StartPublishBrowserSessionResultPlatformWechat StartPublishBrowserSessionResultPlatform = "wechat"
+	StartPublishBrowserSessionResultPlatformX      StartPublishBrowserSessionResultPlatform = "x"
+	StartPublishBrowserSessionResultPlatformZhihu  StartPublishBrowserSessionResultPlatform = "zhihu"
+)
+
 // Defines values for UpdateProjectCommentRequestStatus.
 const (
 	Resolved UpdateProjectCommentRequestStatus = "resolved"
@@ -204,11 +314,30 @@ const (
 
 // Defines values for WorkspaceActivityType.
 const (
+	WorkspaceActivityTypeInviteAccepted    WorkspaceActivityType = "invite_accepted"
+	WorkspaceActivityTypeInviteCreated     WorkspaceActivityType = "invite_created"
+	WorkspaceActivityTypeInviteRevoked     WorkspaceActivityType = "invite_revoked"
 	WorkspaceActivityTypeMemberAdded       WorkspaceActivityType = "member_added"
 	WorkspaceActivityTypeMemberRemoved     WorkspaceActivityType = "member_removed"
 	WorkspaceActivityTypeMemberRoleChanged WorkspaceActivityType = "member_role_changed"
 	WorkspaceActivityTypeWorkspaceCreated  WorkspaceActivityType = "workspace_created"
 	WorkspaceActivityTypeWorkspaceUpdated  WorkspaceActivityType = "workspace_updated"
+)
+
+// Defines values for WorkspaceInviteStatus.
+const (
+	WorkspaceInviteStatusAccepted WorkspaceInviteStatus = "accepted"
+	WorkspaceInviteStatusExpired  WorkspaceInviteStatus = "expired"
+	WorkspaceInviteStatusPending  WorkspaceInviteStatus = "pending"
+	WorkspaceInviteStatusRevoked  WorkspaceInviteStatus = "revoked"
+)
+
+// Defines values for WorkspaceInviteWithTokenStatus.
+const (
+	WorkspaceInviteWithTokenStatusAccepted WorkspaceInviteWithTokenStatus = "accepted"
+	WorkspaceInviteWithTokenStatusExpired  WorkspaceInviteWithTokenStatus = "expired"
+	WorkspaceInviteWithTokenStatusPending  WorkspaceInviteWithTokenStatus = "pending"
+	WorkspaceInviteWithTokenStatusRevoked  WorkspaceInviteWithTokenStatus = "revoked"
 )
 
 // Defines values for WorkspaceMemberRequestRole.
@@ -276,28 +405,63 @@ type AIEditContentResponseChannel string
 
 // AIEditPrepublishRequest defines model for AIEditPrepublishRequest.
 type AIEditPrepublishRequest struct {
-	AdaptedContent AdaptedContent   `json:"adapted_content"`
-	Conversation   *[]AIChatMessage `json:"conversation,omitempty"`
-	Message        string           `json:"message"`
-	Platform       PublishPlatform  `json:"platform"`
-	Title          *string          `json:"title,omitempty"`
+	AdaptedContent struct {
+		Assets        *[]AdaptedAsset `json:"assets,omitempty"`
+		Format        DraftFormat     `json:"format"`
+		GeneratedBy   *GeneratedBy    `json:"generated_by,omitempty"`
+		Html          *string         `json:"html,omitempty"`
+		Markdown      *string         `json:"markdown,omitempty"`
+		SchemaVersion *int            `json:"schema_version,omitempty"`
+
+		// SourceRevision RFC3339 timestamp or a future revision identifier.
+		SourceRevision *string `json:"source_revision,omitempty"`
+		Summary        *string `json:"summary,omitempty"`
+		Text           *string `json:"text,omitempty"`
+	} `json:"adapted_content"`
+	Conversation *[]AIChatMessage                `json:"conversation,omitempty"`
+	Message      string                          `json:"message"`
+	Platform     AIEditPrepublishRequestPlatform `json:"platform"`
+	Title        *string                         `json:"title,omitempty"`
 }
+
+// AIEditPrepublishRequestPlatform defines model for AIEditPrepublishRequest.Platform.
+type AIEditPrepublishRequestPlatform string
 
 // AIEditPrepublishResponse defines model for AIEditPrepublishResponse.
 type AIEditPrepublishResponse struct {
-	AdaptedContent AdaptedContent                  `json:"adapted_content"`
-	Channel        AIEditPrepublishResponseChannel `json:"channel"`
-	Content        string                          `json:"content"`
-	Platform       PublishPlatform                 `json:"platform"`
+	AdaptedContent struct {
+		Assets        *[]AdaptedAsset `json:"assets,omitempty"`
+		Format        DraftFormat     `json:"format"`
+		GeneratedBy   *GeneratedBy    `json:"generated_by,omitempty"`
+		Html          *string         `json:"html,omitempty"`
+		Markdown      *string         `json:"markdown,omitempty"`
+		SchemaVersion *int            `json:"schema_version,omitempty"`
+
+		// SourceRevision RFC3339 timestamp or a future revision identifier.
+		SourceRevision *string `json:"source_revision,omitempty"`
+		Summary        *string `json:"summary,omitempty"`
+		Text           *string `json:"text,omitempty"`
+	} `json:"adapted_content"`
+	Channel  AIEditPrepublishResponseChannel  `json:"channel"`
+	Content  string                           `json:"content"`
+	Platform AIEditPrepublishResponsePlatform `json:"platform"`
 }
 
 // AIEditPrepublishResponseChannel defines model for AIEditPrepublishResponse.Channel.
 type AIEditPrepublishResponseChannel string
 
+// AIEditPrepublishResponsePlatform defines model for AIEditPrepublishResponse.Platform.
+type AIEditPrepublishResponsePlatform string
+
 // AcceptProjectShareLinkResponse defines model for AcceptProjectShareLinkResponse.
 type AcceptProjectShareLinkResponse struct {
 	Project ProjectDetail `json:"project"`
 	Role    ProjectRole   `json:"role"`
+}
+
+// AcceptWorkspaceInviteRequest defines model for AcceptWorkspaceInviteRequest.
+type AcceptWorkspaceInviteRequest struct {
+	Token string `json:"token"`
 }
 
 // AdaptedAsset defines model for AdaptedAsset.
@@ -339,16 +503,40 @@ type AddWorkspaceMemberRequest struct {
 	UserId *openapi_types.UUID        `json:"user_id,omitempty"`
 }
 
+// BrandProfile defines model for BrandProfile.
+type BrandProfile struct {
+	Audience     string             `json:"audience"`
+	BannedWords  []string           `json:"banned_words"`
+	CreatedAt    time.Time          `json:"created_at"`
+	CreatedBy    openapi_types.UUID `json:"created_by"`
+	Cta          string             `json:"cta"`
+	DefaultTags  []string           `json:"default_tags"`
+	Id           openapi_types.UUID `json:"id"`
+	LinkStrategy string             `json:"link_strategy"`
+	Name         string             `json:"name"`
+	UpdatedAt    time.Time          `json:"updated_at"`
+	Voice        string             `json:"voice"`
+	WorkspaceId  openapi_types.UUID `json:"workspace_id"`
+}
+
+// BrandProfilesResponse defines model for BrandProfilesResponse.
+type BrandProfilesResponse struct {
+	Items []BrandProfile `json:"items"`
+}
+
 // BrowserSession defines model for BrowserSession.
 type BrowserSession struct {
-	ExpiresAt            time.Time            `json:"expires_at"`
-	Message              *string              `json:"message,omitempty"`
-	Platform             PublishPlatform      `json:"platform"`
-	SessionId            openapi_types.UUID   `json:"session_id"`
-	Status               BrowserSessionStatus `json:"status"`
-	StreamTokenExpiresAt *time.Time           `json:"stream_token_expires_at,omitempty"`
-	StreamUrl            *string              `json:"stream_url,omitempty"`
+	ExpiresAt            time.Time              `json:"expires_at"`
+	Message              *string                `json:"message,omitempty"`
+	Platform             BrowserSessionPlatform `json:"platform"`
+	SessionId            openapi_types.UUID     `json:"session_id"`
+	Status               BrowserSessionStatus   `json:"status"`
+	StreamTokenExpiresAt *time.Time             `json:"stream_token_expires_at,omitempty"`
+	StreamUrl            *string                `json:"stream_url,omitempty"`
 }
+
+// BrowserSessionPlatform defines model for BrowserSession.Platform.
+type BrowserSessionPlatform string
 
 // BrowserSessionStatus defines model for BrowserSessionStatus.
 type BrowserSessionStatus string
@@ -498,19 +686,76 @@ type CompleteBrowserSessionResult struct {
 		AvatarUrl string `json:"avatar_url"`
 		Username  string `json:"username"`
 	} `json:"account"`
-	Message   string               `json:"message"`
-	Platform  PublishPlatform      `json:"platform"`
-	SessionId openapi_types.UUID   `json:"session_id"`
-	Status    BrowserSessionStatus `json:"status"`
+	Message   string                               `json:"message"`
+	Platform  CompleteBrowserSessionResultPlatform `json:"platform"`
+	SessionId openapi_types.UUID                   `json:"session_id"`
+	Status    BrowserSessionStatus                 `json:"status"`
 }
+
+// CompleteBrowserSessionResultPlatform defines model for CompleteBrowserSessionResult.Platform.
+type CompleteBrowserSessionResultPlatform string
 
 // ConnectionTestStatus defines model for ConnectionTestStatus.
 type ConnectionTestStatus string
+
+// ContentTemplate defines model for ContentTemplate.
+type ContentTemplate struct {
+	CreatedAt        time.Time                         `json:"created_at"`
+	DefaultPlatforms []ContentTemplateDefaultPlatforms `json:"default_platforms"`
+	Description      string                            `json:"description"`
+	Id               openapi_types.UUID                `json:"id"`
+	Name             string                            `json:"name"`
+	OwnerUserId      *openapi_types.UUID               `json:"owner_user_id"`
+	PlatformConfig   map[string]interface{}            `json:"platform_config"`
+	Scope            ContentTemplateScope              `json:"scope"`
+	SourceTemplate   string                            `json:"source_template"`
+	Tags             []string                          `json:"tags"`
+	TitleTemplate    string                            `json:"title_template"`
+	UpdatedAt        time.Time                         `json:"updated_at"`
+	WorkspaceId      *openapi_types.UUID               `json:"workspace_id"`
+}
+
+// ContentTemplateDefaultPlatforms defines model for ContentTemplate.DefaultPlatforms.
+type ContentTemplateDefaultPlatforms string
+
+// ContentTemplateScope defines model for ContentTemplateScope.
+type ContentTemplateScope string
+
+// ContentTemplatesResponse defines model for ContentTemplatesResponse.
+type ContentTemplatesResponse struct {
+	Items []ContentTemplate `json:"items"`
+}
+
+// CreateBrandProfileRequest defines model for CreateBrandProfileRequest.
+type CreateBrandProfileRequest struct {
+	Audience     *string   `json:"audience,omitempty"`
+	BannedWords  *[]string `json:"banned_words,omitempty"`
+	Cta          *string   `json:"cta,omitempty"`
+	DefaultTags  *[]string `json:"default_tags,omitempty"`
+	LinkStrategy *string   `json:"link_strategy,omitempty"`
+	Name         string    `json:"name"`
+	Voice        *string   `json:"voice,omitempty"`
+}
 
 // CreateCollabDocumentRequest defines model for CreateCollabDocumentRequest.
 type CreateCollabDocumentRequest struct {
 	Title string `json:"title"`
 }
+
+// CreateContentTemplateRequest defines model for CreateContentTemplateRequest.
+type CreateContentTemplateRequest struct {
+	DefaultPlatforms []CreateContentTemplateRequestDefaultPlatforms `json:"default_platforms"`
+	Description      *string                                        `json:"description,omitempty"`
+	Name             string                                         `json:"name"`
+	PlatformConfig   *map[string]interface{}                        `json:"platform_config,omitempty"`
+	Scope            *ContentTemplateScope                          `json:"scope,omitempty"`
+	SourceTemplate   string                                         `json:"source_template"`
+	Tags             *[]string                                      `json:"tags,omitempty"`
+	TitleTemplate    string                                         `json:"title_template"`
+}
+
+// CreateContentTemplateRequestDefaultPlatforms defines model for CreateContentTemplateRequest.DefaultPlatforms.
+type CreateContentTemplateRequestDefaultPlatforms string
 
 // CreateProjectCommentRequest defines model for CreateProjectCommentRequest.
 type CreateProjectCommentRequest struct {
@@ -523,6 +768,13 @@ type CreateProjectCommentRequest struct {
 type CreateProjectShareLinkRequest struct {
 	ExpiresAt *time.Time              `json:"expires_at,omitempty"`
 	Role      ProjectCollaboratorRole `json:"role"`
+}
+
+// CreateWorkspaceInviteRequest defines model for CreateWorkspaceInviteRequest.
+type CreateWorkspaceInviteRequest struct {
+	Email     openapi_types.Email        `json:"email"`
+	ExpiresAt *time.Time                 `json:"expires_at,omitempty"`
+	Role      WorkspaceMemberRequestRole `json:"role"`
 }
 
 // CreateWorkspaceRequest defines model for CreateWorkspaceRequest.
@@ -568,6 +820,9 @@ type GeneratedBy struct {
 // GeneratedByType defines model for GeneratedByType.
 type GeneratedByType string
 
+// MediaAssetLibraryScope defines model for MediaAssetLibraryScope.
+type MediaAssetLibraryScope string
+
 // PaginationCollabDocuments defines model for PaginationCollabDocuments.
 type PaginationCollabDocuments struct {
 	Items      []CollabDocument `json:"items"`
@@ -579,11 +834,17 @@ type PaginationCollabDocuments struct {
 
 // PaginationProjects defines model for PaginationProjects.
 type PaginationProjects struct {
-	Items      []ProjectListItem `json:"items"`
-	Limit      int               `json:"limit"`
-	Page       int               `json:"page"`
-	Total      int               `json:"total"`
-	TotalPages int               `json:"total_pages"`
+	// Cursor Opaque keyset cursor used for this page.
+	Cursor  *string           `json:"cursor,omitempty"`
+	HasMore bool              `json:"has_more"`
+	Items   []ProjectListItem `json:"items"`
+	Limit   int               `json:"limit"`
+
+	// NextCursor Opaque keyset cursor for the next page.
+	NextCursor *string `json:"next_cursor,omitempty"`
+	Page       int     `json:"page"`
+	Total      int     `json:"total"`
+	TotalPages int     `json:"total_pages"`
 }
 
 // PlatformAccountStatus defines model for PlatformAccountStatus.
@@ -659,33 +920,50 @@ type ProjectCommentsResponse struct {
 
 // ProjectDetail defines model for ProjectDetail.
 type ProjectDetail struct {
+	AccessSource       *ProjectAccessSource       `json:"access_source,omitempty"`
+	Activities         *[]ProjectActivity         `json:"activities,omitempty"`
+	BrandProfileId     *openapi_types.UUID        `json:"brand_profile_id"`
+	CollabDocumentId   *openapi_types.UUID        `json:"collab_document_id"`
+	Collaborators      *[]ProjectCollaborator     `json:"collaborators,omitempty"`
+	Comments           *[]ProjectComment          `json:"comments,omitempty"`
+	CreatedAt          time.Time                  `json:"created_at"`
+	Id                 openapi_types.UUID         `json:"id"`
+	PermissionSources  *[]ProjectPermissionSource `json:"permission_sources,omitempty"`
+	PublicationDetails *[]PublicationDetail       `json:"publication_details,omitempty"`
+	Publications       []PublicationSummary       `json:"publications"`
+	Role               ProjectRole                `json:"role"`
+	ShareLinks         *[]ProjectShareLink        `json:"share_links,omitempty"`
+	SourceContent      string                     `json:"source_content"`
+	Status             ProjectStatus              `json:"status"`
+	TemplateId         *openapi_types.UUID        `json:"template_id"`
+	Title              string                     `json:"title"`
+	UpdatedAt          time.Time                  `json:"updated_at"`
+	UserId             openapi_types.UUID         `json:"user_id"`
+	Versions           *[]ProjectVersion          `json:"versions,omitempty"`
+	WorkspaceId        *openapi_types.UUID        `json:"workspace_id"`
+}
+
+// ProjectListItem defines model for ProjectListItem.
+type ProjectListItem struct {
 	AccessSource     *ProjectAccessSource `json:"access_source,omitempty"`
+	BrandProfileId   *openapi_types.UUID  `json:"brand_profile_id"`
 	CollabDocumentId *openapi_types.UUID  `json:"collab_document_id"`
 	CreatedAt        time.Time            `json:"created_at"`
 	Id               openapi_types.UUID   `json:"id"`
 	Publications     []PublicationSummary `json:"publications"`
 	Role             ProjectRole          `json:"role"`
-	SourceContent    string               `json:"source_content"`
 	Status           ProjectStatus        `json:"status"`
+	TemplateId       *openapi_types.UUID  `json:"template_id"`
 	Title            string               `json:"title"`
 	UpdatedAt        time.Time            `json:"updated_at"`
 	UserId           openapi_types.UUID   `json:"user_id"`
 	WorkspaceId      *openapi_types.UUID  `json:"workspace_id"`
 }
 
-// ProjectListItem defines model for ProjectListItem.
-type ProjectListItem struct {
-	AccessSource     *ProjectAccessSource `json:"access_source,omitempty"`
-	CollabDocumentId *openapi_types.UUID  `json:"collab_document_id"`
-	CreatedAt        time.Time            `json:"created_at"`
-	Id               openapi_types.UUID   `json:"id"`
-	Publications     []PublicationSummary `json:"publications"`
-	Role             ProjectRole          `json:"role"`
-	Status           ProjectStatus        `json:"status"`
-	Title            string               `json:"title"`
-	UpdatedAt        time.Time            `json:"updated_at"`
-	UserId           openapi_types.UUID   `json:"user_id"`
-	WorkspaceId      *openapi_types.UUID  `json:"workspace_id"`
+// ProjectPermissionSource defines model for ProjectPermissionSource.
+type ProjectPermissionSource struct {
+	Role   string `json:"role"`
+	Source string `json:"source"`
 }
 
 // ProjectPublications defines model for ProjectPublications.
@@ -756,50 +1034,83 @@ type ProjectVersionsResponse struct {
 
 // PublicationDetail defines model for PublicationDetail.
 type PublicationDetail struct {
-	AdaptedContent AdaptedContent         `json:"adapted_content"`
-	Config         map[string]interface{} `json:"config"`
-	CreatedAt      time.Time              `json:"created_at"`
-	Enabled        bool                   `json:"enabled"`
-	ErrorMessage   *string                `json:"error_message,omitempty"`
-	Id             openapi_types.UUID     `json:"id"`
-	LastAttemptAt  *time.Time             `json:"last_attempt_at,omitempty"`
-	Platform       PublishPlatform        `json:"platform"`
-	PublishUrl     *string                `json:"publish_url,omitempty"`
-	PublishedAt    *time.Time             `json:"published_at,omitempty"`
-	RemoteId       *string                `json:"remote_id,omitempty"`
-	RetryCount     int                    `json:"retry_count"`
-	Status         PublicationStatus      `json:"status"`
-	UpdatedAt      time.Time              `json:"updated_at"`
+	AdaptedContent struct {
+		Assets        *[]AdaptedAsset `json:"assets,omitempty"`
+		Format        DraftFormat     `json:"format"`
+		GeneratedBy   *GeneratedBy    `json:"generated_by,omitempty"`
+		Html          *string         `json:"html,omitempty"`
+		Markdown      *string         `json:"markdown,omitempty"`
+		SchemaVersion *int            `json:"schema_version,omitempty"`
+
+		// SourceRevision RFC3339 timestamp or a future revision identifier.
+		SourceRevision *string `json:"source_revision,omitempty"`
+		Summary        *string `json:"summary,omitempty"`
+		Text           *string `json:"text,omitempty"`
+	} `json:"adapted_content"`
+	Config        map[string]interface{}    `json:"config"`
+	CreatedAt     time.Time                 `json:"created_at"`
+	DraftStatus   PublicationDraftStatus    `json:"draft_status"`
+	Enabled       bool                      `json:"enabled"`
+	ErrorMessage  *string                   `json:"error_message,omitempty"`
+	Id            openapi_types.UUID        `json:"id"`
+	LastAttemptAt *time.Time                `json:"last_attempt_at,omitempty"`
+	Platform      PublicationDetailPlatform `json:"platform"`
+	PublishUrl    *string                   `json:"publish_url,omitempty"`
+	PublishedAt   *time.Time                `json:"published_at,omitempty"`
+	RemoteId      *string                   `json:"remote_id,omitempty"`
+	RetryCount    int                       `json:"retry_count"`
+	ReviewStatus  PublicationReviewStatus   `json:"review_status"`
+	Status        PublicationStatus         `json:"status"`
+	SyncRequired  bool                      `json:"sync_required"`
+	UpdatedAt     time.Time                 `json:"updated_at"`
 }
+
+// PublicationDetailPlatform defines model for PublicationDetail.Platform.
+type PublicationDetailPlatform string
+
+// PublicationDraftStatus defines model for PublicationDraftStatus.
+type PublicationDraftStatus string
+
+// PublicationReviewStatus defines model for PublicationReviewStatus.
+type PublicationReviewStatus string
 
 // PublicationStatus defines model for PublicationStatus.
 type PublicationStatus string
 
 // PublicationSummary defines model for PublicationSummary.
 type PublicationSummary struct {
-	Enabled    bool               `json:"enabled"`
-	Id         openapi_types.UUID `json:"id"`
-	Platform   PublishPlatform    `json:"platform"`
-	PublishUrl *string            `json:"publish_url,omitempty"`
-	Status     PublicationStatus  `json:"status"`
+	DraftStatus  PublicationDraftStatus     `json:"draft_status"`
+	Enabled      bool                       `json:"enabled"`
+	Id           openapi_types.UUID         `json:"id"`
+	Platform     PublicationSummaryPlatform `json:"platform"`
+	PublishUrl   *string                    `json:"publish_url,omitempty"`
+	ReviewStatus PublicationReviewStatus    `json:"review_status"`
+	Status       PublicationStatus          `json:"status"`
+	SyncRequired bool                       `json:"sync_required"`
 }
+
+// PublicationSummaryPlatform defines model for PublicationSummary.Platform.
+type PublicationSummaryPlatform string
 
 // PublishPlatform defines model for PublishPlatform.
 type PublishPlatform string
 
 // PublishResult defines model for PublishResult.
 type PublishResult struct {
-	BrowserSessionId *openapi_types.UUID `json:"browser_session_id,omitempty"`
-	ErrorMessage     *string             `json:"error_message,omitempty"`
-	IdempotencyKey   *string             `json:"idempotency_key,omitempty"`
-	JobId            *openapi_types.UUID `json:"job_id,omitempty"`
-	Platform         *PublishPlatform    `json:"platform,omitempty"`
-	PublishUrl       *string             `json:"publish_url,omitempty"`
-	QueuedAt         *time.Time          `json:"queued_at,omitempty"`
-	RemoteId         *string             `json:"remote_id,omitempty"`
-	Status           PublishResultStatus `json:"status"`
-	StreamUrl        *string             `json:"stream_url,omitempty"`
+	BrowserSessionId *openapi_types.UUID    `json:"browser_session_id,omitempty"`
+	ErrorMessage     *string                `json:"error_message,omitempty"`
+	IdempotencyKey   *string                `json:"idempotency_key,omitempty"`
+	JobId            *openapi_types.UUID    `json:"job_id,omitempty"`
+	Platform         *PublishResultPlatform `json:"platform,omitempty"`
+	PublishUrl       *string                `json:"publish_url,omitempty"`
+	QueuedAt         *time.Time             `json:"queued_at,omitempty"`
+	RemoteId         *string                `json:"remote_id,omitempty"`
+	Status           PublishResultStatus    `json:"status"`
+	StreamUrl        *string                `json:"stream_url,omitempty"`
 }
+
+// PublishResultPlatform defines model for PublishResult.Platform.
+type PublishResultPlatform string
 
 // PublishResultStatus defines model for PublishResultStatus.
 type PublishResultStatus string
@@ -846,14 +1157,17 @@ type StartBrowserSessionResult struct {
 
 // StartPublishBrowserSessionResult defines model for StartPublishBrowserSessionResult.
 type StartPublishBrowserSessionResult struct {
-	ExpiresAt            time.Time            `json:"expires_at"`
-	Platform             PublishPlatform      `json:"platform"`
-	ProjectId            openapi_types.UUID   `json:"project_id"`
-	SessionId            openapi_types.UUID   `json:"session_id"`
-	Status               BrowserSessionStatus `json:"status"`
-	StreamTokenExpiresAt time.Time            `json:"stream_token_expires_at"`
-	StreamUrl            string               `json:"stream_url"`
+	ExpiresAt            time.Time                                `json:"expires_at"`
+	Platform             StartPublishBrowserSessionResultPlatform `json:"platform"`
+	ProjectId            openapi_types.UUID                       `json:"project_id"`
+	SessionId            openapi_types.UUID                       `json:"session_id"`
+	Status               BrowserSessionStatus                     `json:"status"`
+	StreamTokenExpiresAt time.Time                                `json:"stream_token_expires_at"`
+	StreamUrl            string                                   `json:"stream_url"`
 }
+
+// StartPublishBrowserSessionResultPlatform defines model for StartPublishBrowserSessionResult.Platform.
+type StartPublishBrowserSessionResultPlatform string
 
 // UpdateCollabDocumentRequest defines model for UpdateCollabDocumentRequest.
 type UpdateCollabDocumentRequest struct {
@@ -947,6 +1261,50 @@ type WorkspaceActivity struct {
 // WorkspaceActivityType defines model for WorkspaceActivityType.
 type WorkspaceActivityType string
 
+// WorkspaceInvite defines model for WorkspaceInvite.
+type WorkspaceInvite struct {
+	AcceptedAt  *time.Time            `json:"accepted_at,omitempty"`
+	AcceptedBy  *openapi_types.UUID   `json:"accepted_by,omitempty"`
+	CreatedAt   time.Time             `json:"created_at"`
+	Email       openapi_types.Email   `json:"email"`
+	ExpiresAt   time.Time             `json:"expires_at"`
+	Id          openapi_types.UUID    `json:"id"`
+	InvitedBy   openapi_types.UUID    `json:"invited_by"`
+	RevokedAt   *time.Time            `json:"revoked_at,omitempty"`
+	Role        WorkspaceRole         `json:"role"`
+	Status      WorkspaceInviteStatus `json:"status"`
+	UpdatedAt   time.Time             `json:"updated_at"`
+	WorkspaceId openapi_types.UUID    `json:"workspace_id"`
+}
+
+// WorkspaceInviteStatus defines model for WorkspaceInvite.Status.
+type WorkspaceInviteStatus string
+
+// WorkspaceInviteWithToken defines model for WorkspaceInviteWithToken.
+type WorkspaceInviteWithToken struct {
+	AcceptedAt  *time.Time                     `json:"accepted_at,omitempty"`
+	AcceptedBy  *openapi_types.UUID            `json:"accepted_by,omitempty"`
+	CreatedAt   time.Time                      `json:"created_at"`
+	Email       openapi_types.Email            `json:"email"`
+	ExpiresAt   time.Time                      `json:"expires_at"`
+	Id          openapi_types.UUID             `json:"id"`
+	InvitedBy   openapi_types.UUID             `json:"invited_by"`
+	RevokedAt   *time.Time                     `json:"revoked_at,omitempty"`
+	Role        WorkspaceRole                  `json:"role"`
+	Status      WorkspaceInviteWithTokenStatus `json:"status"`
+	Token       string                         `json:"token"`
+	UpdatedAt   time.Time                      `json:"updated_at"`
+	WorkspaceId openapi_types.UUID             `json:"workspace_id"`
+}
+
+// WorkspaceInviteWithTokenStatus defines model for WorkspaceInviteWithToken.Status.
+type WorkspaceInviteWithTokenStatus string
+
+// WorkspaceInvitesResponse defines model for WorkspaceInvitesResponse.
+type WorkspaceInvitesResponse struct {
+	Items []WorkspaceInvite `json:"items"`
+}
+
 // WorkspaceMember defines model for WorkspaceMember.
 type WorkspaceMember struct {
 	CreatedAt   time.Time           `json:"created_at"`
@@ -1029,9 +1387,3 @@ type ZhihuAccount struct {
 
 // ZhihuAccountPlatform defines model for ZhihuAccount.Platform.
 type ZhihuAccountPlatform string
-
-// CreateBrowserWorkerSessionJSONRequestBody defines body for CreateBrowserWorkerSession for application/json ContentType.
-type CreateBrowserWorkerSessionJSONRequestBody = BrowserWorkerStartSessionRequest
-
-// StartBrowserWorkerDouyinPublishJSONRequestBody defines body for StartBrowserWorkerDouyinPublish for application/json ContentType.
-type StartBrowserWorkerDouyinPublishJSONRequestBody = BrowserWorkerStartDouyinPublishRequest

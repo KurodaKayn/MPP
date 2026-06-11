@@ -1,0 +1,40 @@
+openapi: 3.0.3
+info:
+  title: Multi-Platform Poster Browser Worker Contract View
+  version: 1.0.0
+  description: Ref-only codegen view for browser-worker schema types.
+paths: {}
+components:
+  schemas:
+    BrowserWorkerSessionStatus:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerSessionStatus"
+
+    BrowserWorkerCookie:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerCookie"
+
+    BrowserWorkerDomainRule:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerDomainRule"
+
+    BrowserWorkerCookieRequirement:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerCookieRequirement"
+
+    BrowserWorkerViewport:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerViewport"
+
+    BrowserWorkerRemoteAccountProfile:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerRemoteAccountProfile"
+
+    BrowserWorkerStartSessionRequest:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerStartSessionRequest"
+
+    BrowserWorkerStartSessionResponse:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerStartSessionResponse"
+
+    BrowserWorkerGetSessionResponse:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerGetSessionResponse"
+
+    BrowserWorkerCaptureSessionResponse:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerCaptureSessionResponse"
+
+    BrowserWorkerStartDouyinPublishRequest:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerStartDouyinPublishRequest"

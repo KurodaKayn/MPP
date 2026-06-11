@@ -117,9 +117,3 @@ type BrowserWorkerViewport struct {
 	Height int `json:"height"`
 	Width  int `json:"width"`
 }
-
-// CreateBrowserWorkerSessionJSONRequestBody defines body for CreateBrowserWorkerSession for application/json ContentType.
-type CreateBrowserWorkerSessionJSONRequestBody = BrowserWorkerStartSessionRequest
-
-// StartBrowserWorkerDouyinPublishJSONRequestBody defines body for StartBrowserWorkerDouyinPublish for application/json ContentType.
-type StartBrowserWorkerDouyinPublishJSONRequestBody = BrowserWorkerStartDouyinPublishRequest

@@ -1,0 +1,349 @@
+openapi: 3.0.3
+info:
+  title: Multi-Platform Poster Backend Contract View
+  version: 1.0.0
+  description: Ref-only codegen view for backend schema types.
+paths: {}
+components:
+  schemas:
+    DraftFormat:
+      $ref: "../openapi.yaml#/components/schemas/DraftFormat"
+
+    PublishPlatform:
+      $ref: "../openapi.yaml#/components/schemas/PublishPlatform"
+
+    GeneratedByType:
+      $ref: "../openapi.yaml#/components/schemas/GeneratedByType"
+
+    AdaptedAssetType:
+      $ref: "../openapi.yaml#/components/schemas/AdaptedAssetType"
+
+    ProjectStatus:
+      $ref: "../openapi.yaml#/components/schemas/ProjectStatus"
+
+    ProjectRole:
+      $ref: "../openapi.yaml#/components/schemas/ProjectRole"
+
+    ProjectAccessSource:
+      $ref: "../openapi.yaml#/components/schemas/ProjectAccessSource"
+
+    ProjectCollaboratorRole:
+      $ref: "../openapi.yaml#/components/schemas/ProjectCollaboratorRole"
+
+    ProjectActivityType:
+      $ref: "../openapi.yaml#/components/schemas/ProjectActivityType"
+
+    ProjectCommentStatus:
+      $ref: "../openapi.yaml#/components/schemas/ProjectCommentStatus"
+
+    ProjectShareLinkStatus:
+      $ref: "../openapi.yaml#/components/schemas/ProjectShareLinkStatus"
+
+    WorkspaceRole:
+      $ref: "../openapi.yaml#/components/schemas/WorkspaceRole"
+
+    WorkspaceMemberRequestRole:
+      $ref: "../openapi.yaml#/components/schemas/WorkspaceMemberRequestRole"
+
+    WorkspaceStatus:
+      $ref: "../openapi.yaml#/components/schemas/WorkspaceStatus"
+
+    WorkspaceActivityType:
+      $ref: "../openapi.yaml#/components/schemas/WorkspaceActivityType"
+
+    PublicationStatus:
+      $ref: "../openapi.yaml#/components/schemas/PublicationStatus"
+
+    PublicationDraftStatus:
+      $ref: "../openapi.yaml#/components/schemas/PublicationDraftStatus"
+
+    PublicationReviewStatus:
+      $ref: "../openapi.yaml#/components/schemas/PublicationReviewStatus"
+
+    ContentTemplateScope:
+      $ref: "../openapi.yaml#/components/schemas/ContentTemplateScope"
+
+    MediaAssetLibraryScope:
+      $ref: "../openapi.yaml#/components/schemas/MediaAssetLibraryScope"
+
+    PublishResultStatus:
+      $ref: "../openapi.yaml#/components/schemas/PublishResultStatus"
+
+    PlatformAccountStatus:
+      $ref: "../openapi.yaml#/components/schemas/PlatformAccountStatus"
+
+    ConnectionTestStatus:
+      $ref: "../openapi.yaml#/components/schemas/ConnectionTestStatus"
+
+    RequirementStatusValue:
+      $ref: "../openapi.yaml#/components/schemas/RequirementStatusValue"
+
+    BrowserSessionStatus:
+      $ref: "../openapi.yaml#/components/schemas/BrowserSessionStatus"
+
+    CollabDocumentStatus:
+      $ref: "../openapi.yaml#/components/schemas/CollabDocumentStatus"
+
+    CollabDocumentRole:
+      $ref: "../openapi.yaml#/components/schemas/CollabDocumentRole"
+
+    BrowserWorkerSessionStatus:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerSessionStatus"
+
+    BrowserWorkerCookie:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerCookie"
+
+    BrowserWorkerDomainRule:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerDomainRule"
+
+    BrowserWorkerCookieRequirement:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerCookieRequirement"
+
+    BrowserWorkerViewport:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerViewport"
+
+    BrowserWorkerRemoteAccountProfile:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerRemoteAccountProfile"
+
+    BrowserWorkerStartSessionRequest:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerStartSessionRequest"
+
+    BrowserWorkerStartSessionResponse:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerStartSessionResponse"
+
+    BrowserWorkerGetSessionResponse:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerGetSessionResponse"
+
+    BrowserWorkerCaptureSessionResponse:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerCaptureSessionResponse"
+
+    BrowserWorkerStartDouyinPublishRequest:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerStartDouyinPublishRequest"
+
+    GeneratedBy:
+      $ref: "../openapi.yaml#/components/schemas/GeneratedBy"
+
+    AdaptedAsset:
+      $ref: "../openapi.yaml#/components/schemas/AdaptedAsset"
+
+    AdaptedContent:
+      $ref: "../openapi.yaml#/components/schemas/AdaptedContent"
+
+    DashboardStats:
+      $ref: "../openapi.yaml#/components/schemas/DashboardStats"
+
+    PublicationSummary:
+      $ref: "../openapi.yaml#/components/schemas/PublicationSummary"
+
+    PublicationDetail:
+      $ref: "../openapi.yaml#/components/schemas/PublicationDetail"
+
+    ProjectPublications:
+      $ref: "../openapi.yaml#/components/schemas/ProjectPublications"
+
+    CreateCollabDocumentRequest:
+      $ref: "../openapi.yaml#/components/schemas/CreateCollabDocumentRequest"
+
+    UpdateCollabDocumentRequest:
+      $ref: "../openapi.yaml#/components/schemas/UpdateCollabDocumentRequest"
+
+    CollabSessionLimits:
+      $ref: "../openapi.yaml#/components/schemas/CollabSessionLimits"
+
+    CollabDocumentSession:
+      $ref: "../openapi.yaml#/components/schemas/CollabDocumentSession"
+
+    CollabDocument:
+      $ref: "../openapi.yaml#/components/schemas/CollabDocument"
+
+    PaginationCollabDocuments:
+      $ref: "../openapi.yaml#/components/schemas/PaginationCollabDocuments"
+
+    PublishResult:
+      $ref: "../openapi.yaml#/components/schemas/PublishResult"
+
+    ProjectListItem:
+      $ref: "../openapi.yaml#/components/schemas/ProjectListItem"
+
+    ProjectDetail:
+      $ref: "../openapi.yaml#/components/schemas/ProjectDetail"
+
+    ProjectPermissionSource:
+      $ref: "../openapi.yaml#/components/schemas/ProjectPermissionSource"
+
+    ContentTemplate:
+      $ref: "../openapi.yaml#/components/schemas/ContentTemplate"
+
+    ContentTemplatesResponse:
+      $ref: "../openapi.yaml#/components/schemas/ContentTemplatesResponse"
+
+    CreateContentTemplateRequest:
+      $ref: "../openapi.yaml#/components/schemas/CreateContentTemplateRequest"
+
+    BrandProfile:
+      $ref: "../openapi.yaml#/components/schemas/BrandProfile"
+
+    BrandProfilesResponse:
+      $ref: "../openapi.yaml#/components/schemas/BrandProfilesResponse"
+
+    CreateBrandProfileRequest:
+      $ref: "../openapi.yaml#/components/schemas/CreateBrandProfileRequest"
+
+    AddProjectCollaboratorRequest:
+      $ref: "../openapi.yaml#/components/schemas/AddProjectCollaboratorRequest"
+
+    UpdateProjectCollaboratorRequest:
+      $ref: "../openapi.yaml#/components/schemas/UpdateProjectCollaboratorRequest"
+
+    ProjectCollaborator:
+      $ref: "../openapi.yaml#/components/schemas/ProjectCollaborator"
+
+    ProjectCollaboratorsResponse:
+      $ref: "../openapi.yaml#/components/schemas/ProjectCollaboratorsResponse"
+
+    ProjectActivity:
+      $ref: "../openapi.yaml#/components/schemas/ProjectActivity"
+
+    ProjectActivitiesResponse:
+      $ref: "../openapi.yaml#/components/schemas/ProjectActivitiesResponse"
+
+    CreateProjectCommentRequest:
+      $ref: "../openapi.yaml#/components/schemas/CreateProjectCommentRequest"
+
+    UpdateProjectCommentRequest:
+      $ref: "../openapi.yaml#/components/schemas/UpdateProjectCommentRequest"
+
+    ProjectComment:
+      $ref: "../openapi.yaml#/components/schemas/ProjectComment"
+
+    ProjectCommentsResponse:
+      $ref: "../openapi.yaml#/components/schemas/ProjectCommentsResponse"
+
+    ProjectVersion:
+      $ref: "../openapi.yaml#/components/schemas/ProjectVersion"
+
+    ProjectVersionsResponse:
+      $ref: "../openapi.yaml#/components/schemas/ProjectVersionsResponse"
+
+    RestoreProjectVersionResponse:
+      $ref: "../openapi.yaml#/components/schemas/RestoreProjectVersionResponse"
+
+    CreateProjectShareLinkRequest:
+      $ref: "../openapi.yaml#/components/schemas/CreateProjectShareLinkRequest"
+
+    ProjectShareLink:
+      $ref: "../openapi.yaml#/components/schemas/ProjectShareLink"
+
+    ProjectShareLinkWithToken:
+      $ref: "../openapi.yaml#/components/schemas/ProjectShareLinkWithToken"
+
+    ProjectShareLinksResponse:
+      $ref: "../openapi.yaml#/components/schemas/ProjectShareLinksResponse"
+
+    AcceptProjectShareLinkResponse:
+      $ref: "../openapi.yaml#/components/schemas/AcceptProjectShareLinkResponse"
+
+    CreateWorkspaceRequest:
+      $ref: "../openapi.yaml#/components/schemas/CreateWorkspaceRequest"
+
+    UpdateWorkspaceRequest:
+      $ref: "../openapi.yaml#/components/schemas/UpdateWorkspaceRequest"
+
+    AddWorkspaceMemberRequest:
+      $ref: "../openapi.yaml#/components/schemas/AddWorkspaceMemberRequest"
+
+    CreateWorkspaceInviteRequest:
+      $ref: "../openapi.yaml#/components/schemas/CreateWorkspaceInviteRequest"
+
+    AcceptWorkspaceInviteRequest:
+      $ref: "../openapi.yaml#/components/schemas/AcceptWorkspaceInviteRequest"
+
+    UpdateWorkspaceMemberRequest:
+      $ref: "../openapi.yaml#/components/schemas/UpdateWorkspaceMemberRequest"
+
+    Workspace:
+      $ref: "../openapi.yaml#/components/schemas/Workspace"
+
+    WorkspacesResponse:
+      $ref: "../openapi.yaml#/components/schemas/WorkspacesResponse"
+
+    WorkspaceMember:
+      $ref: "../openapi.yaml#/components/schemas/WorkspaceMember"
+
+    WorkspaceMembersResponse:
+      $ref: "../openapi.yaml#/components/schemas/WorkspaceMembersResponse"
+
+    WorkspaceInvite:
+      $ref: "../openapi.yaml#/components/schemas/WorkspaceInvite"
+
+    WorkspaceInviteWithToken:
+      $ref: "../openapi.yaml#/components/schemas/WorkspaceInviteWithToken"
+
+    WorkspaceInvitesResponse:
+      $ref: "../openapi.yaml#/components/schemas/WorkspaceInvitesResponse"
+
+    WorkspaceActivity:
+      $ref: "../openapi.yaml#/components/schemas/WorkspaceActivity"
+
+    WorkspaceActivitiesResponse:
+      $ref: "../openapi.yaml#/components/schemas/WorkspaceActivitiesResponse"
+
+    PaginationProjects:
+      $ref: "../openapi.yaml#/components/schemas/PaginationProjects"
+
+    AIChatMessage:
+      $ref: "../openapi.yaml#/components/schemas/AIChatMessage"
+
+    AIEditContentRequest:
+      $ref: "../openapi.yaml#/components/schemas/AIEditContentRequest"
+
+    AIEditContentResponse:
+      $ref: "../openapi.yaml#/components/schemas/AIEditContentResponse"
+
+    AIEditPrepublishRequest:
+      $ref: "../openapi.yaml#/components/schemas/AIEditPrepublishRequest"
+
+    AIEditPrepublishResponse:
+      $ref: "../openapi.yaml#/components/schemas/AIEditPrepublishResponse"
+
+    RequirementStatus:
+      $ref: "../openapi.yaml#/components/schemas/RequirementStatus"
+
+    WechatAccount:
+      $ref: "../openapi.yaml#/components/schemas/WechatAccount"
+
+    SaveWechatAccountInput:
+      $ref: "../openapi.yaml#/components/schemas/SaveWechatAccountInput"
+
+    WechatConnectionTestResult:
+      $ref: "../openapi.yaml#/components/schemas/WechatConnectionTestResult"
+
+    XAccount:
+      $ref: "../openapi.yaml#/components/schemas/XAccount"
+
+    SaveXAccountInput:
+      $ref: "../openapi.yaml#/components/schemas/SaveXAccountInput"
+
+    XConnectionTestResult:
+      $ref: "../openapi.yaml#/components/schemas/XConnectionTestResult"
+
+    DouyinAccount:
+      $ref: "../openapi.yaml#/components/schemas/DouyinAccount"
+
+    ZhihuAccount:
+      $ref: "../openapi.yaml#/components/schemas/ZhihuAccount"
+
+    BrowserSession:
+      $ref: "../openapi.yaml#/components/schemas/BrowserSession"
+
+    StartBrowserSessionResult:
+      $ref: "../openapi.yaml#/components/schemas/StartBrowserSessionResult"
+
+    StartPublishBrowserSessionResult:
+      $ref: "../openapi.yaml#/components/schemas/StartPublishBrowserSessionResult"
+
+    CompleteBrowserSessionResult:
+      $ref: "../openapi.yaml#/components/schemas/CompleteBrowserSessionResult"
+
+    CancelBrowserSessionResult:
+      $ref: "../openapi.yaml#/components/schemas/CancelBrowserSessionResult"

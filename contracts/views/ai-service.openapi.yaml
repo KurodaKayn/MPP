@@ -1,0 +1,13 @@
+openapi: 3.0.3
+info:
+  title: Multi-Platform Poster AI Service Contract View
+  version: 1.0.0
+  description: Ref-only codegen view for schemas consumed by ai-service.
+paths: {}
+components:
+  schemas:
+    PublishPlatform:
+      $ref: "../components/content.yaml#/components/schemas/PublishPlatform"
+
+    AdaptedContent:
+      $ref: "../components/content.yaml#/components/schemas/AdaptedContent"
