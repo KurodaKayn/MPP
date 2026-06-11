@@ -1,0 +1,60 @@
+pg_mpp_table_health:
+  query: |
+    SELECT
+      current_database() AS datname,
+      schemaname,
+      relname,
+      n_live_tup,
+      n_dead_tup,
+      CASE
+        WHEN n_live_tup + n_dead_tup = 0 THEN 0
+        ELSE (n_dead_tup::double precision / (n_live_tup + n_dead_tup))
+      END AS dead_tuple_ratio,
+      pg_relation_size(relid) AS table_size_bytes,
+      pg_indexes_size(relid) AS index_size_bytes,
+      pg_total_relation_size(relid) AS total_size_bytes,
+      COALESCE(EXTRACT(EPOCH FROM last_vacuum), 0) AS last_vacuum_seconds,
+      COALESCE(EXTRACT(EPOCH FROM last_autovacuum), 0) AS last_autovacuum_seconds,
+      vacuum_count,
+      autovacuum_count
+    FROM pg_stat_user_tables
+  metrics:
+    - datname:
+        usage: "LABEL"
+        description: "Name of the current database."
+    - schemaname:
+        usage: "LABEL"
+        description: "Name of the schema containing the table."
+    - relname:
+        usage: "LABEL"
+        description: "Name of the table."
+    - n_live_tup:
+        usage: "GAUGE"
+        description: "Estimated number of live rows in the table."
+    - n_dead_tup:
+        usage: "GAUGE"
+        description: "Estimated number of dead rows in the table."
+    - dead_tuple_ratio:
+        usage: "GAUGE"
+        description: "Estimated dead tuple ratio for the table."
+    - table_size_bytes:
+        usage: "GAUGE"
+        description: "Table heap size in bytes."
+    - index_size_bytes:
+        usage: "GAUGE"
+        description: "Total index size for the table in bytes."
+    - total_size_bytes:
+        usage: "GAUGE"
+        description: "Total relation size including heap, toast, and indexes in bytes."
+    - last_vacuum_seconds:
+        usage: "GAUGE"
+        description: "Unix timestamp of the last manual vacuum."
+    - last_autovacuum_seconds:
+        usage: "GAUGE"
+        description: "Unix timestamp of the last autovacuum."
+    - vacuum_count:
+        usage: "COUNTER"
+        description: "Number of manual vacuums run on this table."
+    - autovacuum_count:
+        usage: "COUNTER"
+        description: "Number of autovacuums run on this table."

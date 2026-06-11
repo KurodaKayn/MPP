@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("jwt", "cookie", "collab", "ai", "pipeline", "browser", "db", "redis", "grafana", "app", "infra", "all")]
+    [ValidateSet("jwt", "cookie", "collab", "ai", "pipeline", "browser", "db", "redis", "grafana", "postgres-exporter", "app", "infra", "all")]
     [string]$Kind = "all"
 )
 
@@ -68,6 +68,9 @@ function Write-AppSecret {
         "grafana" {
             Write-Output "GRAFANA_ADMIN_PASSWORD=$(New-HexSecret)"
         }
+        "postgres-exporter" {
+            Write-Output "POSTGRES_EXPORTER_PASSWORD=$(New-HexSecret)"
+        }
         "app" {
             Write-AppSecret "jwt"
             Write-AppSecret "cookie"
@@ -80,6 +83,7 @@ function Write-AppSecret {
             Write-AppSecret "db"
             Write-AppSecret "redis"
             Write-AppSecret "grafana"
+            Write-AppSecret "postgres-exporter"
         }
         "all" {
             Write-AppSecret "app"

@@ -6,7 +6,7 @@ import secrets
 
 
 APP_SECRET_KINDS = ("jwt", "cookie", "collab", "ai", "pipeline", "browser")
-INFRA_SECRET_KINDS = ("db", "redis", "grafana")
+INFRA_SECRET_KINDS = ("db", "redis", "grafana", "postgres-exporter")
 SECRET_NAMES = (*APP_SECRET_KINDS, *INFRA_SECRET_KINDS, "app", "infra", "all")
 
 
@@ -40,6 +40,8 @@ def generate(kind: str) -> list[tuple[str, str]]:
         return [("REDIS_PASSWORD", hex_secret())]
     if kind == "grafana":
         return [("GRAFANA_ADMIN_PASSWORD", hex_secret())]
+    if kind == "postgres-exporter":
+        return [("POSTGRES_EXPORTER_PASSWORD", hex_secret())]
     if kind == "app":
         return [item for name in APP_SECRET_KINDS for item in generate(name)]
     if kind == "infra":
