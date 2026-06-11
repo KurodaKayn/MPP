@@ -3,6 +3,9 @@ name = "content-pipeline-proto"
 version = "0.1.0"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [dependencies]
 prost.workspace = true
 prost-types.workspace = true

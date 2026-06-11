@@ -720,9 +720,8 @@ mod tests {
             constraints: None,
         };
 
-        let err = match service.process_asset_inner(request).await {
-            Ok(_) => panic!("object_ref should require resolver configuration"),
-            Err(err) => err,
+        let Err(err) = service.process_asset_inner(request).await else {
+            panic!("object_ref should require resolver configuration");
         };
 
         assert_eq!(err.code(), tonic::Code::FailedPrecondition);

@@ -86,10 +86,8 @@ impl PlatformDraftCompiler for PlatformDraftCompilerService {
 
 fn draft_error_to_status(err: content_pipeline_core::DraftCompileError) -> Status {
     match err {
-        content_pipeline_core::DraftCompileError::EmptySource => {
-            Status::invalid_argument(err.to_string())
-        }
-        content_pipeline_core::DraftCompileError::UnsupportedSourceFormat(_)
+        content_pipeline_core::DraftCompileError::EmptySource
+        | content_pipeline_core::DraftCompileError::UnsupportedSourceFormat(_)
         | content_pipeline_core::DraftCompileError::UnsupportedPlatform(_)
         | content_pipeline_core::DraftCompileError::UnsupportedProfile { .. } => {
             Status::invalid_argument(err.to_string())

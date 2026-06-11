@@ -213,10 +213,8 @@ pub(crate) fn draft_error_class(err: &content_pipeline_core::DraftCompileError) 
     match err {
         content_pipeline_core::DraftCompileError::EmptySource
         | content_pipeline_core::DraftCompileError::UnsupportedProfile { .. } => "invalid_input",
-        content_pipeline_core::DraftCompileError::UnsupportedSourceFormat(_) => {
-            "unsupported_format"
-        }
-        content_pipeline_core::DraftCompileError::UnsupportedPlatform(_) => "unsupported_format",
+        content_pipeline_core::DraftCompileError::UnsupportedSourceFormat(_)
+        | content_pipeline_core::DraftCompileError::UnsupportedPlatform(_) => "unsupported_format",
         content_pipeline_core::DraftCompileError::Encode(_) => "compile_failed",
     }
 }

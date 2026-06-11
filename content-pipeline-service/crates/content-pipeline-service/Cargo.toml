@@ -3,6 +3,9 @@ name = "content-pipeline-service"
 version = "0.1.0"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [dependencies]
 axum = "0.8.9"
 content-pipeline-core = { version = "0.1.0", path = "../content-pipeline-core" }

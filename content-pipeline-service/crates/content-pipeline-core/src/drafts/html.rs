@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::ops::Deref;
 
 use ego_tree::NodeRef;
@@ -182,7 +183,8 @@ impl MarkdownRenderer {
                 let mut index = 1;
                 for child in node.children() {
                     if element_name(child) == Some("li") {
-                        self.output.push_str(&format!("{index}. "));
+                        write!(self.output, "{index}. ")
+                            .expect("writing to String should not fail");
                         self.render_children(child);
                         self.output.push('\n');
                         index += 1;
