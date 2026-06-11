@@ -43,6 +43,7 @@ import {
   getWechatAccount,
   publishProject,
   removeProjectCollaborator,
+  retryScheduledPublication,
   resolveMediaAssets,
   removeWorkspaceMember,
   restoreProjectVersion,
@@ -299,6 +300,13 @@ describe("dashboard api client", () => {
       .mockResolvedValueOnce(jsonResponse(calendar))
       .mockResolvedValueOnce(
         jsonResponse({ ...schedule, cancelled_by: "user-1", status: "cancelled" }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ...schedule,
+          attempts: [{ attempt_no: 2, id: "attempt-2", status: "succeeded" }],
+          status: "published",
+        }),
       );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -320,6 +328,13 @@ describe("dashboard api client", () => {
     await expect(
       cancelScheduledPublication("project-1", "schedule-1"),
     ).resolves.toEqual({ ...schedule, cancelled_by: "user-1", status: "cancelled" });
+    await expect(
+      retryScheduledPublication("project-1", "schedule-1"),
+    ).resolves.toEqual({
+      ...schedule,
+      attempts: [{ attempt_no: 2, id: "attempt-2", status: "succeeded" }],
+      status: "published",
+    });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -347,6 +362,13 @@ describe("dashboard api client", () => {
       "/api/user/dashboard/projects/project-1/schedules/schedule-1",
       expect.objectContaining({
         method: "DELETE",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/user/dashboard/projects/project-1/schedules/schedule-1/retry",
+      expect.objectContaining({
+        method: "POST",
       }),
     );
   });
