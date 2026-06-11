@@ -1438,12 +1438,9 @@ func (h *UserDashboardHandler) CancelScheduledPublication(c echo.Context) error 
 	if err != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid schedule UUID")
 	}
-	schedule, err := h.serviceFor(c).CancelScheduledPublication(c.Request().Context(), scheduleID, userID)
+	schedule, err := h.serviceFor(c).CancelScheduledPublication(c.Request().Context(), projectID, scheduleID, userID)
 	if err != nil {
 		return sendPublishScheduleError(c, err)
-	}
-	if schedule.ProjectID != projectID {
-		return sendError(c, http.StatusNotFound, "not_found", "schedule not found for project")
 	}
 	return c.JSON(http.StatusOK, schedule)
 }
