@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -263,6 +264,20 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 		metadata TEXT NOT NULL DEFAULT '{}',
 		created_at DATETIME
 	)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE outbox_events (
+		id TEXT PRIMARY KEY,
+		aggregate_type TEXT NOT NULL,
+		aggregate_id TEXT NOT NULL,
+		event_type TEXT NOT NULL,
+		payload TEXT NOT NULL DEFAULT '{}',
+		status TEXT NOT NULL DEFAULT 'pending',
+		attempts INTEGER NOT NULL DEFAULT 0,
+		next_attempt_at DATETIME,
+		processed_at DATETIME,
+		error_message TEXT NOT NULL DEFAULT '',
+		created_at DATETIME,
+		updated_at DATETIME
+	)`).Error)
 
 	return db
 }
@@ -332,6 +347,14 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 
 	lockKey := publishLockKey(project.ID, "wechat")
 	require.Equal(t, queue.jobs[0].JobID.String(), queue.locks[lockKey])
+
+	var outbox models.OutboxEvent
+	require.NoError(t, db.First(&outbox, "aggregate_id = ?", queue.jobs[0].JobID).Error)
+	require.Equal(t, models.OutboxAggregatePublishJob, outbox.AggregateType)
+	require.Equal(t, models.OutboxEventPublishJobRequested, outbox.EventType)
+	require.Equal(t, models.OutboxStatusDispatched, outbox.Status)
+	require.Equal(t, 1, outbox.Attempts)
+	require.NotNil(t, outbox.ProcessedAt)
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
@@ -564,7 +587,7 @@ func TestEnqueuePublishProjectReplaysOriginalJobEventsAfterPublicationChanges(t 
 	require.Empty(t, resp["error_message"])
 }
 
-func TestEnqueuePublishProjectDoesNotReplayFailedEnqueueAsQueued(t *testing.T) {
+func TestEnqueuePublishProjectLeavesFailedDispatchInOutboxForRetry(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
 	service := newPublishTestService(db)
 	queue := newTestPublishQueue()
@@ -593,21 +616,176 @@ func TestEnqueuePublishProjectDoesNotReplayFailedEnqueueAsQueued(t *testing.T) {
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}).Error)
 
-	_, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-3"})
-	require.Error(t, err)
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-3"})
+	require.NoError(t, err)
+	require.Equal(t, models.PublicationStatusQueued, resp["status"])
 	require.Empty(t, queue.jobs)
 
 	var queuedEvents int64
 	require.NoError(t, db.Model(&models.PublishEvent{}).
 		Where("idempotency_key = ? AND event_type = ?", "click-3", "queued").
 		Count(&queuedEvents).Error)
-	require.Zero(t, queuedEvents)
+	require.EqualValues(t, 1, queuedEvents)
+
+	var outbox models.OutboxEvent
+	require.NoError(t, db.First(&outbox, "aggregate_id = ?", uuid.MustParse(resp["job_id"].(string))).Error)
+	require.Equal(t, models.OutboxStatusFailed, outbox.Status)
+	require.Equal(t, 1, outbox.Attempts)
+	require.NotNil(t, outbox.NextAttemptAt)
+	require.Contains(t, outbox.ErrorMessage, "redis unavailable")
 
 	queue.enqueueErr = nil
-	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-3"})
-	require.NoError(t, err)
-	require.Equal(t, models.PublicationStatusQueued, resp["status"])
+	require.NoError(t, db.Model(&models.OutboxEvent{}).
+		Where("id = ?", outbox.ID).
+		Update("next_attempt_at", time.Now().UTC().Add(-time.Second)).Error)
+	require.NoError(t, service.FlushPublishOutbox(context.Background(), 10))
 	require.Len(t, queue.jobs, 1)
+	require.Equal(t, resp["job_id"], queue.jobs[0].JobID.String())
+
+	require.NoError(t, db.First(&outbox, "id = ?", outbox.ID).Error)
+	require.Equal(t, models.OutboxStatusDispatched, outbox.Status)
+	require.Equal(t, 2, outbox.Attempts)
+	require.NotNil(t, outbox.ProcessedAt)
+}
+
+func TestFlushPublishOutboxRetriesStaleProcessingEvent(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+
+	job := PublishJob{
+		JobID:      uuid.New(),
+		ProjectID:  uuid.New(),
+		UserID:     uuid.New(),
+		Platform:   "wechat",
+		EnqueuedAt: time.Now().UTC(),
+	}
+	payload, err := json.Marshal(job)
+	require.NoError(t, err)
+	staleUpdatedAt := time.Now().UTC().Add(-publishOutboxClaimTimeout - time.Second)
+	outbox := models.OutboxEvent{
+		AggregateType: models.OutboxAggregatePublishJob,
+		AggregateID:   job.JobID,
+		EventType:     models.OutboxEventPublishJobRequested,
+		Payload:       datatypes.JSON(payload),
+		Status:        models.OutboxStatusProcessing,
+		Attempts:      3,
+		CreatedAt:     staleUpdatedAt,
+		UpdatedAt:     staleUpdatedAt,
+	}
+	require.NoError(t, db.Create(&outbox).Error)
+
+	require.NoError(t, service.FlushPublishOutbox(context.Background(), 10))
+
+	require.Len(t, queue.jobs, 1)
+	require.Equal(t, job, queue.jobs[0])
+	require.NoError(t, db.First(&outbox, "id = ?", outbox.ID).Error)
+	require.Equal(t, models.OutboxStatusDispatched, outbox.Status)
+	require.Equal(t, 4, outbox.Attempts)
+	require.NotNil(t, outbox.ProcessedAt)
+}
+
+func TestClaimOutboxEventDoesNotDoubleClaimPendingRace(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:outbox-claim-race?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&models.OutboxEvent{}))
+	service := newPublishTestService(db)
+	payload, err := json.Marshal(PublishJob{
+		JobID:      uuid.New(),
+		ProjectID:  uuid.New(),
+		UserID:     uuid.New(),
+		Platform:   "wechat",
+		EnqueuedAt: time.Now().UTC(),
+	})
+	require.NoError(t, err)
+	outbox := models.OutboxEvent{
+		AggregateType: models.OutboxAggregatePublishJob,
+		AggregateID:   uuid.New(),
+		EventType:     models.OutboxEventPublishJobRequested,
+		Payload:       datatypes.JSON(payload),
+		Status:        models.OutboxStatusPending,
+	}
+	require.NoError(t, db.Create(&outbox).Error)
+
+	const callbackName = "mpp:test:block_outbox_claim_update"
+	var blocked atomic.Int32
+	bothBlocked := make(chan struct{})
+	release := make(chan struct{})
+	require.NoError(t, db.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table != "outbox_events" {
+			return
+		}
+		if blocked.Add(1) == 2 {
+			close(bothBlocked)
+		}
+		<-release
+	}))
+	defer func() {
+		_ = db.Callback().Update().Remove(callbackName)
+	}()
+
+	type claimResult struct {
+		claimed bool
+		err     error
+	}
+	results := make(chan claimResult, 2)
+	for range 2 {
+		go func() {
+			_, claimed, err := service.claimOutboxEvent(context.Background(), outbox.ID)
+			results <- claimResult{claimed: claimed, err: err}
+		}()
+	}
+
+	select {
+	case <-bothBlocked:
+	case <-time.After(time.Second):
+		t.Fatal("expected both claim attempts to reach the update gate")
+	}
+	close(release)
+
+	first := <-results
+	second := <-results
+	require.NoError(t, first.err)
+	require.NoError(t, second.err)
+	claimedCount := 0
+	if first.claimed {
+		claimedCount++
+	}
+	if second.claimed {
+		claimedCount++
+	}
+	require.Equal(t, 1, claimedCount)
+
+	require.NoError(t, db.First(&outbox, "id = ?", outbox.ID).Error)
+	require.Equal(t, models.OutboxStatusProcessing, outbox.Status)
+	require.Equal(t, 1, outbox.Attempts)
+}
+
+func TestOutboxClaimVersionPreventsLateFailureOverwrite(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:outbox-claim-version?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&models.OutboxEvent{}))
+	service := newPublishTestService(db)
+	outbox := models.OutboxEvent{
+		AggregateType: models.OutboxAggregatePublishJob,
+		AggregateID:   uuid.New(),
+		EventType:     models.OutboxEventPublishJobRequested,
+		Payload:       datatypes.JSON(`{}`),
+		Status:        models.OutboxStatusDispatched,
+		Attempts:      2,
+	}
+	require.NoError(t, db.Create(&outbox).Error)
+
+	lateClaim := outbox
+	lateClaim.Status = models.OutboxStatusProcessing
+	lateClaim.Attempts = 1
+	require.NoError(t, service.markOutboxEventFailed(context.Background(), lateClaim, errors.New("late dispatch failure")))
+
+	require.NoError(t, db.First(&outbox, "id = ?", outbox.ID).Error)
+	require.Equal(t, models.OutboxStatusDispatched, outbox.Status)
+	require.Equal(t, 2, outbox.Attempts)
+	require.Empty(t, outbox.ErrorMessage)
 }
 
 func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing.T) {
@@ -898,6 +1076,7 @@ func TestRedisPublishQueueEnqueuesAsynqTask(t *testing.T) {
 		EnqueuedAt: time.Now().UTC(),
 	}
 
+	require.NoError(t, queue.Enqueue(context.Background(), job))
 	require.NoError(t, queue.Enqueue(context.Background(), job))
 
 	inspector := asynq.NewInspectorFromRedisClient(client)

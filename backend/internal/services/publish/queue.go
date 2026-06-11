@@ -92,6 +92,9 @@ func (q *RedisPublishQueue) Enqueue(ctx context.Context, job PublishJob) error {
 		asynq.Retention(publishTaskRetention),
 		asynq.TaskID(job.JobID.String()),
 	)
+	if errors.Is(err, asynq.ErrTaskIDConflict) {
+		return nil
+	}
 	return err
 }
 
@@ -236,52 +239,61 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		return nil, ErrPublicationAlreadyPublishing
 	}
 
-	if err := s.recordPublishEvent(models.PublishEvent{
-		PublicationID:  pub.ID,
-		ProjectID:      project.ID,
-		UserID:         *scopeUserID,
-		Platform:       platform,
-		JobID:          job.JobID,
-		IdempotencyKey: req.IdempotencyKey,
-		EventType:      "requested",
-		Status:         pub.Status,
+	outboxEventID := uuid.Nil
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		txService := *s
+		txService.db = tx
+		if err := txService.recordPublishEvent(models.PublishEvent{
+			PublicationID:  pub.ID,
+			ProjectID:      project.ID,
+			UserID:         *scopeUserID,
+			Platform:       platform,
+			JobID:          job.JobID,
+			IdempotencyKey: req.IdempotencyKey,
+			EventType:      "requested",
+			Status:         pub.Status,
+		}); err != nil {
+			return err
+		}
+		if err := txService.recordProjectPublishActivity(project.ID, *scopeUserID, models.ProjectActivityPublishRequested, map[string]any{
+			"platform": platform,
+			"job_id":   job.JobID.String(),
+		}); err != nil {
+			return err
+		}
+		if err := txService.markPublicationQueued(&pub, job.EnqueuedAt); err != nil {
+			return err
+		}
+		if err := txService.recordPublishEvent(models.PublishEvent{
+			PublicationID:  pub.ID,
+			ProjectID:      project.ID,
+			UserID:         *scopeUserID,
+			Platform:       platform,
+			JobID:          job.JobID,
+			IdempotencyKey: req.IdempotencyKey,
+			EventType:      "queued",
+			Status:         models.PublicationStatusQueued,
+		}); err != nil {
+			return err
+		}
+		if err := txService.recordProjectPublishActivity(project.ID, *scopeUserID, models.ProjectActivityPublishQueued, map[string]any{
+			"platform": platform,
+			"job_id":   job.JobID.String(),
+		}); err != nil {
+			return err
+		}
+		outboxEvent, err := txService.recordPublishJobOutbox(job)
+		if err != nil {
+			return err
+		}
+		outboxEventID = outboxEvent.ID
+		return nil
 	}); err != nil {
 		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
 		return nil, err
 	}
-	if err := s.recordProjectPublishActivity(project.ID, *scopeUserID, models.ProjectActivityPublishRequested, map[string]any{
-		"platform": platform,
-		"job_id":   job.JobID.String(),
-	}); err != nil {
-		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
-		return nil, err
-	}
-	if err := s.markPublicationQueued(&pub, job.EnqueuedAt); err != nil {
-		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
-		return nil, err
-	}
-	if err := s.queue.Enqueue(ctx, job); err != nil {
-		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
-		_ = s.markPublicationFailed(project.ID, platform, "failed to enqueue publish job: "+err.Error())
-		return nil, err
-	}
-	if err := s.recordPublishEvent(models.PublishEvent{
-		PublicationID:  pub.ID,
-		ProjectID:      project.ID,
-		UserID:         *scopeUserID,
-		Platform:       platform,
-		JobID:          job.JobID,
-		IdempotencyKey: req.IdempotencyKey,
-		EventType:      "queued",
-		Status:         models.PublicationStatusQueued,
-	}); err != nil {
-		log.Printf("failed to record publish job %s queued event: %v", job.JobID, err)
-	}
-	if err := s.recordProjectPublishActivity(project.ID, *scopeUserID, models.ProjectActivityPublishQueued, map[string]any{
-		"platform": platform,
-		"job_id":   job.JobID.String(),
-	}); err != nil {
-		log.Printf("failed to record project publish activity for job %s: %v", job.JobID, err)
+	if err := s.dispatchOutboxEvent(ctx, outboxEventID); err != nil {
+		log.Printf("failed to dispatch publish outbox event %s for job %s: %v", outboxEventID, job.JobID, err)
 	}
 
 	return map[string]any{
@@ -316,6 +328,7 @@ func (s *Service) StartPublishWorker(ctx context.Context) {
 		return
 	}
 
+	s.StartPublishOutboxDispatcher(ctx)
 	go s.queue.Start(ctx, s.processPublishJob)
 }
 
@@ -332,6 +345,7 @@ func (s *Service) StartPublishWorkerWithErrors(ctx context.Context) <-chan error
 		return nil
 	}
 
+	s.StartPublishOutboxDispatcher(ctx)
 	workerErrors := make(chan error, 1)
 	go func() {
 		if err := runner.Run(ctx, s.processPublishJob); err != nil && ctx.Err() == nil {

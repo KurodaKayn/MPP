@@ -486,6 +486,32 @@ type PublishEvent struct {
 	CreatedAt      time.Time
 }
 
+const (
+	OutboxAggregatePublishJob = "publish_job"
+
+	OutboxEventPublishJobRequested = "publish.job_requested"
+
+	OutboxStatusPending    = "pending"
+	OutboxStatusProcessing = "processing"
+	OutboxStatusDispatched = "dispatched"
+	OutboxStatusFailed     = "failed"
+)
+
+type OutboxEvent struct {
+	ID            uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	AggregateType string         `gorm:"not null;index:idx_outbox_events_dispatch,priority:1"`
+	AggregateID   uuid.UUID      `gorm:"type:uuid;not null;index"`
+	EventType     string         `gorm:"not null;index"`
+	Payload       datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	Status        string         `gorm:"not null;default:'pending';index:idx_outbox_events_dispatch,priority:2"`
+	Attempts      int            `gorm:"not null;default:0"`
+	NextAttemptAt *time.Time     `gorm:"index:idx_outbox_events_dispatch,priority:3"`
+	ProcessedAt   *time.Time
+	ErrorMessage  string `gorm:"type:text;not null;default:''"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type PlatformAccount struct {
 	ID                  uuid.UUID      `gorm:"type:uuid;primaryKey"`
 	UserID              uuid.UUID      `gorm:"type:uuid;not null;index:idx_platform_accounts_user_platform"`
@@ -662,6 +688,19 @@ func (p *ProjectPlatformPublication) BeforeCreate(_ *gorm.DB) (err error) {
 func (e *PublishEvent) BeforeCreate(_ *gorm.DB) (err error) {
 	if e.ID == uuid.Nil {
 		e.ID = uuid.New()
+	}
+	return
+}
+
+func (e *OutboxEvent) BeforeCreate(_ *gorm.DB) (err error) {
+	if e.ID == uuid.Nil {
+		e.ID = uuid.New()
+	}
+	if e.Payload == nil {
+		e.Payload = datatypes.JSON([]byte(`{}`))
+	}
+	if e.Status == "" {
+		e.Status = OutboxStatusPending
 	}
 	return
 }
