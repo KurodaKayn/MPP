@@ -322,6 +322,7 @@ func migrate(database *gorm.DB) error {
 			&models.ProjectPlatformPublication{},
 			&models.RemoteBrowserSession{},
 			&models.PublishEvent{},
+			&models.OutboxEvent{},
 			&models.CollabDocument{},
 			&models.CollabDocumentCollaborator{},
 			&models.CollabDocumentState{},
