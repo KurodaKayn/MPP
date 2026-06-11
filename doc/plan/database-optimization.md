@@ -11,14 +11,14 @@
 - `未开始`：尚未发现明确实现。
 - `暂缓`：当前业务阶段不建议投入，只保留触发条件。
 
-当前总体进度：约 `36%`。这个数字按阶段权重人工估算，后续可按实际完成项调整。
+当前总体进度：约 `40%`。这个数字按阶段权重人工估算，后续可按实际完成项调整。
 
 | 阶段                                         | 权重 | 当前完成度 | 状态   | 已完成                                                                         | 未完成/下一步                                                                          |
 | -------------------------------------------- | ---- | ---------- | ------ | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| 阶段 0：数据层基线盘点                       | 10%  | 55%        | 进行中 | GORM 查询观测、`mpp_db_*` 指标、dashboard 查询计划审计脚本、`pg_stat_statements`、数据库基线审计脚本 | 表增长面板、读写一致性分类、版本化迁移规范                                            |
+| 阶段 0：数据层基线盘点                       | 10%  | 100%       | 完成   | GORM 查询观测、`mpp_db_*` 指标、dashboard 查询计划审计脚本、`pg_stat_statements`、数据库基线审计脚本、PostgreSQL exporter 表级健康与 24h 行数增长面板、读写一致性分类、复杂 DDL 版本化迁移规范 | 后续阶段按本节清单继续实现代码路由、迁移执行器、分区和归档                            |
 | 阶段 1：单库连接池、索引、分页和生命周期治理 | 15%  | 65%        | 进行中 | backend/publish-worker/collab-service 应用层连接池、Redis 客户端连接池、PgBouncer writer pool、组合索引、列表分页、列表避开 `source_content` 大字段 | keyset pagination、事件保留期、归档 worker                                             |
 | 阶段 2：读模型与缓存优先                     | 15%  | 60%        | 进行中 | Redis、Asynq 基础依赖可复用；admin dashboard stats、admin project list、dashboard account 摘要已有短 TTL Redis 缓存；stats/project list/account 缓存 miss 已用 singleflight 合并；项目、预发布、发布和账号写路径已清理对应 dashboard 缓存 | dashboard 读模型、读模型重建任务                                                       |
-| 阶段 3：读写分离                             | 15%  | 60%        | 进行中 | `DB_READER_*` 可选连接、应用层 DB Router、签名 sticky writer、project/stats/workspace/platform_account 一致性路由、replica lag 监控与超阈值回退 writer | 生产 read replica、PgBouncer reader pool、剩余服务一致性标注                           |
+| 阶段 3：读写分离                             | 15%  | 60%        | 进行中 | `DB_READER_*` 可选连接、应用层 DB Router、签名 sticky writer、project/stats/workspace/platform_account 一致性路由、dashboard/publish/collab-service 一致性等级清单、replica lag 监控与超阈值回退 writer | 生产 read replica、PgBouncer reader pool、按清单补齐 publish/collab-service 实际路由   |
 | 阶段 4：单库分区、归档和冷热分层             | 15%  | 10%        | 未开始 | 协作编辑已有 state + update batch + compaction 基础                            | 事件表时间分区、协作 batch hash 分区、R2/S3 归档、恢复流程                             |
 | 阶段 5：Citus 化准备                         | 20%  | 5%         | 未开始 | Workspace 模型、`projects.workspace_id`、个人工作区 ID 已存在                  | 全域 `workspace_id`、Citus 分布列/colocation 设计、唯一约束与外键复审、迁移演练        |
 | 阶段 6：Citus 分布式 PostgreSQL 运行         | 10%  | 0%         | 暂缓   | 无                                                                             | Citus 影子集群、小租户迁移演练、worker/coordinator 监控备份、大租户隔离策略            |
@@ -58,16 +58,17 @@
 | 能力               | 当前状态 | 已经做了什么                                                                                                          | 还没做什么                                                            | 验证/证据入口                                                                                 |
 | ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | 应用层连接池       | 完成     | backend/publish-worker 支持 `DB_MAX_OPEN_CONNS`、`DB_MAX_IDLE_CONNS`、`DB_CONN_MAX_LIFETIME`、`DB_CONN_MAX_IDLE_TIME`；collab-service 的 node-postgres pool 支持 `DB_MAX_OPEN_CONNS`、`DB_CONN_MAX_LIFETIME`、`DB_CONN_MAX_IDLE_TIME`；Redis 客户端支持 `REDIS_POOL_SIZE`、`REDIS_MIN_IDLE_CONNS`、`REDIS_MAX_IDLE_CONNS`、`REDIS_CONN_MAX_IDLE_TIME`、`REDIS_CONN_MAX_LIFETIME`；Docker Compose 和自托管 Kubernetes 已通过 PgBouncer writer pool 复用 PostgreSQL 连接，GORM PostgreSQL driver 使用 simple protocol 兼容 transaction pooling | PgBouncer reader pool 还未引入                                         | `backend/internal/db/db.go`、`backend/internal/redisclient/redisclient.go`、`collab-service/src/config.ts`、`collab-service/src/persistence/document-persistence.ts`、`collab-service/src/persistence/document-persistence.test.ts`、`docker/docker-compose.yml`、`deploy/kubernetes/data-services/self-hosted/pgbouncer.yaml` |
-| 查询观测           | 进行中   | GORM QueryObserver、慢查询日志、`mpp_db_queries_total`、`mpp_db_query_duration_seconds`、`mpp_db_slow_queries_total`、自托管 PostgreSQL `pg_stat_statements` | 表增长面板未补齐                                                      | `backend/internal/db/query_observer.go`、`backend/internal/observability/observability.go`、`script/db/audit_database_baseline.sql` |
+| 查询观测           | 完成     | GORM QueryObserver、慢查询日志、`mpp_db_queries_total`、`mpp_db_query_duration_seconds`、`mpp_db_slow_queries_total`、自托管 PostgreSQL `pg_stat_statements`、PostgreSQL exporter 表级健康指标、Grafana 表行数/24h 增长/表大小/索引大小/dead tuples/vacuum 面板 | 阈值告警可在阶段 1/4 按生产基线继续补充                                | `backend/internal/db/query_observer.go`、`backend/internal/observability/observability.go`、`script/db/audit_database_baseline.sql`、`docker/observability/postgres-exporter/queries.yml`、`docker/observability/grafana/dashboards/mpp-observability-baseline.json` |
 | Dashboard 查询审计 | 完成     | 已有 dashboard Count、列表、平台过滤、publication preload、账号查询、活跃会话查询计划审计脚本                         | 还未形成定期 CI/运维门禁                                              | `script/db/audit_dashboard_query_plans.sql`                                                   |
 | 租户边界           | 进行中   | 已有 `workspaces`、`workspace_members`、`projects.workspace_id`、个人工作区规则                                       | 发布事件、协作状态、媒体元数据等还没有全部显式带 `workspace_id`       | `backend/internal/models/models.go`                                                           |
 | Dashboard 读模型   | 未开始   | 无业务读模型表；当前仍以事实表聚合查询为主                                                                            | `workspace_dashboard_stats`、`project_list_summaries`、重建任务未实现 | `backend/internal/services/stats/overview.go`                                                 |
 | Redis 读缓存       | 进行中   | Redis 已用于队列、锁、OAuth、browser session 等短期协调；admin dashboard stats、admin project list 与 dashboard account 摘要已接入 15s TTL 缓存，并绕过 scoped/sticky writer 强一致路径；stats/project list/account 缓存 miss 已用 singleflight 做进程内防击穿；stats 和 account 缓存使用版本化 payload 和语义校验，Redis 读错误 fallback 也会合并为同 key 单次 DB 计算；项目创建/编辑/平台保存、预发布同步/草稿更新、发布排队/执行/失败和平台账号写路径已清理对应 dashboard 缓存 | dashboard 读模型与全量重建任务未实现                              | `backend/internal/services/stats/overview.go`、`backend/internal/services/stats/overview_test.go`、`backend/internal/services/project/list_cache.go`、`backend/internal/services/project/list_cache_test.go`、`backend/internal/services/prepublish/drafts.go`、`backend/internal/services/publish/service.go`、`backend/internal/services/publish/queue.go`、`backend/internal/services/publish/publication_flow_test.go`、`backend/internal/services/publish/queue_test.go`、`backend/internal/services/platform_account/account_cache.go`、`backend/internal/services/platform_account/account_cache_test.go`、`backend/internal/services/browser_session/complete.go`、`backend/internal/services/browser_session/service_test.go` |
-| 读写分离           | 进行中   | 已支持 `DB_READER_*` 可选读副本连接、`DefaultRouter`、签名 sticky writer；project/stats/workspace/platform_account 已接入 strong/eventual 路由和 stale replica 回归测试；writer pool 已在 Docker Compose 和自托管 Kubernetes 落地；`DB_READER_MAX_REPLICA_LAG` 可配置 replica lag 阈值，超阈值或 lag 未知时 eventual/analytics read 自动回退 writer，并暴露 `mpp_db_replica_lag_seconds`、`mpp_db_replica_healthy` 指标 | 生产 read replica、PgBouncer reader pool、剩余服务一致性标注 | `backend/internal/db/db.go`、`backend/internal/db/router.go`、`backend/internal/db/replica_lag.go`、`backend/internal/observability/observability.go`、`backend/internal/middleware/sticky_writer.go`、`deploy/kubernetes/data-services/self-hosted/pgbouncer.yaml` |
+| 读写分离           | 进行中   | 已支持 `DB_READER_*` 可选读副本连接、`DefaultRouter`、签名 sticky writer；project/stats/workspace/platform_account 已接入 strong/eventual 路由和 stale replica 回归测试；dashboard、publish、collab-service 已完成一致性等级清单；writer pool 已在 Docker Compose 和自托管 Kubernetes 落地；`DB_READER_MAX_REPLICA_LAG` 可配置 replica lag 阈值，超阈值或 lag 未知时 eventual/analytics read 自动回退 writer，并暴露 `mpp_db_replica_lag_seconds`、`mpp_db_replica_healthy` 指标 | 生产 read replica、PgBouncer reader pool、publish/collab-service 按清单接入实际 DB Router | `backend/internal/db/db.go`、`backend/internal/db/router.go`、`backend/internal/db/replica_lag.go`、`backend/internal/observability/observability.go`、`backend/internal/middleware/sticky_writer.go`、`deploy/kubernetes/data-services/self-hosted/pgbouncer.yaml`、本文阶段 0 一致性等级清单 |
 | 事件表分区与归档   | 未开始   | `publish_events`、`extension_execution_events` 等事件表已存在部分基础                                                 | 时间分区、归档 worker、恢复流程未实现                                 | `backend/internal/models/models.go`                                                           |
 | 协作批次治理       | 进行中   | `collab_document_states`、`collab_document_update_batches`、compaction/retention 基础已存在                           | `document_id` hash 分区、冷归档未实现                                 | `backend/internal/models/collab.go`、`collab-service/src/persistence/document-persistence.ts` |
 | Outbox/CDC/事件流  | 未开始   | Asynq 已承担发布任务队列；`PublishEvent` 已承担发布审计                                                               | 事务 Outbox、Debezium、Redpanda/Kafka CDC 未实现                      | `backend/internal/services/publish/queue.go`、`backend/internal/models/models.go`             |
 | Citus 目标态       | 未开始   | 已确认 `workspace_id` 是最合适的分布列方向                                                                            | Citus 分布式表、reference table、colocation、迁移演练未实现           | 本文阶段 5/6                                                                                  |
+| 复杂 DDL 迁移规范  | 完成     | 已制定版本化迁移规范，明确复杂 DDL 的触发条件、脚本命名、expand/contract 流程、回滚和验证要求                         | 后续首次复杂 DDL 需要选择并落地 `goose` 或 Atlas 执行器               | 本文阶段 0 复杂 DDL 版本化迁移规范                                                            |
 
 ### 0.3 阶段 Checklist
 
@@ -77,9 +78,9 @@
 - [x] 增加 dashboard 查询计划审计脚本。
 - [x] 开启 PostgreSQL `pg_stat_statements`。
 - [x] 增加查询指纹、表大小、索引大小、dead tuple 基线审计脚本。
-- [ ] 建立表行数、表大小、索引大小、dead tuples、vacuum 状态面板。
-- [ ] 给 dashboard、publish、collab-service 的 DB 调用标注一致性等级。
-- [ ] 制定复杂 DDL 的版本化迁移规范。
+- [x] 建立表行数、24h 行数增长、表大小、索引大小、dead tuples、vacuum 状态面板。验证入口：`docker/observability/postgres-exporter/queries.yml`、`docker/observability/grafana/dashboards/mpp-observability-baseline.json`。
+- [x] 给 dashboard、publish、collab-service 的 DB 调用标注一致性等级。验证入口：本文阶段 0 一致性等级清单。
+- [x] 制定复杂 DDL 的版本化迁移规范。验证入口：本文阶段 0 复杂 DDL 版本化迁移规范。
 
 #### 阶段 1：单库连接池、索引、分页和生命周期治理
 
@@ -257,6 +258,52 @@ flowchart LR
 - 能列出 Top 20 慢查询、Top 20 高频查询、Top 20 增长最快表。
 - 每条 dashboard 查询都知道能否走读副本。
 - 每张未来可能分片的表都明确租户键。
+
+阶段 0 已落地观测入口：
+
+- Docker Compose 已配置 `postgres-exporter`，通过 `docker/observability/postgres-exporter/queries.yml` 采集 `pg_stat_user_tables`、`pg_relation_size`、`pg_indexes_size` 和 vacuum 计数。
+- Prometheus 已增加 `postgres-exporter` scrape job；Grafana `MPP Observability Baseline` 已增加表行数、24h 行数增长、表/索引/总大小、dead tuples、dead tuple ratio、vacuum age、vacuum runs 面板。
+- 手工快照仍使用 `script/db/audit_database_baseline.sh`，用于发布前后或事故期间导出 Top query、最大表、dead tuple 最高表和最大索引。
+- exporter 不继承应用 `.env`，只接收 `POSTGRES_EXPORTER_DATA_SOURCE_URI`、`POSTGRES_EXPORTER_USER`、`POSTGRES_EXPORTER_PASSWORD`；本地新库通过 `docker/postgres/init/002_create_postgres_exporter.sh` 创建 `postgres_exporter` 监控账号，已有 `postgres_data` volume 通过 `postgres-exporter-init` one-shot 服务重复执行同一段授权 SQL 后再启动 exporter。
+- 托管 PostgreSQL 如果不允许 exporter 使用超级用户，监控账号必须授予 `pg_monitor` 或 `pg_read_all_stats`；否则表级统计和 vacuum 状态可能为空或不完整。`DB_SSLMODE=verify-ca` 或 `verify-full` 时，`POSTGRES_EXPORTER_DATA_SOURCE_URI` 必须显式带上 `sslrootcert`。
+- `DB_READER_MAX_REPLICA_LAG` 和 `DB_READER_LAG_CHECK_INTERVAL` 已纳入 env contract；未配置 reader 时不改变当前 writer-only 行为，配置 read replica 后用于 replica lag 回退判断。
+
+一致性等级定义：
+
+| 等级 | 允许走向 | 使用场景 | 禁止误用 |
+| ---- | -------- | -------- | -------- |
+| `writer` | 只走主库 writer | 写入、事务、状态机推进、`FOR UPDATE`、幂等 claim、凭据写入、DDL | 任何读副本 |
+| `read-your-write` | 默认 writer；后续可用 sticky writer 或确认 replay LSN 后走 reader | 用户刚保存/同步/发布后的详情、发布进度、协作文档打开、权限判断 | 无 sticky 或无 replay 确认的普通 reader |
+| `eventual-read` | reader 优先，副本 lag 超阈值回退 writer | 可容忍短延迟的 dashboard 全局统计、管理端列表、只读展示缓存 miss | 发布状态机、权限和凭据路径 |
+| `analytics-read` | reader 或离线副本；必要时单独限流 | 审计历史、趋势报表、增长分析、低优先级全表扫描 | 在线请求的强一致工作流 |
+
+dashboard / publish / collab-service DB 调用一致性清单：
+
+| 服务 | 调用/数据路径 | 一致性等级 | 当前落地情况 | 代码入口 |
+| ---- | ------------- | ---------- | ------------ | -------- |
+| dashboard | 管理端全局 stats、无 scope 的项目列表、短 TTL dashboard 缓存 miss | `eventual-read` | stats/project list 已通过 DB Router 走 `EventualRead`，sticky writer 窗口内回退 writer | `backend/internal/services/stats/overview.go`、`backend/internal/services/project/lifecycle.go` |
+| dashboard | 用户 scope 的项目列表、项目详情、项目 publications、协作者、workspace stats、workspace 成员/权限 | `read-your-write` | project/stats/workspace 已通过 DB Router 走 `StrongRead`；后续可在 replay LSN 成熟后细分为 true read-your-write | `backend/internal/services/project/lifecycle.go`、`backend/internal/services/workspace/management.go`、`backend/internal/services/stats/overview.go` |
+| dashboard | 平台账号展示卡片 Redis 命中 | `eventual-read` | 只作为 dashboard 展示缓存；sticky writer 窗口内绕过缓存 | `backend/internal/services/platform_account/account_cache.go` |
+| dashboard | 平台账号连接状态、账号授权、账号凭据/ Cookie 读取 | `read-your-write` | cache miss 和授权检查继续走 `StrongRead`；发布凭据不能使用 Redis 展示缓存 | `backend/internal/services/platform_account/service.go` |
+| publish | 发布前读取项目、publication、平台账号、媒体资源可用性 | `read-your-write` | 当前仍走 writer `s.db`；阶段 3 接入 Router 时必须保持 writer/sticky 语义 | `backend/internal/services/publish/service.go`、`backend/internal/services/publish/media_refs.go` |
+| publish | 发布排队、幂等检查、publish event、outbox event、publication 状态更新、retry/claim | `writer` | 当前写路径均走 writer；事务 outbox 和状态机不得走 reader | `backend/internal/services/publish/queue.go`、`backend/internal/services/publish/outbox.go` |
+| publish | 发布历史、低优先级审计报表、增长分析 | `analytics-read` | 当前不是独立读模型；阶段 4/Outbox 后可迁移到 reader/归档查询 | `backend/internal/models/models.go` |
+| collab-service | 文档打开时读取 state 和 update batches | `read-your-write` | 当前 node-postgres pool 只连 writer；引入 reader 前必须保证同一文档最新 flush 可见 | `collab-service/src/persistence/document-persistence.ts` |
+| collab-service | 初始化文档 state、append update batch、`FOR UPDATE` seq 锁、store compacted state、sync project source content、prune compacted batches | `writer` | 当前全部走 writer；涉及事务、锁、写入和 compaction，禁止 reader | `collab-service/src/persistence/document-persistence.ts` |
+| collab-service | 离线协作批次增长分析、归档校验、重建演练 | `analytics-read` | 阶段 4 后可在 reader 或归档副本执行；不能影响在线 flush | 本文阶段 4 |
+
+复杂 DDL 版本化迁移规范：
+
+| 规则 | 要求 |
+| ---- | ---- |
+| 触发条件 | 只要涉及分区、表/列重命名、列类型重写、非空/唯一/外键约束、批量 backfill、`CREATE INDEX CONCURRENTLY`、大表删除/归档、Citus 分布列或 colocate 变更，就必须使用版本化迁移，不能只依赖 GORM AutoMigrate。 |
+| 工具与目录 | 阶段 0 完成规范制定；首次复杂 DDL 前在 `goose` 或 Atlas 中二选一，并把脚本放入统一迁移目录。命名使用 `YYYYMMDDHHMMSS_<domain>_<intent>.up.sql` / `.down.sql` 或对应工具的等价格式。 |
+| expand/contract | 默认拆成 expand、backfill、verify、contract。expand 只做向后兼容新增；backfill 分批限速并可恢复；contract 必须等所有应用版本不再读取旧结构后执行。 |
+| 锁与超时 | 每个迁移显式设置 `lock_timeout` 和 `statement_timeout`；大表索引用 `CREATE INDEX CONCURRENTLY`；PostgreSQL `CONCURRENTLY` 语句不得放在事务块内。 |
+| 约束上线 | 大表约束优先 `NOT VALID`，验证通过后再 `VALIDATE CONSTRAINT`；`NOT NULL` 先 backfill，再加检查约束或维护窗口内收紧。 |
+| 幂等与回滚 | 脚本必须包含存在性检查或可重复执行保护；`.down.sql` 至少能回滚元数据变更。不可逆的数据删除必须先归档到 R2/S3 并在迁移说明中声明恢复路径。 |
+| 验证入口 | 迁移 PR 必须附 `EXPLAIN` 或 `script/db/audit_dashboard_query_plans.sh` 结果、`script/db/audit_database_baseline.sh` 前后摘要、预估锁时间、回滚计划。 |
+| AutoMigrate 边界 | AutoMigrate 只保留给早期简单模型同步和本地开发；生产复杂 DDL 由版本化迁移先执行，应用启动迁移不得承担大表 rewrite、分区、并发索引和危险约束。 |
 
 收益：
 
