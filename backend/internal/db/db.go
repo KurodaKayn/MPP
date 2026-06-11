@@ -43,11 +43,14 @@ const (
 	dbReaderPortEnv      = "DB_READER_PORT"
 	dbReaderSSLModeEnv   = "DB_READER_SSLMODE"
 	dbReaderSSLRootEnv   = "DB_READER_SSLROOTCERT"
+	dbReaderMaxLagEnv    = "DB_READER_MAX_REPLICA_LAG"
+	dbReaderLagCheckEnv  = "DB_READER_LAG_CHECK_INTERVAL"
 	defaultMaxOpenConns  = 10
 	defaultMaxIdleConns  = 5
 	defaultConnMaxLife   = 30 * time.Minute
 	defaultConnMaxIdle   = 5 * time.Minute
 	defaultDBSSLMode     = "disable"
+	defaultLagCheck      = 5 * time.Second
 )
 
 type connectionPoolConfig struct {
@@ -80,7 +83,15 @@ func InitDB() {
 		log.Fatal("Failed to connect to database read replica:", err)
 	}
 	if reader != nil {
-		DefaultRouter = NewRouter(database, WithReader(reader))
+		options := []RouterOption{WithReader(reader)}
+		lagMonitor, err := optionalReplicaLagMonitorFromEnv(reader)
+		if err != nil {
+			log.Fatal("Failed to configure database read replica lag monitor:", err)
+		}
+		if lagMonitor != nil {
+			options = append(options, WithReplicaLagChecker(lagMonitor))
+		}
+		DefaultRouter = NewRouter(database, options...)
 		fmt.Println("Database read replica connection established")
 	}
 
@@ -111,6 +122,14 @@ func optionalPostgresReadReplicaFromEnv() (*gorm.DB, error) {
 		return nil, err
 	}
 	return openPostgresDatabase(dsn)
+}
+
+func optionalReplicaLagMonitorFromEnv(reader *gorm.DB) (*ReplicaLagMonitor, error) {
+	config, enabled, err := replicaLagMonitorConfigFromEnv()
+	if err != nil || !enabled {
+		return nil, err
+	}
+	return NewPostgresReplicaLagMonitor(reader, config), nil
 }
 
 func postgresDSNFromEnv() (string, error) {
@@ -257,6 +276,29 @@ func applyConnectionPool(database *sql.DB, config connectionPoolConfig) {
 	database.SetMaxIdleConns(config.MaxIdleConns)
 	database.SetConnMaxLifetime(config.ConnMaxLifetime)
 	database.SetConnMaxIdleTime(config.ConnMaxIdleTime)
+}
+
+func replicaLagMonitorConfigFromEnv() (ReplicaLagMonitorConfig, bool, error) {
+	maxLag, err := durationFromEnv(dbReaderMaxLagEnv, 0)
+	if err != nil {
+		return ReplicaLagMonitorConfig{}, false, err
+	}
+	if maxLag <= 0 {
+		return ReplicaLagMonitorConfig{}, false, nil
+	}
+
+	checkInterval, err := durationFromEnv(dbReaderLagCheckEnv, defaultLagCheck)
+	if err != nil {
+		return ReplicaLagMonitorConfig{}, false, err
+	}
+	if checkInterval <= 0 {
+		checkInterval = defaultLagCheck
+	}
+
+	return ReplicaLagMonitorConfig{
+		MaxLag:        maxLag,
+		CheckInterval: checkInterval,
+	}, true, nil
 }
 
 func nonNegativeIntFromEnv(name string, fallback int) (int, error) {

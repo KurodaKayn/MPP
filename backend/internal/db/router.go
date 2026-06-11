@@ -17,8 +17,9 @@ const (
 )
 
 type Router struct {
-	writer *gorm.DB
-	reader *gorm.DB
+	writer            *gorm.DB
+	reader            *gorm.DB
+	replicaLagChecker ReplicaLagChecker
 }
 
 type RouterOption func(*Router)
@@ -41,6 +42,12 @@ func WithReader(reader *gorm.DB) RouterOption {
 	}
 }
 
+func WithReplicaLagChecker(checker ReplicaLagChecker) RouterOption {
+	return func(router *Router) {
+		router.replicaLagChecker = checker
+	}
+}
+
 func (r *Router) Writer(ctx context.Context) *gorm.DB {
 	if r == nil {
 		return nil
@@ -54,7 +61,7 @@ func (r *Router) Reader(ctx context.Context, consistency ReadConsistency) *gorm.
 	}
 	switch consistency {
 	case EventualRead, AnalyticsRead:
-		if r.reader != nil && !stickyWriterActive(ctx, time.Now()) {
+		if r.reader != nil && !stickyWriterActive(ctx, time.Now()) && r.replicaLagHealthy(ctx) {
 			return dbWithContext(r.reader, ctx)
 		}
 	}
@@ -76,6 +83,21 @@ func (r *Router) InstallQueryObserver(observer QueryObserver) error {
 		return nil
 	}
 	return InstallQueryObserver(r.reader, observer)
+}
+
+func (r *Router) InstallReplicaLagObserver(observer ReplicaLagObserver) {
+	if r == nil || observer == nil {
+		return
+	}
+	if checker, ok := r.replicaLagChecker.(interface {
+		SetReplicaLagObserver(ReplicaLagObserver)
+	}); ok {
+		checker.SetReplicaLagObserver(observer)
+	}
+}
+
+func (r *Router) replicaLagHealthy(ctx context.Context) bool {
+	return r.replicaLagChecker == nil || r.replicaLagChecker.Healthy(ctx)
 }
 
 func dbWithContext(database *gorm.DB, ctx context.Context) *gorm.DB {

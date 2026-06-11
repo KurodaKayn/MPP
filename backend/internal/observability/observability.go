@@ -38,6 +38,7 @@ type Suite struct {
 	inFlight         *prometheus.GaugeVec
 	info             *prometheus.GaugeVec
 	databaseObserver *DatabaseQueryObserver
+	replicaObserver  *ReplicaLagObserver
 	publishObserver  *PublishJobObserver
 }
 
@@ -47,6 +48,12 @@ type DatabaseQueryObserver struct {
 	queries       *prometheus.CounterVec
 	duration      *prometheus.HistogramVec
 	slowQueries   *prometheus.CounterVec
+}
+
+type ReplicaLagObserver struct {
+	serviceName string
+	lag         *prometheus.GaugeVec
+	healthy     *prometheus.GaugeVec
 }
 
 type PublishJobObserver struct {
@@ -121,6 +128,14 @@ func New(serviceName string) *Suite {
 		Name: "mpp_db_slow_queries_total",
 		Help: "Total database queries that exceeded the configured slow query threshold.",
 	}, []string{"service", "operation", "table", "status"})
+	replicaLag := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "mpp_db_replica_lag_seconds",
+		Help: "Latest observed PostgreSQL read replica lag in seconds.",
+	}, []string{"service"})
+	replicaHealthy := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "mpp_db_replica_healthy",
+		Help: "Whether the PostgreSQL read replica is healthy enough for eventual reads.",
+	}, []string{"service"})
 	publishJobs := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "mpp_publish_jobs_total",
 		Help: "Total publish jobs completed by the publish worker.",
@@ -137,6 +152,8 @@ func New(serviceName string) *Suite {
 		dbQueries,
 		dbDuration,
 		dbSlowQueries,
+		replicaLag,
+		replicaHealthy,
 		publishJobs,
 	)
 	info.WithLabelValues(serviceName).Set(1)
@@ -146,6 +163,11 @@ func New(serviceName string) *Suite {
 		queries:       dbQueries,
 		duration:      dbDuration,
 		slowQueries:   dbSlowQueries,
+	}
+	replicaObserver := &ReplicaLagObserver{
+		serviceName: serviceName,
+		lag:         replicaLag,
+		healthy:     replicaHealthy,
 	}
 	publishObserver := &PublishJobObserver{
 		serviceName: serviceName,
@@ -160,6 +182,7 @@ func New(serviceName string) *Suite {
 		inFlight:         inFlight,
 		info:             info,
 		databaseObserver: databaseObserver,
+		replicaObserver:  replicaObserver,
 		publishObserver:  publishObserver,
 	}
 }
@@ -170,6 +193,10 @@ func (s *Suite) RegisterRoutes(e *echo.Echo) {
 
 func (s *Suite) DatabaseQueryObserver() *DatabaseQueryObserver {
 	return s.databaseObserver
+}
+
+func (s *Suite) ReplicaLagObserver() *ReplicaLagObserver {
+	return s.replicaObserver
 }
 
 func (s *Suite) PublishJobObserver() *PublishJobObserver {
@@ -350,6 +377,24 @@ func (o *DatabaseQueryObserver) logSlowQuery(ctx context.Context, observation db
 	if _, err := os.Stdout.Write(append(payload, '\n')); err != nil {
 		log.Printf("observability database slow query log write failed: %v", err)
 	}
+}
+
+func (o *ReplicaLagObserver) ObserveReplicaLag(_ context.Context, observation dbobs.ReplicaLagObservation) {
+	if o == nil {
+		return
+	}
+
+	lagSeconds := observation.Lag.Seconds()
+	if observation.Err != nil || lagSeconds < 0 {
+		lagSeconds = -1
+	}
+	o.lag.WithLabelValues(o.serviceName).Set(lagSeconds)
+
+	healthy := 0.0
+	if observation.Healthy {
+		healthy = 1
+	}
+	o.healthy.WithLabelValues(o.serviceName).Set(healthy)
 }
 
 func metricLabel(value, fallback string) string {

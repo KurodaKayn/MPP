@@ -50,6 +50,7 @@ func newServer(config serverConfig, h serverHandlers) (*echo.Echo, error) {
 		if err := config.dbRouter.InstallQueryObserver(observabilitySuite.DatabaseQueryObserver()); err != nil {
 			return nil, err
 		}
+		config.dbRouter.InstallReplicaLagObserver(observabilitySuite.ReplicaLagObserver())
 	} else {
 		if err := dbobs.InstallQueryObserver(config.sqlDB, observabilitySuite.DatabaseQueryObserver()); err != nil {
 			return nil, err
