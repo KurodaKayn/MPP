@@ -1445,6 +1445,32 @@ func (h *UserDashboardHandler) CancelScheduledPublication(c echo.Context) error 
 	return c.JSON(http.StatusOK, schedule)
 }
 
+func (h *UserDashboardHandler) RetryScheduledPublication(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
+	}
+	scheduleID, err := uuid.Parse(c.Param("scheduleId"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid schedule UUID")
+	}
+	schedule, err := h.serviceFor(c).RetryScheduledPublication(c.Request().Context(), projectID, scheduleID, userID)
+	if err != nil {
+		return sendPublishScheduleError(c, err)
+	}
+	return c.JSON(http.StatusOK, schedule)
+}
+
 func (h *UserDashboardHandler) ListWorkspacePublicationCalendar(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {

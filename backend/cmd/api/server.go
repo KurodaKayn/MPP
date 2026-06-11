@@ -210,6 +210,7 @@ func registerUserDashboardRoutes(e *echo.Echo, config serverConfig, h serverHand
 	userGroup.GET("/projects/:id/publications", h.userDashboard.GetMyProjectPublications)
 	userGroup.POST("/projects/:id/schedules", h.userDashboard.ScheduleProjectPublication)
 	userGroup.DELETE("/projects/:id/schedules/:scheduleId", h.userDashboard.CancelScheduledPublication)
+	userGroup.POST("/projects/:id/schedules/:scheduleId/retry", h.userDashboard.RetryScheduledPublication)
 	userGroup.POST("/projects/:id/prepublish/sync", h.userDashboard.SyncProjectPrepublish)
 	userGroup.PUT("/projects/:id/prepublish/:platform", h.userDashboard.UpdateProjectPrepublishDraft)
 	userGroup.POST("/projects/:id/publish", h.userDashboard.PublishProject)

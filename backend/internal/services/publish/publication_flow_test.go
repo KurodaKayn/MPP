@@ -339,6 +339,62 @@ func TestPublishProjectAppendsAttemptsWhenRetryingSameSchedule(t *testing.T) {
 	require.Empty(t, savedSchedule.LastError)
 }
 
+func TestRetryScheduledPublicationAppendsAttempt(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(&models.ScheduledPublication{}, &models.PublishAttempt{}))
+	s := services.NewDashboardService(db)
+	flaky := &flakyPublisher{calls: 1}
+	publisher.Factory.Register("wechat", flaky)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "retry-route-owner", Email: "retry-route-owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Retry route",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Status:         models.PublicationStatusDraft,
+		Config:         datatypes.JSON(`{"title":"Retry route"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	account := createConnectedPublishAccount(t, db, user.ID, "wechat", datatypes.JSON(`{"app_id":"wx-retry-route","app_secret":"retry-secret"}`))
+	pub.PlatformAccountID = &account.ID
+	require.NoError(t, db.Create(&pub).Error)
+	schedule := models.ScheduledPublication{
+		WorkspaceID:    models.PersonalWorkspaceID(user.ID),
+		ProjectID:      project.ID,
+		PublicationID:  pub.ID,
+		ScheduledAt:    time.Now().UTC().Add(-time.Minute),
+		Status:         models.ScheduledPublicationStatusFailed,
+		IdempotencyKey: "retry-route-key",
+		CreatedBy:      user.ID,
+		LastError:      "previous failure",
+	}
+	require.NoError(t, db.Create(&schedule).Error)
+	require.NoError(t, db.Create(&models.PublishAttempt{
+		ScheduledPublicationID: schedule.ID,
+		AttemptNo:              1,
+		StartedAt:              time.Now().UTC().Add(-time.Hour),
+		Status:                 models.PublishAttemptStatusFailed,
+		ErrorMessage:           "previous failure",
+	}).Error)
+
+	retried, err := s.RetryScheduledPublication(context.Background(), project.ID, schedule.ID, user.ID)
+
+	require.NoError(t, err)
+	require.Equal(t, models.ScheduledPublicationStatusPublished, retried.Status)
+	require.Len(t, retried.Attempts, 2)
+	require.Equal(t, 1, retried.Attempts[0].AttemptNo)
+	require.Equal(t, 2, retried.Attempts[1].AttemptNo)
+	require.Equal(t, models.PublishAttemptStatusSucceeded, retried.Attempts[1].Status)
+}
+
 func TestScheduleProjectPublicationListsAndCancelsCalendarItem(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	require.NoError(t, db.AutoMigrate(&models.ScheduledPublication{}, &models.PublishAttempt{}, &models.ProjectVersion{}))

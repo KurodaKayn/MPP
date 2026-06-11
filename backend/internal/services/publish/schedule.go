@@ -111,6 +111,26 @@ func (s *Service) CancelScheduledPublication(ctx context.Context, projectID uuid
 	return &item, nil
 }
 
+func (s *Service) RetryScheduledPublication(ctx context.Context, projectID uuid.UUID, scheduleID uuid.UUID, userID uuid.UUID) (*dto.ScheduledPublication, error) {
+	if projectID == uuid.Nil || scheduleID == uuid.Nil || userID == uuid.Nil {
+		return nil, ErrForbidden
+	}
+	var schedule models.ScheduledPublication
+	if err := s.db.WithContext(ctx).
+		Preload("Project").
+		Preload("Publication").
+		First(&schedule, "id = ? AND project_id = ?", scheduleID, projectID).Error; err != nil {
+		return nil, err
+	}
+	if schedule.Status != models.ScheduledPublicationStatusFailed && schedule.Status != models.ScheduledPublicationStatusNeedsManualAction {
+		return nil, ErrPublicationAlreadyPublishing
+	}
+	if _, err := s.PublishProject(projectID, schedule.Publication.Platform, &userID, scheduleID); err != nil {
+		return nil, err
+	}
+	return s.scheduledPublicationDetail(ctx, scheduleID)
+}
+
 func (s *Service) ListWorkspaceScheduledPublications(ctx context.Context, workspaceID uuid.UUID, userID uuid.UUID, from time.Time, to time.Time) (*dto.ScheduledPublicationsResponse, error) {
 	if workspaceID == uuid.Nil || userID == uuid.Nil || from.IsZero() || to.IsZero() || !to.After(from) {
 		return nil, ErrForbidden
@@ -149,6 +169,25 @@ func (s *Service) ListWorkspaceScheduledPublications(ctx context.Context, worksp
 		items = append(items, scheduledPublicationFromModel(schedule, schedule.Project, schedule.Publication, attemptsBySchedule[schedule.ID]))
 	}
 	return &dto.ScheduledPublicationsResponse{Items: items}, nil
+}
+
+func (s *Service) scheduledPublicationDetail(ctx context.Context, scheduleID uuid.UUID) (*dto.ScheduledPublication, error) {
+	var schedule models.ScheduledPublication
+	if err := s.db.WithContext(ctx).
+		Preload("Project").
+		Preload("Publication").
+		First(&schedule, "id = ?", scheduleID).Error; err != nil {
+		return nil, err
+	}
+	var attempts []models.PublishAttempt
+	if err := s.db.WithContext(ctx).
+		Where("scheduled_publication_id = ?", scheduleID).
+		Order("attempt_no ASC").
+		Find(&attempts).Error; err != nil {
+		return nil, err
+	}
+	item := scheduledPublicationFromModel(schedule, schedule.Project, schedule.Publication, attempts)
+	return &item, nil
 }
 
 func (s *Service) requireWorkspaceCalendarAccess(ctx context.Context, workspaceID uuid.UUID, userID uuid.UUID) error {
