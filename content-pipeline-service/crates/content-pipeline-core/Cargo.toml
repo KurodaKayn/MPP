@@ -8,6 +8,7 @@ base64.workspace = true
 ego-tree = "0.11.0"
 hex = "0.4.3"
 image = { version = "0.25.8", default-features = false, features = ["png", "jpeg", "gif", "webp", "avif"] }
+mozjpeg = { version = "0.10.13", default-features = false }
 oxipng = { version = "10.1.1", default-features = false }
 percent-encoding = "2.3.2"
 regex = "1.12.3"
