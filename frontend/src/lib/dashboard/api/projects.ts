@@ -35,6 +35,9 @@ import type {
   RestoreProjectVersionResponse,
   SaveProjectContentInput,
   SaveProjectPlatformsInput,
+  SchedulePublicationInput,
+  ScheduledPublication,
+  ScheduledPublicationsResponse,
   SyncPrepublishInput,
   StartPublishBrowserSessionResult,
   UpdateProjectCommentInput,
@@ -316,6 +319,41 @@ export function getProjectPublications(
 
   return fetchDashboard<ProjectPublications>(
     `/api/user/dashboard/projects/${projectId}/publications${query}`,
+  );
+}
+
+export function scheduleProjectPublication(
+  projectId: string,
+  input: SchedulePublicationInput,
+) {
+  return fetchDashboard<ScheduledPublication>(
+    `/api/user/dashboard/projects/${projectId}/schedules`,
+    {
+      body: JSON.stringify(input),
+      method: "POST",
+    },
+  );
+}
+
+export function cancelScheduledPublication(
+  projectId: string,
+  scheduleId: string,
+) {
+  return fetchDashboard<ScheduledPublication>(
+    `/api/user/dashboard/projects/${projectId}/schedules/${scheduleId}`,
+    { method: "DELETE" },
+  );
+}
+
+export function getWorkspacePublicationCalendar(
+  workspaceId: string,
+  from: string,
+  to: string,
+) {
+  const params = new URLSearchParams({ from, to });
+
+  return fetchDashboard<ScheduledPublicationsResponse>(
+    `/api/workspaces/${workspaceId}/publication-calendar?${params.toString()}`,
   );
 }
 
