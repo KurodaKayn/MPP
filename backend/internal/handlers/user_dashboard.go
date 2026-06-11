@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -1390,6 +1391,115 @@ func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, publications)
+}
+
+func (h *UserDashboardHandler) ScheduleProjectPublication(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
+	}
+	req := new(dto.SchedulePublicationRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+	schedule, err := h.serviceFor(c).ScheduleProjectPublication(c.Request().Context(), projectID, userID, *req)
+	if err != nil {
+		return sendPublishScheduleError(c, err)
+	}
+	return c.JSON(http.StatusCreated, schedule)
+}
+
+func (h *UserDashboardHandler) CancelScheduledPublication(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendWorkspaceError(c, err)
+	}
+	scheduleID, err := uuid.Parse(c.Param("scheduleId"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid schedule UUID")
+	}
+	schedule, err := h.serviceFor(c).CancelScheduledPublication(c.Request().Context(), scheduleID, userID)
+	if err != nil {
+		return sendPublishScheduleError(c, err)
+	}
+	if schedule.ProjectID != projectID {
+		return sendError(c, http.StatusNotFound, "not_found", "schedule not found for project")
+	}
+	return c.JSON(http.StatusOK, schedule)
+}
+
+func (h *UserDashboardHandler) ListWorkspacePublicationCalendar(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	workspaceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	from, err := parseDashboardTimeParam(c.QueryParam("from"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid from timestamp")
+	}
+	to, err := parseDashboardTimeParam(c.QueryParam("to"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid to timestamp")
+	}
+	resp, err := h.serviceFor(c).ListWorkspaceScheduledPublications(c.Request().Context(), workspaceID, userID, from, to)
+	if err != nil {
+		return sendPublishScheduleError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+func parseDashboardTimeParam(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, errors.New("missing timestamp")
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed, nil
+	}
+	return time.Parse("2006-01-02", value)
+}
+
+func sendPublishScheduleError(c echo.Context, err error) error {
+	if errors.Is(err, services.ErrPublicationDisabled) {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
+	}
+	if errors.Is(err, services.ErrPublicationAlreadyPublishing) {
+		return sendError(c, http.StatusConflict, "publish_in_progress", "publication is already publishing")
+	}
+	if errors.Is(err, services.ErrPublicationRequiresSync) {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "sync prepublish draft before scheduling")
+	}
+	if errors.Is(err, services.ErrForbidden) {
+		return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return sendError(c, http.StatusNotFound, "not_found", "schedule not found")
+	}
+	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 }
 
 func (h *UserDashboardHandler) SyncProjectPrepublish(c echo.Context) error {
