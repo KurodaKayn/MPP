@@ -13,6 +13,11 @@ import (
 const postgresReplicaLagSecondsQuery = `
 SELECT CASE
 	WHEN NOT pg_is_in_recovery() THEN 0
+	WHEN NOT EXISTS (
+		SELECT 1
+		FROM pg_stat_wal_receiver
+	) THEN NULL
+	WHEN pg_last_wal_receive_lsn() IS NULL OR pg_last_wal_replay_lsn() IS NULL THEN NULL
 	WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0
 	WHEN pg_last_xact_replay_timestamp() IS NULL THEN NULL
 	ELSE EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp())
