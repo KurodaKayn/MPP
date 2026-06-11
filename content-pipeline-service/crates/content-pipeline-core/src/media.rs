@@ -1,12 +1,12 @@
 use std::io::Cursor;
 
+mod optimizer;
 mod profiles;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use image::codecs::jpeg::JpegEncoder;
-use image::imageops::FilterType;
-use image::{DynamicImage, ImageFormat, ImageReader};
+use image::{ImageFormat, ImageReader};
+use optimizer::{ProcessedImage, optimize_image_to_constraints};
 use percent_encoding::percent_decode_str;
 pub use profiles::{MediaProfile, supported_media_profiles};
 use sha2::{Digest, Sha256};
@@ -14,10 +14,16 @@ use thiserror::Error;
 
 pub const DEFAULT_MAX_BYTES: u64 = 10 * 1024 * 1024;
 pub const WECHAT_MAX_BYTES: u64 = 2 * 1024 * 1024;
+pub const X_MAX_BYTES: u64 = 5 * 1024 * 1024;
 pub const MAX_DECODED_PIXELS: u64 = 40_000_000;
 
-const SUPPORTED_IMAGE_MIME_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
-
+const SUPPORTED_IMAGE_MIME_TYPES: &[&str] = &[
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/avif",
+];
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessedAsset {
     pub input_byte_size: u64,
@@ -35,6 +41,7 @@ pub struct MediaConstraints {
     pub max_bytes: Option<u64>,
     pub preferred_mime_types: Vec<String>,
     compress_to_max_bytes: bool,
+    output_mime_types: Vec<String>,
 }
 
 impl MediaConstraints {
@@ -43,6 +50,10 @@ impl MediaConstraints {
             max_bytes,
             preferred_mime_types: normalize_mime_types(preferred_mime_types),
             compress_to_max_bytes: false,
+            output_mime_types: SUPPORTED_IMAGE_MIME_TYPES
+                .iter()
+                .map(|mime_type| (*mime_type).to_string())
+                .collect(),
         }
     }
 
@@ -57,7 +68,49 @@ impl MediaConstraints {
             Self::new(max_bytes.or(Some(profile.max_bytes)), preferred_mime_types);
         constraints.compress_to_max_bytes =
             profile.compress_to_max_bytes && constraints.max_bytes.is_some();
+        constraints.output_mime_types = normalize_mime_types(
+            profile
+                .output_mime_types
+                .iter()
+                .map(|mime_type| (*mime_type).to_string())
+                .collect(),
+        );
         constraints
+    }
+
+    fn allows_output_mime_type(&self, mime_type: &str) -> bool {
+        let profile_allows = self
+            .output_mime_types
+            .iter()
+            .any(|allowed| allowed == mime_type);
+        let preference_allows = self.preferred_mime_types.is_empty()
+            || self
+                .preferred_mime_types
+                .iter()
+                .any(|preferred| preferred == mime_type);
+
+        profile_allows && preference_allows
+    }
+
+    fn allowed_mime_types_for_error(&self) -> String {
+        let allowed = self
+            .output_mime_types
+            .iter()
+            .filter(|mime_type| {
+                self.preferred_mime_types.is_empty()
+                    || self
+                        .preferred_mime_types
+                        .iter()
+                        .any(|preferred| preferred == *mime_type)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
+        if allowed.is_empty() {
+            self.output_mime_types.join(", ")
+        } else {
+            allowed.join(", ")
+        }
     }
 }
 
@@ -152,6 +205,7 @@ impl MediaProcessor {
         let format = image::guess_format(&bytes).map_err(|_| MediaError::UnsupportedFormat)?;
         let mime_type = mime_type_for_format(format).ok_or(MediaError::UnsupportedFormat)?;
         validate_supported_mime_type(mime_type)?;
+        validate_preferred_mime_types(constraints)?;
 
         let (width, height) = image_dimensions(&bytes, format)?;
         let pixels = u64::from(width) * u64::from(height);
@@ -180,15 +234,20 @@ impl MediaProcessor {
         };
 
         if let Some(max) = constraints.max_bytes
-            && processed.byte_size() > max
             && constraints.compress_to_max_bytes
+            && (processed.byte_size() > max || !constraints.allows_output_mime_type(mime_type))
         {
-            processed = compress_image_to_max_bytes(&processed.bytes, format, max)?;
-            if mime_type == "image/jpeg" {
-                warnings.push("image compressed to satisfy byte limit".to_string());
+            processed = optimize_image_to_constraints(&processed.bytes, format, constraints)?;
+            if processed.mime_type == mime_type {
+                if processed.width == width && processed.height == height {
+                    warnings.push("image optimized to satisfy media constraints".to_string());
+                } else {
+                    warnings.push("image resized to satisfy media constraints".to_string());
+                }
             } else {
                 warnings.push(format!(
-                    "image converted from {mime_type} to image/jpeg to satisfy byte limit"
+                    "image converted from {mime_type} to {} to satisfy media constraints",
+                    processed.mime_type
                 ));
             }
         }
@@ -239,19 +298,6 @@ fn normalize_mime_type(value: &str) -> String {
     }
 }
 
-struct ProcessedImage {
-    bytes: Vec<u8>,
-    mime_type: String,
-    width: u32,
-    height: u32,
-}
-
-impl ProcessedImage {
-    fn byte_size(&self) -> u64 {
-        self.bytes.len() as u64
-    }
-}
-
 fn validate_supported_mime_type(mime_type: &str) -> Result<(), MediaError> {
     if !SUPPORTED_IMAGE_MIME_TYPES.contains(&mime_type) {
         return Err(MediaError::UnsupportedMimeType {
@@ -266,65 +312,36 @@ fn validate_supported_mime_type(mime_type: &str) -> Result<(), MediaError> {
 fn validate_mime_type(mime_type: &str, constraints: &MediaConstraints) -> Result<(), MediaError> {
     validate_supported_mime_type(mime_type)?;
 
-    if !constraints.preferred_mime_types.is_empty()
-        && !constraints
-            .preferred_mime_types
-            .iter()
-            .any(|allowed| allowed == mime_type)
-    {
+    if !constraints.allows_output_mime_type(mime_type) {
         return Err(MediaError::UnsupportedMimeType {
             mime_type: mime_type.to_string(),
-            allowed: constraints.preferred_mime_types.join(", "),
+            allowed: constraints.allowed_mime_types_for_error(),
         });
     }
 
     Ok(())
 }
 
-fn compress_image_to_max_bytes(
-    bytes: &[u8],
-    format: ImageFormat,
-    max_bytes: u64,
-) -> Result<ProcessedImage, MediaError> {
-    let mut image =
-        image::load_from_memory_with_format(bytes, format).map_err(|_| MediaError::DecodeImage)?;
-    let mut last_encoded = Vec::new();
-
-    for _ in 0..8 {
-        for quality in [80, 60, 40, 20] {
-            let encoded = encode_jpeg(&image, quality)?;
-            if encoded.len() as u64 <= max_bytes {
-                return Ok(ProcessedImage {
-                    bytes: encoded,
-                    mime_type: "image/jpeg".to_string(),
-                    width: image.width(),
-                    height: image.height(),
-                });
-            }
-            last_encoded = encoded;
-        }
-
-        if image.width() <= 1 && image.height() <= 1 {
-            break;
-        }
-
-        let next_width = (image.width() / 2).max(1);
-        let next_height = (image.height() / 2).max(1);
-        image = image.resize(next_width, next_height, FilterType::Triangle);
+fn validate_preferred_mime_types(constraints: &MediaConstraints) -> Result<(), MediaError> {
+    for mime_type in &constraints.preferred_mime_types {
+        validate_supported_mime_type(mime_type)?;
     }
 
-    Err(MediaError::ResourceLimitExceeded {
-        actual: last_encoded.len() as u64,
-        max: max_bytes,
-    })
-}
+    if !constraints.preferred_mime_types.is_empty()
+        && !constraints.preferred_mime_types.iter().any(|mime_type| {
+            constraints
+                .output_mime_types
+                .iter()
+                .any(|allowed| allowed == mime_type)
+        })
+    {
+        return Err(MediaError::UnsupportedMimeType {
+            mime_type: constraints.preferred_mime_types.join(", "),
+            allowed: constraints.output_mime_types.join(", "),
+        });
+    }
 
-fn encode_jpeg(image: &DynamicImage, quality: u8) -> Result<Vec<u8>, MediaError> {
-    let mut output = Vec::new();
-    JpegEncoder::new_with_quality(&mut output, quality)
-        .encode_image(image)
-        .map_err(|_| MediaError::EncodeImage)?;
-    Ok(output)
+    Ok(())
 }
 
 fn mime_type_for_format(format: ImageFormat) -> Option<&'static str> {
@@ -333,6 +350,7 @@ fn mime_type_for_format(format: ImageFormat) -> Option<&'static str> {
         ImageFormat::Jpeg => Some("image/jpeg"),
         ImageFormat::Gif => Some("image/gif"),
         ImageFormat::WebP => Some("image/webp"),
+        ImageFormat::Avif => Some("image/avif"),
         _ => None,
     }
 }
@@ -350,213 +368,4 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const ONE_BY_ONE_GIF_DATA_URL: &str =
-        "data:image/gif;base64,R0lGODlhAQABAPAAAP///wAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==";
-
-    #[test]
-    fn decodes_base64_image_data_url() {
-        let processor = MediaProcessor::new();
-
-        let asset = processor
-            .process_data_url(
-                ONE_BY_ONE_GIF_DATA_URL,
-                &MediaConstraints::new(Some(128), Vec::new()),
-            )
-            .expect("data url should decode");
-
-        assert_eq!(asset.mime_type, "image/gif");
-        assert_eq!(asset.byte_size, asset.bytes.len() as u64);
-        assert_eq!(asset.width, 1);
-        assert_eq!(asset.height, 1);
-        assert_eq!(asset.sha256, sha256_hex(&asset.bytes));
-        assert!(asset.warnings.is_empty());
-    }
-
-    #[test]
-    fn rejects_oversized_data_url() {
-        let processor = MediaProcessor::new();
-
-        let err = processor
-            .process_data_url(
-                ONE_BY_ONE_GIF_DATA_URL,
-                &MediaConstraints::new(Some(4), Vec::new()),
-            )
-            .expect_err("asset should exceed limit");
-
-        assert_eq!(
-            err,
-            MediaError::ResourceLimitExceeded { actual: 43, max: 4 }
-        );
-    }
-
-    #[test]
-    fn rejects_unsupported_image_payload() {
-        let processor = MediaProcessor::new();
-
-        let err = processor
-            .process_data_url(
-                "data:text/plain;base64,SGVsbG8=",
-                &MediaConstraints::new(Some(128), Vec::new()),
-            )
-            .expect_err("plain text is not a processable image");
-
-        assert_eq!(err, MediaError::UnsupportedFormat);
-    }
-
-    #[test]
-    fn rejects_mime_type_outside_requested_preferences() {
-        let processor = MediaProcessor::new();
-
-        let err = processor
-            .process_data_url(
-                ONE_BY_ONE_GIF_DATA_URL,
-                &MediaConstraints::new(Some(128), vec!["image/png".to_string()]),
-            )
-            .expect_err("gif should be outside preferred png constraint");
-
-        assert_eq!(
-            err,
-            MediaError::UnsupportedMimeType {
-                mime_type: "image/gif".to_string(),
-                allowed: "image/png".to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn reports_declared_mime_mismatch_as_warning() {
-        let processor = MediaProcessor::new();
-        let mismatched_data_url = ONE_BY_ONE_GIF_DATA_URL.replacen("image/gif", "image/png", 1);
-
-        let asset = processor
-            .process_data_url(
-                &mismatched_data_url,
-                &MediaConstraints::new(Some(128), Vec::new()),
-            )
-            .expect("detected image content should still be processed");
-
-        assert_eq!(asset.mime_type, "image/gif");
-        assert_eq!(
-            asset.warnings,
-            vec!["declared MIME type image/png did not match detected image/gif"]
-        );
-    }
-
-    #[test]
-    fn exposes_versioned_media_profiles() {
-        let profiles = supported_media_profiles()
-            .iter()
-            .map(|profile| {
-                (
-                    profile.platform,
-                    profile.profile,
-                    profile.max_bytes,
-                    profile.compress_to_max_bytes,
-                )
-            })
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            profiles,
-            vec![
-                ("wechat", "wechat@v1", WECHAT_MAX_BYTES, true),
-                ("douyin", "douyin@v1", DEFAULT_MAX_BYTES, false),
-                ("generic", "generic@v1", DEFAULT_MAX_BYTES, false),
-            ]
-        );
-    }
-
-    #[test]
-    fn defaults_unknown_media_platform_to_generic_profile() {
-        assert_eq!(
-            default_max_bytes("mastodon", "inline_image"),
-            DEFAULT_MAX_BYTES
-        );
-
-        let constraints = MediaConstraints::for_platform("mastodon", "inline_image", None, vec![]);
-
-        assert_eq!(constraints.max_bytes, Some(DEFAULT_MAX_BYTES));
-    }
-
-    #[test]
-    fn compresses_wechat_images_before_enforcing_output_limit() {
-        let processor = MediaProcessor::new();
-        let max_bytes = 50 * 1024;
-        let source = noisy_jpeg(768, 768, 100);
-        assert!(
-            source.len() as u64 > max_bytes,
-            "fixture must start over the output limit"
-        );
-
-        let asset = processor
-            .process_bytes(
-                source,
-                Some("image/jpeg"),
-                &MediaConstraints::for_platform(
-                    "wechat",
-                    "inline_image",
-                    Some(max_bytes),
-                    Vec::new(),
-                ),
-            )
-            .expect("compressible WeChat image should process");
-
-        assert_eq!(asset.mime_type, "image/jpeg");
-        assert!(asset.byte_size <= max_bytes);
-        assert_eq!(
-            asset.warnings,
-            vec!["image compressed to satisfy byte limit"]
-        );
-    }
-
-    #[test]
-    fn compresses_wechat_images_with_profile_default_limit() {
-        let processor = MediaProcessor::new();
-        let source = noisy_jpeg(1536, 1536, 100);
-        assert!(
-            source.len() as u64 > WECHAT_MAX_BYTES,
-            "fixture must start over the WeChat profile limit"
-        );
-
-        let asset = processor
-            .process_bytes(
-                source,
-                Some("image/jpeg"),
-                &MediaConstraints::for_platform("wechat", "inline_image", None, Vec::new()),
-            )
-            .expect("compressible WeChat image should use profile default limit");
-
-        assert_eq!(asset.mime_type, "image/jpeg");
-        assert!(asset.byte_size <= WECHAT_MAX_BYTES);
-        assert_eq!(
-            asset.warnings,
-            vec!["image compressed to satisfy byte limit"]
-        );
-    }
-
-    fn noisy_jpeg(width: u32, height: u32, quality: u8) -> Vec<u8> {
-        let mut image = image::RgbImage::new(width, height);
-        for y in 0..height {
-            for x in 0..width {
-                image.put_pixel(
-                    x,
-                    y,
-                    image::Rgb([
-                        ((x * 31 + y * 17) % 256) as u8,
-                        ((x * 13 + y * 29) % 256) as u8,
-                        ((x * 7 + y * 11) % 256) as u8,
-                    ]),
-                );
-            }
-        }
-
-        let mut bytes = Vec::new();
-        JpegEncoder::new_with_quality(&mut bytes, quality)
-            .encode_image(&image)
-            .expect("test image should encode");
-        bytes
-    }
-}
+mod tests;
