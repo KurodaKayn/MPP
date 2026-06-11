@@ -279,8 +279,8 @@ impl MediaProcessor {
     }
 }
 
-pub fn default_max_bytes(platform: &str, _usage: &str) -> u64 {
-    profiles::resolve_media_profile(platform, _usage).max_bytes
+pub fn default_max_bytes(platform: &str, usage: &str) -> u64 {
+    profiles::resolve_media_profile(platform, usage).max_bytes
 }
 
 fn normalize_mime_types(values: Vec<String>) -> Vec<String> {
