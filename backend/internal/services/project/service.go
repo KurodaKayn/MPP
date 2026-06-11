@@ -24,6 +24,10 @@ var ErrProjectCollabUnavailable = errors.New("project collaboration unavailable"
 
 const dashboardProjectListCacheTTL = 15 * time.Second
 
+type DashboardStatsCacheInvalidator interface {
+	InvalidateDashboardStatsCache(ctx context.Context)
+}
+
 var allowedProjectPlatforms = map[string]struct{}{
 	"douyin": {},
 	"wechat": {},
@@ -38,6 +42,7 @@ type Service struct {
 	cache           *redis.Client
 	cacheTTL        time.Duration
 	cacheGroup      *singleflight.Group
+	statsCache      DashboardStatsCacheInvalidator
 }
 
 func NewService(db *gorm.DB) *Service {
@@ -74,6 +79,10 @@ func (s *Service) UseRedis(client *redis.Client) {
 	}
 	s.cache = client
 	s.cacheTTL = dashboardProjectListCacheTTL
+}
+
+func (s *Service) SetDashboardStatsCacheInvalidator(invalidator DashboardStatsCacheInvalidator) {
+	s.statsCache = invalidator
 }
 
 func (s *Service) requestContext() context.Context {

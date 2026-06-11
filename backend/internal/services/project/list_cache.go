@@ -146,6 +146,14 @@ func (s *Service) invalidateDashboardProjectListCache() {
 	deleteDashboardProjectListCacheKeys(ctx, s.cache)
 }
 
+func (s *Service) invalidateDashboardCaches(includeStats bool) {
+	ctx := s.requestContext()
+	s.InvalidateDashboardProjectListCache(ctx)
+	if includeStats && s.statsCache != nil {
+		s.statsCache.InvalidateDashboardStatsCache(ctx)
+	}
+}
+
 func deleteDashboardProjectListCacheKeys(ctx context.Context, client *redis.Client) {
 	var cursor uint64
 	for {
