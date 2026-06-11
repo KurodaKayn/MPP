@@ -15,12 +15,28 @@ Required overlay inputs:
   PostgreSQL StatefulSet.
 - Patch storage class, storage sizes, resource limits, and image tags for the
   target cluster.
-- Configure backup, restore, and retention outside these manifests.
+- Patch `mpp-data-backups` storage, backup CronJob schedules, and
+  `BACKUP_RETENTION_DAYS` before keeping useful data in the StatefulSets.
 
 The included NetworkPolicies allow PgBouncer ingress from backend,
 publish-worker, and collab-service Pods; PostgreSQL ingress from those app Pods
-and PgBouncer; and Redis ingress from backend, publish-worker, browser-worker,
-and collab-service Pods.
+plus PgBouncer and the PostgreSQL backup CronJob; and Redis ingress from
+backend, publish-worker, browser-worker, collab-service, and the Redis backup
+CronJob Pods.
+
+This package includes a small backup starter:
+
+- `postgres-backup` runs `pg_dump --format=custom` every day and stores dumps
+  under `/backups/postgres` on the `mpp-data-backups` PVC.
+- `redis-backup` runs `redis-cli --rdb` every day and stores RDB snapshots under
+  `/backups/redis` on the same PVC.
+- Both jobs use `concurrencyPolicy: Forbid`, short active deadlines, restricted
+  Pod security settings, no mounted service account token, and local
+  file-retention cleanup.
+
+The backup PVC is still in-cluster storage. For production-like self-hosted
+use, copy backup artifacts to external object storage or pair the PVC with
+storage-provider snapshots before depending on it for disaster recovery.
 
 This package preloads `pg_stat_statements` and mounts an init script that creates
 the extension for newly initialized databases. Existing PostgreSQL volumes need a
