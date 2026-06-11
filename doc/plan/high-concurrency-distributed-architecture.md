@@ -50,16 +50,16 @@ MPP 当前已经具备多服务雏形：
 | 4    | 健康检查与优雅关闭           | 支持滚动重启，避免请求中断                | frontend/backend/ai/browser-worker 增加 health/readiness      | 5        | 2    | P0     | 完成     | 成本低，生产必备                                                                                                                                                                                                              |
 | 5    | API 服务无状态化与横向扩容   | 支撑更多并发请求                          | backend 不保存本地会话，扩多副本，共享 Redis/Postgres         | 5        | 2    | P1     | 完成     | API 基本无状态并支持 `api/worker/all` 角色，生产 Compose 默认多 backend 副本，数据层专项演进见 [数据库专项方案](./database-optimization.md)                                                                                   |
 | 6    | Redis 队列升级为可靠任务模型 | 发布任务异步化、可重试、可恢复            | 用 Redis Streams 或 Asynq 管理 publish jobs                   | 5        | 3    | P1     | 完成     | 已用 Asynq 替换 Redis List；publish job 具备 ack/retry/worker crash recovery/archive 语义，任务 payload 只保存 durable IDs，不携带 browser session 地址或 token                                                               |
-| 7    | 幂等键与发布状态机           | 防止重复点击、重复消费、重复发布          | publish 请求带 idempotency key，publication 状态机严格流转    | 5        | 3    | P1     | 进行中   | 已有发布锁和基础状态字段，尚缺 idempotency key 和目标状态机                                                                                                                                                                   |
+| 7    | 幂等键与发布状态机           | 防止重复点击、重复消费、重复发布          | publish 请求带 idempotency key，publication 状态机严格流转    | 5        | 3    | P1     | 完成     | 发布请求已支持 idempotency key 复用；publication 状态已对齐 `draft`、`syncing`、`queued`、`publishing`、`succeeded`、`failed`、`cancelled`，旧状态名保留为兼容别名                                                               |
 | 8    | Outbox Pattern               | 数据库更新与事件投递一致性                | publication 状态更新后写 outbox，由 worker 投递任务           | 4        | 4    | P1     | 未开始   | 适合发布流水线，但实现要谨慎                                                                                                                                                                                                  |
 | 9    | 分布式锁强化                 | 避免同一 publication 被并发发布           | Redis lock 加 owner、TTL、续约、释放校验                      | 5        | 2    | P1     | 完成     | 项目已经有 Redis，成本可控                                                                                                                                                                                                    |
 | 10   | 外部调用熔断、重试、退避     | 防止第三方平台或 LLM 故障拖垮系统         | AI、微信、知乎、X、抖音调用统一 retry/backoff/circuit breaker | 5        | 3    | P1     | 完成     | backend 已新增统一 resilience 层，HTTP retry 默认仅覆盖安全方法，非幂等 POST 只做 timeout/circuit breaker；发布操作层按平台维度熔断但不重试完整发布；ai-service LLM 客户端已配置 timeout、max retries 和 stream chunk timeout |
 | 11   | Browser Worker 资源池与配额  | 控制 Chromium 容器数量，避免宿主机爆掉    | 每用户/工作区限制并发 browser session，全局 worker pool       | 5        | 3    | P1     | 完成     | 已有用户+平台活跃 session 锁、用户/工作区并发配额、全局 worker pool 和容器 CPU/内存限制                                                                                                                                       |
-| 12   | WebSocket/SSE 长连接治理     | 处理 AI stream 和远程浏览器 stream        | 网关 timeout、连接数限制、stream token、断线恢复              | 4        | 3    | P1     | 已完成   | AI stream 和远程浏览器长连接已接入连接数限制；远程浏览器 stream 统一校验 token，HTTP gateway timeout 返回 504，token 有效期内支持断线重连                                                                                     |
-| 13   | 对象存储与签名 URL           | 图片和媒体不压在应用容器与数据库上        | S3/R2/OSS 存储媒体，backend 生成 signed URL                   | 5        | 3    | P2     | 已完成   | 平台媒体上传增长后很重要                                                                                                                                                                                                      |
+| 12   | WebSocket/SSE 长连接治理     | 处理 AI stream 和远程浏览器 stream        | 网关 timeout、连接数限制、stream token、断线恢复              | 4        | 3    | P1     | 完成     | AI stream 和远程浏览器长连接已接入连接数限制；远程浏览器 stream 统一校验 token，HTTP gateway timeout 返回 504，token 有效期内支持断线重连                                                                                     |
+| 13   | 对象存储与签名 URL           | 图片和媒体不压在应用容器与数据库上        | S3/R2/OSS 存储媒体，backend 生成 signed URL                   | 5        | 3    | P2     | 完成     | R2 对象存储配置、上传/下载签名 URL、媒体对象引用和发布前临时签名 URL 已落地；后续重点转向 CDN、归档和生产环境配置                                                                                                             |
 | 14   | CDN 与静态资源缓存           | 降低前端资源和图片访问压力                | Next 静态资源、媒体文件走 CDN                                 | 4        | 2    | P2     | 未开始   | 公开上线后逐步做                                                                                                                                                                                                              |
 | 15   | Temporal 工作流编排          | 复杂长流程、可恢复任务、Saga              | 多平台发布、浏览器自动化、重试补偿                            | 4        | 5    | P2     | 未开始   | 等发布流程复杂后再引入                                                                                                                                                                                                        |
-| 16   | Kubernetes                   | 服务调度、弹性伸缩、滚动发布              | 从 Compose 迁移到 K8s + Ingress                               | 3        | 5    | P3     | 暂缓     | 早期成本过高                                                                                                                                                                                                                  |
+| 16   | Kubernetes                   | 服务调度、弹性伸缩、滚动发布              | 从 Compose 迁移到 K8s + Ingress                               | 3        | 5    | P3     | 进行中   | 已有 Kustomize 包、环境 overlay、镜像 pinning、NetworkPolicy、观测资源和运维 runbook；仍应作为生产复杂度增长后的可选路径推进                                                                                                  |
 | 17   | Service Mesh                 | 服务间治理、mTLS、流量控制                | Istio/Linkerd 管理服务间调用                                  | 1        | 5    | P3     | 暂缓     | 当前规模不值得                                                                                                                                                                                                                |
 | 18   | 多活与异地容灾               | 区域级故障恢复                            | 多区域部署、数据复制、故障切换                                | 1        | 5    | P3     | 暂缓     | 业务成熟后再考虑                                                                                                                                                                                                              |
 
@@ -84,9 +84,9 @@ MPP 当前已经具备多服务雏形：
 
 交付项：
 
-- [x] 将发布任务模型升级为可靠队列，优先考虑 Redis Streams 或 Asynq。（已完成：使用 Asynq + Redis 管理 publish jobs，支持 ack、失败 retry、worker crash recovery 和 archive；业务幂等键与完整状态机仍按后续条目推进。）
+- [x] 将发布任务模型升级为可靠队列，优先考虑 Redis Streams 或 Asynq。（已完成：使用 Asynq + Redis 管理 publish jobs，支持 ack、失败 retry、worker crash recovery 和 archive。）
 - [x] 发布请求引入 idempotency key。
-- [x] publication 状态机明确化：`draft`、`syncing`、`queued`、`publishing`、`succeeded`、`failed`、`cancelled`。（进行中：已有 `pending`、`adapted`、`publishing`、`published`、`failed`、`disabled`，但与目标状态机尚未对齐。）
+- [x] publication 状态机明确化：`draft`、`syncing`、`queued`、`publishing`、`succeeded`、`failed`、`cancelled`。（已完成：旧 `pending`、`adapted`、`published`、`disabled` 状态名保留为兼容别名。）
 - [x] 分布式锁增加 owner、TTL、续约和释放校验。
 - [x] 外部平台调用增加 retry、backoff、timeout 和 circuit breaker。（已完成：backend 统一 resilience 层覆盖 AI service、微信、X、browser-worker、媒体下载 HTTP 调用；HTTP retry 默认仅用于安全方法，非幂等 POST 不自动重放；发布操作层按平台维度熔断但不重试完整发布；ai-service LLM 客户端支持 timeout、max retries 和 stream chunk timeout。）
 - [x] 每次任务执行写入 publish event，方便审计和排查。
@@ -111,10 +111,10 @@ MPP 当前已经具备多服务雏形：
 
 交付项：
 
-- [ ] 媒体文件迁移到对象存储，使用 signed URL。
+- [x] 媒体文件迁移到对象存储，使用 signed URL。
 - [ ] 静态资源和媒体接入 CDN。
 - [ ] 根据任务复杂度评估 Temporal 工作流。
-- [ ] 根据部署复杂度评估 Kubernetes。
+- [x] 根据部署复杂度评估 Kubernetes。（已形成可选 Kubernetes 生产部署路径、验证脚本和运维 runbook；实际启用仍按团队部署复杂度决定。）
 
 ## 7. P0/P1 优先清单
 
@@ -126,8 +126,8 @@ MPP 当前已经具备多服务雏形：
 | [x]  | P0     | 限流与配额            | 保护 AI、browser session 和发布接口                                                                                                                                                                       |
 | [x]  | P0     | 可观测性基线          | 出问题能定位，支撑稳定迭代                                                                                                                                                                                |
 | [x]  | P0     | health/readiness      | 支持生产重启、监控和负载均衡；当前已补齐 frontend/backend/ai-service/browser-worker 的基础 health/readiness                                                                                               |
-| [ ]  | P1     | 发布幂等              | 防止重复发布和并发写冲突；当前已有发布锁，仍缺 idempotency key                                                                                                                                            |
-| [x]  | P1     | 可靠队列              | 已用 Asynq + Redis 替代 Redis List，提供 ack、retry、worker crash recovery 和 archive；发布幂等键仍单独推进                                                                                               |
+| [x]  | P1     | 发布幂等              | 防止重复发布和并发写冲突；当前已支持 idempotency key、幂等响应复用、发布锁和状态机校验                                                                                                                     |
+| [x]  | P1     | 可靠队列              | 已用 Asynq + Redis 替代 Redis List，提供 ack、retry、worker crash recovery 和 archive                                                                                                                      |
 | [x]  | P1     | 分布式锁强化          | 保证同一 publication 不被多 worker 并发处理                                                                                                                                                               |
 | [x]  | P1     | 外部调用熔断与重试    | 统一 resilience 层已覆盖 AI service、微信、X、browser-worker、媒体下载 HTTP 调用；HTTP retry 默认仅用于安全方法，发布完整操作不重试；ai-service LLM 客户端已配置 timeout/max retries/stream chunk timeout |
 | [x]  | P1     | browser-worker 资源池 | 已有用户/工作区并发配额、同一用户/平台活跃 session 锁和全局 worker pool，控制 Chromium 容器成本和风险                                                                                                     |
@@ -136,7 +136,7 @@ MPP 当前已经具备多服务雏形：
 
 | 技术               | 暂缓原因                                    | 什么时候再考虑                                         |
 | ------------------ | ------------------------------------------- | ------------------------------------------------------ |
-| Kubernetes         | 运维复杂度高，早期 Compose + Traefik 更划算 | 服务数量、环境数量、发布频率和副本规模明显增长后       |
+| Kubernetes         | 已有可选生产部署路径，但默认引入仍会增加运维复杂度 | 服务数量、环境数量、发布频率和副本规模明显增长后       |
 | Service Mesh       | 当前服务间调用链不复杂                      | 多团队、多语言、多集群、mTLS 和灰度流量治理成为刚需后  |
 | 每个平台一个微服务 | 会让发布状态、账号、权限和事务变复杂        | 平台适配团队独立、单个平台流量巨大或故障频繁影响全局后 |
 
@@ -145,8 +145,8 @@ MPP 当前已经具备多服务雏形：
 综合成本和价值，MPP 最适合采用“渐进式分布式架构”：
 
 - 当前保留 Go backend 作为业务核心，不急着拆成多个业务微服务。
-- 优先做 Traefik、限流、可观测性、健康检查、幂等、可靠队列和分布式锁。
-- 随后拆出 publish-worker，强化 browser-worker 资源池，接入对象存储和 CDN。
-- 按需评估 Temporal、Kubernetes、Service Mesh 和多区域容灾；数据层专项扩展按 [数据库专项方案](./database-optimization.md) 推进。
+- Traefik、限流、可观测性、健康检查、幂等、可靠队列、分布式锁、publish-worker、browser-worker 资源池和对象存储已经形成主要基线。
+- 下一阶段优先推进 Outbox Pattern、CDN、数据库读模型、缓存精细失效、读写分离收尾、事件保留期和归档。
+- Temporal、Service Mesh 和多区域容灾继续按触发条件评估；Kubernetes 保留为已经具备基础包和 runbook 的可选生产路径；数据层专项扩展按 [数据库专项方案](./database-optimization.md) 推进。
 
 这条路线能在控制复杂度的同时提升项目的并发承载、稳定性和业务增长承载能力。
