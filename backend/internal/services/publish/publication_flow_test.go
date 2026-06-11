@@ -527,6 +527,58 @@ func TestScheduleProjectPublicationListsAndCancelsCalendarItem(t *testing.T) {
 	require.Equal(t, user.ID, *cancelled.CancelledBy)
 }
 
+func TestScheduleProjectPublicationReplaysIdempotencyKey(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(&models.ScheduledPublication{}, &models.PublishAttempt{}, &models.ProjectVersion{}))
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "schedule-idempotent-owner", Email: "schedule-idempotent-owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	workspaceID := models.PersonalWorkspaceID(user.ID)
+	project := models.Project{
+		UserID:        user.ID,
+		WorkspaceID:   &workspaceID,
+		Title:         "Idempotent calendar draft",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Status:         models.PublicationStatusDraft,
+		Config:         datatypes.JSON(`{"title":"Idempotent calendar draft"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	account := createConnectedPublishAccount(t, db, user.ID, "wechat", datatypes.JSON(`{"app_id":"wx-idempotent","app_secret":"idempotent-secret"}`))
+	pub.PlatformAccountID = &account.ID
+	require.NoError(t, db.Create(&pub).Error)
+	scheduledAt := time.Now().UTC().Add(3 * time.Hour).Truncate(time.Second)
+
+	first, err := s.ScheduleProjectPublication(context.Background(), project.ID, user.ID, dto.SchedulePublicationRequest{
+		Platform:       "wechat",
+		ScheduledAt:    scheduledAt,
+		Timezone:       "Asia/Shanghai",
+		IdempotencyKey: "calendar-idempotent-key",
+	})
+	require.NoError(t, err)
+
+	second, err := s.ScheduleProjectPublication(context.Background(), project.ID, user.ID, dto.SchedulePublicationRequest{
+		Platform:       "wechat",
+		ScheduledAt:    scheduledAt.Add(time.Hour),
+		Timezone:       "UTC",
+		IdempotencyKey: "calendar-idempotent-key",
+	})
+	require.NoError(t, err)
+	require.Equal(t, first.ID, second.ID)
+	require.Equal(t, first.ScheduledAt, second.ScheduledAt)
+	require.Equal(t, first.Timezone, second.Timezone)
+
+	var schedules []models.ScheduledPublication
+	require.NoError(t, db.Where("project_id = ? AND publication_id = ?", project.ID, pub.ID).Find(&schedules).Error)
+	require.Len(t, schedules, 1)
+}
+
 func TestCancelScheduledPublicationRequiresMatchingProject(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	require.NoError(t, db.AutoMigrate(&models.ScheduledPublication{}))
