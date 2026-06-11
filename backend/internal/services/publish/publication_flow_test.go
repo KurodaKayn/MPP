@@ -395,6 +395,59 @@ func TestRetryScheduledPublicationAppendsAttempt(t *testing.T) {
 	require.Equal(t, models.PublishAttemptStatusSucceeded, retried.Attempts[1].Status)
 }
 
+func TestPublishProjectDoesNotAppendAttemptWhileScheduleIsRunning(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(&models.ScheduledPublication{}, &models.PublishAttempt{}))
+	s := services.NewDashboardService(db)
+	flaky := &flakyPublisher{calls: 1}
+	publisher.Factory.Register("wechat", flaky)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "running-owner", Email: "running-owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Running schedule",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Status:         models.PublicationStatusDraft,
+		Config:         datatypes.JSON(`{"title":"Running schedule"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	account := createConnectedPublishAccount(t, db, user.ID, "wechat", datatypes.JSON(`{"app_id":"wx-running","app_secret":"running-secret"}`))
+	pub.PlatformAccountID = &account.ID
+	require.NoError(t, db.Create(&pub).Error)
+	schedule := models.ScheduledPublication{
+		WorkspaceID:    models.PersonalWorkspaceID(user.ID),
+		ProjectID:      project.ID,
+		PublicationID:  pub.ID,
+		ScheduledAt:    time.Now().UTC().Add(-time.Minute),
+		Status:         models.ScheduledPublicationStatusRunning,
+		IdempotencyKey: "running-key",
+		CreatedBy:      user.ID,
+	}
+	require.NoError(t, db.Create(&schedule).Error)
+	require.NoError(t, db.Create(&models.PublishAttempt{
+		ScheduledPublicationID: schedule.ID,
+		AttemptNo:              1,
+		StartedAt:              time.Now().UTC().Add(-time.Minute),
+		Status:                 models.PublishAttemptStatusRunning,
+	}).Error)
+
+	result, err := s.PublishProject(project.ID, "wechat", &user.ID, schedule.ID)
+
+	require.ErrorIs(t, err, services.ErrPublicationAlreadyPublishing)
+	require.Nil(t, result)
+	var attempts []models.PublishAttempt
+	require.NoError(t, db.Order("attempt_no asc").Find(&attempts, "scheduled_publication_id = ?", schedule.ID).Error)
+	require.Len(t, attempts, 1)
+}
+
 func TestScheduleProjectPublicationListsAndCancelsCalendarItem(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	require.NoError(t, db.AutoMigrate(&models.ScheduledPublication{}, &models.PublishAttempt{}, &models.ProjectVersion{}))

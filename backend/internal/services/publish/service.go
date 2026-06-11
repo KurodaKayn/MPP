@@ -184,14 +184,6 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 		return nil, ErrPublicationDisabled
 	}
 
-	p, err := publisher.Factory.GetPublisher(platform)
-	if err != nil {
-		return nil, err
-	}
-	if pub.Status == models.PublicationStatusSyncing || (!publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusQueued && pub.Status != models.PublicationStatusPublishing) {
-		return nil, ErrPublicationRequiresSync
-	}
-
 	startedAt := time.Now().UTC()
 	attempt, hasAttempt, err := s.startPublishAttempt(scheduleID, startedAt)
 	if err != nil {
@@ -202,6 +194,14 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 			_ = s.finishPublishAttempt(&attempt, models.PublishAttemptStatusFailed, "", "", SanitizeUserFacingErrorMessage(err.Error()))
 		}
 		return err
+	}
+
+	p, err := publisher.Factory.GetPublisher(platform)
+	if err != nil {
+		return nil, failAttempt(err)
+	}
+	if pub.Status == models.PublicationStatusSyncing || (!publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusQueued && pub.Status != models.PublicationStatusPublishing) {
+		return nil, failAttempt(ErrPublicationRequiresSync)
 	}
 
 	if err := s.accounts.ApplySavedCredentialsToPublication(*scopeUserID, &pub); err != nil {
