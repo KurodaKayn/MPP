@@ -1,0 +1,349 @@
+components:
+  schemas:
+    WorkspaceRole:
+      type: string
+      enum:
+        - owner
+        - admin
+        - member
+        - viewer
+      x-enum-varnames:
+        - WorkspaceRoleOwner
+        - WorkspaceRoleAdmin
+        - WorkspaceRoleMember
+        - WorkspaceRoleViewer
+
+    WorkspaceMemberRequestRole:
+      type: string
+      enum:
+        - admin
+        - member
+        - viewer
+      x-enum-varnames:
+        - WorkspaceMemberRequestRoleAdmin
+        - WorkspaceMemberRequestRoleMember
+        - WorkspaceMemberRequestRoleViewer
+
+    WorkspaceStatus:
+      type: string
+      enum:
+        - active
+        - archived
+      x-enum-varnames:
+        - WorkspaceStatusActive
+        - WorkspaceStatusArchived
+
+    WorkspaceActivityType:
+      type: string
+      enum:
+        - workspace_created
+        - workspace_updated
+        - member_added
+        - member_role_changed
+        - member_removed
+        - invite_created
+        - invite_accepted
+        - invite_revoked
+      x-enum-varnames:
+        - WorkspaceActivityTypeWorkspaceCreated
+        - WorkspaceActivityTypeWorkspaceUpdated
+        - WorkspaceActivityTypeMemberAdded
+        - WorkspaceActivityTypeMemberRoleChanged
+        - WorkspaceActivityTypeMemberRemoved
+        - WorkspaceActivityTypeInviteCreated
+        - WorkspaceActivityTypeInviteAccepted
+        - WorkspaceActivityTypeInviteRevoked
+
+    CreateWorkspaceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+
+    UpdateWorkspaceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+
+    AddWorkspaceMemberRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - role
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/WorkspaceMemberRequestRole"
+
+    CreateWorkspaceInviteRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - role
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/WorkspaceMemberRequestRole"
+        expires_at:
+          type: string
+          format: date-time
+
+    AcceptWorkspaceInviteRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          minLength: 1
+
+    UpdateWorkspaceMemberRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - role
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkspaceMemberRequestRole"
+
+    Workspace:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - owner_user_id
+        - name
+        - status
+        - role
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          $ref: "#/components/schemas/WorkspaceStatus"
+        role:
+          $ref: "#/components/schemas/WorkspaceRole"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorkspacesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Workspace"
+
+    WorkspaceMember:
+      type: object
+      additionalProperties: false
+      required:
+        - workspace_id
+        - user_id
+        - username
+        - email
+        - role
+        - created_at
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/WorkspaceRole"
+        invited_by:
+          type: string
+          format: uuid
+        joined_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    WorkspaceMembersResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceMember"
+
+    WorkspaceInvite:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspace_id
+        - email
+        - role
+        - invited_by
+        - status
+        - expires_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/WorkspaceRole"
+        invited_by:
+          type: string
+          format: uuid
+        accepted_by:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - pending
+            - accepted
+            - expired
+            - revoked
+        expires_at:
+          type: string
+          format: date-time
+        accepted_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorkspaceInviteWithToken:
+      allOf:
+        - $ref: "#/components/schemas/WorkspaceInvite"
+        - type: object
+          additionalProperties: false
+          required:
+            - token
+          properties:
+            token:
+              type: string
+
+    WorkspaceInvitesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceInvite"
+
+    WorkspaceActivity:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspace_id
+        - actor_user_id
+        - actor_username
+        - actor_email
+        - event_type
+        - metadata
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        actor_user_id:
+          type: string
+          format: uuid
+        actor_username:
+          type: string
+        actor_email:
+          type: string
+          format: email
+        target_user_id:
+          type: string
+          format: uuid
+        target_username:
+          type: string
+        target_email:
+          type: string
+          format: email
+        event_type:
+          $ref: "#/components/schemas/WorkspaceActivityType"
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    WorkspaceActivitiesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceActivity"

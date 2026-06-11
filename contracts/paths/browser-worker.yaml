@@ -1,0 +1,119 @@
+paths:
+  /internal/browser-sessions:
+    post:
+      tags:
+        - browser-worker
+      operationId: createBrowserWorkerSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserWorkerStartSessionRequest"
+      responses:
+        "201":
+          description: Browser worker session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserWorkerStartSessionResponse"
+
+  /internal/browser-sessions/{ref}:
+    parameters:
+      - name: ref
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - browser-worker
+      operationId: getBrowserWorkerSession
+      responses:
+        "200":
+          description: Browser worker session state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserWorkerGetSessionResponse"
+    delete:
+      tags:
+        - browser-worker
+      operationId: deleteBrowserWorkerSession
+      responses:
+        "204":
+          description: Browser worker session deleted.
+
+  /internal/browser-sessions/{ref}/capture:
+    post:
+      tags:
+        - browser-worker
+      operationId: captureBrowserWorkerSession
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Browser worker session captured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserWorkerCaptureSessionResponse"
+
+  /internal/browser-sessions/{ref}/publish/douyin:
+    post:
+      tags:
+        - browser-worker
+      operationId: startBrowserWorkerDouyinPublish
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserWorkerStartDouyinPublishRequest"
+      responses:
+        "202":
+          description: Douyin publish script started.
+components:
+  schemas:
+    BrowserWorkerSessionStatus:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerSessionStatus"
+
+    BrowserWorkerCookie:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerCookie"
+
+    BrowserWorkerDomainRule:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerDomainRule"
+
+    BrowserWorkerCookieRequirement:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerCookieRequirement"
+
+    BrowserWorkerViewport:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerViewport"
+
+    BrowserWorkerRemoteAccountProfile:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerRemoteAccountProfile"
+
+    BrowserWorkerStartSessionRequest:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerStartSessionRequest"
+
+    BrowserWorkerStartSessionResponse:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerStartSessionResponse"
+
+    BrowserWorkerGetSessionResponse:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerGetSessionResponse"
+
+    BrowserWorkerCaptureSessionResponse:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerCaptureSessionResponse"
+
+    BrowserWorkerStartDouyinPublishRequest:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerStartDouyinPublishRequest"

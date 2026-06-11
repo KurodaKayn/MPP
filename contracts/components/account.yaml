@@ -1,0 +1,384 @@
+components:
+  schemas:
+    PlatformAccountStatus:
+      type: string
+      enum:
+        - unconfigured
+        - untested
+        - connected
+        - failed
+
+    ConnectionTestStatus:
+      type: string
+      enum:
+        - connected
+        - failed
+
+    RequirementStatusValue:
+      type: string
+      enum:
+        - passed
+        - warning
+        - failed
+        - unknown
+
+    BrowserSessionStatus:
+      type: string
+      enum:
+        - pending
+        - ready
+        - login_detected
+        - capturing
+        - connected
+        - expired
+        - failed
+
+    RequirementStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - title
+        - message
+      properties:
+        status:
+          $ref: "#/components/schemas/RequirementStatusValue"
+        title:
+          type: string
+        message:
+          type: string
+
+    WechatAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - platform
+        - app_id
+        - has_app_secret
+        - status
+        - ip_whitelist
+        - account_auth
+      properties:
+        platform:
+          type: string
+          enum:
+            - wechat
+        app_id:
+          type: string
+        has_app_secret:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/PlatformAccountStatus"
+        last_tested_at:
+          type: string
+          format: date-time
+        last_test_error:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        ip_whitelist:
+          $ref: "#/components/schemas/RequirementStatus"
+        account_auth:
+          $ref: "#/components/schemas/RequirementStatus"
+
+    SaveWechatAccountInput:
+      type: object
+      additionalProperties: false
+      required:
+        - app_id
+      properties:
+        app_id:
+          type: string
+        app_secret:
+          type: string
+
+    WechatConnectionTestResult:
+      type: object
+      additionalProperties: false
+      required:
+        - connected
+        - status
+        - message
+        - tested_at
+        - ip_whitelist
+        - account_auth
+      properties:
+        connected:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/ConnectionTestStatus"
+        message:
+          type: string
+        err_code:
+          type: integer
+        err_msg:
+          type: string
+        tested_at:
+          type: string
+          format: date-time
+        ip_whitelist:
+          $ref: "#/components/schemas/RequirementStatus"
+        account_auth:
+          $ref: "#/components/schemas/RequirementStatus"
+
+    XAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - platform
+        - auth_type
+        - has_api_secret
+        - has_access_token
+        - has_access_token_secret
+        - has_oauth2_refresh
+        - status
+        - account_auth
+        - publish_access
+      properties:
+        platform:
+          type: string
+          enum:
+            - x
+        auth_type:
+          type: string
+          enum:
+            - oauth1
+            - oauth2
+        api_key:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        username:
+          type: string
+        has_api_secret:
+          type: boolean
+        has_access_token:
+          type: boolean
+        has_access_token_secret:
+          type: boolean
+        has_oauth2_refresh:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/PlatformAccountStatus"
+        last_tested_at:
+          type: string
+          format: date-time
+        last_test_error:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        account_auth:
+          $ref: "#/components/schemas/RequirementStatus"
+        publish_access:
+          $ref: "#/components/schemas/RequirementStatus"
+
+    SaveXAccountInput:
+      type: object
+      additionalProperties: false
+      properties:
+        api_key:
+          type: string
+        api_secret:
+          type: string
+        access_token:
+          type: string
+        access_token_secret:
+          type: string
+        username:
+          type: string
+
+    XConnectionTestResult:
+      type: object
+      additionalProperties: false
+      required:
+        - connected
+        - status
+        - message
+        - tested_at
+        - account_auth
+        - publish_access
+      properties:
+        connected:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/ConnectionTestStatus"
+        message:
+          type: string
+        tested_at:
+          type: string
+          format: date-time
+        user_id:
+          type: string
+        username:
+          type: string
+        name:
+          type: string
+        account_auth:
+          $ref: "#/components/schemas/RequirementStatus"
+        publish_access:
+          $ref: "#/components/schemas/RequirementStatus"
+
+    DouyinAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - platform
+        - status
+      properties:
+        platform:
+          type: string
+          enum:
+            - douyin
+        username:
+          type: string
+        avatar_url:
+          type: string
+        status:
+          $ref: "#/components/schemas/PlatformAccountStatus"
+        last_tested_at:
+          type: string
+          format: date-time
+        last_test_error:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    ZhihuAccount:
+      type: object
+      additionalProperties: false
+      required:
+        - platform
+        - status
+      properties:
+        platform:
+          type: string
+          enum:
+            - zhihu
+        username:
+          type: string
+        avatar_url:
+          type: string
+        status:
+          $ref: "#/components/schemas/PlatformAccountStatus"
+        last_tested_at:
+          type: string
+          format: date-time
+        last_test_error:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    BrowserSession:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - platform
+        - status
+        - expires_at
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        platform:
+          $ref: "./content.yaml#/components/schemas/PublishPlatform"
+        status:
+          $ref: "#/components/schemas/BrowserSessionStatus"
+        stream_url:
+          type: string
+        stream_token_expires_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        message:
+          type: string
+
+    StartBrowserSessionResult:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - status
+        - stream_url
+        - stream_token_expires_at
+        - expires_at
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/BrowserSessionStatus"
+        stream_url:
+          type: string
+        stream_token_expires_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    StartPublishBrowserSessionResult:
+      allOf:
+        - $ref: "#/components/schemas/StartBrowserSessionResult"
+        - type: object
+          additionalProperties: false
+          required:
+            - platform
+            - project_id
+          properties:
+            platform:
+              $ref: "./content.yaml#/components/schemas/PublishPlatform"
+            project_id:
+              type: string
+              format: uuid
+
+    CompleteBrowserSessionResult:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - platform
+        - status
+        - account
+        - message
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        platform:
+          $ref: "./content.yaml#/components/schemas/PublishPlatform"
+        status:
+          $ref: "#/components/schemas/BrowserSessionStatus"
+        account:
+          type: object
+          additionalProperties: false
+          required:
+            - username
+            - avatar_url
+          properties:
+            username:
+              type: string
+            avatar_url:
+              type: string
+        message:
+          type: string
+
+    CancelBrowserSessionResult:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - status
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/BrowserSessionStatus"

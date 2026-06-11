@@ -1,0 +1,105 @@
+components:
+  schemas:
+    ContentTemplateScope:
+      type: string
+      enum:
+        - system
+        - workspace
+        - personal
+
+    ContentTemplate:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - scope
+        - name
+        - description
+        - title_template
+        - source_template
+        - default_platforms
+        - platform_config
+        - tags
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+          nullable: true
+        owner_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        scope:
+          $ref: "#/components/schemas/ContentTemplateScope"
+        name:
+          type: string
+        description:
+          type: string
+        title_template:
+          type: string
+        source_template:
+          type: string
+        default_platforms:
+          type: array
+          items:
+            $ref: "./content.yaml#/components/schemas/PublishPlatform"
+        platform_config:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ContentTemplatesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContentTemplate"
+
+    CreateContentTemplateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - title_template
+        - source_template
+        - default_platforms
+      properties:
+        scope:
+          $ref: "#/components/schemas/ContentTemplateScope"
+        name:
+          type: string
+        description:
+          type: string
+        title_template:
+          type: string
+        source_template:
+          type: string
+        default_platforms:
+          type: array
+          items:
+            $ref: "./content.yaml#/components/schemas/PublishPlatform"
+        platform_config:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items:
+            type: string
