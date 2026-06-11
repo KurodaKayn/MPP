@@ -19,15 +19,16 @@ func (s *Service) enrichProjectDetail(detail *dto.ProjectDetail, project models.
 	for _, publication := range project.Publications {
 		detail.PublicationDetails = append(detail.PublicationDetails, publicationDetailFromModel(publication, true))
 	}
-	if detail.PermissionSources == nil {
-		detail.PermissionSources = []dto.ProjectPermissionSource{{
-			Source: detail.AccessSource,
-			Role:   detail.Role,
-		}}
-	}
 	if userID == nil {
+		if detail.PermissionSources == nil {
+			detail.PermissionSources = []dto.ProjectPermissionSource{{
+				Source: detail.AccessSource,
+				Role:   detail.Role,
+			}}
+		}
 		return nil
 	}
+	detail.PermissionSources = s.projectPermissionSources(project, *userID, detail.Role, detail.AccessSource)
 
 	comments, err := s.ListProjectComments(project.ID, *userID)
 	if err != nil {
@@ -61,7 +62,7 @@ func (s *Service) enrichProjectDetail(detail *dto.ProjectDetail, project models.
 			detail.ShareLinks = links.Items
 		}
 		for _, collaborator := range detail.Collaborators {
-			detail.PermissionSources = append(detail.PermissionSources, dto.ProjectPermissionSource{
+			detail.PermissionSources = appendProjectPermissionSource(detail.PermissionSources, dto.ProjectPermissionSource{
 				Source: models.ProjectAccessSourceDirectShare,
 				Role:   collaborator.Role,
 			})
@@ -70,7 +71,7 @@ func (s *Service) enrichProjectDetail(detail *dto.ProjectDetail, project models.
 			if link.Status != models.ProjectShareLinkStatusActive {
 				continue
 			}
-			detail.PermissionSources = append(detail.PermissionSources, dto.ProjectPermissionSource{
+			detail.PermissionSources = appendProjectPermissionSource(detail.PermissionSources, dto.ProjectPermissionSource{
 				Source: "share_link",
 				Role:   link.Role,
 			})
@@ -78,6 +79,42 @@ func (s *Service) enrichProjectDetail(detail *dto.ProjectDetail, project models.
 	}
 
 	return nil
+}
+
+func (s *Service) projectPermissionSources(project models.Project, userID uuid.UUID, role string, accessSource string) []dto.ProjectPermissionSource {
+	sources := []dto.ProjectPermissionSource{{
+		Source: accessSource,
+		Role:   role,
+	}}
+
+	if project.WorkspaceID != nil && *project.WorkspaceID != uuid.Nil {
+		if workspaceRole, err := workspaceProjectAccessRoleWithDB(s.db, *project.WorkspaceID, userID); err == nil {
+			sources = appendProjectPermissionSource(sources, dto.ProjectPermissionSource{
+				Source: models.ProjectAccessSourceWorkspace,
+				Role:   workspaceRole,
+			})
+		}
+	}
+
+	if accessSource == models.ProjectAccessSourceDirectShare {
+		sources = appendProjectPermissionSource(sources, dto.ProjectPermissionSource{
+			Source: models.ProjectAccessSourceDirectShare,
+			Role:   role,
+		})
+	}
+	return sources
+}
+
+func appendProjectPermissionSource(sources []dto.ProjectPermissionSource, source dto.ProjectPermissionSource) []dto.ProjectPermissionSource {
+	if source.Source == "" || source.Role == "" {
+		return sources
+	}
+	for _, existing := range sources {
+		if existing.Source == source.Source && existing.Role == source.Role {
+			return sources
+		}
+	}
+	return append(sources, source)
 }
 
 func publicationDetailFromModel(pub models.ProjectPlatformPublication, includeContent bool) dto.PublicationDetail {
