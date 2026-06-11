@@ -51,11 +51,19 @@ cargo test -p content-pipeline-core
 
 | Profile | Platform | Max Bytes | Compress to Limit | Notes |
 | --- | --- | --- | --- | --- |
-| `wechat@v1` | WeChat | 2 MiB | Yes | Applies current WeChat image upload limit behavior. |
-| `douyin@v1` | Douyin | 10 MiB | No | Uses the generic image byte limit until stricter platform rules are added. |
-| `generic@v1` | Generic fallback | 10 MiB | No | Used for empty or unknown platform keys. |
+| `wechat@v1` | WeChat | 2 MiB | Yes | Allows JPEG, PNG, and GIF outputs; WebP is not emitted for WeChat uploads. |
+| `douyin@v1` | Douyin | 10 MiB | Yes | Allows JPEG, PNG, and GIF outputs until WebP upload acceptance is verified. |
+| `x@v1` | X | 5 MiB | Yes | Allows JPEG, PNG, GIF, and WebP outputs. |
+| `zhihu@v1` | Zhihu | 10 MiB | Yes | Allows JPEG, PNG, and GIF outputs until WebP upload acceptance is verified. |
+| `generic@v1` | Generic fallback | 10 MiB | Yes | Allows JPEG, PNG, GIF, and WebP outputs for empty or unknown platform keys. |
 
 ## Changelog
+
+### 2026-06-11
+
+- Added X and Zhihu media profiles and platform-specific output MIME allowlists.
+- Enabled constraint-driven image optimization for Douyin, X, Zhihu, and generic media profiles.
+- Updated image optimization to try lossless PNG/JPEG metadata reduction, MozJPEG quality search, platform-allowed WebP/AVIF candidates, and gradual Lanczos3 resizing.
 
 ### 2026-06-06
 
