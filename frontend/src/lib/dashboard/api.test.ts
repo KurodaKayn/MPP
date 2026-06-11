@@ -157,7 +157,7 @@ describe("dashboard api client", () => {
     }
 
     const [path, init] = fetchMock.mock.calls[0];
-    expect(path).toBe("/api/user/dashboard/projects?page=1&limit=12");
+    expect(path).toBe("/api/user/dashboard/projects?limit=12");
     expect(init).toBeDefined();
     const headers = init!.headers as Headers;
     expect(headers.get("Authorization")).toBeNull();
@@ -299,7 +299,11 @@ describe("dashboard api client", () => {
       .mockResolvedValueOnce(jsonResponse(schedule))
       .mockResolvedValueOnce(jsonResponse(calendar))
       .mockResolvedValueOnce(
-        jsonResponse({ ...schedule, cancelled_by: "user-1", status: "cancelled" }),
+        jsonResponse({
+          ...schedule,
+          cancelled_by: "user-1",
+          status: "cancelled",
+        }),
       )
       .mockResolvedValueOnce(
         jsonResponse({
@@ -327,7 +331,11 @@ describe("dashboard api client", () => {
     ).resolves.toEqual(calendar);
     await expect(
       cancelScheduledPublication("project-1", "schedule-1"),
-    ).resolves.toEqual({ ...schedule, cancelled_by: "user-1", status: "cancelled" });
+    ).resolves.toEqual({
+      ...schedule,
+      cancelled_by: "user-1",
+      status: "cancelled",
+    });
     await expect(
       retryScheduledPublication("project-1", "schedule-1"),
     ).resolves.toEqual({
@@ -703,9 +711,7 @@ describe("dashboard api client", () => {
       }),
     ).resolves.toEqual(template);
     await expect(getBrandProfiles()).resolves.toEqual(profiles);
-    await expect(createBrandProfile({ name: "MPP" })).resolves.toEqual(
-      profile,
-    );
+    await expect(createBrandProfile({ name: "MPP" })).resolves.toEqual(profile);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -1332,8 +1338,10 @@ describe("dashboard api client", () => {
           workspace_id: "workspace-1",
         },
       ],
+      has_more: true,
       limit: 20,
       page: 2,
+      next_cursor: "next-cursor",
       total: 1,
       total_pages: 1,
     };
@@ -1346,8 +1354,8 @@ describe("dashboard api client", () => {
 
     await expect(
       getWorkspaceProjects("workspace-1", {
+        cursor: "cursor-1",
         limit: 20,
-        page: 2,
         platform: "wechat",
         status: "ready",
       }),
@@ -1362,7 +1370,7 @@ describe("dashboard api client", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "/api/workspaces/workspace-1/projects?page=2&limit=20&status=ready&platform=wechat",
+      "/api/workspaces/workspace-1/projects?cursor=cursor-1&limit=20&status=ready&platform=wechat",
       expect.objectContaining({
         credentials: "same-origin",
         headers: expect.any(Headers),

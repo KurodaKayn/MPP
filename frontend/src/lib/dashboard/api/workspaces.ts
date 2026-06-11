@@ -41,8 +41,8 @@ export function getWorkspaceProjects(
   options: ListWorkspaceProjectsOptions = {},
 ) {
   const params = new URLSearchParams();
-  if (options.page !== undefined) {
-    params.set("page", String(options.page));
+  if (options.cursor) {
+    params.set("cursor", options.cursor);
   }
   if (options.limit !== undefined) {
     params.set("limit", String(options.limit));
