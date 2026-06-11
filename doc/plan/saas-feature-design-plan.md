@@ -412,19 +412,27 @@
 
 任务：
 
-- [ ] 新增 `ScheduledPublication` 和 `PublishAttempt`。
-- [ ] 立即发布改为创建 `ScheduledPublication(scheduled_at=now)`。
-- [ ] `ScheduledPublication` 绑定 `project_version_id`、`publication_id`、`platform_account_id`。
-- [ ] 内容页支持立即发布、排期发布、取消排期。
+- [x] 新增 `ScheduledPublication` 和 `PublishAttempt`。
+- [x] 立即发布改为创建 `ScheduledPublication(scheduled_at=now)`。
+- [x] `ScheduledPublication` 绑定 `project_version_id`、`publication_id`、`platform_account_id`。
+- [x] 内容页支持立即发布、排期发布、取消排期。
 - [ ] 发布日历支持日/周/月视图。
 - [ ] 排期到期前校验账号状态、权限、配额、草稿同步状态。
 - [ ] 增加 `needs_manual_action` 状态，记录远程会话入口和过期时间。
 - [ ] 发布详情页展示 attempts、失败原因、重试入口和人工处理入口。
 
+阶段四当前实现说明：
+
+- 已落地 `ScheduledPublication`/`PublishAttempt` 数据模型、立即发布 schedule 记录、定时排期 API、workspace publication calendar API、内容页排期创建/取消、失败 retry endpoint 和 attempt 展示。
+- 发布前校验复用现有发布链路的项目权限、账号连接状态、平台草稿同步状态和素材 ready 校验；通用发布配额扣减模型尚未接入。
+- `needs_manual_action` 状态、远程会话入口和过期时间字段已进入模型和 DTO，内容页会展示人工处理入口；浏览器发布流程的自动转态仍需按平台会话结果继续细化。
+- 内容页已展示 attempts、失败原因、重试入口和人工处理入口；独立发布详情页尚未完成。
+- 完整发布日历日/周/月视图、内容变更后对旧排期的重新确认/重新审批提示仍未完成。
+
 验收：
 
 - 立即发布和定时发布走同一数据模型。
-- 内容变更后，旧排期必须提示重新确认或重新审批。
+- 内容变更后，旧排期必须提示重新确认或重新审批。（未完成）
 - 失败重试有完整 attempt 记录，不重复扣发布额度。
 
 ### 阶段五：审批协作
