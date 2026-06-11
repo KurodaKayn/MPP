@@ -338,7 +338,7 @@ module KubernetesValidation
     def secret_refs(context)
       context.documents.flat_map do |document|
         document.containers.flat_map do |container|
-          Array(container["env"]).filter_map do |entry|
+          Array(container["env"]).map do |entry|
             secret_ref = entry.dig("valueFrom", "secretKeyRef")
             next unless secret_ref
 
@@ -348,7 +348,7 @@ module KubernetesValidation
               key: secret_ref["key"].to_s,
               optional: secret_ref["optional"] == true,
             }
-          end
+          end.compact
         end
       end
     end

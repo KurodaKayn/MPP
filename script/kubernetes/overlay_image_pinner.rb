@@ -163,7 +163,7 @@ module KubernetesOverlayImages
       patches = kustomization["patches"]
       return nil unless patches.is_a?(Array)
 
-      patches.filter_map { |entry| parse_runtime_patch(entry) }.first
+      patches.map { |entry| parse_runtime_patch(entry) }.compact.first
     end
 
     def parse_runtime_patch(entry)
