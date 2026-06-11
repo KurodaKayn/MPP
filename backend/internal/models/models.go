@@ -144,6 +144,25 @@ const (
 	PublicationReviewStatusChangesRequested = "changes_requested"
 )
 
+const (
+	ScheduledPublicationStatusDraft             = "draft"
+	ScheduledPublicationStatusPendingReview     = "pending_review"
+	ScheduledPublicationStatusApproved          = "approved"
+	ScheduledPublicationStatusScheduled         = "scheduled"
+	ScheduledPublicationStatusRunning           = "running"
+	ScheduledPublicationStatusPublished         = "published"
+	ScheduledPublicationStatusFailed            = "failed"
+	ScheduledPublicationStatusNeedsManualAction = "needs_manual_action"
+	ScheduledPublicationStatusCancelled         = "cancelled"
+)
+
+const (
+	PublishAttemptStatusRunning           = "running"
+	PublishAttemptStatusSucceeded         = "succeeded"
+	PublishAttemptStatusFailed            = "failed"
+	PublishAttemptStatusNeedsManualAction = "needs_manual_action"
+)
+
 type ContentTemplate struct {
 	ID               uuid.UUID      `gorm:"type:uuid;primaryKey"`
 	WorkspaceID      *uuid.UUID     `gorm:"type:uuid;index"`
@@ -486,6 +505,45 @@ type PublishEvent struct {
 	CreatedAt      time.Time
 }
 
+type ScheduledPublication struct {
+	ID                uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	WorkspaceID       uuid.UUID  `gorm:"type:uuid;not null;index:idx_scheduled_publications_workspace_status_time,priority:1"`
+	ProjectID         uuid.UUID  `gorm:"type:uuid;not null;index"`
+	PublicationID     uuid.UUID  `gorm:"type:uuid;not null;index"`
+	PlatformAccountID *uuid.UUID `gorm:"type:uuid;index"`
+	ProjectVersionID  *uuid.UUID `gorm:"type:uuid;index"`
+	ScheduledAt       time.Time  `gorm:"not null;index:idx_scheduled_publications_workspace_status_time,priority:3"`
+	Timezone          string     `gorm:"not null;default:'UTC'"`
+	Status            string     `gorm:"not null;index:idx_scheduled_publications_workspace_status_time,priority:2"`
+	IdempotencyKey    string     `gorm:"not null;default:'';index"`
+	CreatedBy         uuid.UUID  `gorm:"type:uuid;not null;index"`
+	ApprovedBy        *uuid.UUID `gorm:"type:uuid;index"`
+	CancelledBy       *uuid.UUID `gorm:"type:uuid;index"`
+	LastError         string     `gorm:"type:text;not null;default:''"`
+	ManualActionURL   string     `gorm:"type:text;not null;default:''"`
+	ManualActionUntil *time.Time
+	CreatedAt         time.Time                  `gorm:"not null"`
+	UpdatedAt         time.Time                  `gorm:"not null"`
+	Project           Project                    `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	Publication       ProjectPlatformPublication `gorm:"foreignKey:PublicationID;constraint:OnDelete:CASCADE"`
+	Workspace         Workspace                  `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
+}
+
+type PublishAttempt struct {
+	ID                     uuid.UUID `gorm:"type:uuid;primaryKey"`
+	ScheduledPublicationID uuid.UUID `gorm:"type:uuid;not null;index:idx_publish_attempts_schedule_attempt,priority:1"`
+	AttemptNo              int       `gorm:"not null;index:idx_publish_attempts_schedule_attempt,priority:2"`
+	StartedAt              time.Time `gorm:"not null"`
+	FinishedAt             *time.Time
+	Status                 string `gorm:"not null;index"`
+	RemoteID               string `gorm:"not null;default:''"`
+	PublishURL             string `gorm:"type:text;not null;default:''"`
+	ErrorCode              string `gorm:"not null;default:''"`
+	ErrorMessage           string `gorm:"type:text;not null;default:''"`
+	CreatedAt              time.Time
+	ScheduledPublication   ScheduledPublication `gorm:"foreignKey:ScheduledPublicationID;constraint:OnDelete:CASCADE"`
+}
+
 const (
 	OutboxAggregatePublishJob = "publish_job"
 
@@ -688,6 +746,29 @@ func (p *ProjectPlatformPublication) BeforeCreate(_ *gorm.DB) (err error) {
 func (e *PublishEvent) BeforeCreate(_ *gorm.DB) (err error) {
 	if e.ID == uuid.Nil {
 		e.ID = uuid.New()
+	}
+	return
+}
+
+func (s *ScheduledPublication) BeforeCreate(_ *gorm.DB) (err error) {
+	if s.ID == uuid.Nil {
+		s.ID = uuid.New()
+	}
+	if s.Status == "" {
+		s.Status = ScheduledPublicationStatusScheduled
+	}
+	if s.Timezone == "" {
+		s.Timezone = "UTC"
+	}
+	return
+}
+
+func (a *PublishAttempt) BeforeCreate(_ *gorm.DB) (err error) {
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	if a.Status == "" {
+		a.Status = PublishAttemptStatusRunning
 	}
 	return
 }

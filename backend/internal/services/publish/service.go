@@ -163,7 +163,7 @@ func (s *Service) BatchPublishProject(projectID uuid.UUID, platforms []string, s
 	return results, nil
 }
 
-func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, _ uuid.UUID) (map[string]any, error) {
+func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, scheduleID uuid.UUID) (map[string]any, error) {
 	// Remote browser sessions are only for account connection and cookie capture.
 	// Publish jobs must be durable across Redis workers, so they load saved credentials instead.
 	ctx := context.Background()
@@ -192,15 +192,27 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 		return nil, ErrPublicationRequiresSync
 	}
 
+	startedAt := time.Now().UTC()
+	attempt, hasAttempt, err := s.startPublishAttempt(scheduleID, startedAt)
+	if err != nil {
+		return nil, err
+	}
+	failAttempt := func(err error) error {
+		if hasAttempt {
+			_ = s.finishPublishAttempt(&attempt, models.PublishAttemptStatusFailed, "", "", SanitizeUserFacingErrorMessage(err.Error()))
+		}
+		return err
+	}
+
 	if err := s.accounts.ApplySavedCredentialsToPublication(*scopeUserID, &pub); err != nil {
 		if errors.Is(err, platformaccount.ErrPlatformAccountForbidden) {
-			return nil, ErrForbidden
+			return nil, failAttempt(ErrForbidden)
 		}
-		return nil, err
+		return nil, failAttempt(err)
 	}
 	pub, err = s.preparePublicationMediaRefs(ctx, proj, pub)
 	if err != nil {
-		return nil, err
+		return nil, failAttempt(err)
 	}
 
 	var account models.PlatformAccount
@@ -211,16 +223,15 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	}
 	if usesStoredBrowserCookies(platform) {
 		if account.ID == uuid.Nil {
-			return nil, fmt.Errorf("%w: %s account is not connected", platformaccount.ErrInvalidPlatformAccount, platform)
+			return nil, failAttempt(fmt.Errorf("%w: %s account is not connected", platformaccount.ErrInvalidPlatformAccount, platform))
 		}
 		if err := s.applySavedBrowserCookies(ctx, *scopeUserID, platform, &account); err != nil {
-			return nil, err
+			return nil, failAttempt(err)
 		}
 	}
 
-	startedAt := time.Now().UTC()
 	if err := s.markPublicationPublishing(&pub, startedAt); err != nil {
-		return nil, err
+		return nil, failAttempt(err)
 	}
 	s.invalidateDashboardCaches(ctx)
 
@@ -265,7 +276,16 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 		updates["retry_count"] = gorm.Expr("retry_count + ?", 1)
 	}
 	if err := s.db.Model(&pub).Updates(updates).Error; err != nil {
-		return nil, err
+		return nil, failAttempt(err)
+	}
+	attemptStatus := models.PublishAttemptStatusSucceeded
+	if status == models.PublicationStatusFailed {
+		attemptStatus = models.PublishAttemptStatusFailed
+	}
+	if hasAttempt {
+		if err := s.finishPublishAttempt(&attempt, attemptStatus, remoteID, publishURL, errMsg); err != nil {
+			return nil, err
+		}
 	}
 	s.invalidateDashboardCaches(ctx)
 	if err := s.recordProjectPublishActivity(projectID, *scopeUserID, models.ProjectActivityPublishCompleted, map[string]any{
@@ -392,6 +412,9 @@ func (s *Service) recordProjectPublishActivity(projectID uuid.UUID, userID uuid.
 
 func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform string, userID uuid.UUID, key string) (map[string]any, bool, error) {
 	if strings.TrimSpace(key) == "" {
+		return nil, false, nil
+	}
+	if !s.db.Migrator().HasTable(&models.PublishEvent{}) {
 		return nil, false, nil
 	}
 

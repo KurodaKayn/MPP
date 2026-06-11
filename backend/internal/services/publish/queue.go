@@ -46,6 +46,7 @@ type PublishJob struct {
 	UserID         uuid.UUID `json:"user_id"`
 	Platform       string    `json:"platform"`
 	PublicationID  uuid.UUID `json:"publication_id,omitempty"`
+	ScheduleID     uuid.UUID `json:"schedule_id,omitempty"`
 	IdempotencyKey string    `json:"idempotency_key,omitempty"`
 	// Kept only so old Redis payloads still unmarshal; publishing never reuses live browser sessions.
 	BrowserSessionID uuid.UUID `json:"browser_session_id,omitempty"`
@@ -188,9 +189,6 @@ return 0
 }
 
 func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, req PublishRequest) (map[string]any, error) {
-	if s.queue == nil {
-		return s.PublishProject(projectID, platform, scopeUserID, uuid.Nil)
-	}
 	if scopeUserID == nil {
 		return nil, ErrForbidden
 	}
@@ -214,6 +212,23 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		}
 		return nil, err
 	}
+	scheduledAt := time.Now().UTC()
+
+	if s.queue == nil {
+		schedule, err := s.createScheduledPublication(ctx, project, pub, *scopeUserID, req.IdempotencyKey, scheduledAt, models.ScheduledPublicationStatusScheduled)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := s.PublishProject(projectID, platform, scopeUserID, schedule.ID)
+		if err != nil {
+			return nil, err
+		}
+		if schedule.ID != uuid.Nil {
+			resp["scheduled_publication_id"] = schedule.ID.String()
+			resp["scheduled_at"] = schedule.ScheduledAt
+		}
+		return resp, nil
+	}
 
 	job := PublishJob{
 		JobID:          uuid.New(),
@@ -222,7 +237,7 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		Platform:       platform,
 		PublicationID:  pub.ID,
 		IdempotencyKey: req.IdempotencyKey,
-		EnqueuedAt:     time.Now().UTC(),
+		EnqueuedAt:     scheduledAt,
 	}
 	lockKey := publishLockKey(project.ID, platform)
 	acquired, err := s.queue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
@@ -240,10 +255,17 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		return nil, ErrPublicationAlreadyPublishing
 	}
 
+	var schedule models.ScheduledPublication
 	outboxEventID := uuid.Nil
 	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		txService := *s
 		txService.db = tx
+		createdSchedule, err := txService.createScheduledPublication(ctx, project, pub, *scopeUserID, req.IdempotencyKey, scheduledAt, models.ScheduledPublicationStatusScheduled)
+		if err != nil {
+			return err
+		}
+		schedule = createdSchedule
+		job.ScheduleID = schedule.ID
 		if err := txService.recordPublishEvent(models.PublishEvent{
 			PublicationID:  pub.ID,
 			ProjectID:      project.ID,
@@ -298,14 +320,19 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		log.Printf("failed to dispatch publish outbox event %s for job %s: %v", outboxEventID, job.JobID, err)
 	}
 
-	return map[string]any{
+	resp := map[string]any{
 		"status":          models.PublicationStatusQueued,
 		"job_id":          job.JobID.String(),
 		"idempotency_key": req.IdempotencyKey,
 		"platform":        platform,
 		"queued_at":       job.EnqueuedAt,
 		"publish_url":     pub.PublishURL,
-	}, nil
+	}
+	if schedule.ID != uuid.Nil {
+		resp["scheduled_publication_id"] = schedule.ID.String()
+		resp["scheduled_at"] = schedule.ScheduledAt
+	}
+	return resp, nil
 }
 
 func (s *Service) BatchEnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID, req PublishRequest) (map[string]map[string]any, error) {
@@ -394,7 +421,7 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 		log.Printf("failed to record publish job %s start event: %v", job.JobID, err)
 	}
 
-	resp, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID, uuid.Nil)
+	resp, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID, job.ScheduleID)
 	if err != nil {
 		log.Printf("publish job %s failed: %v", job.JobID, err)
 		observeJob(publishJobResultError)

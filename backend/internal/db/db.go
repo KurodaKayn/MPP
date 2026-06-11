@@ -362,6 +362,8 @@ func migrate(database *gorm.DB) error {
 			&models.MediaAsset{},
 			&models.MediaAssetUsage{},
 			&models.ProjectPlatformPublication{},
+			&models.ScheduledPublication{},
+			&models.PublishAttempt{},
 			&models.RemoteBrowserSession{},
 			&models.PublishEvent{},
 			&models.OutboxEvent{},
