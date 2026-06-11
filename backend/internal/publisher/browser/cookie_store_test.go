@@ -169,4 +169,37 @@ func TestCookieStore(t *testing.T) {
 		assert.Equal(t, "new-account", created.Username)
 		assert.Contains(t, string(created.Cookies), "ciphertext")
 	})
+
+	t.Run("Workspace Save Without Remote ID Updates Matching Display Account", func(t *testing.T) {
+		t.Setenv("COOKIE_ENCRYPTION_KEY", encryptionKey)
+		workspaceID := uuid.New()
+		accountUserID := uuid.New()
+		existing := models.PlatformAccount{
+			UserID:       accountUserID,
+			WorkspaceID:  &workspaceID,
+			Platform:     "zhihu",
+			Username:     "点击打开zhiybDlu的主页",
+			DisplayName:  "点击打开zhiybDlu的主页",
+			Cookies:      datatypes.JSON([]byte(`[]`)),
+			Status:       models.PlatformAccountStatusUntested,
+			HealthStatus: models.PlatformAccountHealthUnknown,
+		}
+		require.NoError(t, db.Create(&existing).Error)
+
+		cookies := []Cookie{
+			{Name: "z_c0", Value: "secret-value", Domain: ".zhihu.com", Path: "/"},
+		}
+		err := store.SaveForAccount(context.Background(), accountUserID, workspaceID, uuid.Nil, "zhihu", cookies, RemoteAccountProfile{
+			Username: "点击打开zhiybDlu的主页",
+		})
+		require.NoError(t, err)
+
+		var accounts []models.PlatformAccount
+		require.NoError(t, db.Where("workspace_id = ? AND platform = ? AND display_name = ?", workspaceID, "zhihu", "点击打开zhiybDlu的主页").Find(&accounts).Error)
+		require.Len(t, accounts, 1)
+		assert.Equal(t, existing.ID, accounts[0].ID)
+		assert.Equal(t, models.PlatformAccountStatusConnected, accounts[0].Status)
+		assert.Equal(t, models.PlatformAccountHealthHealthy, accounts[0].HealthStatus)
+		assert.Contains(t, string(accounts[0].Cookies), "ciphertext")
+	})
 }

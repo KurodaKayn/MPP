@@ -91,11 +91,12 @@ func (s *CookieStore) SaveForAccount(ctx context.Context, userID uuid.UUID, work
 		return fmt.Errorf("failed to marshal envelope: %w", err)
 	}
 
+	displayName := firstNonEmpty(profile.Username, platform)
 	now := time.Now().UTC()
 	updates := map[string]any{
 		"cookies":              datatypes.JSON(envelopeJSON),
 		"username":             profile.Username,
-		"display_name":         firstNonEmpty(profile.Username, platform),
+		"display_name":         displayName,
 		"avatar_url":           profile.AvatarURL,
 		"status":               models.PlatformAccountStatusConnected,
 		"health_status":        models.PlatformAccountHealthHealthy,
@@ -122,7 +123,7 @@ func (s *CookieStore) SaveForAccount(ctx context.Context, userID uuid.UUID, work
 			query = query.Where("user_id = ? AND platform = ? AND platform_user_id = ?", userID, platform, profile.PlatformUserID)
 		}
 	} else if workspaceID != uuid.Nil {
-		query = query.Where("1 = 0")
+		query = query.Where("workspace_id = ? AND platform = ? AND display_name = ?", workspaceID, platform, displayName)
 	} else {
 		query = query.Where("user_id = ? AND platform = ?", userID, platform)
 	}
@@ -138,7 +139,7 @@ func (s *CookieStore) SaveForAccount(ctx context.Context, userID uuid.UUID, work
 			UserID:              userID,
 			Platform:            platform,
 			Username:            profile.Username,
-			DisplayName:         firstNonEmpty(profile.Username, platform),
+			DisplayName:         displayName,
 			PlatformUserID:      profile.PlatformUserID,
 			AvatarURL:           profile.AvatarURL,
 			Cookies:             datatypes.JSON(envelopeJSON),
