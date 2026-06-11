@@ -163,6 +163,7 @@ func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 	}
 
 	page, limit := projectPaginationFromQuery(c)
+	cursor := c.QueryParam("cursor")
 	status := c.QueryParam("status")
 	platform := c.QueryParam("platform")
 	workspaceID, workspaceErr := workspaceIDFromQuery(c)
@@ -171,7 +172,7 @@ func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 	}
 
 	if workspaceID != uuid.Nil {
-		resp, err := h.serviceFor(c).ListWorkspaceProjects(workspaceID, userID, page, limit, status, platform)
+		resp, err := h.serviceFor(c).ListWorkspaceProjectsCursor(workspaceID, userID, cursor, page, limit, status, platform)
 		if err != nil {
 			return sendWorkspaceError(c, err)
 		}
@@ -179,8 +180,11 @@ func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 	}
 
 	// Personal view: enforce scopeUserID, ignore any requested filterUserID
-	resp, err := h.serviceFor(c).ListProjects(page, limit, status, "", platform, &userID)
+	resp, err := h.serviceFor(c).ListProjectsCursor(cursor, page, limit, status, "", platform, &userID)
 	if err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 
@@ -1079,10 +1083,11 @@ func (h *UserDashboardHandler) ListWorkspaceProjects(c echo.Context) error {
 	}
 
 	page, limit := projectPaginationFromQuery(c)
+	cursor := c.QueryParam("cursor")
 	status := c.QueryParam("status")
 	platform := c.QueryParam("platform")
 
-	resp, err := h.serviceFor(c).ListWorkspaceProjects(workspaceID, userID, page, limit, status, platform)
+	resp, err := h.serviceFor(c).ListWorkspaceProjectsCursor(workspaceID, userID, cursor, page, limit, status, platform)
 	if err != nil {
 		return sendWorkspaceError(c, err)
 	}
@@ -1347,7 +1352,8 @@ func (h *UserDashboardHandler) RemoveWorkspaceMember(c echo.Context) error {
 func sendWorkspaceError(c echo.Context, err error) error {
 	if errors.Is(err, services.ErrInvalidWorkspace) ||
 		errors.Is(err, services.ErrInvalidWorkspaceInvite) ||
-		errors.Is(err, services.ErrInvalidWorkspaceMember) {
+		errors.Is(err, services.ErrInvalidWorkspaceMember) ||
+		errors.Is(err, services.ErrInvalidProject) {
 		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {

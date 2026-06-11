@@ -197,6 +197,10 @@ func (s *Service) ListWorkspaces(userID uuid.UUID) (*dto.WorkspacesResponse, err
 }
 
 func (s *Service) ListWorkspaceProjects(workspaceID uuid.UUID, actorUserID uuid.UUID, page, limit int, status, platform string) (*dto.PaginationResponse, error) {
+	return s.ListWorkspaceProjectsCursor(workspaceID, actorUserID, "", page, limit, status, platform)
+}
+
+func (s *Service) ListWorkspaceProjectsCursor(workspaceID uuid.UUID, actorUserID uuid.UUID, cursor string, page, limit int, status, platform string) (*dto.PaginationResponse, error) {
 	if _, err := s.workspaceAccessRole(workspaceID, actorUserID); err != nil {
 		return nil, err
 	}
@@ -211,7 +215,7 @@ func (s *Service) ListWorkspaceProjects(workspaceID uuid.UUID, actorUserID uuid.
 			Group("projects.id")
 	}
 
-	return s.projects.ListProjectPage(query, page, limit, &actorUserID)
+	return s.projects.ListProjectPage(query, cursor, page, limit, &actorUserID)
 }
 
 func (s *Service) CreateWorkspaceProject(workspaceID uuid.UUID, actorUserID uuid.UUID, req dto.CreateProjectRequest) (*dto.ProjectListItem, error) {

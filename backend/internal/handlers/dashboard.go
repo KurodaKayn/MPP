@@ -3,7 +3,6 @@ package handlers
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -42,26 +41,18 @@ func (h *DashboardHandler) GetStats(c echo.Context) error {
 }
 
 func (h *DashboardHandler) ListProjects(c echo.Context) error {
-	page, _ := strconv.Atoi(c.QueryParam("page"))
-	if page < 1 {
-		page = 1
-	}
-
-	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	if limit < 1 {
-		limit = 10
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
+	page, limit := projectPaginationFromQuery(c)
+	cursor := c.QueryParam("cursor")
 	status := c.QueryParam("status")
 	userID := c.QueryParam("user_id")
 	platform := c.QueryParam("platform")
 
 	// Admin view: no scope, filterUserID allowed
-	resp, err := h.serviceFor(c).ListProjects(page, limit, status, userID, platform, nil)
+	resp, err := h.serviceFor(c).ListProjectsCursor(cursor, page, limit, status, userID, platform, nil)
 	if err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 
