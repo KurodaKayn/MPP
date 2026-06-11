@@ -4,4 +4,5 @@ resources:
   - postgres.yaml
   - pgbouncer.yaml
   - redis.yaml
+  - backups.yaml
   - networkpolicy.yaml

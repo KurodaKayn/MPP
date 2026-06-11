@@ -789,8 +789,10 @@ Mitigation:
 
 ## Self-Hosted Data Services
 
-The self-hosted package is for small installations and tests. Before using it
-for anything important, configure backups outside the manifests.
+The self-hosted package is for small installations and tests. It includes daily
+PostgreSQL and Redis backup CronJobs that write to the `mpp-data-backups` PVC.
+The PVC is still cluster-local, so copy artifacts to external storage or pair it
+with storage-provider snapshots before treating the package as recoverable.
 
 Check Postgres StatefulSet:
 
@@ -808,11 +810,32 @@ kubectl get pvc -n "$MPP_APP_NS" -l app.kubernetes.io/component=redis
 kubectl logs -n "$MPP_APP_NS" statefulset/redis --tail=200
 ```
 
+Check backup schedules and recent runs:
+
+```bash
+kubectl get cronjob -n "$MPP_APP_NS" postgres-backup redis-backup
+kubectl get job -n "$MPP_APP_NS" -l app.kubernetes.io/component=postgres-backup
+kubectl get job -n "$MPP_APP_NS" -l app.kubernetes.io/component=redis-backup
+kubectl get pvc -n "$MPP_APP_NS" mpp-data-backups
+```
+
+Run an ad hoc backup before maintenance:
+
+```bash
+kubectl create job -n "$MPP_APP_NS" --from=cronjob/postgres-backup postgres-backup-manual-$(date -u +%Y%m%d%H%M%S)
+kubectl create job -n "$MPP_APP_NS" --from=cronjob/redis-backup redis-backup-manual-$(date -u +%Y%m%d%H%M%S)
+```
+
 Mitigation:
 
 - Do not delete PVCs during incidents.
 - Scale application workloads down before destructive database maintenance.
-- Snapshot volumes before restore attempts.
+- Snapshot the PostgreSQL, Redis, and `mpp-data-backups` PVCs before restore
+  attempts.
+- Restore PostgreSQL dumps with `pg_restore` into a clean database after
+  verifying the dump timestamp and application version.
+- Restore Redis RDB snapshots only after stopping Redis writers and confirming
+  that losing in-flight queues, sessions, and locks is acceptable.
 - Prefer provider-managed services for production.
 
 ## Secret Rotation

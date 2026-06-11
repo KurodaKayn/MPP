@@ -402,6 +402,15 @@ kubectl rollout restart deployment/backend deployment/publish-worker deployment/
 ```
 
 Backups, restores, retention, and maintenance are provider responsibilities for
-managed data services. For self-hosted data services, configure backup tooling
-outside these manifests before using the package for anything beyond tests or
-small installations.
+managed data services. For self-hosted data services, the starter package
+includes daily PostgreSQL `pg_dump --format=custom` and Redis RDB CronJobs that
+write to the `mpp-data-backups` PVC with local retention cleanup.
+
+Before keeping useful data in self-hosted StatefulSets:
+
+- Patch the `mpp-data-backups` storage class and size.
+- Patch the `postgres-backup` and `redis-backup` schedules for the environment.
+- Patch `BACKUP_RETENTION_DAYS` for each backup job.
+- Copy artifacts off the in-cluster backup PVC or enable storage-provider
+  snapshots so a namespace, cluster, or storage failure does not remove the only
+  recovery copy.
