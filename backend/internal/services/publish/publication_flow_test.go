@@ -4,6 +4,7 @@ package publish_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"testing"
 	"time"
@@ -51,6 +52,22 @@ func createConnectedPublishAccount(t *testing.T, db *gorm.DB, userID uuid.UUID, 
 	account.ConnectedByUserID = &ownerID
 	require.NoError(t, db.Create(&account).Error)
 	return account
+}
+
+type flakyPublisher struct {
+	calls int
+}
+
+func (p *flakyPublisher) ValidateConfig(_ []byte) error {
+	return nil
+}
+
+func (p *flakyPublisher) Publish(context.Context, *models.ProjectPlatformPublication, *models.PlatformAccount) (string, string, error) {
+	p.calls++
+	if p.calls == 1 {
+		return "", "", errors.New("temporary platform failure")
+	}
+	return "retry-remote", "https://example.com/retry", nil
 }
 
 func TestBatchPublishProject(t *testing.T) {
@@ -205,6 +222,121 @@ func TestPublishProjectInvalidatesDashboardCaches(t *testing.T) {
 	refreshed, err := s.WithContext(context.Background()).GetStats(nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), refreshed.TotalPublishedPublications)
+}
+
+func TestEnqueuePublishProjectCreatesImmediateScheduleAndAttempt(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(&models.PublishEvent{}, &models.ScheduledPublication{}, &models.PublishAttempt{}, &models.ProjectVersion{}))
+	s := services.NewDashboardService(db)
+	fakePublisher := &testsupport.FakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "schedule-owner", Email: "schedule-owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Scheduled immediate",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Status:         models.PublicationStatusDraft,
+		Config:         datatypes.JSON(`{"title":"Scheduled immediate"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	account := createConnectedPublishAccount(t, db, user.ID, "wechat", datatypes.JSON(`{"app_id":"wx-schedule","app_secret":"schedule-secret"}`))
+	pub.PlatformAccountID = &account.ID
+	require.NoError(t, db.Create(&pub).Error)
+
+	resp, err := s.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, services.PublishRequest{
+		IdempotencyKey: "immediate-schedule",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, models.PublicationStatusSucceeded, resp["status"])
+	scheduleID, err := uuid.Parse(resp["scheduled_publication_id"].(string))
+	require.NoError(t, err)
+
+	var schedule models.ScheduledPublication
+	require.NoError(t, db.First(&schedule, "id = ?", scheduleID).Error)
+	require.Equal(t, models.ScheduledPublicationStatusPublished, schedule.Status)
+	require.Equal(t, project.ID, schedule.ProjectID)
+	require.Equal(t, pub.ID, schedule.PublicationID)
+	require.Equal(t, user.ID, schedule.CreatedBy)
+	require.Equal(t, "immediate-schedule", schedule.IdempotencyKey)
+	require.WithinDuration(t, time.Now().UTC(), schedule.ScheduledAt, 5*time.Second)
+
+	var attempts []models.PublishAttempt
+	require.NoError(t, db.Find(&attempts, "scheduled_publication_id = ?", schedule.ID).Error)
+	require.Len(t, attempts, 1)
+	require.Equal(t, 1, attempts[0].AttemptNo)
+	require.Equal(t, models.PublishAttemptStatusSucceeded, attempts[0].Status)
+	require.Equal(t, "remote-id", attempts[0].RemoteID)
+	require.Equal(t, "https://example.com/published", attempts[0].PublishURL)
+}
+
+func TestPublishProjectAppendsAttemptsWhenRetryingSameSchedule(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(&models.ScheduledPublication{}, &models.PublishAttempt{}))
+	s := services.NewDashboardService(db)
+	flaky := &flakyPublisher{}
+	publisher.Factory.Register("wechat", flaky)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "retry-owner", Email: "retry-owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Retry scheduled",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Status:         models.PublicationStatusDraft,
+		Config:         datatypes.JSON(`{"title":"Retry scheduled"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	account := createConnectedPublishAccount(t, db, user.ID, "wechat", datatypes.JSON(`{"app_id":"wx-retry","app_secret":"retry-secret"}`))
+	pub.PlatformAccountID = &account.ID
+	require.NoError(t, db.Create(&pub).Error)
+
+	schedule := models.ScheduledPublication{
+		WorkspaceID:    models.PersonalWorkspaceID(user.ID),
+		ProjectID:      project.ID,
+		PublicationID:  pub.ID,
+		ScheduledAt:    time.Now().UTC(),
+		Status:         models.ScheduledPublicationStatusScheduled,
+		IdempotencyKey: "retry-key",
+		CreatedBy:      user.ID,
+	}
+	require.NoError(t, db.Create(&schedule).Error)
+
+	first, err := s.PublishProject(project.ID, "wechat", &user.ID, schedule.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.PublicationStatusFailed, first["status"])
+	second, err := s.PublishProject(project.ID, "wechat", &user.ID, schedule.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.PublicationStatusSucceeded, second["status"])
+
+	var attempts []models.PublishAttempt
+	require.NoError(t, db.Order("attempt_no asc").Find(&attempts, "scheduled_publication_id = ?", schedule.ID).Error)
+	require.Len(t, attempts, 2)
+	require.Equal(t, models.PublishAttemptStatusFailed, attempts[0].Status)
+	require.Contains(t, attempts[0].ErrorMessage, "temporary platform failure")
+	require.Equal(t, models.PublishAttemptStatusSucceeded, attempts[1].Status)
+	require.Equal(t, "retry-remote", attempts[1].RemoteID)
+
+	var savedSchedule models.ScheduledPublication
+	require.NoError(t, db.First(&savedSchedule, "id = ?", schedule.ID).Error)
+	require.Equal(t, models.ScheduledPublicationStatusPublished, savedSchedule.Status)
+	require.Empty(t, savedSchedule.LastError)
 }
 
 func TestPublishProjectAllowsEmbeddedWechatCredentialsWithoutSavedAccount(t *testing.T) {
