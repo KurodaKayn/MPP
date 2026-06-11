@@ -664,7 +664,6 @@ func TestFlushScheduledPublicationsPublishesDueSchedules(t *testing.T) {
 	lockKey := publishLockKey(project.ID, "wechat")
 	require.Empty(t, queue.locks[lockKey])
 }
-
 func TestEnqueuePublishProjectReplaysOriginalJobEventsAfterPublicationChanges(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
 	service := newPublishTestService(db)
