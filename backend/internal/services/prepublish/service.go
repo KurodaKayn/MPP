@@ -18,9 +18,15 @@ type ProjectDraftCompiler interface {
 	CompileProjectDrafts(ctx context.Context, project *models.Project, publications []models.ProjectPlatformPublication, platforms []string) (map[string][]byte, error)
 }
 
+type DashboardStatsCacheInvalidator interface {
+	InvalidateDashboardStatsCache(ctx context.Context)
+}
+
 type Service struct {
-	db            *gorm.DB
-	projects      *projectsvc.Service
+	db         *gorm.DB
+	projects   *projectsvc.Service
+	statsCache DashboardStatsCacheInvalidator
+
 	draftCompiler ProjectDraftCompiler
 }
 
@@ -30,6 +36,10 @@ func NewService(db *gorm.DB, projects *projectsvc.Service, draftCompiler Project
 
 func (s *Service) SetDraftCompiler(draftCompiler ProjectDraftCompiler) {
 	s.draftCompiler = draftCompiler
+}
+
+func (s *Service) SetDashboardStatsCacheInvalidator(invalidator DashboardStatsCacheInvalidator) {
+	s.statsCache = invalidator
 }
 
 func (s *Service) DraftCompiler() ProjectDraftCompiler {
@@ -44,6 +54,16 @@ func (s *Service) requestContext() context.Context {
 		return s.db.Statement.Context
 	}
 	return context.Background()
+}
+
+func (s *Service) invalidateDashboardCaches() {
+	ctx := s.requestContext()
+	if s.projects != nil {
+		s.projects.InvalidateDashboardProjectListCache(ctx)
+	}
+	if s.statsCache != nil {
+		s.statsCache.InvalidateDashboardStatsCache(ctx)
+	}
 }
 
 func defaultDraftCompiler() ProjectDraftCompiler {
