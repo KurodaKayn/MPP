@@ -11,12 +11,12 @@
 - `未开始`：尚未发现明确实现。
 - `暂缓`：当前业务阶段不建议投入，只保留触发条件。
 
-当前总体进度：约 `40%`。这个数字按阶段权重人工估算，后续可按实际完成项调整。
+当前总体进度：约 `42%`。这个数字按阶段权重人工估算，后续可按实际完成项调整。
 
 | 阶段                                         | 权重 | 当前完成度 | 状态   | 已完成                                                                         | 未完成/下一步                                                                          |
 | -------------------------------------------- | ---- | ---------- | ------ | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | 阶段 0：数据层基线盘点                       | 10%  | 100%       | 完成   | GORM 查询观测、`mpp_db_*` 指标、dashboard 查询计划审计脚本、`pg_stat_statements`、数据库基线审计脚本、PostgreSQL exporter 表级健康与 24h 行数增长面板、读写一致性分类、复杂 DDL 版本化迁移规范 | 后续阶段按本节清单继续实现代码路由、迁移执行器、分区和归档                            |
-| 阶段 1：单库连接池、索引、分页和生命周期治理 | 15%  | 65%        | 进行中 | backend/publish-worker/collab-service 应用层连接池、Redis 客户端连接池、PgBouncer writer pool、组合索引、列表分页、列表避开 `source_content` 大字段 | keyset pagination、事件保留期、归档 worker                                             |
+| 阶段 1：单库连接池、索引、分页和生命周期治理 | 15%  | 80%        | 进行中 | backend/publish-worker/collab-service 应用层连接池、Redis 客户端连接池、PgBouncer writer pool、组合索引、keyset 列表分页、列表避开 `source_content` 大字段 | 事件保留期、归档 worker                                                                |
 | 阶段 2：读模型与缓存优先                     | 15%  | 60%        | 进行中 | Redis、Asynq 基础依赖可复用；admin dashboard stats、admin project list、dashboard account 摘要已有短 TTL Redis 缓存；stats/project list/account 缓存 miss 已用 singleflight 合并；项目、预发布、发布和账号写路径已清理对应 dashboard 缓存 | dashboard 读模型、读模型重建任务                                                       |
 | 阶段 3：读写分离                             | 15%  | 60%        | 进行中 | `DB_READER_*` 可选连接、应用层 DB Router、签名 sticky writer、project/stats/workspace/platform_account 一致性路由、dashboard/publish/collab-service 一致性等级清单、replica lag 监控与超阈值回退 writer | 生产 read replica、PgBouncer reader pool、按清单补齐 publish/collab-service 实际路由   |
 | 阶段 4：单库分区、归档和冷热分层             | 15%  | 10%        | 未开始 | 协作编辑已有 state + update batch + compaction 基础                            | 事件表时间分区、协作 batch hash 分区、R2/S3 归档、恢复流程                             |
@@ -89,7 +89,7 @@
 - [x] 保留项目列表分页和组合索引基础。
 - [x] 列表查询避开 `projects.source_content` 大字段。
 - [x] 引入 PgBouncer writer pool。
-- [ ] 将高频列表从 offset pagination 迁移到 keyset pagination。
+- [x] 将高频列表从 offset pagination 迁移到 keyset pagination。验证入口：`backend/internal/services/project/lifecycle.go`、`backend/internal/services/project/list_cursor.go`、`backend/internal/services/project/lifecycle_test.go`、`frontend/src/lib/dashboard/api/projects.ts`、`frontend/src/lib/dashboard/api/workspaces.ts`。
 - [ ] 制定事件表和会话历史保留期。
 - [ ] 增加归档 worker，把冷事件导出到 R2/S3。
 

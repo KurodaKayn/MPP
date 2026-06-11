@@ -1,0 +1,88 @@
+components:
+  schemas:
+    BrandProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspace_id
+        - created_by
+        - name
+        - voice
+        - audience
+        - banned_words
+        - cta
+        - link_strategy
+        - default_tags
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        name:
+          type: string
+        voice:
+          type: string
+        audience:
+          type: string
+        banned_words:
+          type: array
+          items:
+            type: string
+        cta:
+          type: string
+        link_strategy:
+          type: string
+        default_tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BrandProfilesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrandProfile"
+
+    CreateBrandProfileRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        voice:
+          type: string
+        audience:
+          type: string
+        banned_words:
+          type: array
+          items:
+            type: string
+        cta:
+          type: string
+        link_strategy:
+          type: string
+        default_tags:
+          type: array
+          items:
+            type: string

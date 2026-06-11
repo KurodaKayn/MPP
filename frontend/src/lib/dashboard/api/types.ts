@@ -223,8 +223,7 @@ export type CancelBrowserSessionResult =
 
 export type ProjectListItem = ContractSchema<"ProjectListItem">;
 export type ProjectDetail = ContractSchema<"ProjectDetail">;
-export type ProjectPermissionSource =
-  ContractSchema<"ProjectPermissionSource">;
+export type ProjectPermissionSource = ContractSchema<"ProjectPermissionSource">;
 export type ProjectCollaborator = ContractSchema<"ProjectCollaborator">;
 export type ProjectCollaboratorsResponse =
   ContractSchema<"ProjectCollaboratorsResponse">;
@@ -252,8 +251,14 @@ export type CreateProjectShareLinkInput =
 export type AcceptProjectShareLinkResponse =
   ContractSchema<"AcceptProjectShareLinkResponse">;
 export type PaginatedProjects = ContractSchema<"PaginationProjects">;
+export type ListDashboardProjectsOptions = {
+  cursor?: string;
+  limit?: number;
+  status?: ProjectStatus;
+  platform?: PublishPlatform;
+};
 export type ListWorkspaceProjectsOptions = {
-  page?: number;
+  cursor?: string;
   limit?: number;
   status?: ProjectStatus;
   platform?: PublishPlatform;

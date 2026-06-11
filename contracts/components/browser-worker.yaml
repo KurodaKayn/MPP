@@ -1,0 +1,261 @@
+components:
+  schemas:
+    BrowserWorkerSessionStatus:
+      type: string
+      enum:
+        - ready
+        - login_detected
+
+    BrowserWorkerCookie:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - value
+        - domain
+        - path
+        - expires
+        - secure
+        - httpOnly
+        - sameSite
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        domain:
+          type: string
+        path:
+          type: string
+        expires:
+          type: number
+          format: double
+        secure:
+          type: boolean
+        httpOnly:
+          type: boolean
+          x-go-name: HttpOnly
+        sameSite:
+          type: string
+          x-go-name: SameSite
+
+    BrowserWorkerDomainRule:
+      type: object
+      additionalProperties: false
+      required:
+        - host
+        - match
+        - schemes
+        - purpose
+      properties:
+        host:
+          type: string
+        match:
+          type: string
+          enum:
+            - exact
+            - suffix
+        schemes:
+          type: array
+          items:
+            type: string
+        purpose:
+          type: string
+
+    BrowserWorkerCookieRequirement:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - domain_suffixes
+        - required
+        - preserve
+      properties:
+        name:
+          type: string
+        domain_suffixes:
+          type: array
+          items:
+            type: string
+        required:
+          type: boolean
+        preserve:
+          type: boolean
+
+    BrowserWorkerViewport:
+      type: object
+      additionalProperties: false
+      required:
+        - width
+        - height
+      properties:
+        width:
+          type: integer
+        height:
+          type: integer
+
+    BrowserWorkerRemoteAccountProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - platform_user_id
+        - username
+        - avatar_url
+      properties:
+        platform_user_id:
+          type: string
+          x-go-name: PlatformUserID
+        username:
+          type: string
+        avatar_url:
+          type: string
+          x-go-name: AvatarURL
+
+    BrowserWorkerStartSessionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - user_id
+        - platform
+        - login_url
+        - allowed_domains
+        - required_cookies
+        - initial_cookies
+        - ttl_seconds
+        - viewport
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          x-go-name: SessionID
+        user_id:
+          type: string
+          format: uuid
+          x-go-name: UserID
+        platform:
+          type: string
+        login_url:
+          type: string
+          x-go-name: LoginURL
+        allowed_domains:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrowserWorkerDomainRule"
+        required_cookies:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrowserWorkerCookieRequirement"
+        initial_cookies:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrowserWorkerCookie"
+        ttl_seconds:
+          type: integer
+          x-go-name: TTLSeconds
+        viewport:
+          $ref: "#/components/schemas/BrowserWorkerViewport"
+
+    BrowserWorkerStartSessionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - worker_session_ref
+        - status
+        - container_id
+        - cdp_endpoint_ref
+        - stream_endpoint_ref
+        - started_at
+        - expires_at
+      properties:
+        worker_session_ref:
+          type: string
+          x-go-name: WorkerSessionRef
+        status:
+          $ref: "#/components/schemas/BrowserWorkerSessionStatus"
+        container_id:
+          type: string
+          x-go-name: ContainerID
+        cdp_endpoint_ref:
+          type: string
+          x-go-name: CDPEndpointRef
+        stream_endpoint_ref:
+          type: string
+          x-go-name: StreamEndpointRef
+        started_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    BrowserWorkerGetSessionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - worker_session_ref
+        - status
+        - current_url
+        - login_detected
+        - missing_cookies
+        - message
+      properties:
+        worker_session_ref:
+          type: string
+          x-go-name: WorkerSessionRef
+        status:
+          $ref: "#/components/schemas/BrowserWorkerSessionStatus"
+        current_url:
+          type: string
+          x-go-name: CurrentURL
+        login_detected:
+          type: boolean
+          x-go-name: LoginDetected
+        missing_cookies:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+
+    BrowserWorkerCaptureSessionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - cookies
+        - missing_cookies
+        - account
+      properties:
+        status:
+          $ref: "#/components/schemas/BrowserWorkerSessionStatus"
+        cookies:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrowserWorkerCookie"
+        missing_cookies:
+          type: array
+          items:
+            type: string
+        account:
+          $ref: "#/components/schemas/BrowserWorkerRemoteAccountProfile"
+
+    BrowserWorkerStartDouyinPublishRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+        - content
+        - cover_image_base64
+        - cover_image_name
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        cover_image_base64:
+          type: string
+          x-go-name: CoverImageBase64
+        cover_image_name:
+          type: string
+          x-go-name: CoverImageName

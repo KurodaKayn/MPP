@@ -1,0 +1,89 @@
+components:
+  schemas:
+    AIChatMessage:
+      type: object
+      additionalProperties: false
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum:
+            - user
+            - assistant
+        content:
+          type: string
+
+    AIEditContentRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - content
+        - message
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        message:
+          type: string
+        conversation:
+          type: array
+          items:
+            $ref: "#/components/schemas/AIChatMessage"
+
+    AIEditContentResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - channel
+        - content
+      properties:
+        channel:
+          type: string
+          enum:
+            - content
+        content:
+          type: string
+
+    AIEditPrepublishRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - platform
+        - adapted_content
+        - message
+      properties:
+        title:
+          type: string
+        platform:
+          $ref: "./content.yaml#/components/schemas/PublishPlatform"
+        adapted_content:
+          $ref: "./content.yaml#/components/schemas/AdaptedContent"
+        message:
+          type: string
+        conversation:
+          type: array
+          items:
+            $ref: "#/components/schemas/AIChatMessage"
+
+    AIEditPrepublishResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - channel
+        - platform
+        - adapted_content
+        - content
+      properties:
+        channel:
+          type: string
+          enum:
+            - prepublish
+        platform:
+          $ref: "./content.yaml#/components/schemas/PublishPlatform"
+        adapted_content:
+          $ref: "./content.yaml#/components/schemas/AdaptedContent"
+        content:
+          type: string

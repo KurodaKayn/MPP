@@ -10,7 +10,7 @@
     "lint:fix": "oxlint --nextjs-plugin --fix",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "generate:contracts": "openapi-typescript ../contracts/openapi.yaml -o src/lib/dashboard/api/generated.ts",
+    "generate:contracts": "openapi-typescript ../contracts/views/frontend.openapi.yaml -o src/lib/dashboard/api/generated.ts",
     "test": "vitest run",
     "type-check": "tsc --noEmit"
   },

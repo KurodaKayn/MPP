@@ -17,6 +17,7 @@ import type {
   CreateProjectShareLinkInput,
   DashboardStats,
   GetProjectPublicationsOptions,
+  ListDashboardProjectsOptions,
   PaginatedProjects,
   ProjectActivitiesResponse,
   ProjectComment,
@@ -51,11 +52,23 @@ export function getDashboardStats() {
   return fetchDashboard<DashboardStats>("/api/user/dashboard/stats");
 }
 
-export function getDashboardProjects(limit = 8) {
+export function getDashboardProjects(
+  options: number | ListDashboardProjectsOptions = 8,
+) {
+  const listOptions =
+    typeof options === "number" ? { limit: options } : options;
   const params = new URLSearchParams({
-    page: "1",
-    limit: String(limit),
+    limit: String(listOptions.limit ?? 8),
   });
+  if (listOptions.cursor) {
+    params.set("cursor", listOptions.cursor);
+  }
+  if (listOptions.status) {
+    params.set("status", listOptions.status);
+  }
+  if (listOptions.platform) {
+    params.set("platform", listOptions.platform);
+  }
 
   return fetchDashboard<PaginatedProjects>(
     `/api/user/dashboard/projects?${params.toString()}`,

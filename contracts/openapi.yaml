@@ -5,2330 +5,356 @@ info:
   description: Shared API boundary schemas for backend, frontend, and ai-service.
 paths:
   /internal/browser-sessions:
-    post:
-      tags:
-        - browser-worker
-      operationId: createBrowserWorkerSession
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BrowserWorkerStartSessionRequest"
-      responses:
-        "201":
-          description: Browser worker session created.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BrowserWorkerStartSessionResponse"
+    $ref: "./paths/browser-worker.yaml#/paths/~1internal~1browser-sessions"
 
   /internal/browser-sessions/{ref}:
-    parameters:
-      - name: ref
-        in: path
-        required: true
-        schema:
-          type: string
-    get:
-      tags:
-        - browser-worker
-      operationId: getBrowserWorkerSession
-      responses:
-        "200":
-          description: Browser worker session state.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BrowserWorkerGetSessionResponse"
-    delete:
-      tags:
-        - browser-worker
-      operationId: deleteBrowserWorkerSession
-      responses:
-        "204":
-          description: Browser worker session deleted.
+    $ref: "./paths/browser-worker.yaml#/paths/~1internal~1browser-sessions~1{ref}"
 
   /internal/browser-sessions/{ref}/capture:
-    post:
-      tags:
-        - browser-worker
-      operationId: captureBrowserWorkerSession
-      parameters:
-        - name: ref
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Browser worker session captured.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BrowserWorkerCaptureSessionResponse"
+    $ref: "./paths/browser-worker.yaml#/paths/~1internal~1browser-sessions~1{ref}~1capture"
 
   /internal/browser-sessions/{ref}/publish/douyin:
-    post:
-      tags:
-        - browser-worker
-      operationId: startBrowserWorkerDouyinPublish
-      parameters:
-        - name: ref
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BrowserWorkerStartDouyinPublishRequest"
-      responses:
-        "202":
-          description: Douyin publish script started.
+    $ref: "./paths/browser-worker.yaml#/paths/~1internal~1browser-sessions~1{ref}~1publish~1douyin"
 components:
   schemas:
     DraftFormat:
-      type: string
-      enum:
-        - html
-        - markdown
-        - text
+      $ref: "./components/content.yaml#/components/schemas/DraftFormat"
 
     PublishPlatform:
-      type: string
-      enum:
-        - douyin
-        - wechat
-        - x
-        - zhihu
+      $ref: "./components/content.yaml#/components/schemas/PublishPlatform"
 
     GeneratedByType:
-      type: string
-      enum:
-        - agent
-        - system
-        - user
+      $ref: "./components/content.yaml#/components/schemas/GeneratedByType"
 
     AdaptedAssetType:
-      type: string
-      enum:
-        - image
+      $ref: "./components/content.yaml#/components/schemas/AdaptedAssetType"
 
     ProjectStatus:
-      type: string
-      enum:
-        - draft
-        - ready
-        - publishing
-        - published
-        - failed
+      $ref: "./components/project.yaml#/components/schemas/ProjectStatus"
 
     ProjectRole:
-      type: string
-      enum:
-        - owner
-        - editor
-        - viewer
-      x-enum-varnames:
-        - ProjectRoleOwner
-        - ProjectRoleEditor
-        - ProjectRoleViewer
+      $ref: "./components/project.yaml#/components/schemas/ProjectRole"
 
     ProjectAccessSource:
-      type: string
-      enum:
-        - owner
-        - direct_share
-        - workspace
-      x-enum-varnames:
-        - ProjectAccessSourceOwner
-        - ProjectAccessSourceDirectShare
-        - ProjectAccessSourceWorkspace
+      $ref: "./components/project.yaml#/components/schemas/ProjectAccessSource"
 
     ProjectCollaboratorRole:
-      type: string
-      enum:
-        - editor
-        - viewer
-      x-enum-varnames:
-        - ProjectCollaboratorRoleEditor
-        - ProjectCollaboratorRoleViewer
+      $ref: "./components/project.yaml#/components/schemas/ProjectCollaboratorRole"
 
     ProjectActivityType:
-      type: string
-      enum:
-        - content_saved
-        - comment_created
-        - comment_resolved
-        - collaborator_added
-        - collaborator_role_changed
-        - collaborator_removed
-        - publish_requested
-        - publish_queued
-        - publish_completed
-        - share_link_accepted
-        - share_link_created
-        - share_link_revoked
-        - version_restored
-      x-enum-varnames:
-        - ProjectActivityTypeContentSaved
-        - ProjectActivityTypeCommentCreated
-        - ProjectActivityTypeCommentResolved
-        - ProjectActivityTypeCollaboratorAdded
-        - ProjectActivityTypeCollaboratorRoleChanged
-        - ProjectActivityTypeCollaboratorRemoved
-        - ProjectActivityTypePublishRequested
-        - ProjectActivityTypePublishQueued
-        - ProjectActivityTypePublishCompleted
-        - ProjectActivityTypeShareLinkAccepted
-        - ProjectActivityTypeShareLinkCreated
-        - ProjectActivityTypeShareLinkRevoked
-        - ProjectActivityTypeVersionRestored
+      $ref: "./components/project.yaml#/components/schemas/ProjectActivityType"
 
     ProjectCommentStatus:
-      type: string
-      enum:
-        - open
-        - resolved
-      x-enum-varnames:
-        - ProjectCommentStatusOpen
-        - ProjectCommentStatusResolved
+      $ref: "./components/project.yaml#/components/schemas/ProjectCommentStatus"
 
     ProjectShareLinkStatus:
-      type: string
-      enum:
-        - active
-        - revoked
-      x-enum-varnames:
-        - ProjectShareLinkStatusActive
-        - ProjectShareLinkStatusRevoked
+      $ref: "./components/project.yaml#/components/schemas/ProjectShareLinkStatus"
 
     WorkspaceRole:
-      type: string
-      enum:
-        - owner
-        - admin
-        - member
-        - viewer
-      x-enum-varnames:
-        - WorkspaceRoleOwner
-        - WorkspaceRoleAdmin
-        - WorkspaceRoleMember
-        - WorkspaceRoleViewer
+      $ref: "./components/workspace.yaml#/components/schemas/WorkspaceRole"
 
     WorkspaceMemberRequestRole:
-      type: string
-      enum:
-        - admin
-        - member
-        - viewer
-      x-enum-varnames:
-        - WorkspaceMemberRequestRoleAdmin
-        - WorkspaceMemberRequestRoleMember
-        - WorkspaceMemberRequestRoleViewer
+      $ref: "./components/workspace.yaml#/components/schemas/WorkspaceMemberRequestRole"
 
     WorkspaceStatus:
-      type: string
-      enum:
-        - active
-        - archived
-      x-enum-varnames:
-        - WorkspaceStatusActive
-        - WorkspaceStatusArchived
+      $ref: "./components/workspace.yaml#/components/schemas/WorkspaceStatus"
 
     WorkspaceActivityType:
-      type: string
-      enum:
-        - workspace_created
-        - workspace_updated
-        - member_added
-        - member_role_changed
-        - member_removed
-        - invite_created
-        - invite_accepted
-        - invite_revoked
-      x-enum-varnames:
-        - WorkspaceActivityTypeWorkspaceCreated
-        - WorkspaceActivityTypeWorkspaceUpdated
-        - WorkspaceActivityTypeMemberAdded
-        - WorkspaceActivityTypeMemberRoleChanged
-        - WorkspaceActivityTypeMemberRemoved
-        - WorkspaceActivityTypeInviteCreated
-        - WorkspaceActivityTypeInviteAccepted
-        - WorkspaceActivityTypeInviteRevoked
+      $ref: "./components/workspace.yaml#/components/schemas/WorkspaceActivityType"
 
     PublicationStatus:
-      type: string
-      enum:
-        - draft
-        - syncing
-        - queued
-        - publishing
-        - succeeded
-        - failed
-        - cancelled
+      $ref: "./components/project.yaml#/components/schemas/PublicationStatus"
 
     PublicationDraftStatus:
-      type: string
-      enum:
-        - unsynced
-        - syncing
-        - ready
-        - stale
+      $ref: "./components/project.yaml#/components/schemas/PublicationDraftStatus"
 
     PublicationReviewStatus:
-      type: string
-      enum:
-        - draft
-        - reviewing
-        - approved
-        - changes_requested
+      $ref: "./components/project.yaml#/components/schemas/PublicationReviewStatus"
 
     ContentTemplateScope:
-      type: string
-      enum:
-        - system
-        - workspace
-        - personal
+      $ref: "./components/template.yaml#/components/schemas/ContentTemplateScope"
 
     MediaAssetLibraryScope:
-      type: string
-      enum:
-        - project
-        - workspace
-        - personal
+      $ref: "./components/project.yaml#/components/schemas/MediaAssetLibraryScope"
 
     PublishResultStatus:
-      type: string
-      enum:
-        - error
-        - failed
-        - manual_required
-        - queued
-        - succeeded
-        - publishing
+      $ref: "./components/project.yaml#/components/schemas/PublishResultStatus"
 
     PlatformAccountStatus:
-      type: string
-      enum:
-        - unconfigured
-        - untested
-        - connected
-        - failed
+      $ref: "./components/account.yaml#/components/schemas/PlatformAccountStatus"
 
     ConnectionTestStatus:
-      type: string
-      enum:
-        - connected
-        - failed
+      $ref: "./components/account.yaml#/components/schemas/ConnectionTestStatus"
 
     RequirementStatusValue:
-      type: string
-      enum:
-        - passed
-        - warning
-        - failed
-        - unknown
+      $ref: "./components/account.yaml#/components/schemas/RequirementStatusValue"
 
     BrowserSessionStatus:
-      type: string
-      enum:
-        - pending
-        - ready
-        - login_detected
-        - capturing
-        - connected
-        - expired
-        - failed
+      $ref: "./components/account.yaml#/components/schemas/BrowserSessionStatus"
 
     CollabDocumentStatus:
-      type: string
-      enum:
-        - active
+      $ref: "./components/collab.yaml#/components/schemas/CollabDocumentStatus"
 
     CollabDocumentRole:
-      type: string
-      enum:
-        - editor
-        - viewer
+      $ref: "./components/collab.yaml#/components/schemas/CollabDocumentRole"
 
     BrowserWorkerSessionStatus:
-      type: string
-      enum:
-        - ready
-        - login_detected
+      $ref: "./components/browser-worker.yaml#/components/schemas/BrowserWorkerSessionStatus"
 
     BrowserWorkerCookie:
-      type: object
-      additionalProperties: false
-      required:
-        - name
-        - value
-        - domain
-        - path
-        - expires
-        - secure
-        - httpOnly
-        - sameSite
-      properties:
-        name:
-          type: string
-        value:
-          type: string
-        domain:
-          type: string
-        path:
-          type: string
-        expires:
-          type: number
-          format: double
-        secure:
-          type: boolean
-        httpOnly:
-          type: boolean
-          x-go-name: HttpOnly
-        sameSite:
-          type: string
-          x-go-name: SameSite
+      $ref: "./components/browser-worker.yaml#/components/schemas/BrowserWorkerCookie"
 
     BrowserWorkerDomainRule:
-      type: object
-      additionalProperties: false
-      required:
-        - host
-        - match
-        - schemes
-        - purpose
-      properties:
-        host:
-          type: string
-        match:
-          type: string
-          enum:
-            - exact
-            - suffix
-        schemes:
-          type: array
-          items:
-            type: string
-        purpose:
-          type: string
+      $ref: "./components/browser-worker.yaml#/components/schemas/BrowserWorkerDomainRule"
 
     BrowserWorkerCookieRequirement:
-      type: object
-      additionalProperties: false
-      required:
-        - name
-        - domain_suffixes
-        - required
-        - preserve
-      properties:
-        name:
-          type: string
-        domain_suffixes:
-          type: array
-          items:
-            type: string
-        required:
-          type: boolean
-        preserve:
-          type: boolean
+      $ref: "./components/browser-worker.yaml#/components/schemas/BrowserWorkerCookieRequirement"
 
     BrowserWorkerViewport:
-      type: object
-      additionalProperties: false
-      required:
-        - width
-        - height
-      properties:
-        width:
-          type: integer
-        height:
-          type: integer
+      $ref: "./components/browser-worker.yaml#/components/schemas/BrowserWorkerViewport"
 
     BrowserWorkerRemoteAccountProfile:
-      type: object
-      additionalProperties: false
-      required:
-        - platform_user_id
-        - username
-        - avatar_url
-      properties:
-        platform_user_id:
-          type: string
-          x-go-name: PlatformUserID
-        username:
-          type: string
-        avatar_url:
-          type: string
-          x-go-name: AvatarURL
+      $ref: "./components/browser-worker.yaml#/components/schemas/BrowserWorkerRemoteAccountProfile"
 
     BrowserWorkerStartSessionRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - session_id
-        - user_id
-        - platform
-        - login_url
-        - allowed_domains
-        - required_cookies
-        - initial_cookies
-        - ttl_seconds
-        - viewport
-      properties:
-        session_id:
-          type: string
-          format: uuid
-          x-go-name: SessionID
-        user_id:
-          type: string
-          format: uuid
-          x-go-name: UserID
-        platform:
-          type: string
-        login_url:
-          type: string
-          x-go-name: LoginURL
-        allowed_domains:
-          type: array
-          items:
-            $ref: "#/components/schemas/BrowserWorkerDomainRule"
-        required_cookies:
-          type: array
-          items:
-            $ref: "#/components/schemas/BrowserWorkerCookieRequirement"
-        initial_cookies:
-          type: array
-          items:
-            $ref: "#/components/schemas/BrowserWorkerCookie"
-        ttl_seconds:
-          type: integer
-          x-go-name: TTLSeconds
-        viewport:
-          $ref: "#/components/schemas/BrowserWorkerViewport"
+      $ref: "./components/browser-worker.yaml#/components/schemas/BrowserWorkerStartSessionRequest"
 
     BrowserWorkerStartSessionResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - worker_session_ref
-        - status
-        - container_id
-        - cdp_endpoint_ref
-        - stream_endpoint_ref
-        - started_at
-        - expires_at
-      properties:
-        worker_session_ref:
-          type: string
-          x-go-name: WorkerSessionRef
-        status:
-          $ref: "#/components/schemas/BrowserWorkerSessionStatus"
-        container_id:
-          type: string
-          x-go-name: ContainerID
-        cdp_endpoint_ref:
-          type: string
-          x-go-name: CDPEndpointRef
-        stream_endpoint_ref:
-          type: string
-          x-go-name: StreamEndpointRef
-        started_at:
-          type: string
-          format: date-time
-        expires_at:
-          type: string
-          format: date-time
+      $ref: "./components/browser-worker.yaml#/components/schemas/BrowserWorkerStartSessionResponse"
 
     BrowserWorkerGetSessionResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - worker_session_ref
-        - status
-        - current_url
-        - login_detected
-        - missing_cookies
-        - message
-      properties:
-        worker_session_ref:
-          type: string
-          x-go-name: WorkerSessionRef
-        status:
-          $ref: "#/components/schemas/BrowserWorkerSessionStatus"
-        current_url:
-          type: string
-          x-go-name: CurrentURL
-        login_detected:
-          type: boolean
-          x-go-name: LoginDetected
-        missing_cookies:
-          type: array
-          items:
-            type: string
-        message:
-          type: string
+      $ref: "./components/browser-worker.yaml#/components/schemas/BrowserWorkerGetSessionResponse"
 
     BrowserWorkerCaptureSessionResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - status
-        - cookies
-        - missing_cookies
-        - account
-      properties:
-        status:
-          $ref: "#/components/schemas/BrowserWorkerSessionStatus"
-        cookies:
-          type: array
-          items:
-            $ref: "#/components/schemas/BrowserWorkerCookie"
-        missing_cookies:
-          type: array
-          items:
-            type: string
-        account:
-          $ref: "#/components/schemas/BrowserWorkerRemoteAccountProfile"
+      $ref: "./components/browser-worker.yaml#/components/schemas/BrowserWorkerCaptureSessionResponse"
 
     BrowserWorkerStartDouyinPublishRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - title
-        - content
-        - cover_image_base64
-        - cover_image_name
-      properties:
-        title:
-          type: string
-        content:
-          type: string
-        cover_image_base64:
-          type: string
-          x-go-name: CoverImageBase64
-        cover_image_name:
-          type: string
-          x-go-name: CoverImageName
+      $ref: "./components/browser-worker.yaml#/components/schemas/BrowserWorkerStartDouyinPublishRequest"
 
     GeneratedBy:
-      type: object
-      additionalProperties: false
-      required:
-        - type
-        - id
-      properties:
-        type:
-          $ref: "#/components/schemas/GeneratedByType"
-        id:
-          type: string
-          minLength: 1
-        version:
-          type: string
-        agent_run_id:
-          type: string
-        instructions:
-          type: string
+      $ref: "./components/content.yaml#/components/schemas/GeneratedBy"
 
     AdaptedAsset:
-      type: object
-      additionalProperties: false
-      required:
-        - type
-        - source_url
-      properties:
-        type:
-          $ref: "#/components/schemas/AdaptedAssetType"
-        source_url:
-          type: string
-          minLength: 1
-        alt:
-          type: string
+      $ref: "./components/content.yaml#/components/schemas/AdaptedAsset"
 
     AdaptedContent:
-      type: object
-      additionalProperties: false
-      required:
-        - format
-      properties:
-        schema_version:
-          type: integer
-          minimum: 1
-        format:
-          $ref: "#/components/schemas/DraftFormat"
-        summary:
-          type: string
-        source_revision:
-          type: string
-          description: RFC3339 timestamp or a future revision identifier.
-        generated_by:
-          $ref: "#/components/schemas/GeneratedBy"
-        html:
-          type: string
-        markdown:
-          type: string
-        text:
-          type: string
-        assets:
-          type: array
-          items:
-            $ref: "#/components/schemas/AdaptedAsset"
+      $ref: "./components/content.yaml#/components/schemas/AdaptedContent"
 
     DashboardStats:
-      type: object
-      additionalProperties: false
-      required:
-        - total_users
-        - total_projects
-        - total_published_publications
-        - total_failed_publications
-      properties:
-        total_users:
-          type: integer
-        total_projects:
-          type: integer
-        total_published_publications:
-          type: integer
-        total_failed_publications:
-          type: integer
+      $ref: "./components/project.yaml#/components/schemas/DashboardStats"
 
     PublicationSummary:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - platform
-        - enabled
-        - status
-        - draft_status
-        - review_status
-        - sync_required
-      properties:
-        id:
-          type: string
-          format: uuid
-        platform:
-          $ref: "#/components/schemas/PublishPlatform"
-        enabled:
-          type: boolean
-        status:
-          $ref: "#/components/schemas/PublicationStatus"
-        draft_status:
-          $ref: "#/components/schemas/PublicationDraftStatus"
-        review_status:
-          $ref: "#/components/schemas/PublicationReviewStatus"
-        sync_required:
-          type: boolean
-        publish_url:
-          type: string
+      $ref: "./components/project.yaml#/components/schemas/PublicationSummary"
 
     PublicationDetail:
-      allOf:
-        - $ref: "#/components/schemas/PublicationSummary"
-        - type: object
-          additionalProperties: false
-          required:
-            - config
-            - adapted_content
-            - retry_count
-            - created_at
-            - updated_at
-          properties:
-            error_message:
-              type: string
-            config:
-              type: object
-              additionalProperties: true
-            adapted_content:
-              $ref: "#/components/schemas/AdaptedContent"
-            remote_id:
-              type: string
-            retry_count:
-              type: integer
-            last_attempt_at:
-              type: string
-              format: date-time
-            published_at:
-              type: string
-              format: date-time
-            created_at:
-              type: string
-              format: date-time
-            updated_at:
-              type: string
-              format: date-time
+      $ref: "./components/project.yaml#/components/schemas/PublicationDetail"
 
     ProjectPublications:
-      type: object
-      additionalProperties: false
-      required:
-        - project_id
-        - items
-      properties:
-        project_id:
-          type: string
-          format: uuid
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/PublicationDetail"
+      $ref: "./components/project.yaml#/components/schemas/ProjectPublications"
 
     CreateCollabDocumentRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - title
-      properties:
-        title:
-          type: string
-          minLength: 1
+      $ref: "./components/collab.yaml#/components/schemas/CreateCollabDocumentRequest"
 
     UpdateCollabDocumentRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - title
-      properties:
-        title:
-          type: string
-          minLength: 1
+      $ref: "./components/collab.yaml#/components/schemas/UpdateCollabDocumentRequest"
 
     CollabSessionLimits:
-      type: object
-      additionalProperties: false
-      required:
-        - max_message_bytes
-        - heartbeat_seconds
-      properties:
-        max_message_bytes:
-          type: integer
-          minimum: 1
-        heartbeat_seconds:
-          type: integer
-          minimum: 1
+      $ref: "./components/collab.yaml#/components/schemas/CollabSessionLimits"
 
     CollabDocumentSession:
-      type: object
-      additionalProperties: false
-      required:
-        - document_id
-        - role
-        - websocket_url
-        - token
-        - expires_at
-        - limits
-      properties:
-        document_id:
-          type: string
-          format: uuid
-        role:
-          $ref: "#/components/schemas/CollabDocumentRole"
-        websocket_url:
-          type: string
-        token:
-          type: string
-        expires_at:
-          type: string
-          format: date-time
-        limits:
-          $ref: "#/components/schemas/CollabSessionLimits"
+      $ref: "./components/collab.yaml#/components/schemas/CollabDocumentSession"
 
     CollabDocument:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - owner_user_id
-        - title
-        - status
-        - schema_version
-        - current_seq
-        - created_at
-        - updated_at
-      properties:
-        id:
-          type: string
-          format: uuid
-        owner_user_id:
-          type: string
-          format: uuid
-        title:
-          type: string
-        status:
-          $ref: "#/components/schemas/CollabDocumentStatus"
-        schema_version:
-          type: integer
-          minimum: 1
-        current_seq:
-          type: integer
-          format: int64
-          minimum: 0
-        last_edited_by:
-          type: string
-          format: uuid
-          nullable: true
-        last_edited_at:
-          type: string
-          format: date-time
-          nullable: true
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
+      $ref: "./components/collab.yaml#/components/schemas/CollabDocument"
 
     PaginationCollabDocuments:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-        - page
-        - limit
-        - total
-        - total_pages
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/CollabDocument"
-        page:
-          type: integer
-        limit:
-          type: integer
-        total:
-          type: integer
-        total_pages:
-          type: integer
+      $ref: "./components/collab.yaml#/components/schemas/PaginationCollabDocuments"
 
     PublishResult:
-      type: object
-      additionalProperties: false
-      required:
-        - status
-      properties:
-        status:
-          $ref: "#/components/schemas/PublishResultStatus"
-        job_id:
-          type: string
-          format: uuid
-        idempotency_key:
-          type: string
-        platform:
-          $ref: "#/components/schemas/PublishPlatform"
-        queued_at:
-          type: string
-          format: date-time
-        remote_id:
-          type: string
-        publish_url:
-          type: string
-        error_message:
-          type: string
-        browser_session_id:
-          type: string
-          format: uuid
-        stream_url:
-          type: string
+      $ref: "./components/project.yaml#/components/schemas/PublishResult"
 
     ProjectListItem:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - user_id
-        - title
-        - status
-        - role
-        - created_at
-        - updated_at
-        - publications
-      properties:
-        id:
-          type: string
-          format: uuid
-        user_id:
-          type: string
-          format: uuid
-        workspace_id:
-          type: string
-          format: uuid
-          nullable: true
-        collab_document_id:
-          type: string
-          format: uuid
-          nullable: true
-        template_id:
-          type: string
-          format: uuid
-          nullable: true
-        brand_profile_id:
-          type: string
-          format: uuid
-          nullable: true
-        title:
-          type: string
-        status:
-          $ref: "#/components/schemas/ProjectStatus"
-        role:
-          $ref: "#/components/schemas/ProjectRole"
-        access_source:
-          $ref: "#/components/schemas/ProjectAccessSource"
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-        publications:
-          type: array
-          items:
-            $ref: "#/components/schemas/PublicationSummary"
+      $ref: "./components/project.yaml#/components/schemas/ProjectListItem"
 
     ProjectDetail:
-      allOf:
-        - $ref: "#/components/schemas/ProjectListItem"
-        - type: object
-          additionalProperties: false
-          required:
-            - source_content
-          properties:
-            source_content:
-              type: string
-            publication_details:
-              type: array
-              items:
-                $ref: "#/components/schemas/PublicationDetail"
-            comments:
-              type: array
-              items:
-                $ref: "#/components/schemas/ProjectComment"
-            versions:
-              type: array
-              items:
-                $ref: "#/components/schemas/ProjectVersion"
-            activities:
-              type: array
-              items:
-                $ref: "#/components/schemas/ProjectActivity"
-            collaborators:
-              type: array
-              items:
-                $ref: "#/components/schemas/ProjectCollaborator"
-            share_links:
-              type: array
-              items:
-                $ref: "#/components/schemas/ProjectShareLink"
-            permission_sources:
-              type: array
-              items:
-                $ref: "#/components/schemas/ProjectPermissionSource"
+      $ref: "./components/project.yaml#/components/schemas/ProjectDetail"
 
     ProjectPermissionSource:
-      type: object
-      additionalProperties: false
-      required:
-        - source
-        - role
-      properties:
-        source:
-          type: string
-        role:
-          type: string
+      $ref: "./components/project.yaml#/components/schemas/ProjectPermissionSource"
 
     ContentTemplate:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - scope
-        - name
-        - description
-        - title_template
-        - source_template
-        - default_platforms
-        - platform_config
-        - tags
-        - created_at
-        - updated_at
-      properties:
-        id:
-          type: string
-          format: uuid
-        workspace_id:
-          type: string
-          format: uuid
-          nullable: true
-        owner_user_id:
-          type: string
-          format: uuid
-          nullable: true
-        scope:
-          $ref: "#/components/schemas/ContentTemplateScope"
-        name:
-          type: string
-        description:
-          type: string
-        title_template:
-          type: string
-        source_template:
-          type: string
-        default_platforms:
-          type: array
-          items:
-            $ref: "#/components/schemas/PublishPlatform"
-        platform_config:
-          type: object
-          additionalProperties: true
-        tags:
-          type: array
-          items:
-            type: string
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
+      $ref: "./components/template.yaml#/components/schemas/ContentTemplate"
 
     ContentTemplatesResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/ContentTemplate"
+      $ref: "./components/template.yaml#/components/schemas/ContentTemplatesResponse"
 
     CreateContentTemplateRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - name
-        - title_template
-        - source_template
-        - default_platforms
-      properties:
-        scope:
-          $ref: "#/components/schemas/ContentTemplateScope"
-        name:
-          type: string
-        description:
-          type: string
-        title_template:
-          type: string
-        source_template:
-          type: string
-        default_platforms:
-          type: array
-          items:
-            $ref: "#/components/schemas/PublishPlatform"
-        platform_config:
-          type: object
-          additionalProperties: true
-        tags:
-          type: array
-          items:
-            type: string
+      $ref: "./components/template.yaml#/components/schemas/CreateContentTemplateRequest"
 
     BrandProfile:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - workspace_id
-        - created_by
-        - name
-        - voice
-        - audience
-        - banned_words
-        - cta
-        - link_strategy
-        - default_tags
-        - created_at
-        - updated_at
-      properties:
-        id:
-          type: string
-          format: uuid
-        workspace_id:
-          type: string
-          format: uuid
-        created_by:
-          type: string
-          format: uuid
-        name:
-          type: string
-        voice:
-          type: string
-        audience:
-          type: string
-        banned_words:
-          type: array
-          items:
-            type: string
-        cta:
-          type: string
-        link_strategy:
-          type: string
-        default_tags:
-          type: array
-          items:
-            type: string
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
+      $ref: "./components/brand.yaml#/components/schemas/BrandProfile"
 
     BrandProfilesResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/BrandProfile"
+      $ref: "./components/brand.yaml#/components/schemas/BrandProfilesResponse"
 
     CreateBrandProfileRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - name
-      properties:
-        name:
-          type: string
-        voice:
-          type: string
-        audience:
-          type: string
-        banned_words:
-          type: array
-          items:
-            type: string
-        cta:
-          type: string
-        link_strategy:
-          type: string
-        default_tags:
-          type: array
-          items:
-            type: string
+      $ref: "./components/brand.yaml#/components/schemas/CreateBrandProfileRequest"
 
     AddProjectCollaboratorRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - role
-      properties:
-        user_id:
-          type: string
-          format: uuid
-        email:
-          type: string
-          format: email
-        role:
-          $ref: "#/components/schemas/ProjectCollaboratorRole"
+      $ref: "./components/project.yaml#/components/schemas/AddProjectCollaboratorRequest"
 
     UpdateProjectCollaboratorRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - role
-      properties:
-        role:
-          $ref: "#/components/schemas/ProjectCollaboratorRole"
+      $ref: "./components/project.yaml#/components/schemas/UpdateProjectCollaboratorRequest"
 
     ProjectCollaborator:
-      type: object
-      additionalProperties: false
-      required:
-        - project_id
-        - user_id
-        - username
-        - email
-        - role
-        - created_by
-        - created_at
-      properties:
-        project_id:
-          type: string
-          format: uuid
-        user_id:
-          type: string
-          format: uuid
-        username:
-          type: string
-        email:
-          type: string
-          format: email
-        role:
-          $ref: "#/components/schemas/ProjectCollaboratorRole"
-        created_by:
-          type: string
-          format: uuid
-        created_at:
-          type: string
-          format: date-time
+      $ref: "./components/project.yaml#/components/schemas/ProjectCollaborator"
 
     ProjectCollaboratorsResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectCollaborator"
+      $ref: "./components/project.yaml#/components/schemas/ProjectCollaboratorsResponse"
 
     ProjectActivity:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - project_id
-        - actor_user_id
-        - actor_username
-        - actor_email
-        - event_type
-        - metadata
-        - created_at
-      properties:
-        id:
-          type: string
-          format: uuid
-        project_id:
-          type: string
-          format: uuid
-        actor_user_id:
-          type: string
-          format: uuid
-        actor_username:
-          type: string
-        actor_email:
-          type: string
-          format: email
-        target_user_id:
-          type: string
-          format: uuid
-        target_username:
-          type: string
-        target_email:
-          type: string
-          format: email
-        event_type:
-          $ref: "#/components/schemas/ProjectActivityType"
-        metadata:
-          type: object
-          additionalProperties: true
-        created_at:
-          type: string
-          format: date-time
+      $ref: "./components/project.yaml#/components/schemas/ProjectActivity"
 
     ProjectActivitiesResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectActivity"
+      $ref: "./components/project.yaml#/components/schemas/ProjectActivitiesResponse"
 
     CreateProjectCommentRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - body
-      properties:
-        body:
-          type: string
-          minLength: 1
-        anchor_text:
-          type: string
-        metadata:
-          type: object
-          additionalProperties: true
+      $ref: "./components/project.yaml#/components/schemas/CreateProjectCommentRequest"
 
     UpdateProjectCommentRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - status
-      properties:
-        status:
-          type: string
-          enum:
-            - resolved
+      $ref: "./components/project.yaml#/components/schemas/UpdateProjectCommentRequest"
 
     ProjectComment:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - project_id
-        - author_id
-        - author_username
-        - author_email
-        - body
-        - status
-        - metadata
-        - created_at
-      properties:
-        id:
-          type: string
-          format: uuid
-        project_id:
-          type: string
-          format: uuid
-        author_id:
-          type: string
-          format: uuid
-        author_username:
-          type: string
-        author_email:
-          type: string
-          format: email
-        body:
-          type: string
-        anchor_text:
-          type: string
-        status:
-          $ref: "#/components/schemas/ProjectCommentStatus"
-        metadata:
-          type: object
-          additionalProperties: true
-        created_at:
-          type: string
-          format: date-time
-        resolved_at:
-          type: string
-          format: date-time
+      $ref: "./components/project.yaml#/components/schemas/ProjectComment"
 
     ProjectCommentsResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectComment"
+      $ref: "./components/project.yaml#/components/schemas/ProjectCommentsResponse"
 
     ProjectVersion:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - project_id
-        - created_by
-        - creator_username
-        - creator_email
-        - version_number
-        - title
-        - source
-        - collab_seq
-        - created_at
-      properties:
-        id:
-          type: string
-          format: uuid
-        project_id:
-          type: string
-          format: uuid
-        created_by:
-          type: string
-          format: uuid
-        creator_username:
-          type: string
-        creator_email:
-          type: string
-          format: email
-        version_number:
-          type: integer
-        title:
-          type: string
-        source:
-          type: string
-        collab_document_id:
-          type: string
-          format: uuid
-        collab_seq:
-          type: integer
-          format: int64
-        created_at:
-          type: string
-          format: date-time
+      $ref: "./components/project.yaml#/components/schemas/ProjectVersion"
 
     ProjectVersionsResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectVersion"
+      $ref: "./components/project.yaml#/components/schemas/ProjectVersionsResponse"
 
     RestoreProjectVersionResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - project
-        - version
-      properties:
-        project:
-          $ref: "#/components/schemas/ProjectDetail"
-        version:
-          $ref: "#/components/schemas/ProjectVersion"
+      $ref: "./components/project.yaml#/components/schemas/RestoreProjectVersionResponse"
 
     CreateProjectShareLinkRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - role
-      properties:
-        role:
-          $ref: "#/components/schemas/ProjectCollaboratorRole"
-        expires_at:
-          type: string
-          format: date-time
+      $ref: "./components/project.yaml#/components/schemas/CreateProjectShareLinkRequest"
 
     ProjectShareLink:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - project_id
-        - created_by
-        - role
-        - status
-        - created_at
-      properties:
-        id:
-          type: string
-          format: uuid
-        project_id:
-          type: string
-          format: uuid
-        created_by:
-          type: string
-          format: uuid
-        role:
-          $ref: "#/components/schemas/ProjectCollaboratorRole"
-        status:
-          $ref: "#/components/schemas/ProjectShareLinkStatus"
-        expires_at:
-          type: string
-          format: date-time
-        created_at:
-          type: string
-          format: date-time
-        revoked_at:
-          type: string
-          format: date-time
+      $ref: "./components/project.yaml#/components/schemas/ProjectShareLink"
 
     ProjectShareLinkWithToken:
-      allOf:
-        - $ref: "#/components/schemas/ProjectShareLink"
-        - type: object
-          additionalProperties: false
-          required:
-            - token
-            - url
-          properties:
-            token:
-              type: string
-            url:
-              type: string
+      $ref: "./components/project.yaml#/components/schemas/ProjectShareLinkWithToken"
 
     ProjectShareLinksResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectShareLink"
+      $ref: "./components/project.yaml#/components/schemas/ProjectShareLinksResponse"
 
     AcceptProjectShareLinkResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - project
-        - role
-      properties:
-        project:
-          $ref: "#/components/schemas/ProjectDetail"
-        role:
-          $ref: "#/components/schemas/ProjectRole"
+      $ref: "./components/project.yaml#/components/schemas/AcceptProjectShareLinkResponse"
 
     CreateWorkspaceRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - name
-      properties:
-        name:
-          type: string
-          minLength: 1
-        slug:
-          type: string
+      $ref: "./components/workspace.yaml#/components/schemas/CreateWorkspaceRequest"
 
     UpdateWorkspaceRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - name
-      properties:
-        name:
-          type: string
-          minLength: 1
-        slug:
-          type: string
+      $ref: "./components/workspace.yaml#/components/schemas/UpdateWorkspaceRequest"
 
     AddWorkspaceMemberRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - role
-      properties:
-        user_id:
-          type: string
-          format: uuid
-        email:
-          type: string
-          format: email
-        role:
-          $ref: "#/components/schemas/WorkspaceMemberRequestRole"
+      $ref: "./components/workspace.yaml#/components/schemas/AddWorkspaceMemberRequest"
 
     CreateWorkspaceInviteRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - email
-        - role
-      properties:
-        email:
-          type: string
-          format: email
-        role:
-          $ref: "#/components/schemas/WorkspaceMemberRequestRole"
-        expires_at:
-          type: string
-          format: date-time
+      $ref: "./components/workspace.yaml#/components/schemas/CreateWorkspaceInviteRequest"
 
     AcceptWorkspaceInviteRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - token
-      properties:
-        token:
-          type: string
-          minLength: 1
+      $ref: "./components/workspace.yaml#/components/schemas/AcceptWorkspaceInviteRequest"
 
     UpdateWorkspaceMemberRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - role
-      properties:
-        role:
-          $ref: "#/components/schemas/WorkspaceMemberRequestRole"
+      $ref: "./components/workspace.yaml#/components/schemas/UpdateWorkspaceMemberRequest"
 
     Workspace:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - owner_user_id
-        - name
-        - status
-        - role
-        - created_at
-        - updated_at
-      properties:
-        id:
-          type: string
-          format: uuid
-        owner_user_id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        slug:
-          type: string
-        status:
-          $ref: "#/components/schemas/WorkspaceStatus"
-        role:
-          $ref: "#/components/schemas/WorkspaceRole"
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
+      $ref: "./components/workspace.yaml#/components/schemas/Workspace"
 
     WorkspacesResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/Workspace"
+      $ref: "./components/workspace.yaml#/components/schemas/WorkspacesResponse"
 
     WorkspaceMember:
-      type: object
-      additionalProperties: false
-      required:
-        - workspace_id
-        - user_id
-        - username
-        - email
-        - role
-        - created_at
-      properties:
-        workspace_id:
-          type: string
-          format: uuid
-        user_id:
-          type: string
-          format: uuid
-        username:
-          type: string
-        email:
-          type: string
-          format: email
-        role:
-          $ref: "#/components/schemas/WorkspaceRole"
-        invited_by:
-          type: string
-          format: uuid
-        joined_at:
-          type: string
-          format: date-time
-        created_at:
-          type: string
-          format: date-time
+      $ref: "./components/workspace.yaml#/components/schemas/WorkspaceMember"
 
     WorkspaceMembersResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/WorkspaceMember"
+      $ref: "./components/workspace.yaml#/components/schemas/WorkspaceMembersResponse"
 
     WorkspaceInvite:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - workspace_id
-        - email
-        - role
-        - invited_by
-        - status
-        - expires_at
-        - created_at
-        - updated_at
-      properties:
-        id:
-          type: string
-          format: uuid
-        workspace_id:
-          type: string
-          format: uuid
-        email:
-          type: string
-          format: email
-        role:
-          $ref: "#/components/schemas/WorkspaceRole"
-        invited_by:
-          type: string
-          format: uuid
-        accepted_by:
-          type: string
-          format: uuid
-        status:
-          type: string
-          enum:
-            - pending
-            - accepted
-            - expired
-            - revoked
-        expires_at:
-          type: string
-          format: date-time
-        accepted_at:
-          type: string
-          format: date-time
-        revoked_at:
-          type: string
-          format: date-time
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
+      $ref: "./components/workspace.yaml#/components/schemas/WorkspaceInvite"
 
     WorkspaceInviteWithToken:
-      allOf:
-        - $ref: "#/components/schemas/WorkspaceInvite"
-        - type: object
-          additionalProperties: false
-          required:
-            - token
-          properties:
-            token:
-              type: string
+      $ref: "./components/workspace.yaml#/components/schemas/WorkspaceInviteWithToken"
 
     WorkspaceInvitesResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/WorkspaceInvite"
+      $ref: "./components/workspace.yaml#/components/schemas/WorkspaceInvitesResponse"
 
     WorkspaceActivity:
-      type: object
-      additionalProperties: false
-      required:
-        - id
-        - workspace_id
-        - actor_user_id
-        - actor_username
-        - actor_email
-        - event_type
-        - metadata
-        - created_at
-      properties:
-        id:
-          type: string
-          format: uuid
-        workspace_id:
-          type: string
-          format: uuid
-        actor_user_id:
-          type: string
-          format: uuid
-        actor_username:
-          type: string
-        actor_email:
-          type: string
-          format: email
-        target_user_id:
-          type: string
-          format: uuid
-        target_username:
-          type: string
-        target_email:
-          type: string
-          format: email
-        event_type:
-          $ref: "#/components/schemas/WorkspaceActivityType"
-        metadata:
-          type: object
-          additionalProperties: true
-        created_at:
-          type: string
-          format: date-time
+      $ref: "./components/workspace.yaml#/components/schemas/WorkspaceActivity"
 
     WorkspaceActivitiesResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/WorkspaceActivity"
+      $ref: "./components/workspace.yaml#/components/schemas/WorkspaceActivitiesResponse"
 
     PaginationProjects:
-      type: object
-      additionalProperties: false
-      required:
-        - items
-        - page
-        - limit
-        - total
-        - total_pages
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectListItem"
-        page:
-          type: integer
-        limit:
-          type: integer
-        total:
-          type: integer
-        total_pages:
-          type: integer
+      $ref: "./components/project.yaml#/components/schemas/PaginationProjects"
 
     AIChatMessage:
-      type: object
-      additionalProperties: false
-      required:
-        - role
-        - content
-      properties:
-        role:
-          type: string
-          enum:
-            - user
-            - assistant
-        content:
-          type: string
+      $ref: "./components/ai.yaml#/components/schemas/AIChatMessage"
 
     AIEditContentRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - content
-        - message
-      properties:
-        title:
-          type: string
-        content:
-          type: string
-        message:
-          type: string
-        conversation:
-          type: array
-          items:
-            $ref: "#/components/schemas/AIChatMessage"
+      $ref: "./components/ai.yaml#/components/schemas/AIEditContentRequest"
 
     AIEditContentResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - channel
-        - content
-      properties:
-        channel:
-          type: string
-          enum:
-            - content
-        content:
-          type: string
+      $ref: "./components/ai.yaml#/components/schemas/AIEditContentResponse"
 
     AIEditPrepublishRequest:
-      type: object
-      additionalProperties: false
-      required:
-        - platform
-        - adapted_content
-        - message
-      properties:
-        title:
-          type: string
-        platform:
-          $ref: "#/components/schemas/PublishPlatform"
-        adapted_content:
-          $ref: "#/components/schemas/AdaptedContent"
-        message:
-          type: string
-        conversation:
-          type: array
-          items:
-            $ref: "#/components/schemas/AIChatMessage"
+      $ref: "./components/ai.yaml#/components/schemas/AIEditPrepublishRequest"
 
     AIEditPrepublishResponse:
-      type: object
-      additionalProperties: false
-      required:
-        - channel
-        - platform
-        - adapted_content
-        - content
-      properties:
-        channel:
-          type: string
-          enum:
-            - prepublish
-        platform:
-          $ref: "#/components/schemas/PublishPlatform"
-        adapted_content:
-          $ref: "#/components/schemas/AdaptedContent"
-        content:
-          type: string
+      $ref: "./components/ai.yaml#/components/schemas/AIEditPrepublishResponse"
 
     RequirementStatus:
-      type: object
-      additionalProperties: false
-      required:
-        - status
-        - title
-        - message
-      properties:
-        status:
-          $ref: "#/components/schemas/RequirementStatusValue"
-        title:
-          type: string
-        message:
-          type: string
+      $ref: "./components/account.yaml#/components/schemas/RequirementStatus"
 
     WechatAccount:
-      type: object
-      additionalProperties: false
-      required:
-        - platform
-        - app_id
-        - has_app_secret
-        - status
-        - ip_whitelist
-        - account_auth
-      properties:
-        platform:
-          type: string
-          enum:
-            - wechat
-        app_id:
-          type: string
-        has_app_secret:
-          type: boolean
-        status:
-          $ref: "#/components/schemas/PlatformAccountStatus"
-        last_tested_at:
-          type: string
-          format: date-time
-        last_test_error:
-          type: string
-        updated_at:
-          type: string
-          format: date-time
-        ip_whitelist:
-          $ref: "#/components/schemas/RequirementStatus"
-        account_auth:
-          $ref: "#/components/schemas/RequirementStatus"
+      $ref: "./components/account.yaml#/components/schemas/WechatAccount"
 
     SaveWechatAccountInput:
-      type: object
-      additionalProperties: false
-      required:
-        - app_id
-      properties:
-        app_id:
-          type: string
-        app_secret:
-          type: string
+      $ref: "./components/account.yaml#/components/schemas/SaveWechatAccountInput"
 
     WechatConnectionTestResult:
-      type: object
-      additionalProperties: false
-      required:
-        - connected
-        - status
-        - message
-        - tested_at
-        - ip_whitelist
-        - account_auth
-      properties:
-        connected:
-          type: boolean
-        status:
-          $ref: "#/components/schemas/ConnectionTestStatus"
-        message:
-          type: string
-        err_code:
-          type: integer
-        err_msg:
-          type: string
-        tested_at:
-          type: string
-          format: date-time
-        ip_whitelist:
-          $ref: "#/components/schemas/RequirementStatus"
-        account_auth:
-          $ref: "#/components/schemas/RequirementStatus"
+      $ref: "./components/account.yaml#/components/schemas/WechatConnectionTestResult"
 
     XAccount:
-      type: object
-      additionalProperties: false
-      required:
-        - platform
-        - auth_type
-        - has_api_secret
-        - has_access_token
-        - has_access_token_secret
-        - has_oauth2_refresh
-        - status
-        - account_auth
-        - publish_access
-      properties:
-        platform:
-          type: string
-          enum:
-            - x
-        auth_type:
-          type: string
-          enum:
-            - oauth1
-            - oauth2
-        api_key:
-          type: string
-        expires_at:
-          type: string
-          format: date-time
-        username:
-          type: string
-        has_api_secret:
-          type: boolean
-        has_access_token:
-          type: boolean
-        has_access_token_secret:
-          type: boolean
-        has_oauth2_refresh:
-          type: boolean
-        status:
-          $ref: "#/components/schemas/PlatformAccountStatus"
-        last_tested_at:
-          type: string
-          format: date-time
-        last_test_error:
-          type: string
-        updated_at:
-          type: string
-          format: date-time
-        account_auth:
-          $ref: "#/components/schemas/RequirementStatus"
-        publish_access:
-          $ref: "#/components/schemas/RequirementStatus"
+      $ref: "./components/account.yaml#/components/schemas/XAccount"
 
     SaveXAccountInput:
-      type: object
-      additionalProperties: false
-      properties:
-        api_key:
-          type: string
-        api_secret:
-          type: string
-        access_token:
-          type: string
-        access_token_secret:
-          type: string
-        username:
-          type: string
+      $ref: "./components/account.yaml#/components/schemas/SaveXAccountInput"
 
     XConnectionTestResult:
-      type: object
-      additionalProperties: false
-      required:
-        - connected
-        - status
-        - message
-        - tested_at
-        - account_auth
-        - publish_access
-      properties:
-        connected:
-          type: boolean
-        status:
-          $ref: "#/components/schemas/ConnectionTestStatus"
-        message:
-          type: string
-        tested_at:
-          type: string
-          format: date-time
-        user_id:
-          type: string
-        username:
-          type: string
-        name:
-          type: string
-        account_auth:
-          $ref: "#/components/schemas/RequirementStatus"
-        publish_access:
-          $ref: "#/components/schemas/RequirementStatus"
+      $ref: "./components/account.yaml#/components/schemas/XConnectionTestResult"
 
     DouyinAccount:
-      type: object
-      additionalProperties: false
-      required:
-        - platform
-        - status
-      properties:
-        platform:
-          type: string
-          enum:
-            - douyin
-        username:
-          type: string
-        avatar_url:
-          type: string
-        status:
-          $ref: "#/components/schemas/PlatformAccountStatus"
-        last_tested_at:
-          type: string
-          format: date-time
-        last_test_error:
-          type: string
-        updated_at:
-          type: string
-          format: date-time
+      $ref: "./components/account.yaml#/components/schemas/DouyinAccount"
 
     ZhihuAccount:
-      type: object
-      additionalProperties: false
-      required:
-        - platform
-        - status
-      properties:
-        platform:
-          type: string
-          enum:
-            - zhihu
-        username:
-          type: string
-        avatar_url:
-          type: string
-        status:
-          $ref: "#/components/schemas/PlatformAccountStatus"
-        last_tested_at:
-          type: string
-          format: date-time
-        last_test_error:
-          type: string
-        updated_at:
-          type: string
-          format: date-time
+      $ref: "./components/account.yaml#/components/schemas/ZhihuAccount"
 
     BrowserSession:
-      type: object
-      additionalProperties: false
-      required:
-        - session_id
-        - platform
-        - status
-        - expires_at
-      properties:
-        session_id:
-          type: string
-          format: uuid
-        platform:
-          $ref: "#/components/schemas/PublishPlatform"
-        status:
-          $ref: "#/components/schemas/BrowserSessionStatus"
-        stream_url:
-          type: string
-        stream_token_expires_at:
-          type: string
-          format: date-time
-        expires_at:
-          type: string
-          format: date-time
-        message:
-          type: string
+      $ref: "./components/account.yaml#/components/schemas/BrowserSession"
 
     StartBrowserSessionResult:
-      type: object
-      additionalProperties: false
-      required:
-        - session_id
-        - status
-        - stream_url
-        - stream_token_expires_at
-        - expires_at
-      properties:
-        session_id:
-          type: string
-          format: uuid
-        status:
-          $ref: "#/components/schemas/BrowserSessionStatus"
-        stream_url:
-          type: string
-        stream_token_expires_at:
-          type: string
-          format: date-time
-        expires_at:
-          type: string
-          format: date-time
+      $ref: "./components/account.yaml#/components/schemas/StartBrowserSessionResult"
 
     StartPublishBrowserSessionResult:
-      allOf:
-        - $ref: "#/components/schemas/StartBrowserSessionResult"
-        - type: object
-          additionalProperties: false
-          required:
-            - platform
-            - project_id
-          properties:
-            platform:
-              $ref: "#/components/schemas/PublishPlatform"
-            project_id:
-              type: string
-              format: uuid
+      $ref: "./components/account.yaml#/components/schemas/StartPublishBrowserSessionResult"
 
     CompleteBrowserSessionResult:
-      type: object
-      additionalProperties: false
-      required:
-        - session_id
-        - platform
-        - status
-        - account
-        - message
-      properties:
-        session_id:
-          type: string
-          format: uuid
-        platform:
-          $ref: "#/components/schemas/PublishPlatform"
-        status:
-          $ref: "#/components/schemas/BrowserSessionStatus"
-        account:
-          type: object
-          additionalProperties: false
-          required:
-            - username
-            - avatar_url
-          properties:
-            username:
-              type: string
-            avatar_url:
-              type: string
-        message:
-          type: string
+      $ref: "./components/account.yaml#/components/schemas/CompleteBrowserSessionResult"
 
     CancelBrowserSessionResult:
-      type: object
-      additionalProperties: false
-      required:
-        - session_id
-        - status
-      properties:
-        session_id:
-          type: string
-          format: uuid
-        status:
-          $ref: "#/components/schemas/BrowserSessionStatus"
+      $ref: "./components/account.yaml#/components/schemas/CancelBrowserSessionResult"

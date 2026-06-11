@@ -210,7 +210,7 @@ export function DashboardOverviewPage() {
 
       setStats(statsResponse);
       setProjects(projectsResponse.items);
-      setTotalProjects(projectsResponse.total);
+      setTotalProjects(statsResponse.total_projects);
     } catch (requestError) {
       setError(
         requestError instanceof Error

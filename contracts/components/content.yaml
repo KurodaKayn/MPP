@@ -1,0 +1,91 @@
+components:
+  schemas:
+    DraftFormat:
+      type: string
+      enum:
+        - html
+        - markdown
+        - text
+
+    PublishPlatform:
+      type: string
+      enum:
+        - douyin
+        - wechat
+        - x
+        - zhihu
+
+    GeneratedByType:
+      type: string
+      enum:
+        - agent
+        - system
+        - user
+
+    AdaptedAssetType:
+      type: string
+      enum:
+        - image
+
+    GeneratedBy:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - id
+      properties:
+        type:
+          $ref: "#/components/schemas/GeneratedByType"
+        id:
+          type: string
+          minLength: 1
+        version:
+          type: string
+        agent_run_id:
+          type: string
+        instructions:
+          type: string
+
+    AdaptedAsset:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - source_url
+      properties:
+        type:
+          $ref: "#/components/schemas/AdaptedAssetType"
+        source_url:
+          type: string
+          minLength: 1
+        alt:
+          type: string
+
+    AdaptedContent:
+      type: object
+      additionalProperties: false
+      required:
+        - format
+      properties:
+        schema_version:
+          type: integer
+          minimum: 1
+        format:
+          $ref: "#/components/schemas/DraftFormat"
+        summary:
+          type: string
+        source_revision:
+          type: string
+          description: RFC3339 timestamp or a future revision identifier.
+        generated_by:
+          $ref: "#/components/schemas/GeneratedBy"
+        html:
+          type: string
+        markdown:
+          type: string
+        text:
+          type: string
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdaptedAsset"

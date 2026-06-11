@@ -54,6 +54,75 @@ func TestListProjects(t *testing.T) {
 	}
 }
 
+func TestListProjectsUsesKeysetCursor(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{
+		Username:     "keyset-owner",
+		Email:        "keyset-owner@example.com",
+		PasswordHash: "hash",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	baseTime := time.Date(2026, 6, 11, 12, 0, 0, 0, time.UTC)
+	projects := []models.Project{
+		{
+			ID:            uuid.MustParse("00000000-0000-0000-0000-000000000003"),
+			UserID:        user.ID,
+			Title:         "newest",
+			SourceContent: "content",
+			Status:        models.ProjectStatusReady,
+			CreatedAt:     baseTime.Add(2 * time.Hour),
+		},
+		{
+			ID:            uuid.MustParse("00000000-0000-0000-0000-000000000001"),
+			UserID:        user.ID,
+			Title:         "same-time-a",
+			SourceContent: "content",
+			Status:        models.ProjectStatusReady,
+			CreatedAt:     baseTime.Add(time.Hour),
+		},
+		{
+			ID:            uuid.MustParse("00000000-0000-0000-0000-000000000002"),
+			UserID:        user.ID,
+			Title:         "same-time-b",
+			SourceContent: "content",
+			Status:        models.ProjectStatusReady,
+			CreatedAt:     baseTime.Add(time.Hour),
+		},
+		{
+			ID:            uuid.MustParse("00000000-0000-0000-0000-000000000004"),
+			UserID:        user.ID,
+			Title:         "oldest",
+			SourceContent: "content",
+			Status:        models.ProjectStatusReady,
+			CreatedAt:     baseTime,
+		},
+	}
+	for _, project := range projects {
+		require.NoError(t, db.Create(&project).Error)
+	}
+
+	firstPage, err := s.ListProjectsCursor("", 1, 2, "", "", "", nil)
+	require.NoError(t, err)
+	require.True(t, firstPage.HasMore)
+	require.NotEmpty(t, firstPage.NextCursor)
+	firstItems := firstPage.Items.([]dto.ProjectListItem)
+	require.Len(t, firstItems, 2)
+	require.Equal(t, projects[0].ID, firstItems[0].ID)
+	require.Equal(t, projects[1].ID, firstItems[1].ID)
+
+	secondPage, err := s.ListProjectsCursor(firstPage.NextCursor, 2, 2, "", "", "", nil)
+	require.NoError(t, err)
+	require.False(t, secondPage.HasMore)
+	require.Empty(t, secondPage.NextCursor)
+	secondItems := secondPage.Items.([]dto.ProjectListItem)
+	require.Len(t, secondItems, 2)
+	require.Equal(t, projects[2].ID, secondItems[0].ID)
+	require.Equal(t, projects[3].ID, secondItems[1].ID)
+}
+
 func TestListProjectsIncludesCollaboratorProjectsWithRoles(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)

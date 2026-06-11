@@ -7,11 +7,14 @@ import (
 )
 
 type PaginationResponse struct {
-	Items      any   `json:"items"`
-	Page       int   `json:"page"`
-	Limit      int   `json:"limit"`
-	Total      int64 `json:"total"`
-	TotalPages int   `json:"total_pages"`
+	Items      any    `json:"items"`
+	Page       int    `json:"page"`
+	Limit      int    `json:"limit"`
+	Total      int64  `json:"total"`
+	TotalPages int    `json:"total_pages"`
+	Cursor     string `json:"cursor,omitempty"`
+	NextCursor string `json:"next_cursor,omitempty"`
+	HasMore    bool   `json:"has_more"`
 }
 
 type ErrorResponse struct {
