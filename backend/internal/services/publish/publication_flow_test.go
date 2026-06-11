@@ -411,11 +411,61 @@ func TestScheduleProjectPublicationListsAndCancelsCalendarItem(t *testing.T) {
 	require.Len(t, calendar.Items[0].Attempts, 1)
 	require.Equal(t, "first attempt failed", calendar.Items[0].Attempts[0].ErrorMessage)
 
-	cancelled, err := s.CancelScheduledPublication(context.Background(), schedule.ID, user.ID)
+	cancelled, err := s.CancelScheduledPublication(context.Background(), project.ID, schedule.ID, user.ID)
 	require.NoError(t, err)
 	require.Equal(t, models.ScheduledPublicationStatusCancelled, cancelled.Status)
 	require.NotNil(t, cancelled.CancelledBy)
 	require.Equal(t, user.ID, *cancelled.CancelledBy)
+}
+
+func TestCancelScheduledPublicationRequiresMatchingProject(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(&models.ScheduledPublication{}))
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "schedule-owner", Email: "schedule-owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	firstProject := models.Project{
+		UserID:        user.ID,
+		Title:         "First project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	secondProject := models.Project{
+		UserID:        user.ID,
+		Title:         "Second project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&firstProject).Error)
+	require.NoError(t, db.Create(&secondProject).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      firstProject.ID,
+		Platform:       "wechat",
+		Status:         models.PublicationStatusDraft,
+		Config:         datatypes.JSON(`{"title":"First project"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	require.NoError(t, db.Create(&pub).Error)
+	schedule := models.ScheduledPublication{
+		WorkspaceID:    models.PersonalWorkspaceID(user.ID),
+		ProjectID:      firstProject.ID,
+		PublicationID:  pub.ID,
+		ScheduledAt:    time.Now().UTC().Add(time.Hour),
+		Status:         models.ScheduledPublicationStatusScheduled,
+		IdempotencyKey: "project-match",
+		CreatedBy:      user.ID,
+	}
+	require.NoError(t, db.Create(&schedule).Error)
+
+	cancelled, err := s.CancelScheduledPublication(context.Background(), secondProject.ID, schedule.ID, user.ID)
+
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	require.Nil(t, cancelled)
+	var saved models.ScheduledPublication
+	require.NoError(t, db.First(&saved, "id = ?", schedule.ID).Error)
+	require.Equal(t, models.ScheduledPublicationStatusScheduled, saved.Status)
+	require.Nil(t, saved.CancelledBy)
 }
 
 func TestPublishProjectAllowsEmbeddedWechatCredentialsWithoutSavedAccount(t *testing.T) {

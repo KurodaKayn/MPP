@@ -80,15 +80,15 @@ func (s *Service) ScheduleProjectPublication(ctx context.Context, projectID uuid
 	return &item, nil
 }
 
-func (s *Service) CancelScheduledPublication(ctx context.Context, scheduleID uuid.UUID, userID uuid.UUID) (*dto.ScheduledPublication, error) {
-	if scheduleID == uuid.Nil || userID == uuid.Nil {
+func (s *Service) CancelScheduledPublication(ctx context.Context, projectID uuid.UUID, scheduleID uuid.UUID, userID uuid.UUID) (*dto.ScheduledPublication, error) {
+	if projectID == uuid.Nil || scheduleID == uuid.Nil || userID == uuid.Nil {
 		return nil, ErrForbidden
 	}
 	var schedule models.ScheduledPublication
 	if err := s.db.WithContext(ctx).
 		Preload("Project").
 		Preload("Publication").
-		First(&schedule, "id = ?", scheduleID).Error; err != nil {
+		First(&schedule, "id = ? AND project_id = ?", scheduleID, projectID).Error; err != nil {
 		return nil, err
 	}
 	if _, err := s.projectForPublish(ctx, schedule.ProjectID, userID); err != nil {
