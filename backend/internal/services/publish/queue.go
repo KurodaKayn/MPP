@@ -358,6 +358,7 @@ func (s *Service) StartPublishWorker(ctx context.Context) {
 	}
 
 	s.StartPublishOutboxDispatcher(ctx)
+	s.StartScheduledPublicationDispatcher(ctx)
 	go s.queue.Start(ctx, s.processPublishJob)
 }
 
@@ -375,6 +376,7 @@ func (s *Service) StartPublishWorkerWithErrors(ctx context.Context) <-chan error
 	}
 
 	s.StartPublishOutboxDispatcher(ctx)
+	s.StartScheduledPublicationDispatcher(ctx)
 	workerErrors := make(chan error, 1)
 	go func() {
 		if err := runner.Run(ctx, s.processPublishJob); err != nil && ctx.Err() == nil {
