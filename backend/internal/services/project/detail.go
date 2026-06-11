@@ -96,12 +96,6 @@ func (s *Service) projectPermissionSources(project models.Project, userID uuid.U
 		}
 	}
 
-	if accessSource == models.ProjectAccessSourceDirectShare {
-		sources = appendProjectPermissionSource(sources, dto.ProjectPermissionSource{
-			Source: models.ProjectAccessSourceDirectShare,
-			Role:   role,
-		})
-	}
 	return sources
 }
 
