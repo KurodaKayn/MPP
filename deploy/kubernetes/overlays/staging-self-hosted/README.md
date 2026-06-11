@@ -29,8 +29,11 @@ Before applying this overlay to a shared staging cluster:
   render the `mpp-app-secrets` manifest from a temporary env file.
 - Patch storage classes, storage sizes, PgBouncer pool sizing, and data-service
   resource limits if the cluster defaults are not appropriate.
-- Configure backup and retention outside these manifests before keeping useful
-  staging data in the StatefulSets.
+- Patch the `mpp-data-backups` PVC, `postgres-backup` and `redis-backup`
+  schedules, and `BACKUP_RETENTION_DAYS` before keeping useful staging data in
+  the StatefulSets.
+- Copy backup artifacts off the in-cluster backup PVC or enable
+  storage-provider snapshots before treating this overlay as recoverable.
 
 Render and validate:
 
