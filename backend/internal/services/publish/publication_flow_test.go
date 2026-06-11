@@ -339,6 +339,85 @@ func TestPublishProjectAppendsAttemptsWhenRetryingSameSchedule(t *testing.T) {
 	require.Empty(t, savedSchedule.LastError)
 }
 
+func TestScheduleProjectPublicationListsAndCancelsCalendarItem(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(&models.ScheduledPublication{}, &models.PublishAttempt{}, &models.ProjectVersion{}))
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "calendar-owner", Email: "calendar-owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	workspaceID := models.PersonalWorkspaceID(user.ID)
+	require.NoError(t, db.Create(&models.Workspace{
+		ID:          workspaceID,
+		OwnerUserID: user.ID,
+		Name:        models.PersonalWorkspaceName,
+		Status:      models.WorkspaceStatusActive,
+	}).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		WorkspaceID:   &workspaceID,
+		Title:         "Calendar draft",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Status:         models.PublicationStatusDraft,
+		Config:         datatypes.JSON(`{"title":"Calendar draft"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}
+	account := createConnectedPublishAccount(t, db, user.ID, "wechat", datatypes.JSON(`{"app_id":"wx-calendar","app_secret":"calendar-secret"}`))
+	pub.PlatformAccountID = &account.ID
+	require.NoError(t, db.Create(&pub).Error)
+	version := models.ProjectVersion{
+		ProjectID:     project.ID,
+		CreatedBy:     user.ID,
+		VersionNumber: 1,
+		Title:         project.Title,
+		SourceContent: project.SourceContent,
+		Source:        "content_save",
+	}
+	require.NoError(t, db.Create(&version).Error)
+	scheduledAt := time.Now().UTC().Add(2 * time.Hour).Truncate(time.Second)
+
+	schedule, err := s.ScheduleProjectPublication(context.Background(), project.ID, user.ID, dto.SchedulePublicationRequest{
+		Platform:       "wechat",
+		ScheduledAt:    scheduledAt,
+		Timezone:       "Asia/Shanghai",
+		IdempotencyKey: "calendar-key",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, models.ScheduledPublicationStatusScheduled, schedule.Status)
+	require.Equal(t, "Asia/Shanghai", schedule.Timezone)
+	require.Equal(t, version.ID, *schedule.ProjectVersionID)
+	require.Equal(t, account.ID, *schedule.PlatformAccountID)
+
+	require.NoError(t, db.Create(&models.PublishAttempt{
+		ScheduledPublicationID: schedule.ID,
+		AttemptNo:              1,
+		StartedAt:              scheduledAt,
+		Status:                 models.PublishAttemptStatusFailed,
+		ErrorMessage:           "first attempt failed",
+	}).Error)
+	calendar, err := s.ListWorkspaceScheduledPublications(context.Background(), workspaceID, user.ID, scheduledAt.Add(-time.Hour), scheduledAt.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, calendar.Items, 1)
+	require.Equal(t, schedule.ID, calendar.Items[0].ID)
+	require.Equal(t, project.Title, calendar.Items[0].ProjectTitle)
+	require.Equal(t, "wechat", calendar.Items[0].Platform)
+	require.Len(t, calendar.Items[0].Attempts, 1)
+	require.Equal(t, "first attempt failed", calendar.Items[0].Attempts[0].ErrorMessage)
+
+	cancelled, err := s.CancelScheduledPublication(context.Background(), schedule.ID, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.ScheduledPublicationStatusCancelled, cancelled.Status)
+	require.NotNil(t, cancelled.CancelledBy)
+	require.Equal(t, user.ID, *cancelled.CancelledBy)
+}
+
 func TestPublishProjectAllowsEmbeddedWechatCredentialsWithoutSavedAccount(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
