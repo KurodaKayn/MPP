@@ -15,13 +15,16 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
-const dashboardStatsCacheKey = "mpp:dashboard:stats:global:v1"
+const dashboardStatsCachePrefix = "mpp:dashboard:stats:global:v1"
+const dashboardStatsCacheGenerationKey = "mpp:dashboard:stats-generation:v1"
 const dashboardStatsCacheVersion = 1
 const dashboardStatsRefreshTimeout = 15 * time.Second
+const dashboardStatsInvalidateTimeout = 2 * time.Second
 
 type dashboardStatsCachePayload struct {
-	Version int                        `json:"version"`
-	Stats   dto.DashboardStatsResponse `json:"stats"`
+	Version    int                        `json:"version"`
+	Generation string                     `json:"generation"`
+	Stats      dto.DashboardStatsResponse `json:"stats"`
 }
 
 func (s *Service) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
@@ -82,24 +85,38 @@ func (s *Service) computeStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsRespo
 
 func (s *Service) getCachedStats() (*dto.DashboardStatsResponse, error) {
 	ctx := s.requestContext()
-	if stats, hit, _ := s.cachedDashboardStats(ctx); hit {
-		return stats, nil
+	generation, err := s.dashboardStatsCacheGeneration(ctx)
+	cacheUnavailable := err != nil
+	if cacheUnavailable {
+		generation = "0"
+	}
+	cacheKey := dashboardStatsCacheKey(generation)
+	if !cacheUnavailable {
+		if stats, hit, _ := s.cachedDashboardStats(ctx, cacheKey, generation); hit {
+			return stats, nil
+		}
 	}
 
 	if s.cacheGroup == nil {
-		return s.refreshDashboardStatsCache(ctx)
+		if cacheUnavailable {
+			return s.computeStats(nil)
+		}
+		return s.refreshDashboardStatsCache(ctx, cacheKey, generation)
 	}
 
-	resultCh := s.cacheGroup.DoChan(dashboardStatsCacheKey, func() (any, error) {
+	resultCh := s.cacheGroup.DoChan(cacheKey, func() (any, error) {
 		refreshCtx, cancel := dashboardStatsRefreshContext(ctx)
 		defer cancel()
 		refreshSvc := s.WithContext(refreshCtx)
-		if stats, hit, err := refreshSvc.cachedDashboardStats(refreshCtx); hit {
+		if cacheUnavailable {
+			return refreshSvc.computeStats(nil)
+		}
+		if stats, hit, err := refreshSvc.cachedDashboardStats(refreshCtx, cacheKey, generation); hit {
 			return stats, nil
 		} else if err != nil {
 			return refreshSvc.computeStats(nil)
 		}
-		return refreshSvc.refreshDashboardStatsCache(refreshCtx)
+		return refreshSvc.refreshDashboardStatsCache(refreshCtx, cacheKey, generation)
 	})
 
 	select {
@@ -116,43 +133,44 @@ func (s *Service) getCachedStats() (*dto.DashboardStatsResponse, error) {
 	}
 }
 
-func (s *Service) cachedDashboardStats(ctx context.Context) (*dto.DashboardStatsResponse, bool, error) {
-	cached, err := s.cache.Get(ctx, dashboardStatsCacheKey).Bytes()
+func (s *Service) cachedDashboardStats(ctx context.Context, cacheKey string, generation string) (*dto.DashboardStatsResponse, bool, error) {
+	cached, err := s.cache.Get(ctx, cacheKey).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return nil, false, nil
 		}
 		return nil, false, err
 	}
-	if stats, ok := decodeDashboardStatsCachePayload(cached); ok {
+	if stats, ok := decodeDashboardStatsCachePayload(cached, generation); ok {
 		return stats, true, nil
 	}
 	return nil, false, nil
 }
 
-func decodeDashboardStatsCachePayload(cached []byte) (*dto.DashboardStatsResponse, bool) {
+func decodeDashboardStatsCachePayload(cached []byte, generation string) (*dto.DashboardStatsResponse, bool) {
 	var payload dashboardStatsCachePayload
 	if err := json.Unmarshal(cached, &payload); err != nil {
 		return nil, false
 	}
-	if !dashboardStatsPayloadValid(payload) {
+	if !dashboardStatsPayloadValid(payload, generation) {
 		return nil, false
 	}
 	return &payload.Stats, true
 }
 
-func (s *Service) refreshDashboardStatsCache(ctx context.Context) (*dto.DashboardStatsResponse, error) {
+func (s *Service) refreshDashboardStatsCache(ctx context.Context, cacheKey string, generation string) (*dto.DashboardStatsResponse, error) {
 	stats, err := s.computeStats(nil)
 	if err != nil {
 		return nil, err
 	}
 	payload := dashboardStatsCachePayload{
-		Version: dashboardStatsCacheVersion,
-		Stats:   *stats,
+		Version:    dashboardStatsCacheVersion,
+		Generation: generation,
+		Stats:      *stats,
 	}
 	encoded, err := json.Marshal(payload)
 	if err == nil {
-		_ = s.cache.Set(ctx, dashboardStatsCacheKey, encoded, s.cacheTTL).Err()
+		_ = s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
 	}
 	return stats, nil
 }
@@ -161,8 +179,11 @@ func dashboardStatsRefreshContext(parent context.Context) (context.Context, cont
 	return context.WithTimeout(context.WithoutCancel(parent), dashboardStatsRefreshTimeout)
 }
 
-func dashboardStatsPayloadValid(payload dashboardStatsCachePayload) bool {
+func dashboardStatsPayloadValid(payload dashboardStatsCachePayload, generation string) bool {
 	if payload.Version != dashboardStatsCacheVersion {
+		return false
+	}
+	if payload.Generation != generation {
 		return false
 	}
 	return payload.Stats.TotalUsers >= 0 &&
@@ -217,4 +238,50 @@ func (s *Service) canUseDashboardStatsCache() bool {
 	}
 	stickyUntil, sticky := dbrouter.StickyWriterUntil(s.requestContext())
 	return !sticky || !stickyUntil.After(time.Now())
+}
+
+func (s *Service) InvalidateDashboardStatsCache(ctx context.Context) {
+	if s == nil || s.cache == nil {
+		return
+	}
+	if ctx != nil {
+		s = s.WithContext(ctx)
+	}
+	invalidateCtx, cancel := dashboardStatsInvalidationContext(s.requestContext())
+	defer cancel()
+	_ = s.cache.Incr(invalidateCtx, dashboardStatsCacheGenerationKey).Err()
+	deleteDashboardStatsCacheKeys(invalidateCtx, s.cache)
+}
+
+func dashboardStatsInvalidationContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), dashboardStatsInvalidateTimeout)
+}
+
+func (s *Service) dashboardStatsCacheGeneration(ctx context.Context) (string, error) {
+	generation, err := s.cache.Get(ctx, dashboardStatsCacheGenerationKey).Result()
+	if errors.Is(err, redis.Nil) {
+		return "0", nil
+	}
+	return generation, err
+}
+
+func dashboardStatsCacheKey(generation string) string {
+	return dashboardStatsCachePrefix + ":" + generation
+}
+
+func deleteDashboardStatsCacheKeys(ctx context.Context, client *redis.Client) {
+	var cursor uint64
+	for {
+		keys, next, err := client.Scan(ctx, cursor, dashboardStatsCachePrefix+":*", 100).Result()
+		if err != nil {
+			return
+		}
+		if len(keys) > 0 {
+			_ = client.Del(ctx, keys...).Err()
+		}
+		if next == 0 {
+			return
+		}
+		cursor = next
+	}
 }

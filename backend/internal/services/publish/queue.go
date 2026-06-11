@@ -32,6 +32,7 @@ const (
 	publishStaleAfter       = 2 * publishLockTTL
 	publishReplayWait       = 2 * time.Second
 	publishReplayPoll       = 25 * time.Millisecond
+	publishCleanupTimeout   = 2 * time.Second
 )
 
 var (
@@ -292,6 +293,7 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
 		return nil, err
 	}
+	s.invalidateDashboardCaches(ctx)
 	if err := s.dispatchOutboxEvent(ctx, outboxEventID); err != nil {
 		log.Printf("failed to dispatch publish outbox event %s for job %s: %v", outboxEventID, job.JobID, err)
 	}
@@ -396,9 +398,11 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 	if err != nil {
 		log.Printf("publish job %s failed: %v", job.JobID, err)
 		observeJob(publishJobResultError)
-		if markErr := s.markPublicationFailed(job.ProjectID, job.Platform, err.Error()); markErr != nil {
+		cleanupCtx, cancelCleanup := publishCleanupContext(ctx)
+		if markErr := s.markPublicationFailed(cleanupCtx, job.ProjectID, job.Platform, err.Error()); markErr != nil {
 			log.Printf("failed to mark publish job %s as failed: %v", job.JobID, markErr)
 		}
+		cancelCleanup()
 		_ = s.recordPublishEvent(models.PublishEvent{
 			PublicationID:  job.PublicationID,
 			ProjectID:      job.ProjectID,
@@ -582,16 +586,24 @@ func (s *Service) markPublicationQueued(pub *models.ProjectPlatformPublication, 
 	return nil
 }
 
-func (s *Service) markPublicationFailed(projectID uuid.UUID, platform, message string) error {
-	return s.db.Model(&models.ProjectPlatformPublication{}).
+func (s *Service) markPublicationFailed(ctx context.Context, projectID uuid.UUID, platform, message string) error {
+	if err := s.db.WithContext(ctx).Model(&models.ProjectPlatformPublication{}).
 		Where("project_id = ? AND platform = ?", projectID, platform).
 		Updates(map[string]any{
 			"status":        models.PublicationStatusFailed,
 			"error_message": SanitizeUserFacingErrorMessage(message),
 			"retry_count":   gorm.Expr("retry_count + ?", 1),
-		}).Error
+		}).Error; err != nil {
+		return err
+	}
+	s.invalidateDashboardCaches(ctx)
+	return nil
 }
 
 func publishLockKey(projectID uuid.UUID, platform string) string {
 	return publishLockKeyPrefix + projectID.String() + ":" + platform
+}
+
+func publishCleanupContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), publishCleanupTimeout)
 }

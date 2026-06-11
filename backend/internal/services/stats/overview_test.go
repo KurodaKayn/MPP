@@ -94,6 +94,120 @@ func TestGetStatsCachesGlobalDashboardStats(t *testing.T) {
 	assert.Equal(t, int64(1), refreshedStats.TotalFailedPublications)
 }
 
+func TestCreateProjectInvalidatesDashboardStatsCache(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	user := seedStatsOverviewProject(t, db, "stats-create", models.PublicationStatusPublished)
+
+	stats, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalProjects)
+	requireSingleStatsCacheKey(t, redisClient)
+
+	_, err = s.WithContext(context.Background()).CreateProject(user.ID, dto.CreateProjectRequest{
+		Title:         "stats-create-fresh",
+		SourceContent: "content",
+		Platforms:     []string{"zhihu"},
+	})
+	require.NoError(t, err)
+	requireStatsCacheKeys(t, redisClient, 0)
+
+	refreshed, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), refreshed.TotalProjects)
+}
+
+func TestStatsCacheIgnoresStaleRefillAfterInvalidation(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+	ctx := context.Background()
+
+	user := seedStatsOverviewProject(t, db, "stats-cache-race", models.PublicationStatusPublished)
+
+	first, err := s.WithContext(ctx).GetStats(nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), first.TotalProjects)
+	staleKey := requireSingleStatsCacheKey(t, redisClient)
+	stalePayload, err := redisClient.Get(ctx, staleKey).Bytes()
+	require.NoError(t, err)
+
+	_, err = s.WithContext(ctx).CreateProject(user.ID, dto.CreateProjectRequest{
+		Title:         "stats-cache-fresh",
+		SourceContent: "content",
+		Platforms:     []string{"zhihu"},
+	})
+	require.NoError(t, err)
+	requireStatsCacheKeys(t, redisClient, 0)
+
+	require.NoError(t, redisClient.Set(ctx, staleKey, stalePayload, time.Minute).Err())
+
+	refreshed, err := s.WithContext(ctx).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), refreshed.TotalProjects)
+	assert.Equal(t, int64(1), refreshed.TotalUsers)
+}
+
+func TestUpdateProjectInvalidatesDashboardStatsCache(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+	ctx := context.Background()
+
+	user, project := seedStatsLifecycleProject(t, db, "stats-update")
+
+	stats, err := s.WithContext(ctx).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
+	assert.Equal(t, int64(1), stats.TotalFailedPublications)
+	requireSingleStatsCacheKey(t, redisClient)
+
+	_, err = s.WithContext(ctx).UpdateProject(project.ID, user.ID, dto.UpdateProjectRequest{
+		Title:         "stats-update-fresh",
+		SourceContent: "<p>fresh</p>",
+		Platforms:     []string{"zhihu", "douyin"},
+	})
+	require.NoError(t, err)
+	requireStatsCacheKeys(t, redisClient, 0)
+
+	refreshed, err := s.WithContext(ctx).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), refreshed.TotalPublishedPublications)
+	assert.Equal(t, int64(0), refreshed.TotalFailedPublications)
+}
+
+func TestSaveProjectPlatformsInvalidatesDashboardStatsCache(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+	ctx := context.Background()
+
+	user, project := seedStatsLifecycleProject(t, db, "stats-platforms")
+
+	stats, err := s.WithContext(ctx).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
+	assert.Equal(t, int64(1), stats.TotalFailedPublications)
+	requireSingleStatsCacheKey(t, redisClient)
+
+	_, err = s.WithContext(ctx).SaveProjectPlatforms(project.ID, user.ID, dto.SaveProjectPlatformsRequest{
+		Platforms: []string{"douyin"},
+	})
+	require.NoError(t, err)
+	requireStatsCacheKeys(t, redisClient, 0)
+
+	refreshed, err := s.WithContext(ctx).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), refreshed.TotalPublishedPublications)
+	assert.Equal(t, int64(0), refreshed.TotalFailedPublications)
+}
+
 func TestGetStatsBypassesCacheForStickyEventualCounts(t *testing.T) {
 	writer := testsupport.SetupTestDB()
 	reader := testsupport.SetupTestDB()
@@ -329,10 +443,16 @@ func newStatsRedisClientWithServer(t *testing.T) (*redis.Client, *miniredis.Mini
 func requireSingleStatsCacheKey(t *testing.T, client *redis.Client) string {
 	t.Helper()
 
+	return requireStatsCacheKeys(t, client, 1)[0]
+}
+
+func requireStatsCacheKeys(t *testing.T, client *redis.Client, count int) []string {
+	t.Helper()
+
 	cacheKeys, err := client.Keys(context.Background(), "mpp:dashboard:stats:*").Result()
 	require.NoError(t, err)
-	require.Len(t, cacheKeys, 1)
-	return cacheKeys[0]
+	require.Len(t, cacheKeys, count)
+	return cacheKeys
 }
 
 type statsQueryCounter struct {
@@ -457,6 +577,37 @@ func seedStatsOverviewProject(t *testing.T, db *gorm.DB, prefix string, publicat
 		Status:    publicationStatus,
 	}).Error)
 	return user
+}
+
+func seedStatsLifecycleProject(t *testing.T, db *gorm.DB, prefix string) (models.User, models.Project) {
+	t.Helper()
+
+	user := models.User{
+		Username:     prefix + "-user",
+		Email:        prefix + "@example.com",
+		PasswordHash: "hash",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         prefix + "-project",
+		SourceContent: "<p>content</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusPublished,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "zhihu",
+		Enabled:   true,
+		Status:    models.PublicationStatusFailed,
+	}).Error)
+	return user, project
 }
 
 func TestGetStatsUsesWriterForStickyEventualCounts(t *testing.T) {

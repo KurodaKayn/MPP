@@ -19,6 +19,12 @@ func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, r
 	if err := s.projects.SyncProjectCollabSourceContent(projectID, userID); err != nil {
 		return nil, err
 	}
+	mutated := false
+	defer func() {
+		if mutated {
+			s.invalidateDashboardCaches()
+		}
+	}()
 
 	var project models.Project
 	if err := s.db.Preload("Publications").First(&project, "id = ?", projectID).Error; err != nil {
@@ -51,6 +57,7 @@ func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, r
 	if err != nil {
 		return nil, err
 	}
+	mutated = true
 	if prepublishHasActivePublish(publications) {
 		return nil, publishsvc.ErrPublicationAlreadyPublishing
 	}
@@ -310,6 +317,12 @@ func (s *Service) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.
 	}).Error; err != nil {
 		return nil, err
 	}
+	mutated := true
+	defer func() {
+		if mutated {
+			s.invalidateDashboardCaches()
+		}
+	}()
 	if err := s.projects.RefreshProjectMediaUsages(projectID); err != nil {
 		return nil, err
 	}

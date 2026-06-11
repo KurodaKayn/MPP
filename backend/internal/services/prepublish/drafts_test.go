@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
@@ -111,6 +113,57 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 	require.NoError(t, json.Unmarshal(douyinPub.AdaptedContent, &douyinContent))
 	assert.Equal(t, "text", douyinContent["format"])
 	assert.Contains(t, douyinContent["text"], "Hello draft")
+}
+
+func TestSyncProjectPrepublishInvalidatesDashboardCaches(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newPrepublishCacheRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+	s.SetDraftCompiler(&testsupport.FakeProjectDraftCompiler{})
+
+	owner := models.User{
+		Username:     "prepublish-cache-owner",
+		Email:        "prepublish-cache@example.com",
+		PasswordHash: "hash",
+	}
+	require.NoError(t, db.Create(&owner).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Prepublish cache",
+		SourceContent: `<p>Hello cache</p>`,
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusFailed,
+		Config:         datatypes.JSON(`{"title":"Prepublish cache"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"stale"}`),
+	}).Error)
+
+	list, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), list.Total)
+	stats, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), stats.TotalFailedPublications)
+	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 1)
+	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1)
+
+	_, err = s.WithContext(context.Background()).SyncProjectPrepublish(project.ID, owner.ID, dto.SyncPrepublishRequest{
+		Platforms: []string{"wechat"},
+		Actor:     dto.SyncActor{Type: "system"},
+	})
+	require.NoError(t, err)
+	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 0)
+	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 0)
+
+	refreshedStats, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), refreshedStats.TotalFailedPublications)
 }
 
 func TestSyncProjectPrepublishSanitizesHTMLDraftsBeforePersisting(t *testing.T) {
@@ -316,6 +369,70 @@ func TestSyncProjectPrepublishRejectsActivePublishWithoutMarkingSyncing(t *testi
 	require.Equal(t, models.PublicationStatusPending, pendingPublication.Status)
 }
 
+func TestSyncProjectPrepublishInvalidatesCachesAfterCommittedEnsureBeforeActivePublish(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newPrepublishCacheRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+	compiler := &testsupport.FakeProjectDraftCompiler{}
+	s.SetDraftCompiler(compiler)
+
+	owner := models.User{
+		Username:     "prepublish-active-cache-owner",
+		Email:        "prepublish-active-cache@example.com",
+		PasswordHash: "hash",
+	}
+	require.NoError(t, db.Create(&owner).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Prepublish active cache",
+		SourceContent: `<p>Hello cache</p>`,
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "zhihu",
+		Enabled:        false,
+		Status:         models.PublicationStatusDisabled,
+		Config:         datatypes.JSON(`{"title":"Prepublish active cache"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"disabled"}`),
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusPublishing,
+		Config:         datatypes.JSON(`{"title":"Prepublish active cache"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	list, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), list.Total)
+	stats, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), stats.TotalProjects)
+	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 1)
+	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1)
+
+	resp, err := s.WithContext(context.Background()).SyncProjectPrepublish(project.ID, owner.ID, dto.SyncPrepublishRequest{
+		Platforms: []string{"zhihu", "wechat"},
+		Actor:     dto.SyncActor{Type: "system"},
+	})
+
+	require.ErrorIs(t, err, services.ErrPublicationAlreadyPublishing)
+	require.Nil(t, resp)
+	require.Empty(t, compiler.LastPlatforms)
+	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 0)
+	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 0)
+
+	var enabledPublication models.ProjectPlatformPublication
+	require.NoError(t, db.First(&enabledPublication, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
+	require.True(t, enabledPublication.Enabled)
+	require.Equal(t, models.PublicationStatusDraft, enabledPublication.Status)
+}
+
 func TestSyncProjectPrepublishDoesNotApplyDraftWhenPublicationBecomesPublishing(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
@@ -429,4 +546,23 @@ func assertPrepublishHTMLHasNoActiveContent(t *testing.T, html string) {
 	require.NotContains(t, lower, "javascript:")
 	require.NotContains(t, lower, "onclick")
 	require.NotContains(t, lower, "onerror")
+}
+
+func newPrepublishCacheRedisClient(t *testing.T) *redis.Client {
+	t.Helper()
+
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+	return client
+}
+
+func requirePrepublishCacheKeys(t *testing.T, client *redis.Client, pattern string, count int) {
+	t.Helper()
+
+	cacheKeys, err := client.Keys(context.Background(), pattern).Result()
+	require.NoError(t, err)
+	require.Len(t, cacheKeys, count)
 }

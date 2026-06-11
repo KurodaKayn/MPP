@@ -129,6 +129,19 @@ func (o *testPublishJobObserver) ObservePublishJob(platform string, result strin
 	})
 }
 
+type testDashboardCacheInvalidator struct {
+	projectListInvalidations int
+	statsInvalidations       int
+}
+
+func (i *testDashboardCacheInvalidator) InvalidateDashboardProjectListCache(context.Context) {
+	i.projectListInvalidations++
+}
+
+func (i *testDashboardCacheInvalidator) InvalidateDashboardStatsCache(context.Context) {
+	i.statsInvalidations++
+}
+
 func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -364,6 +377,44 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 	duplicate, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-1"})
 	require.NoError(t, err)
 	require.Equal(t, resp["job_id"], duplicate["job_id"])
+}
+
+func TestEnqueuePublishProjectInvalidatesDashboardCaches(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+	invalidator := &testDashboardCacheInvalidator{}
+	service.SetDashboardCacheInvalidator(invalidator)
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "cache-owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued cache post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Queued cache post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "cache-click"})
+
+	require.NoError(t, err)
+	require.Equal(t, models.PublicationStatusQueued, resp["status"])
+	require.Equal(t, 1, invalidator.projectListInvalidations)
+	require.Equal(t, 1, invalidator.statsInvalidations)
 }
 
 func TestEnqueuePublishProjectRejectsProjectEditor(t *testing.T) {
@@ -1060,6 +1111,61 @@ func TestProcessPublishJobReturnsErrorForFailedPublication(t *testing.T) {
 	require.Equal(t, []publishJobObservation{
 		{platform: "wechat", result: publishJobResultError},
 	}, observer.observations)
+}
+
+func TestProcessPublishJobMarksFailedWhenWorkerContextCanceled(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+	invalidator := &testDashboardCacheInvalidator{}
+	service.SetDashboardCacheInvalidator(invalidator)
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Canceled queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusPublishing,
+		Config:         datatypes.JSON(`{"title":"Canceled queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	job := PublishJob{
+		JobID:      uuid.New(),
+		ProjectID:  project.ID,
+		UserID:     user.ID,
+		Platform:   "wechat",
+		EnqueuedAt: time.Now().UTC(),
+	}
+	lockKey := publishLockKey(project.ID, "wechat")
+	queue.locks[lockKey] = job.JobID.String()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := service.processPublishJob(ctx, job)
+
+	require.Error(t, err)
+	require.Empty(t, queue.locks[lockKey])
+	require.Equal(t, 1, invalidator.projectListInvalidations)
+	require.Equal(t, 1, invalidator.statsInvalidations)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	require.Equal(t, models.PublicationStatusFailed, saved.Status)
+	require.Equal(t, 1, saved.RetryCount)
+	require.NotEmpty(t, saved.ErrorMessage)
 }
 
 func TestRedisPublishQueueEnqueuesAsynqTask(t *testing.T) {
