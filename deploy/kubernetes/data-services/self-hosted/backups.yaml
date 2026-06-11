@@ -1,0 +1,227 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mpp-data-backup-scripts
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: data-backup
+    app.kubernetes.io/part-of: mpp
+data:
+  postgres-backup.sh: |
+    #!/bin/sh
+    set -eu
+
+    backup_root="${BACKUP_ROOT:-/backups/postgres}"
+    retention_days="${BACKUP_RETENTION_DAYS:-14}"
+    database="${POSTGRES_DB:-poster_db}"
+    timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    tmp_file="${backup_root}/${database}-${timestamp}.dump.tmp"
+    target_file="${backup_root}/${database}-${timestamp}.dump"
+
+    mkdir -p "$backup_root"
+    pg_dump --format=custom --no-owner --no-privileges --file="$tmp_file" "$database"
+    mv "$tmp_file" "$target_file"
+    find "$backup_root" -type f -name "${database}-*.dump" -mtime +"$retention_days" -delete
+  redis-backup.sh: |
+    #!/bin/sh
+    set -eu
+
+    backup_root="${BACKUP_ROOT:-/backups/redis}"
+    retention_days="${BACKUP_RETENTION_DAYS:-14}"
+    timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    tmp_file="${backup_root}/redis-${timestamp}.rdb.tmp"
+    target_file="${backup_root}/redis-${timestamp}.rdb"
+
+    mkdir -p "$backup_root"
+    if [ -n "${REDIS_PASSWORD:-}" ]; then
+      export REDISCLI_AUTH="$REDIS_PASSWORD"
+    fi
+    redis-cli --no-auth-warning -h "${REDIS_HOST:-redis}" -p "${REDIS_PORT:-6379}" --rdb "$tmp_file"
+    mv "$tmp_file" "$target_file"
+    find "$backup_root" -type f -name "redis-*.rdb" -mtime +"$retention_days" -delete
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mpp-data-backups
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: data-backup
+    app.kubernetes.io/part-of: mpp
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: postgres-backup
+    app.kubernetes.io/part-of: mpp
+spec:
+  schedule: "17 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: mpp
+            app.kubernetes.io/component: postgres-backup
+            app.kubernetes.io/part-of: mpp
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            fsGroup: 999
+            fsGroupChangePolicy: OnRootMismatch
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: postgres-backup
+              image: docker.io/library/postgres:17
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - /scripts/postgres-backup.sh
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: PGHOST
+                  value: postgres
+                - name: PGPORT
+                  value: "5432"
+                - name: POSTGRES_DB
+                  value: poster_db
+                - name: PGUSER
+                  value: postgres
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mpp-app-secrets
+                      key: DB_PASSWORD
+                - name: BACKUP_RETENTION_DAYS
+                  value: "14"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: backup-scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: data-backups
+                  mountPath: /backups
+          volumes:
+            - name: backup-scripts
+              configMap:
+                name: mpp-data-backup-scripts
+                defaultMode: 0555
+            - name: data-backups
+              persistentVolumeClaim:
+                claimName: mpp-data-backups
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redis-backup
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-backup
+    app.kubernetes.io/part-of: mpp
+spec:
+  schedule: "47 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 900
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: mpp
+            app.kubernetes.io/component: redis-backup
+            app.kubernetes.io/part-of: mpp
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            fsGroup: 999
+            fsGroupChangePolicy: OnRootMismatch
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: redis-backup
+              image: docker.io/library/redis:7-alpine
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - /scripts/redis-backup.sh
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: REDIS_HOST
+                  value: redis
+                - name: REDIS_PORT
+                  value: "6379"
+                - name: REDIS_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mpp-app-secrets
+                      key: REDIS_PASSWORD
+                      optional: true
+                - name: BACKUP_RETENTION_DAYS
+                  value: "14"
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
+              volumeMounts:
+                - name: backup-scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: data-backups
+                  mountPath: /backups
+          volumes:
+            - name: backup-scripts
+              configMap:
+                name: mpp-data-backup-scripts
+                defaultMode: 0555
+            - name: data-backups
+              persistentVolumeClaim:
+                claimName: mpp-data-backups
