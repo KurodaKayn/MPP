@@ -563,6 +563,51 @@ func TestEnqueuePublishProjectReplaysDuplicateWhenLockWinsBeforeQueuedEvent(t *t
 	require.Empty(t, queue.jobs)
 }
 
+func TestEnqueuePublishProjectDoesNotPersistScheduleWhenLockIsHeld(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	require.NoError(t, db.AutoMigrate(&models.ScheduledPublication{}, &models.PublishAttempt{}, &models.ProjectVersion{}))
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
+	publication := models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}
+	require.NoError(t, db.Create(&publication).Error)
+
+	lockKey := publishLockKey(project.ID, "wechat")
+	queue.locks[lockKey] = uuid.New().String()
+
+	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{})
+
+	require.ErrorIs(t, err, ErrPublicationAlreadyPublishing)
+	require.Nil(t, resp)
+
+	var schedules int64
+	require.NoError(t, db.Model(&models.ScheduledPublication{}).
+		Where("project_id = ? AND publication_id = ?", project.ID, publication.ID).
+		Count(&schedules).Error)
+	require.Zero(t, schedules)
+}
+
 func TestEnqueuePublishProjectReplaysOriginalJobEventsAfterPublicationChanges(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
 	service := newPublishTestService(db)
