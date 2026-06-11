@@ -8,20 +8,25 @@ import { PLATFORM_TABS } from "@/lib/content/platforms";
 import { emptyContentValue, type ContentValue } from "@/lib/content/types";
 import { canCreateWorkspaceProject } from "../../_hooks/use-dashboard-workspace-selection";
 import {
+  cancelScheduledPublication,
   createDashboardProject,
   createWorkspaceProject,
   getBrandProfiles,
   getDashboardProject,
   getContentTemplates,
   getProjectPublications,
+  getWorkspacePublicationCalendar,
   getWorkspaceBrandProfiles,
   getWorkspaceContentTemplates,
+  retryScheduledPublication,
+  scheduleProjectPublication,
 } from "@/lib/dashboard/api";
 import type {
   BrandProfile,
   ContentTemplate,
   ProjectPermissionSource,
   ProjectRole,
+  ScheduledPublication,
   Workspace,
 } from "@/lib/dashboard/api";
 import { useAppLocale, useTranslation } from "@/lib/i18n/client";
@@ -95,6 +100,13 @@ export function useContentPageController(
   const [permissionSources, setPermissionSources] = useState<
     ProjectPermissionSource[]
   >([]);
+  const [projectWorkspaceId, setProjectWorkspaceId] = useState("");
+  const [scheduledPublications, setScheduledPublications] = useState<
+    ScheduledPublication[]
+  >([]);
+  const [isSchedulingPublication, setIsSchedulingPublication] =
+    useState(false);
+  const [busyScheduleId, setBusyScheduleId] = useState("");
   const [setupError, setSetupError] = useState("");
   const [isSetupLoading, setIsSetupLoading] = useState(false);
   const publishBarRef = useRef<HTMLDivElement>(null);
@@ -173,6 +185,8 @@ export function useContentPageController(
   useEffect(() => {
     if (!projectId) {
       setProjectRole(null);
+      setProjectWorkspaceId("");
+      setScheduledPublications([]);
       resetForCreate();
       return;
     }
@@ -190,6 +204,7 @@ export function useContentPageController(
 
         setTitle(project.title);
         setProjectRole(project.role);
+        setProjectWorkspaceId(project.workspace_id ?? "");
         setSelectedTemplateId(project.template_id ?? "");
         setSelectedBrandProfileId(project.brand_profile_id ?? "");
         setPermissionSources(project.permission_sources ?? []);
@@ -217,6 +232,8 @@ export function useContentPageController(
 
         setTitle("");
         setProjectRole(null);
+        setProjectWorkspaceId("");
+        setScheduledPublications([]);
         setSelectedTemplateId("");
         setSelectedBrandProfileId("");
         setPermissionSources([]);
@@ -243,6 +260,43 @@ export function useContentPageController(
       cancelled = true;
     };
   }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId || !projectWorkspaceId) {
+      setScheduledPublications([]);
+      return;
+    }
+
+    let cancelled = false;
+    const from = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const to = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    async function loadSchedules() {
+      try {
+        const calendar = await getWorkspacePublicationCalendar(
+          projectWorkspaceId,
+          from.toISOString(),
+          to.toISOString(),
+        );
+        if (cancelled) {
+          return;
+        }
+        setScheduledPublications(
+          calendar.items.filter((item) => item.project_id === projectId),
+        );
+      } catch {
+        if (!cancelled) {
+          setScheduledPublications([]);
+        }
+      }
+    }
+
+    void loadSchedules();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, projectWorkspaceId]);
 
   useEffect(() => {
     if (projectId) {
@@ -405,6 +459,101 @@ export function useContentPageController(
     setPrepublishDrafts({});
   };
 
+  const upsertScheduledPublication = (next: ScheduledPublication) => {
+    setScheduledPublications((current) => {
+      const existingIndex = current.findIndex((item) => item.id === next.id);
+      if (existingIndex === -1) {
+        return [...current, next].sort(
+          (left, right) =>
+            new Date(left.scheduled_at).getTime() -
+            new Date(right.scheduled_at).getTime(),
+        );
+      }
+      return current.map((item) => (item.id === next.id ? next : item));
+    });
+    if (next.workspace_id) {
+      setProjectWorkspaceId(next.workspace_id);
+    }
+  };
+
+  const schedulePublication = async (
+    platform: PublishPlatform,
+    scheduledAt: string,
+  ) => {
+    if (!projectId) {
+      return;
+    }
+    const scheduledDate = new Date(scheduledAt);
+    if (Number.isNaN(scheduledDate.getTime())) {
+      toast.error(t("publish.scheduleInvalid", { defaultValue: "Choose a valid publish time." }));
+      return;
+    }
+
+    setIsSchedulingPublication(true);
+    try {
+      const schedule = await scheduleProjectPublication(projectId, {
+        idempotency_key: `${projectId}:${platform}:schedule:${scheduledDate.toISOString()}`,
+        platform,
+        scheduled_at: scheduledDate.toISOString(),
+        timezone:
+          Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      });
+      upsertScheduledPublication(schedule);
+      toast.success(t("publish.scheduleCreated", { defaultValue: "Publish scheduled." }));
+    } catch (requestError) {
+      toast.error(t("publish.scheduleFailed", { defaultValue: "Could not schedule publish." }), {
+        description:
+          requestError instanceof Error
+            ? requestError.message
+            : t("common.retryLater"),
+      });
+    } finally {
+      setIsSchedulingPublication(false);
+    }
+  };
+
+  const cancelSchedule = async (scheduleId: string) => {
+    if (!projectId) {
+      return;
+    }
+    setBusyScheduleId(scheduleId);
+    try {
+      const schedule = await cancelScheduledPublication(projectId, scheduleId);
+      upsertScheduledPublication(schedule);
+      toast.success(t("publish.scheduleCancelled", { defaultValue: "Schedule cancelled." }));
+    } catch (requestError) {
+      toast.error(t("publish.cancelScheduleFailed", { defaultValue: "Could not cancel schedule." }), {
+        description:
+          requestError instanceof Error
+            ? requestError.message
+            : t("common.retryLater"),
+      });
+    } finally {
+      setBusyScheduleId("");
+    }
+  };
+
+  const retrySchedule = async (scheduleId: string) => {
+    if (!projectId) {
+      return;
+    }
+    setBusyScheduleId(scheduleId);
+    try {
+      const schedule = await retryScheduledPublication(projectId, scheduleId);
+      upsertScheduledPublication(schedule);
+      toast.success(t("publish.retryQueued", { defaultValue: "Publish retried." }));
+    } catch (requestError) {
+      toast.error(t("publish.retryFailed", { defaultValue: "Could not retry publish." }), {
+        description:
+          requestError instanceof Error
+            ? requestError.message
+            : t("common.retryLater"),
+      });
+    } finally {
+      setBusyScheduleId("");
+    }
+  };
+
   return {
     editor,
     header: {
@@ -455,6 +604,7 @@ export function useContentPageController(
       douyinBrowserSession: workflow.douyinBrowserSession,
       isOpeningXPostIntent,
       isPublishing: workflow.isPublishing,
+      isSchedulingPublication,
       onOpenDouyinPublishSession: () => {
         if (guardSaveBlockedAction()) {
           return;
@@ -476,7 +626,18 @@ export function useContentPageController(
 
         return workflow.publish();
       },
+      onCancelSchedule: cancelSchedule,
+      onRetrySchedule: retrySchedule,
+      onSchedulePublication: (platform: PublishPlatform, scheduledAt: string) => {
+        if (guardSaveBlockedAction()) {
+          return;
+        }
+
+        return schedulePublication(platform, scheduledAt);
+      },
       onSelectedPlatformsChange: setSelectedPlatforms,
+      busyScheduleId,
+      scheduledPublications,
       selectedPlatforms,
     },
   };

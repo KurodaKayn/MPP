@@ -345,6 +345,16 @@ export function cancelScheduledPublication(
   );
 }
 
+export function retryScheduledPublication(
+  projectId: string,
+  scheduleId: string,
+) {
+  return fetchDashboard<ScheduledPublication>(
+    `/api/user/dashboard/projects/${projectId}/schedules/${scheduleId}/retry`,
+    { method: "POST" },
+  );
+}
+
 export function getWorkspacePublicationCalendar(
   workspaceId: string,
   from: string,
