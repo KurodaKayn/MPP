@@ -41,6 +41,54 @@ export type PublishProjectOptions = {
   mode?: "manual";
 };
 
+export type SchedulePublicationInput = {
+  platform: PublishPlatform;
+  scheduled_at: string;
+  timezone?: string;
+  idempotency_key?: string;
+};
+
+export type PublishAttempt = {
+  id: string;
+  scheduled_publication_id: string;
+  attempt_no: number;
+  started_at: string;
+  finished_at?: string;
+  status: string;
+  remote_id?: string;
+  publish_url?: string;
+  error_code?: string;
+  error_message?: string;
+};
+
+export type ScheduledPublication = {
+  id: string;
+  workspace_id: string;
+  project_id: string;
+  publication_id: string;
+  platform_account_id?: string;
+  project_version_id?: string;
+  platform: PublishPlatform;
+  project_title: string;
+  scheduled_at: string;
+  timezone: string;
+  status: string;
+  idempotency_key?: string;
+  created_by: string;
+  approved_by?: string;
+  cancelled_by?: string;
+  last_error?: string;
+  manual_action_url?: string;
+  manual_action_until?: string;
+  attempts: PublishAttempt[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type ScheduledPublicationsResponse = {
+  items: ScheduledPublication[];
+};
+
 export type CreateProjectInput = {
   title: string;
   source_content: string;
