@@ -342,6 +342,75 @@ func TestProjectShareLinkAcceptRejectsRevokedAndExpiredTokens(t *testing.T) {
 	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
 }
 
+func TestProjectDetailMergesWorkspaceCollaboratorAndSharePermissionSources(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+
+	owner := models.User{Username: "perm-owner", Email: "perm-owner@example.com"}
+	editor := models.User{Username: "perm-editor", Email: "perm-editor@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&editor).Error)
+
+	workspace := models.Workspace{
+		OwnerUserID: owner.ID,
+		Name:        "Team",
+		Slug:        "team",
+		Status:      models.WorkspaceStatusActive,
+	}
+	require.NoError(t, db.Create(&workspace).Error)
+	require.NoError(t, db.Create(&models.WorkspaceMember{
+		WorkspaceID: workspace.ID,
+		UserID:      editor.ID,
+		Role:        models.WorkspaceRoleViewer,
+	}).Error)
+
+	project := models.Project{
+		UserID:        owner.ID,
+		WorkspaceID:   &workspace.ID,
+		Title:         "Shared workspace draft",
+		SourceContent: "<p>Draft</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: project.ID,
+		UserID:    editor.ID,
+		Role:      models.ProjectRoleEditor,
+		CreatedBy: owner.ID,
+	}).Error)
+	link, err := s.CreateProjectShareLink(project.ID, owner.ID, dto.CreateProjectShareLinkRequest{
+		Role: models.ProjectRoleViewer,
+	}, "https://app.example.com")
+	require.NoError(t, err)
+	require.NotEmpty(t, link.Token)
+
+	editorDetail, err := s.GetProject(project.ID, &editor.ID)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []dto.ProjectPermissionSource{
+		{Source: models.ProjectAccessSourceDirectShare, Role: models.ProjectRoleEditor},
+		{Source: models.ProjectAccessSourceWorkspace, Role: models.ProjectRoleViewer},
+	}, editorDetail.PermissionSources)
+
+	ownerDetail, err := s.GetProject(project.ID, &owner.ID)
+	require.NoError(t, err)
+	require.Contains(t, ownerDetail.PermissionSources, dto.ProjectPermissionSource{
+		Source: models.ProjectAccessSourceOwner,
+		Role:   models.ProjectRoleOwner,
+	})
+	require.Contains(t, ownerDetail.PermissionSources, dto.ProjectPermissionSource{
+		Source: models.ProjectAccessSourceWorkspace,
+		Role:   models.ProjectRoleEditor,
+	})
+	require.Contains(t, ownerDetail.PermissionSources, dto.ProjectPermissionSource{
+		Source: models.ProjectAccessSourceDirectShare,
+		Role:   models.ProjectRoleEditor,
+	})
+	require.Contains(t, ownerDetail.PermissionSources, dto.ProjectPermissionSource{
+		Source: "share_link",
+		Role:   models.ProjectRoleViewer,
+	})
+}
+
 func hashProjectShareTokenForTest(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
