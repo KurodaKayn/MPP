@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
@@ -152,6 +154,57 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	assert.Equal(t, "wx-saved", config["app_id"])
 	assert.Equal(t, "saved-secret", config["app_secret"])
 	assert.Equal(t, "Title", config["title"])
+}
+
+func TestPublishProjectInvalidatesDashboardCaches(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newPublishCacheRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+	fakePublisher := &testsupport.FakePlatformPublisher{}
+	publisher.Factory.Register("wechat", fakePublisher)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{
+		Username:     "cache-publish-user",
+		Email:        "cache-publish@example.com",
+		PasswordHash: "hash",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "cache publish",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		Config:         datatypes.JSON(`{"app_id":"wx","app_secret":"secret","title":"Title"}`),
+		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
+	}).Error)
+
+	list, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), list.Total)
+	stats, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), stats.TotalPublishedPublications)
+	requirePublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 1)
+	requirePublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1)
+
+	resp, err := s.WithContext(context.Background()).PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
+	require.NoError(t, err)
+	assert.Equal(t, models.PublicationStatusPublished, resp["status"])
+	requirePublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 0)
+	requirePublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 0)
+
+	refreshed, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), refreshed.TotalPublishedPublications)
 }
 
 func TestPublishProjectAllowsEmbeddedWechatCredentialsWithoutSavedAccount(t *testing.T) {
@@ -1081,4 +1134,23 @@ func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
 
 	_, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	require.ErrorIs(t, err, services.ErrPublicationDisabled)
+}
+
+func newPublishCacheRedisClient(t *testing.T) *redis.Client {
+	t.Helper()
+
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+	return client
+}
+
+func requirePublishCacheKeys(t *testing.T, client *redis.Client, pattern string, count int) {
+	t.Helper()
+
+	cacheKeys, err := client.Keys(context.Background(), pattern).Result()
+	require.NoError(t, err)
+	require.Len(t, cacheKeys, count)
 }
