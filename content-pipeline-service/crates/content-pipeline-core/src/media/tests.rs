@@ -185,6 +185,17 @@ fn defaults_unknown_media_platform_to_generic_profile() {
     let constraints = MediaConstraints::for_platform("mastodon", "inline_image", None, vec![]);
 
     assert_eq!(constraints.max_bytes, Some(DEFAULT_MAX_BYTES));
+    assert!(constraints.compress_to_max_bytes);
+}
+
+#[test]
+fn resolves_explicit_media_profile_versions() {
+    let douyin = MediaConstraints::for_platform("douyin", "inline_image", Some(1024), Vec::new());
+    let explicit_generic =
+        MediaConstraints::for_platform("generic@v1", "inline_image", Some(1024), Vec::new());
+
+    assert!(douyin.compress_to_max_bytes);
+    assert!(explicit_generic.compress_to_max_bytes);
 }
 
 #[test]
@@ -213,6 +224,30 @@ fn resizes_wechat_images_only_after_quality_floor_cannot_fit() {
         asset.warnings,
         vec!["image resized to satisfy media constraints"]
     );
+}
+
+#[test]
+fn continues_resizing_for_strict_byte_limits() {
+    let processor = MediaProcessor::new();
+    let max_bytes = 1024;
+    let source = noisy_jpeg(512, 512, 100);
+    assert!(
+        source.len() as u64 > max_bytes,
+        "fixture must start over the output limit"
+    );
+
+    let asset = processor
+        .process_bytes(
+            source,
+            Some("image/jpeg"),
+            &MediaConstraints::for_platform("wechat", "inline_image", Some(max_bytes), Vec::new()),
+        )
+        .expect("strict limit should keep resizing until an output fits");
+
+    assert_eq!(asset.mime_type, "image/jpeg");
+    assert!(asset.byte_size <= max_bytes);
+    assert!(asset.width < 144);
+    assert!(asset.height < 144);
 }
 
 #[test]
@@ -246,7 +281,11 @@ fn compresses_wechat_images_with_profile_default_limit() {
 fn strips_jpeg_metadata_before_lossy_reencoding() {
     let processor = MediaProcessor::new();
     let source_pixels = noisy_jpeg(128, 128, 95);
-    let source = jpeg_with_app1_metadata(&source_pixels, 4096);
+    let source = jpeg_with_metadata_segment(
+        &source_pixels,
+        0xed,
+        &padded_payload(b"Photoshop 3.0\0", 4096),
+    );
     let stripped = super::optimizer::strip_jpeg_metadata_lossless(&source)
         .expect("fixture should contain removable metadata");
     assert!(
@@ -277,6 +316,21 @@ fn strips_jpeg_metadata_before_lossy_reencoding() {
     );
 }
 
+#[test]
+fn preserves_exif_metadata_while_stripping_other_jpeg_metadata() {
+    let source_pixels = noisy_jpeg(64, 64, 95);
+    let exif = exif_orientation_payload();
+    let with_exif = jpeg_with_metadata_segment(&source_pixels, 0xe1, &exif);
+    let source =
+        jpeg_with_metadata_segment(&with_exif, 0xed, &padded_payload(b"Photoshop 3.0\0", 1024));
+
+    let stripped = super::optimizer::strip_jpeg_metadata_lossless(&source)
+        .expect("non-EXIF metadata should still be removable");
+
+    assert!(contains_bytes(&stripped, &exif));
+    assert!(!contains_bytes(&stripped, b"Photoshop 3.0"));
+}
+
 fn noisy_jpeg(width: u32, height: u32, quality: u8) -> Vec<u8> {
     let mut image = image::RgbImage::new(width, height);
     for y in 0..height {
@@ -300,18 +354,43 @@ fn noisy_jpeg(width: u32, height: u32, quality: u8) -> Vec<u8> {
     bytes
 }
 
-fn jpeg_with_app1_metadata(jpeg: &[u8], payload_size: usize) -> Vec<u8> {
+fn jpeg_with_metadata_segment(jpeg: &[u8], marker: u8, payload: &[u8]) -> Vec<u8> {
     assert!(jpeg.len() > 2);
     assert_eq!(&jpeg[0..2], &[0xff, 0xd8]);
-    let mut payload = b"Exif\0\0".to_vec();
-    payload.resize(payload_size, b'x');
     let segment_len = u16::try_from(payload.len() + 2).expect("segment should fit in JPEG");
 
     let mut bytes = Vec::with_capacity(jpeg.len() + payload.len() + 4);
     bytes.extend_from_slice(&jpeg[0..2]);
-    bytes.extend_from_slice(&[0xff, 0xe1]);
+    bytes.extend_from_slice(&[0xff, marker]);
     bytes.extend_from_slice(&segment_len.to_be_bytes());
-    bytes.extend_from_slice(&payload);
+    bytes.extend_from_slice(payload);
     bytes.extend_from_slice(&jpeg[2..]);
     bytes
+}
+
+fn padded_payload(prefix: &[u8], payload_size: usize) -> Vec<u8> {
+    let mut payload = prefix.to_vec();
+    payload.resize(payload_size, b'x');
+    payload
+}
+
+fn exif_orientation_payload() -> Vec<u8> {
+    let mut payload = b"Exif\0\0".to_vec();
+    payload.extend_from_slice(b"MM");
+    payload.extend_from_slice(&42u16.to_be_bytes());
+    payload.extend_from_slice(&8u32.to_be_bytes());
+    payload.extend_from_slice(&1u16.to_be_bytes());
+    payload.extend_from_slice(&0x0112u16.to_be_bytes());
+    payload.extend_from_slice(&3u16.to_be_bytes());
+    payload.extend_from_slice(&1u32.to_be_bytes());
+    payload.extend_from_slice(&6u16.to_be_bytes());
+    payload.extend_from_slice(&[0, 0]);
+    payload.extend_from_slice(&0u32.to_be_bytes());
+    payload
+}
+
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }
