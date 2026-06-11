@@ -17,6 +17,7 @@ import (
 
 const dashboardProjectListCachePrefix = "mpp:dashboard:projects:list:v1"
 const dashboardProjectListRefreshTimeout = 15 * time.Second
+const dashboardProjectListInvalidateTimeout = 2 * time.Second
 
 type dashboardProjectListCacheParams struct {
 	Page         int    `json:"page"`
@@ -119,8 +120,48 @@ func (s *Service) canUseDashboardProjectListCache() bool {
 	return !sticky || !stickyUntil.After(time.Now())
 }
 
+func (s *Service) InvalidateDashboardProjectListCache(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	if ctx != nil {
+		s = s.WithContext(ctx)
+	}
+	s.invalidateDashboardProjectListCache()
+}
+
+func (s *Service) invalidateDashboardProjectListCache() {
+	if s.cache == nil {
+		return
+	}
+	ctx, cancel := dashboardProjectListInvalidationContext(s.requestContext())
+	defer cancel()
+	deleteDashboardProjectListCacheKeys(ctx, s.cache)
+}
+
+func deleteDashboardProjectListCacheKeys(ctx context.Context, client *redis.Client) {
+	var cursor uint64
+	for {
+		keys, next, err := client.Scan(ctx, cursor, dashboardProjectListCachePrefix+":*", 100).Result()
+		if err != nil {
+			return
+		}
+		if len(keys) > 0 {
+			_ = client.Del(ctx, keys...).Err()
+		}
+		if next == 0 {
+			return
+		}
+		cursor = next
+	}
+}
+
 func dashboardProjectListRefreshContext(parent context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(parent), dashboardProjectListRefreshTimeout)
+}
+
+func dashboardProjectListInvalidationContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), dashboardProjectListInvalidateTimeout)
 }
 
 func dashboardProjectListCacheKey(page, limit int, status, filterUserID, platform string) string {
