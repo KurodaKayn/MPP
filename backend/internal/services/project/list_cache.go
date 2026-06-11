@@ -16,9 +16,12 @@ import (
 )
 
 const dashboardProjectListCachePrefix = "mpp:dashboard:projects:list:v1"
+const dashboardProjectListCacheGenerationKey = "mpp:dashboard:projects:list-generation:v1"
 const dashboardProjectListRefreshTimeout = 15 * time.Second
+const dashboardProjectListInvalidateTimeout = 2 * time.Second
 
 type dashboardProjectListCacheParams struct {
+	Generation   string `json:"generation"`
 	Page         int    `json:"page"`
 	Limit        int    `json:"limit"`
 	Status       string `json:"status,omitempty"`
@@ -36,7 +39,11 @@ type dashboardProjectListCachePayload struct {
 
 func (s *Service) getCachedDashboardProjectList(page, limit int, status, filterUserID, platform string) (*dto.PaginationResponse, error) {
 	ctx := s.requestContext()
-	cacheKey := dashboardProjectListCacheKey(page, limit, status, filterUserID, platform)
+	generation, err := s.dashboardProjectListCacheGeneration(ctx)
+	if err != nil {
+		return s.computeProjectList(page, limit, status, filterUserID, platform, nil)
+	}
+	cacheKey := dashboardProjectListCacheKey(generation, page, limit, status, filterUserID, platform)
 	if resp, hit, err := s.cachedDashboardProjectList(ctx, cacheKey, page, limit); hit {
 		return resp, nil
 	} else if err != nil {
@@ -119,12 +126,62 @@ func (s *Service) canUseDashboardProjectListCache() bool {
 	return !sticky || !stickyUntil.After(time.Now())
 }
 
+func (s *Service) InvalidateDashboardProjectListCache(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	if ctx != nil {
+		s = s.WithContext(ctx)
+	}
+	s.invalidateDashboardProjectListCache()
+}
+
+func (s *Service) invalidateDashboardProjectListCache() {
+	if s.cache == nil {
+		return
+	}
+	ctx, cancel := dashboardProjectListInvalidationContext(s.requestContext())
+	defer cancel()
+	_ = s.cache.Incr(ctx, dashboardProjectListCacheGenerationKey).Err()
+	deleteDashboardProjectListCacheKeys(ctx, s.cache)
+}
+
+func deleteDashboardProjectListCacheKeys(ctx context.Context, client *redis.Client) {
+	var cursor uint64
+	for {
+		keys, next, err := client.Scan(ctx, cursor, dashboardProjectListCachePrefix+":*", 100).Result()
+		if err != nil {
+			return
+		}
+		if len(keys) > 0 {
+			_ = client.Del(ctx, keys...).Err()
+		}
+		if next == 0 {
+			return
+		}
+		cursor = next
+	}
+}
+
 func dashboardProjectListRefreshContext(parent context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(parent), dashboardProjectListRefreshTimeout)
 }
 
-func dashboardProjectListCacheKey(page, limit int, status, filterUserID, platform string) string {
+func dashboardProjectListInvalidationContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), dashboardProjectListInvalidateTimeout)
+}
+
+func (s *Service) dashboardProjectListCacheGeneration(ctx context.Context) (string, error) {
+	generation, err := s.cache.Get(ctx, dashboardProjectListCacheGenerationKey).Result()
+	if errors.Is(err, redis.Nil) {
+		return "0", nil
+	}
+	return generation, err
+}
+
+func dashboardProjectListCacheKey(generation string, page, limit int, status, filterUserID, platform string) string {
 	params := dashboardProjectListCacheParams{
+		Generation:   generation,
 		Page:         page,
 		Limit:        limit,
 		Status:       status,
