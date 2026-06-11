@@ -193,13 +193,13 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	}
 
 	startedAt := time.Now().UTC()
-	attempt, err := s.startPublishAttempt(scheduleID, startedAt)
+	attempt, hasAttempt, err := s.startPublishAttempt(scheduleID, startedAt)
 	if err != nil {
 		return nil, err
 	}
 	failAttempt := func(err error) error {
-		if attempt != nil {
-			_ = s.finishPublishAttempt(attempt, models.PublishAttemptStatusFailed, "", "", SanitizeUserFacingErrorMessage(err.Error()))
+		if hasAttempt {
+			_ = s.finishPublishAttempt(&attempt, models.PublishAttemptStatusFailed, "", "", SanitizeUserFacingErrorMessage(err.Error()))
 		}
 		return err
 	}
@@ -282,8 +282,10 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	if status == models.PublicationStatusFailed {
 		attemptStatus = models.PublishAttemptStatusFailed
 	}
-	if err := s.finishPublishAttempt(attempt, attemptStatus, remoteID, publishURL, errMsg); err != nil {
-		return nil, err
+	if hasAttempt {
+		if err := s.finishPublishAttempt(&attempt, attemptStatus, remoteID, publishURL, errMsg); err != nil {
+			return nil, err
+		}
 	}
 	s.invalidateDashboardCaches(ctx)
 	if err := s.recordProjectPublishActivity(projectID, *scopeUserID, models.ProjectActivityPublishCompleted, map[string]any{

@@ -71,26 +71,26 @@ func (s *Service) latestProjectVersionID(ctx context.Context, projectID uuid.UUI
 	return uuid.Nil, err
 }
 
-func (s *Service) startPublishAttempt(scheduleID uuid.UUID, startedAt time.Time) (*models.PublishAttempt, error) {
+func (s *Service) startPublishAttempt(scheduleID uuid.UUID, startedAt time.Time) (models.PublishAttempt, bool, error) {
 	if scheduleID == uuid.Nil {
-		return nil, nil
+		return models.PublishAttempt{}, false, nil
 	}
 	if !s.db.Migrator().HasTable(&models.ScheduledPublication{}) || !s.db.Migrator().HasTable(&models.PublishAttempt{}) {
-		return nil, nil
+		return models.PublishAttempt{}, false, nil
 	}
 	var schedule models.ScheduledPublication
 	if err := s.db.Select("id").First(&schedule, "id = ?", scheduleID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return models.PublishAttempt{}, false, nil
 		}
-		return nil, err
+		return models.PublishAttempt{}, false, err
 	}
 	var attemptNo int
 	if err := s.db.Model(&models.PublishAttempt{}).
 		Where("scheduled_publication_id = ?", scheduleID).
 		Select("COALESCE(MAX(attempt_no), 0)").
 		Scan(&attemptNo).Error; err != nil {
-		return nil, err
+		return models.PublishAttempt{}, false, err
 	}
 	attempt := models.PublishAttempt{
 		ScheduledPublicationID: scheduleID,
@@ -109,9 +109,9 @@ func (s *Service) startPublishAttempt(scheduleID uuid.UUID, startedAt time.Time)
 		}
 		return tx.Create(&attempt).Error
 	}); err != nil {
-		return nil, err
+		return models.PublishAttempt{}, false, err
 	}
-	return &attempt, nil
+	return attempt, true, nil
 }
 
 func (s *Service) finishPublishAttempt(attempt *models.PublishAttempt, status string, remoteID string, publishURL string, errorMessage string) error {
