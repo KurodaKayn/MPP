@@ -3,6 +3,8 @@ package publish
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -11,6 +13,16 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+)
+
+const (
+	scheduledPublicationPollInterval = 5 * time.Second
+	scheduledPublicationBatchSize    = 25
+)
+
+var (
+	errScheduledPublicationMissing      = errors.New("scheduled publication does not exist")
+	errScheduledPublicationNotStartable = errors.New("scheduled publication is not startable")
 )
 
 func (s *Service) createScheduledPublication(ctx context.Context, project models.Project, pub models.ProjectPlatformPublication, userID uuid.UUID, idempotencyKey string, scheduledAt time.Time, status string) (models.ScheduledPublication, error) {
@@ -212,6 +224,99 @@ func (s *Service) requireWorkspaceCalendarAccess(ctx context.Context, workspaceI
 	return nil
 }
 
+func (s *Service) StartScheduledPublicationDispatcher(ctx context.Context) {
+	if s.queue == nil || s.db == nil {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(scheduledPublicationPollInterval)
+		defer ticker.Stop()
+
+		for {
+			if err := s.FlushScheduledPublications(ctx, scheduledPublicationBatchSize); err != nil && ctx.Err() == nil {
+				log.Printf("scheduled publication flush failed: %v", err)
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+}
+
+func (s *Service) FlushScheduledPublications(ctx context.Context, limit int) error {
+	if s.queue == nil || s.db == nil {
+		return nil
+	}
+	if limit <= 0 {
+		limit = scheduledPublicationBatchSize
+	}
+
+	now := time.Now().UTC()
+	var schedules []models.ScheduledPublication
+	if err := s.db.WithContext(ctx).
+		Preload("Publication").
+		Where("status = ? AND scheduled_at <= ?", models.ScheduledPublicationStatusScheduled, now).
+		Order("scheduled_at ASC").
+		Limit(limit).
+		Find(&schedules).Error; err != nil {
+		return err
+	}
+
+	var firstErr error
+	for _, schedule := range schedules {
+		if err := s.dispatchScheduledPublication(ctx, schedule); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (s *Service) dispatchScheduledPublication(ctx context.Context, schedule models.ScheduledPublication) error {
+	if schedule.ID == uuid.Nil || schedule.ProjectID == uuid.Nil || schedule.CreatedBy == uuid.Nil || schedule.PublicationID == uuid.Nil {
+		return nil
+	}
+	if schedule.Status != models.ScheduledPublicationStatusScheduled || schedule.ScheduledAt.After(time.Now().UTC()) {
+		return nil
+	}
+	platform := strings.TrimSpace(schedule.Publication.Platform)
+	if platform == "" {
+		var publication models.ProjectPlatformPublication
+		if err := s.db.WithContext(ctx).Select("platform").First(&publication, "id = ?", schedule.PublicationID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+		platform = publication.Platform
+	}
+	if platform == "" {
+		return nil
+	}
+
+	job := PublishJob{
+		JobID:          uuid.New(),
+		ProjectID:      schedule.ProjectID,
+		UserID:         schedule.CreatedBy,
+		Platform:       platform,
+		PublicationID:  schedule.PublicationID,
+		ScheduleID:     schedule.ID,
+		IdempotencyKey: schedule.IdempotencyKey,
+		EnqueuedAt:     time.Now().UTC(),
+	}
+	lockKey := publishLockKey(schedule.ProjectID, platform)
+	acquired, err := s.queue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
+	if err != nil {
+		return err
+	}
+	if !acquired {
+		return nil
+	}
+	return s.processPublishJob(ctx, job)
+}
+
 func (s *Service) latestProjectVersionID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
 	if !s.db.Migrator().HasTable(&models.ProjectVersion{}) {
 		return uuid.Nil, nil
@@ -241,37 +346,54 @@ func (s *Service) startPublishAttempt(scheduleID uuid.UUID, startedAt time.Time)
 	if !s.db.Migrator().HasTable(&models.ScheduledPublication{}) || !s.db.Migrator().HasTable(&models.PublishAttempt{}) {
 		return models.PublishAttempt{}, false, nil
 	}
-	var schedule models.ScheduledPublication
-	if err := s.db.Select("id").First(&schedule, "id = ?", scheduleID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.PublishAttempt{}, false, nil
-		}
-		return models.PublishAttempt{}, false, err
-	}
-	var attemptNo int
-	if err := s.db.Model(&models.PublishAttempt{}).
-		Where("scheduled_publication_id = ?", scheduleID).
-		Select("COALESCE(MAX(attempt_no), 0)").
-		Scan(&attemptNo).Error; err != nil {
-		return models.PublishAttempt{}, false, err
-	}
-	attempt := models.PublishAttempt{
-		ScheduledPublicationID: scheduleID,
-		AttemptNo:              attemptNo + 1,
-		StartedAt:              startedAt,
-		Status:                 models.PublishAttemptStatusRunning,
-	}
+	var attempt models.PublishAttempt
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&models.ScheduledPublication{}).
-			Where("id = ?", scheduleID).
+		result := tx.Model(&models.ScheduledPublication{}).
+			Where("id = ? AND status IN ?", scheduleID, []string{
+				models.ScheduledPublicationStatusScheduled,
+				models.ScheduledPublicationStatusFailed,
+				models.ScheduledPublicationStatusNeedsManualAction,
+			}).
 			Updates(map[string]any{
 				"status":     models.ScheduledPublicationStatusRunning,
 				"last_error": "",
-			}).Error; err != nil {
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			var schedule models.ScheduledPublication
+			if err := tx.Select("status").First(&schedule, "id = ?", scheduleID).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return errScheduledPublicationMissing
+				}
+				return err
+			}
+			return fmt.Errorf("%w: %s", errScheduledPublicationNotStartable, schedule.Status)
+		}
+
+		var attemptNo int
+		if err := tx.Model(&models.PublishAttempt{}).
+			Where("scheduled_publication_id = ?", scheduleID).
+			Select("COALESCE(MAX(attempt_no), 0)").
+			Scan(&attemptNo).Error; err != nil {
 			return err
+		}
+
+		attempt = models.PublishAttempt{
+			ScheduledPublicationID: scheduleID,
+			AttemptNo:              attemptNo + 1,
+			StartedAt:              startedAt,
+			Status:                 models.PublishAttemptStatusRunning,
 		}
 		return tx.Create(&attempt).Error
 	}); err != nil {
+		if errors.Is(err, errScheduledPublicationMissing) {
+			return models.PublishAttempt{}, false, nil
+		}
+		if errors.Is(err, errScheduledPublicationNotStartable) {
+			return models.PublishAttempt{}, false, ErrPublicationAlreadyPublishing
+		}
 		return models.PublishAttempt{}, false, err
 	}
 	return attempt, true, nil
