@@ -3,6 +3,7 @@ package project
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -17,6 +18,8 @@ const (
 	defaultProjectListLimit = 10
 	maxProjectListLimit     = 100
 )
+
+var errEmptyProjectListCursor = errors.New("empty project list cursor")
 
 type projectListCursor struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -37,12 +40,12 @@ func normalizeProjectListPage(page, limit int) (int, int) {
 }
 
 func applyProjectListCursor(query *gorm.DB, cursor string) (*gorm.DB, error) {
+	if strings.TrimSpace(cursor) == "" {
+		return query, nil
+	}
 	decoded, err := decodeProjectListCursor(cursor)
 	if err != nil {
 		return nil, err
-	}
-	if decoded == nil {
-		return query, nil
 	}
 	return query.Where(
 		"(projects.created_at < ? OR (projects.created_at = ? AND projects.id > ?))",
@@ -55,7 +58,7 @@ func applyProjectListCursor(query *gorm.DB, cursor string) (*gorm.DB, error) {
 func decodeProjectListCursor(cursor string) (*projectListCursor, error) {
 	cursor = strings.TrimSpace(cursor)
 	if cursor == "" {
-		return nil, nil
+		return nil, errEmptyProjectListCursor
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
