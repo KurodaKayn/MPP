@@ -239,6 +239,39 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_self_hosted_data_services_reject_missing_backup_cronjob
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      documents.reject! do |entry|
+        entry["kind"] == "CronJob" &&
+          entry.dig("metadata", "name") == "postgres-backup" &&
+          entry.dig("metadata", "namespace") == "mpp-system"
+      end
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted missing backup CronJob"
+    assert_includes stderr, "rendered manifests are missing CronJob/mpp-system/postgres-backup"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_self_hosted_data_services_require_backup_network_policy_sources
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      policy = document(documents, "NetworkPolicy", "postgres-app-access", "mpp-system")
+      policy.dig("spec", "ingress", 0, "from").reject! do |entry|
+        entry.dig("podSelector", "matchLabels", "app.kubernetes.io/component") == "postgres-backup"
+      end
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted missing backup NetworkPolicy source"
+    assert_includes stderr, "self-hosted postgres NetworkPolicy must allow postgres-backup ingress"
+  ensure
+    rendered&.unlink
+  end
+
   private
 
   def run_validator(overlay, rendered_path, env = {})

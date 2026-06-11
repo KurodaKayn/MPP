@@ -32,6 +32,10 @@ spec:
             matchLabels:
               app.kubernetes.io/name: mpp
               app.kubernetes.io/component: pgbouncer
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: postgres-backup
       ports:
         - protocol: TCP
           port: 5432
@@ -104,6 +108,10 @@ spec:
             matchLabels:
               app.kubernetes.io/name: mpp
               app.kubernetes.io/component: collab-service
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: redis-backup
       ports:
         - protocol: TCP
           port: 6379

@@ -151,7 +151,8 @@ module KubernetesAppSecret
     end
 
     def test_cli_fails_for_missing_required_key
-      env = complete_env.except("JWT_SECRET")
+      env = complete_env.dup
+      env.delete("JWT_SECRET")
 
       stdout, stderr, status = Open3.capture3(
         RbConfig.ruby,
