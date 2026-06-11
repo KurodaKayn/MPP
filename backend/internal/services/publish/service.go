@@ -40,10 +40,16 @@ type Service struct {
 	browserSessionService *browsersession.BrowserSessionService
 	objectStorage         objectstorage.Client
 	storageConfig         objectstorage.Config
+	dashboardCache        DashboardCacheInvalidator
 }
 
 type PublishJobObserver interface {
 	ObservePublishJob(platform string, result string)
+}
+
+type DashboardCacheInvalidator interface {
+	InvalidateDashboardProjectListCache(ctx context.Context)
+	InvalidateDashboardStatsCache(ctx context.Context)
 }
 
 const (
@@ -97,6 +103,10 @@ func (s *Service) UseObjectStorage(client objectstorage.Client, config objectsto
 	s.storageConfig = config
 }
 
+func (s *Service) SetDashboardCacheInvalidator(invalidator DashboardCacheInvalidator) {
+	s.dashboardCache = invalidator
+}
+
 func (s *Service) UseRedis(client *redis.Client) {
 	if client == nil {
 		return
@@ -108,6 +118,21 @@ func (s *Service) observePublishJob(platform string, result string) {
 	if s.publishJobObserver != nil {
 		s.publishJobObserver.ObservePublishJob(platform, result)
 	}
+}
+
+func (s *Service) invalidateDashboardCaches(ctx context.Context) {
+	if s.dashboardCache == nil {
+		return
+	}
+	s.dashboardCache.InvalidateDashboardProjectListCache(ctx)
+	s.dashboardCache.InvalidateDashboardStatsCache(ctx)
+}
+
+func (s *Service) invalidateDashboardProjectListCache(ctx context.Context) {
+	if s.dashboardCache == nil {
+		return
+	}
+	s.dashboardCache.InvalidateDashboardProjectListCache(ctx)
 }
 
 func SanitizeUserFacingErrorMessage(message string) string {
@@ -197,6 +222,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	if err := s.markPublicationPublishing(&pub, startedAt); err != nil {
 		return nil, err
 	}
+	s.invalidateDashboardCaches(ctx)
 
 	var remoteID string
 	var publishURL string
@@ -241,6 +267,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	if err := s.db.Model(&pub).Updates(updates).Error; err != nil {
 		return nil, err
 	}
+	s.invalidateDashboardCaches(ctx)
 	if err := s.recordProjectPublishActivity(projectID, *scopeUserID, models.ProjectActivityPublishCompleted, map[string]any{
 		"platform":  platform,
 		"status":    status,
@@ -301,6 +328,7 @@ func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID)
 	}).Error; err != nil {
 		return nil, err
 	}
+	s.invalidateDashboardProjectListCache(context.Background())
 
 	return map[string]any{
 		"status":      "manual_required",
