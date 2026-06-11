@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -683,6 +684,108 @@ func TestFlushPublishOutboxRetriesStaleProcessingEvent(t *testing.T) {
 	require.Equal(t, models.OutboxStatusDispatched, outbox.Status)
 	require.Equal(t, 4, outbox.Attempts)
 	require.NotNil(t, outbox.ProcessedAt)
+}
+
+func TestClaimOutboxEventDoesNotDoubleClaimPendingRace(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:outbox-claim-race?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&models.OutboxEvent{}))
+	service := newPublishTestService(db)
+	payload, err := json.Marshal(PublishJob{
+		JobID:      uuid.New(),
+		ProjectID:  uuid.New(),
+		UserID:     uuid.New(),
+		Platform:   "wechat",
+		EnqueuedAt: time.Now().UTC(),
+	})
+	require.NoError(t, err)
+	outbox := models.OutboxEvent{
+		AggregateType: models.OutboxAggregatePublishJob,
+		AggregateID:   uuid.New(),
+		EventType:     models.OutboxEventPublishJobRequested,
+		Payload:       datatypes.JSON(payload),
+		Status:        models.OutboxStatusPending,
+	}
+	require.NoError(t, db.Create(&outbox).Error)
+
+	const callbackName = "mpp:test:block_outbox_claim_update"
+	var blocked atomic.Int32
+	bothBlocked := make(chan struct{})
+	release := make(chan struct{})
+	require.NoError(t, db.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table != "outbox_events" {
+			return
+		}
+		if blocked.Add(1) == 2 {
+			close(bothBlocked)
+		}
+		<-release
+	}))
+	defer func() {
+		_ = db.Callback().Update().Remove(callbackName)
+	}()
+
+	type claimResult struct {
+		claimed bool
+		err     error
+	}
+	results := make(chan claimResult, 2)
+	for range 2 {
+		go func() {
+			_, claimed, err := service.claimOutboxEvent(context.Background(), outbox.ID)
+			results <- claimResult{claimed: claimed, err: err}
+		}()
+	}
+
+	select {
+	case <-bothBlocked:
+	case <-time.After(time.Second):
+		t.Fatal("expected both claim attempts to reach the update gate")
+	}
+	close(release)
+
+	first := <-results
+	second := <-results
+	require.NoError(t, first.err)
+	require.NoError(t, second.err)
+	claimedCount := 0
+	if first.claimed {
+		claimedCount++
+	}
+	if second.claimed {
+		claimedCount++
+	}
+	require.Equal(t, 1, claimedCount)
+
+	require.NoError(t, db.First(&outbox, "id = ?", outbox.ID).Error)
+	require.Equal(t, models.OutboxStatusProcessing, outbox.Status)
+	require.Equal(t, 1, outbox.Attempts)
+}
+
+func TestOutboxClaimVersionPreventsLateFailureOverwrite(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:outbox-claim-version?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&models.OutboxEvent{}))
+	service := newPublishTestService(db)
+	outbox := models.OutboxEvent{
+		AggregateType: models.OutboxAggregatePublishJob,
+		AggregateID:   uuid.New(),
+		EventType:     models.OutboxEventPublishJobRequested,
+		Payload:       datatypes.JSON(`{}`),
+		Status:        models.OutboxStatusDispatched,
+		Attempts:      2,
+	}
+	require.NoError(t, db.Create(&outbox).Error)
+
+	lateClaim := outbox
+	lateClaim.Status = models.OutboxStatusProcessing
+	lateClaim.Attempts = 1
+	require.NoError(t, service.markOutboxEventFailed(context.Background(), lateClaim, errors.New("late dispatch failure")))
+
+	require.NoError(t, db.First(&outbox, "id = ?", outbox.ID).Error)
+	require.Equal(t, models.OutboxStatusDispatched, outbox.Status)
+	require.Equal(t, 2, outbox.Attempts)
+	require.Empty(t, outbox.ErrorMessage)
 }
 
 func TestEnqueuePublishProjectRejectsActivePublishingWithoutRedisLock(t *testing.T) {
