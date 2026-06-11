@@ -85,7 +85,9 @@ func (s *DashboardService) WithContext(ctx context.Context) *DashboardService {
 	scoped.Stats = &Stats{Service: s.Stats.WithContext(ctx)}
 	scoped.AccountSettings = &AccountSettings{Service: s.AccountSettings.WithContext(ctx)}
 	scoped.Publisher = &Publisher{Service: s.Publisher.WithContext(ctx)}
-	return &scoped
+	scopedService := &scoped
+	scopedService.wireDashboardCacheInvalidators()
+	return scopedService
 }
 
 type Project struct {
@@ -167,18 +169,22 @@ func newDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.
 	accounts := platformaccount.NewServiceWithPlatformTestersAndRouter(db, tester, xTester, router)
 	projects := projectsvc.NewServiceWithRouter(db, router)
 	publisher := publishsvc.NewService(db, accounts)
-	return &DashboardService{
+	stats := statssvc.NewServiceWithRouter(db, projects, router)
+	prepublish := prepublishsvc.NewService(db, projects, compiler.NewContentPipelineDraftCompiler())
+	service := &DashboardService{
 		Project:         &Project{Service: projects},
 		Workspace:       &Workspace{Service: workspacesvc.NewServiceWithRouter(db, projects, router)},
-		Prepublish:      &Prepublish{Service: prepublishsvc.NewService(db, projects, compiler.NewContentPipelineDraftCompiler())},
+		Prepublish:      &Prepublish{Service: prepublish},
 		Extension:       &Extension{Service: extensionsvc.NewService(db)},
 		MediaAsset:      &MediaAsset{Service: mediaassetsvc.NewService(db, projects)},
-		Stats:           &Stats{Service: statssvc.NewServiceWithRouter(db, projects, router)},
+		Stats:           &Stats{Service: stats},
 		AccountSettings: &AccountSettings{Service: accounts},
 		Publisher:       &Publisher{Service: publisher},
 		db:              db,
 		dbRouter:        router,
 	}
+	service.wireDashboardCacheInvalidators()
+	return service
 }
 
 func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider platformaccount.XOAuth2Provider) *DashboardService {
@@ -186,18 +192,22 @@ func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider platformaccoun
 	accounts := platformaccount.NewServiceWithXOAuth2ProviderAndRouter(db, provider, router)
 	projects := projectsvc.NewServiceWithRouter(db, router)
 	publisher := publishsvc.NewService(db, accounts)
-	return &DashboardService{
+	stats := statssvc.NewServiceWithRouter(db, projects, router)
+	prepublish := prepublishsvc.NewService(db, projects, compiler.NewContentPipelineDraftCompiler())
+	service := &DashboardService{
 		Project:         &Project{Service: projects},
 		Workspace:       &Workspace{Service: workspacesvc.NewServiceWithRouter(db, projects, router)},
-		Prepublish:      &Prepublish{Service: prepublishsvc.NewService(db, projects, compiler.NewContentPipelineDraftCompiler())},
+		Prepublish:      &Prepublish{Service: prepublish},
 		Extension:       &Extension{Service: extensionsvc.NewService(db)},
 		MediaAsset:      &MediaAsset{Service: mediaassetsvc.NewService(db, projects)},
-		Stats:           &Stats{Service: statssvc.NewServiceWithRouter(db, projects, router)},
+		Stats:           &Stats{Service: stats},
 		AccountSettings: &AccountSettings{Service: accounts},
 		Publisher:       &Publisher{Service: publisher},
 		db:              db,
 		dbRouter:        router,
 	}
+	service.wireDashboardCacheInvalidators()
+	return service
 }
 
 func (s *DashboardService) SetPublishQueue(queue publishsvc.PublishQueue) {
@@ -212,4 +222,33 @@ func (s *DashboardService) UseRedis(client *redis.Client) {
 	s.AccountSettings.UseRedis(client)
 	s.Publisher.UseRedis(client)
 	s.Stats.UseRedis(client)
+}
+
+func (s *DashboardService) wireDashboardCacheInvalidators() {
+	if s == nil {
+		return
+	}
+	if s.Project != nil && s.Project.Service != nil && s.Stats != nil && s.Stats.Service != nil {
+		s.Project.SetDashboardStatsCacheInvalidator(s.Stats.Service)
+	}
+	if s.Prepublish != nil && s.Prepublish.Service != nil && s.Stats != nil && s.Stats.Service != nil {
+		s.Prepublish.SetDashboardStatsCacheInvalidator(s.Stats.Service)
+	}
+	if s.Publisher != nil && s.Publisher.Service != nil {
+		s.SetDashboardCacheInvalidator(s)
+	}
+}
+
+func (s *DashboardService) InvalidateDashboardProjectListCache(ctx context.Context) {
+	if s == nil || s.Project == nil || s.Project.Service == nil {
+		return
+	}
+	s.Project.InvalidateDashboardProjectListCache(ctx)
+}
+
+func (s *DashboardService) InvalidateDashboardStatsCache(ctx context.Context) {
+	if s == nil || s.Stats == nil || s.Stats.Service == nil {
+		return
+	}
+	s.Stats.InvalidateDashboardStatsCache(ctx)
 }
