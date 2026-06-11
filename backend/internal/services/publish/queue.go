@@ -213,12 +213,12 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		return nil, err
 	}
 	scheduledAt := time.Now().UTC()
-	schedule, err := s.createScheduledPublication(ctx, project, pub, *scopeUserID, req.IdempotencyKey, scheduledAt, models.ScheduledPublicationStatusScheduled)
-	if err != nil {
-		return nil, err
-	}
 
 	if s.queue == nil {
+		schedule, err := s.createScheduledPublication(ctx, project, pub, *scopeUserID, req.IdempotencyKey, scheduledAt, models.ScheduledPublicationStatusScheduled)
+		if err != nil {
+			return nil, err
+		}
 		resp, err := s.PublishProject(projectID, platform, scopeUserID, schedule.ID)
 		if err != nil {
 			return nil, err
@@ -236,7 +236,6 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		UserID:         *scopeUserID,
 		Platform:       platform,
 		PublicationID:  pub.ID,
-		ScheduleID:     schedule.ID,
 		IdempotencyKey: req.IdempotencyKey,
 		EnqueuedAt:     scheduledAt,
 	}
@@ -256,10 +255,17 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		return nil, ErrPublicationAlreadyPublishing
 	}
 
+	var schedule models.ScheduledPublication
 	outboxEventID := uuid.Nil
 	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		txService := *s
 		txService.db = tx
+		createdSchedule, err := txService.createScheduledPublication(ctx, project, pub, *scopeUserID, req.IdempotencyKey, scheduledAt, models.ScheduledPublicationStatusScheduled)
+		if err != nil {
+			return err
+		}
+		schedule = createdSchedule
+		job.ScheduleID = schedule.ID
 		if err := txService.recordPublishEvent(models.PublishEvent{
 			PublicationID:  pub.ID,
 			ProjectID:      project.ID,
