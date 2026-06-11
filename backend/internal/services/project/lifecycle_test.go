@@ -229,6 +229,30 @@ func TestGetProjectUsesWriterForStickyAdminDetail(t *testing.T) {
 	require.Equal(t, "Writer detail", detail.Title)
 }
 
+func TestGetProjectBackfillsPersonalWorkspaceIDWhenLegacyProjectOmitsIt(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+
+	user := models.User{Username: "legacy-owner", Email: "legacy-owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Legacy personal project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Model(&models.Project{}).
+		Where("id = ?", project.ID).
+		Update("workspace_id", nil).Error)
+
+	detail, err := s.GetProject(project.ID, &user.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, detail.WorkspaceID)
+	require.Equal(t, models.PersonalWorkspaceID(user.ID), *detail.WorkspaceID)
+}
+
 func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)
