@@ -71,6 +71,9 @@ print_secret() {
         grafana)
             printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "$(hex_secret)"
             ;;
+        postgres-exporter)
+            printf 'POSTGRES_EXPORTER_PASSWORD=%s\n' "$(hex_secret)"
+            ;;
         app)
             print_secret jwt
             print_secret cookie
@@ -83,13 +86,14 @@ print_secret() {
             print_secret db
             print_secret redis
             print_secret grafana
+            print_secret postgres-exporter
             ;;
         all)
             print_secret app
             print_secret infra
             ;;
         *)
-            echo "usage: $0 [jwt|cookie|collab|ai|pipeline|browser|db|redis|grafana|app|infra|all]" >&2
+            echo "usage: $0 [jwt|cookie|collab|ai|pipeline|browser|db|redis|grafana|postgres-exporter|app|infra|all]" >&2
             exit 2
             ;;
     esac
