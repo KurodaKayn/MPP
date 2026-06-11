@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,6 +82,19 @@ func TestPostgresReplicaLagProbeRejectsNilDatabase(t *testing.T) {
 
 	require.Zero(t, lag)
 	require.ErrorIs(t, err, ErrReplicaLagUnknown)
+}
+
+func TestPostgresReplicaLagQueryRequiresActiveWalReceiverBeforeZeroLag(t *testing.T) {
+	query := strings.Join(strings.Fields(postgresReplicaLagSecondsQuery), " ")
+	receiverCheck := "NOT EXISTS ( SELECT 1 FROM pg_stat_wal_receiver ) THEN NULL"
+	caughtUpCheck := "pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0"
+
+	receiverIndex := strings.Index(query, receiverCheck)
+	caughtUpIndex := strings.Index(query, caughtUpCheck)
+
+	require.NotEqual(t, -1, receiverIndex)
+	require.NotEqual(t, -1, caughtUpIndex)
+	require.Less(t, receiverIndex, caughtUpIndex)
 }
 
 type fakeReplicaLagProbe struct {
