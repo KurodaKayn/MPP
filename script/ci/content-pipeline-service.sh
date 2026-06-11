@@ -3,5 +3,5 @@ set -euo pipefail
 
 cd content-pipeline-service
 cargo fmt --all --check
-cargo clippy -- -D warnings
+cargo clippy --all-targets -- -D warnings
 cargo test
