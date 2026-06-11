@@ -563,11 +563,12 @@ func projectDetailFromModel(project models.Project, role string, accessSource st
 	if publications == nil {
 		publications = []dto.PublicationSummary{}
 	}
+	workspaceID := projectWorkspaceID(project)
 
 	return &dto.ProjectDetail{
 		ID:               project.ID,
 		UserID:           project.UserID,
-		WorkspaceID:      project.WorkspaceID,
+		WorkspaceID:      &workspaceID,
 		CollabDocumentID: project.CollabDocumentID,
 		TemplateID:       project.TemplateID,
 		BrandProfileID:   project.BrandProfileID,
@@ -599,11 +600,12 @@ func projectListItemFromModel(project models.Project, access projectAccessResolu
 	if publications == nil {
 		publications = []dto.PublicationSummary{}
 	}
+	workspaceID := projectWorkspaceID(project)
 
 	return dto.ProjectListItem{
 		ID:               project.ID,
 		UserID:           project.UserID,
-		WorkspaceID:      project.WorkspaceID,
+		WorkspaceID:      &workspaceID,
 		CollabDocumentID: project.CollabDocumentID,
 		TemplateID:       project.TemplateID,
 		BrandProfileID:   project.BrandProfileID,

@@ -265,12 +265,18 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           canOpenXPostIntent={publishing.canOpenXPostIntent}
           canPublish={publishing.canPublish}
           canSelectPlatforms={publishing.canSelectPlatforms}
+          busyScheduleId={publishing.busyScheduleId}
           isOpeningXPostIntent={publishing.isOpeningXPostIntent}
           isPublishing={publishing.isPublishing}
+          isSchedulingPublication={publishing.isSchedulingPublication}
+          scheduledPublications={publishing.scheduledPublications}
           selectedPlatforms={publishing.selectedPlatforms}
+          onCancelSchedule={publishing.onCancelSchedule}
           onOpenDouyinPublishSession={publishing.onOpenDouyinPublishSession}
           onOpenXPostIntent={publishing.onOpenXPostIntent}
           onPublish={publishing.onPublish}
+          onRetrySchedule={publishing.onRetrySchedule}
+          onSchedulePublication={publishing.onSchedulePublication}
           onSelectedPlatformsChange={publishing.onSelectedPlatformsChange}
           publishLabel={
             header.mode === "edit"

@@ -6,6 +6,7 @@ import {
   addProjectCollaborator,
   addWorkspaceMember,
   cancelBrowserSession,
+  cancelScheduledPublication,
   completeBrowserSession,
   completeMediaUpload,
   createBrandProfile,
@@ -35,12 +36,14 @@ import {
   getWorkspaceBrandProfiles,
   getWorkspaceContentTemplates,
   getWorkspaceMembers,
+  getWorkspacePublicationCalendar,
   getWorkspaceProjects,
   getWorkspaces,
   getXAccount,
   getWechatAccount,
   publishProject,
   removeProjectCollaborator,
+  retryScheduledPublication,
   resolveMediaAssets,
   removeWorkspaceMember,
   restoreProjectVersion,
@@ -49,6 +52,7 @@ import {
   saveDashboardProjectPlatforms,
   saveXAccount,
   saveWechatAccount,
+  scheduleProjectPublication,
   startBrowserSession,
   streamAIContentEdit,
   streamAIPrepublishEdit,
@@ -269,6 +273,102 @@ describe("dashboard api client", () => {
       expect.objectContaining({
         credentials: "same-origin",
         headers: expect.any(Headers),
+      }),
+    );
+  });
+
+  it("manages scheduled publications", async () => {
+    const schedule = {
+      attempts: [],
+      created_at: "2026-06-11T08:00:00Z",
+      created_by: "user-1",
+      id: "schedule-1",
+      platform: "wechat",
+      project_id: "project-1",
+      project_title: "Launch draft",
+      publication_id: "pub-1",
+      scheduled_at: "2026-06-12T08:00:00Z",
+      status: "scheduled",
+      timezone: "Asia/Shanghai",
+      updated_at: "2026-06-11T08:00:00Z",
+      workspace_id: "workspace-1",
+    };
+    const calendar = { items: [schedule] };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(schedule))
+      .mockResolvedValueOnce(jsonResponse(calendar))
+      .mockResolvedValueOnce(
+        jsonResponse({ ...schedule, cancelled_by: "user-1", status: "cancelled" }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ...schedule,
+          attempts: [{ attempt_no: 2, id: "attempt-2", status: "succeeded" }],
+          status: "published",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      scheduleProjectPublication("project-1", {
+        idempotency_key: "schedule-key",
+        platform: "wechat",
+        scheduled_at: "2026-06-12T08:00:00Z",
+        timezone: "Asia/Shanghai",
+      }),
+    ).resolves.toEqual(schedule);
+    await expect(
+      getWorkspacePublicationCalendar(
+        "workspace-1",
+        "2026-06-12T00:00:00Z",
+        "2026-06-13T00:00:00Z",
+      ),
+    ).resolves.toEqual(calendar);
+    await expect(
+      cancelScheduledPublication("project-1", "schedule-1"),
+    ).resolves.toEqual({ ...schedule, cancelled_by: "user-1", status: "cancelled" });
+    await expect(
+      retryScheduledPublication("project-1", "schedule-1"),
+    ).resolves.toEqual({
+      ...schedule,
+      attempts: [{ attempt_no: 2, id: "attempt-2", status: "succeeded" }],
+      status: "published",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/user/dashboard/projects/project-1/schedules",
+      expect.objectContaining({
+        body: JSON.stringify({
+          idempotency_key: "schedule-key",
+          platform: "wechat",
+          scheduled_at: "2026-06-12T08:00:00Z",
+          timezone: "Asia/Shanghai",
+        }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/workspaces/workspace-1/publication-calendar?from=2026-06-12T00%3A00%3A00Z&to=2026-06-13T00%3A00%3A00Z",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/user/dashboard/projects/project-1/schedules/schedule-1",
+      expect.objectContaining({
+        method: "DELETE",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/user/dashboard/projects/project-1/schedules/schedule-1/retry",
+      expect.objectContaining({
+        method: "POST",
       }),
     );
   });

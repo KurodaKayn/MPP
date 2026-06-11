@@ -14,12 +14,14 @@ declare global {
 
 const mocks = vi.hoisted(() => ({
   cancelBrowserSession: vi.fn(),
+  cancelScheduledPublication: vi.fn(),
   createDashboardProject: vi.fn(),
   createWorkspaceProject: vi.fn(),
   getBrandProfiles: vi.fn(),
   getContentTemplates: vi.fn(),
   getDashboardProject: vi.fn(),
   getProjectPublications: vi.fn(),
+  getWorkspacePublicationCalendar: vi.fn(),
   getWorkspaceBrandProfiles: vi.fn(),
   getWorkspaceContentTemplates: vi.fn(),
   publishProject: vi.fn(),
@@ -28,10 +30,12 @@ const mocks = vi.hoisted(() => ({
   replace: vi.fn(),
   saveDashboardProjectContent: vi.fn(),
   saveDashboardProjectPlatforms: vi.fn(),
+  scheduleProjectPublication: vi.fn(),
   startDouyinPublishSession: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
   syncProjectPrepublish: vi.fn(),
+  retryScheduledPublication: vi.fn(),
   updateDashboardProject: vi.fn(),
   waitForProjectPublications: vi.fn(),
 }));
@@ -53,19 +57,23 @@ vi.mock("@/lib/i18n/client", () => ({
 
 vi.mock("@/lib/dashboard/api", () => ({
   cancelBrowserSession: mocks.cancelBrowserSession,
+  cancelScheduledPublication: mocks.cancelScheduledPublication,
   createDashboardProject: mocks.createDashboardProject,
   createWorkspaceProject: mocks.createWorkspaceProject,
   getBrandProfiles: mocks.getBrandProfiles,
   getContentTemplates: mocks.getContentTemplates,
   getDashboardProject: mocks.getDashboardProject,
   getProjectPublications: mocks.getProjectPublications,
+  getWorkspacePublicationCalendar: mocks.getWorkspacePublicationCalendar,
   getWorkspaceBrandProfiles: mocks.getWorkspaceBrandProfiles,
   getWorkspaceContentTemplates: mocks.getWorkspaceContentTemplates,
   publishProject: mocks.publishProject,
   saveDashboardProjectContent: mocks.saveDashboardProjectContent,
   saveDashboardProjectPlatforms: mocks.saveDashboardProjectPlatforms,
+  scheduleProjectPublication: mocks.scheduleProjectPublication,
   startDouyinPublishSession: mocks.startDouyinPublishSession,
   syncProjectPrepublish: mocks.syncProjectPrepublish,
+  retryScheduledPublication: mocks.retryScheduledPublication,
   updateDashboardProject: mocks.updateDashboardProject,
   waitForProjectPublications: mocks.waitForProjectPublications,
 }));
@@ -130,12 +138,14 @@ describe("useContentPageController", () => {
   beforeEach(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     mocks.cancelBrowserSession.mockReset();
+    mocks.cancelScheduledPublication.mockReset();
     mocks.createDashboardProject.mockReset();
     mocks.createWorkspaceProject.mockReset();
     mocks.getBrandProfiles.mockReset();
     mocks.getContentTemplates.mockReset();
     mocks.getDashboardProject.mockReset();
     mocks.getProjectPublications.mockReset();
+    mocks.getWorkspacePublicationCalendar.mockReset();
     mocks.getWorkspaceBrandProfiles.mockReset();
     mocks.getWorkspaceContentTemplates.mockReset();
     mocks.publishProject.mockReset();
@@ -144,16 +154,19 @@ describe("useContentPageController", () => {
     mocks.refresh.mockReset();
     mocks.saveDashboardProjectContent.mockReset();
     mocks.saveDashboardProjectPlatforms.mockReset();
+    mocks.scheduleProjectPublication.mockReset();
     mocks.startDouyinPublishSession.mockReset();
     mocks.toastError.mockReset();
     mocks.toastSuccess.mockReset();
     mocks.syncProjectPrepublish.mockReset();
+    mocks.retryScheduledPublication.mockReset();
     mocks.updateDashboardProject.mockReset();
     mocks.waitForProjectPublications.mockReset();
     mocks.getBrandProfiles.mockResolvedValue({ items: [] });
     mocks.getContentTemplates.mockResolvedValue({ items: [] });
     mocks.getWorkspaceBrandProfiles.mockResolvedValue({ items: [] });
     mocks.getWorkspaceContentTemplates.mockResolvedValue({ items: [] });
+    mocks.getWorkspacePublicationCalendar.mockResolvedValue({ items: [] });
     useContentPageStore.getState().resetForCreate();
   });
 
@@ -838,6 +851,157 @@ describe("useContentPageController", () => {
         description: "Published to Zhihu.",
       },
     );
+
+    view.unmount();
+  });
+
+  it("loads and manages project publication schedules", async () => {
+    const existingSchedule = {
+      attempts: [
+        {
+          attempt_no: 1,
+          error_message: "temporary failure",
+          id: "attempt-1",
+          scheduled_publication_id: "schedule-1",
+          started_at: "2026-06-12T08:00:00.000Z",
+          status: "failed",
+        },
+      ],
+      created_at: "2026-06-11T08:00:00.000Z",
+      created_by: "user-1",
+      id: "schedule-1",
+      platform: "wechat",
+      project_id: "project-1",
+      project_title: "Post title",
+      publication_id: "pub-1",
+      scheduled_at: "2026-06-12T08:00:00.000Z",
+      status: "failed",
+      timezone: "Asia/Shanghai",
+      updated_at: "2026-06-11T08:00:00.000Z",
+      workspace_id: "workspace-1",
+    };
+    mocks.getDashboardProject.mockResolvedValue({
+      created_at: "2026-05-30T12:00:00.000Z",
+      id: "project-1",
+      publications: [
+        { enabled: true, id: "pub-1", platform: "wechat", status: "draft" },
+      ],
+      role: "owner",
+      source_content: "<p>Rendered body</p>",
+      status: "ready",
+      title: "Post title",
+      updated_at: "2026-05-30T12:00:00.000Z",
+      user_id: "user-1",
+      workspace_id: "workspace-1",
+    });
+    mocks.getProjectPublications.mockResolvedValue({
+      items: [],
+      project_id: "project-1",
+    });
+    mocks.getWorkspacePublicationCalendar.mockResolvedValue({
+      items: [
+        existingSchedule,
+        { ...existingSchedule, id: "other-schedule", project_id: "project-2" },
+      ],
+    });
+    const createdSchedule = {
+      ...existingSchedule,
+      attempts: [],
+      id: "schedule-2",
+      scheduled_at: new Date("2026-06-13T09:30").toISOString(),
+      status: "scheduled",
+    };
+    mocks.scheduleProjectPublication.mockResolvedValue(createdSchedule);
+    mocks.cancelScheduledPublication.mockResolvedValue({
+      ...createdSchedule,
+      cancelled_by: "user-1",
+      status: "cancelled",
+    });
+    mocks.retryScheduledPublication.mockResolvedValue({
+      ...existingSchedule,
+      attempts: [
+        ...existingSchedule.attempts,
+        {
+          attempt_no: 2,
+          id: "attempt-2",
+          scheduled_publication_id: "schedule-1",
+          started_at: "2026-06-12T08:10:00.000Z",
+          status: "succeeded",
+        },
+      ],
+      status: "published",
+    });
+    const view = renderController("project-1");
+
+    await act(async () => {
+      await flushPromises();
+      await flushPromises();
+      await flushPromises();
+    });
+
+    expect(mocks.getWorkspacePublicationCalendar).toHaveBeenCalledWith(
+      "workspace-1",
+      expect.any(String),
+      expect.any(String),
+    );
+    expect(view.getController().publishing.scheduledPublications).toEqual([
+      existingSchedule,
+    ]);
+
+    await act(async () => {
+      await view
+        .getController()
+        .publishing.onSchedulePublication("wechat", "2026-06-13T09:30");
+      await flushPromises();
+    });
+
+    expect(mocks.scheduleProjectPublication).toHaveBeenCalledWith("project-1", {
+      idempotency_key: `project-1:wechat:schedule:${new Date("2026-06-13T09:30").toISOString()}`,
+      platform: "wechat",
+      scheduled_at: new Date("2026-06-13T09:30").toISOString(),
+      timezone: expect.any(String),
+    });
+    expect(
+      view
+        .getController()
+        .publishing.scheduledPublications.some(
+          (item) => item.id === "schedule-2",
+        ),
+    ).toBe(true);
+
+    await act(async () => {
+      await view.getController().publishing.onCancelSchedule("schedule-2");
+      await flushPromises();
+    });
+
+    expect(mocks.cancelScheduledPublication).toHaveBeenCalledWith(
+      "project-1",
+      "schedule-2",
+    );
+    expect(
+      view
+        .getController()
+        .publishing.scheduledPublications.find(
+          (item) => item.id === "schedule-2",
+        )?.status,
+    ).toBe("cancelled");
+
+    await act(async () => {
+      await view.getController().publishing.onRetrySchedule("schedule-1");
+      await flushPromises();
+    });
+
+    expect(mocks.retryScheduledPublication).toHaveBeenCalledWith(
+      "project-1",
+      "schedule-1",
+    );
+    expect(
+      view
+        .getController()
+        .publishing.scheduledPublications.find(
+          (item) => item.id === "schedule-1",
+        )?.attempts,
+    ).toHaveLength(2);
 
     view.unmount();
   });
