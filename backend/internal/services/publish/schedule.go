@@ -75,7 +75,16 @@ func (s *Service) ScheduleProjectPublication(ctx context.Context, projectID uuid
 	if timezone == "" {
 		timezone = "UTC"
 	}
-	schedule, err := s.createScheduledPublication(ctx, project, pub, userID, normalizeIdempotencyKey(req.IdempotencyKey), req.ScheduledAt, models.ScheduledPublicationStatusScheduled)
+	idempotencyKey := normalizeIdempotencyKey(req.IdempotencyKey)
+	if idempotencyKey != "" {
+		if existing, found, err := s.findIdempotentScheduledPublication(ctx, project.ID, pub.ID, userID, idempotencyKey); err != nil {
+			return nil, err
+		} else if found {
+			item := scheduledPublicationFromModel(existing, project, pub, nil)
+			return &item, nil
+		}
+	}
+	schedule, err := s.createScheduledPublication(ctx, project, pub, userID, idempotencyKey, req.ScheduledAt, models.ScheduledPublicationStatusScheduled)
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +99,28 @@ func (s *Service) ScheduleProjectPublication(ctx context.Context, projectID uuid
 	}
 	item := scheduledPublicationFromModel(schedule, project, pub, nil)
 	return &item, nil
+}
+
+func (s *Service) findIdempotentScheduledPublication(ctx context.Context, projectID uuid.UUID, publicationID uuid.UUID, userID uuid.UUID, key string) (models.ScheduledPublication, bool, error) {
+	if strings.TrimSpace(key) == "" {
+		return models.ScheduledPublication{}, false, nil
+	}
+	db := s.db
+	if ctx != nil {
+		db = db.WithContext(ctx)
+	}
+	var schedule models.ScheduledPublication
+	err := db.
+		Where("project_id = ? AND publication_id = ? AND created_by = ? AND idempotency_key = ?", projectID, publicationID, userID, key).
+		Order("created_at DESC").
+		First(&schedule).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return models.ScheduledPublication{}, false, nil
+	}
+	if err != nil {
+		return models.ScheduledPublication{}, false, err
+	}
+	return schedule, true, nil
 }
 
 func (s *Service) CancelScheduledPublication(ctx context.Context, projectID uuid.UUID, scheduleID uuid.UUID, userID uuid.UUID) (*dto.ScheduledPublication, error) {
