@@ -65,7 +65,7 @@ pub(in crate::media) fn strip_jpeg_metadata(bytes: &[u8]) -> Option<Vec<u8>> {
             return None;
         }
 
-        if should_strip_jpeg_marker(marker) {
+        if should_strip_jpeg_segment(marker, &bytes[offset..segment_end]) {
             stripped = true;
         } else {
             output.extend_from_slice(&[0xff, marker]);
@@ -78,8 +78,18 @@ pub(in crate::media) fn strip_jpeg_metadata(bytes: &[u8]) -> Option<Vec<u8>> {
     (stripped && output.len() < bytes.len()).then_some(output)
 }
 
-fn should_strip_jpeg_marker(marker: u8) -> bool {
-    matches!(marker, 0xe0 | 0xe1 | 0xed | 0xfe)
+fn should_strip_jpeg_segment(marker: u8, segment: &[u8]) -> bool {
+    match marker {
+        0xe0 | 0xed | 0xfe => true,
+        0xe1 => !is_exif_segment(segment),
+        _ => false,
+    }
+}
+
+fn is_exif_segment(segment: &[u8]) -> bool {
+    segment
+        .get(2..)
+        .is_some_and(|payload| payload.starts_with(b"Exif\0\0"))
 }
 
 pub(super) fn encode_png(image: &DynamicImage) -> Result<Vec<u8>, MediaError> {

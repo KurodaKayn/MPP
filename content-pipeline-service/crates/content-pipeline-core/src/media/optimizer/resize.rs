@@ -7,7 +7,10 @@ use super::{
 };
 use crate::media::{MediaConstraints, MediaError};
 
-const RESIZE_PERCENT_STEPS: &[u32] = &[90, 81, 73, 66, 59, 53, 48, 43, 39, 35, 31, 28];
+const RESIZE_PERCENT_STEPS: &[u32] = &[
+    90, 81, 73, 66, 59, 53, 48, 43, 39, 35, 31, 28, 25, 22, 20, 18, 16, 14, 12, 10, 8, 6, 5, 4, 3,
+    2, 1,
+];
 
 pub(super) fn find_candidate(
     image: &DynamicImage,
@@ -16,9 +19,7 @@ pub(super) fn find_candidate(
     original_mime_type: &str,
     smallest_encoded_size: &mut u64,
 ) -> Result<Option<ProcessedImage>, MediaError> {
-    for percent in RESIZE_PERCENT_STEPS {
-        let next_width = scaled_dimension(image.width(), *percent);
-        let next_height = scaled_dimension(image.height(), *percent);
+    for (next_width, next_height) in resize_dimensions(image.width(), image.height()) {
         let resized = image.resize_exact(next_width, next_height, FilterType::Lanczos3);
         let mut step_best = None;
 
@@ -68,4 +69,33 @@ fn scaled_dimension(value: u32, percent: u32) -> u32 {
     ((u64::from(value) * u64::from(percent)) / 100)
         .max(1)
         .min(u64::from(u32::MAX)) as u32
+}
+
+fn resize_dimensions(width: u32, height: u32) -> Vec<(u32, u32)> {
+    let mut dimensions = Vec::new();
+    let mut push_unique = |next_width, next_height| {
+        if dimensions
+            .last()
+            .is_none_or(|previous| *previous != (next_width, next_height))
+        {
+            dimensions.push((next_width, next_height));
+        }
+    };
+
+    for percent in RESIZE_PERCENT_STEPS {
+        push_unique(
+            scaled_dimension(width, *percent),
+            scaled_dimension(height, *percent),
+        );
+    }
+
+    let mut next_width = scaled_dimension(width, 1);
+    let mut next_height = scaled_dimension(height, 1);
+    while next_width > 1 || next_height > 1 {
+        next_width = (next_width / 2).max(1);
+        next_height = (next_height / 2).max(1);
+        push_unique(next_width, next_height);
+    }
+
+    dimensions
 }
