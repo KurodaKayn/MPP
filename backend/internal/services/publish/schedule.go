@@ -3,11 +3,13 @@ package publish
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
@@ -47,6 +49,128 @@ func (s *Service) createScheduledPublication(ctx context.Context, project models
 		return models.ScheduledPublication{}, err
 	}
 	return schedule, nil
+}
+
+func (s *Service) ScheduleProjectPublication(ctx context.Context, projectID uuid.UUID, userID uuid.UUID, req dto.SchedulePublicationRequest) (*dto.ScheduledPublication, error) {
+	if req.ScheduledAt.IsZero() || strings.TrimSpace(req.Platform) == "" {
+		return nil, ErrPublicationRequiresSync
+	}
+	project, pub, err := s.preparePublishJob(ctx, projectID, req.Platform, userID)
+	if err != nil {
+		return nil, err
+	}
+	timezone := strings.TrimSpace(req.Timezone)
+	if timezone == "" {
+		timezone = "UTC"
+	}
+	schedule, err := s.createScheduledPublication(ctx, project, pub, userID, normalizeIdempotencyKey(req.IdempotencyKey), req.ScheduledAt, models.ScheduledPublicationStatusScheduled)
+	if err != nil {
+		return nil, err
+	}
+	if schedule.ID == uuid.Nil {
+		return nil, ErrPublicationRequiresSync
+	}
+	if timezone != schedule.Timezone {
+		if err := s.db.WithContext(ctx).Model(&schedule).Update("timezone", timezone).Error; err != nil {
+			return nil, err
+		}
+		schedule.Timezone = timezone
+	}
+	item := scheduledPublicationFromModel(schedule, project, pub, nil)
+	return &item, nil
+}
+
+func (s *Service) CancelScheduledPublication(ctx context.Context, scheduleID uuid.UUID, userID uuid.UUID) (*dto.ScheduledPublication, error) {
+	if scheduleID == uuid.Nil || userID == uuid.Nil {
+		return nil, ErrForbidden
+	}
+	var schedule models.ScheduledPublication
+	if err := s.db.WithContext(ctx).
+		Preload("Project").
+		Preload("Publication").
+		First(&schedule, "id = ?", scheduleID).Error; err != nil {
+		return nil, err
+	}
+	if _, err := s.projectForPublish(ctx, schedule.ProjectID, userID); err != nil {
+		return nil, err
+	}
+	if schedule.Status == models.ScheduledPublicationStatusRunning || schedule.Status == models.ScheduledPublicationStatusPublished {
+		return nil, ErrPublicationAlreadyPublishing
+	}
+	now := time.Now().UTC()
+	if err := s.db.WithContext(ctx).Model(&schedule).Updates(map[string]any{
+		"status":       models.ScheduledPublicationStatusCancelled,
+		"cancelled_by": userID,
+		"updated_at":   now,
+	}).Error; err != nil {
+		return nil, err
+	}
+	schedule.Status = models.ScheduledPublicationStatusCancelled
+	schedule.CancelledBy = &userID
+	item := scheduledPublicationFromModel(schedule, schedule.Project, schedule.Publication, nil)
+	return &item, nil
+}
+
+func (s *Service) ListWorkspaceScheduledPublications(ctx context.Context, workspaceID uuid.UUID, userID uuid.UUID, from time.Time, to time.Time) (*dto.ScheduledPublicationsResponse, error) {
+	if workspaceID == uuid.Nil || userID == uuid.Nil || from.IsZero() || to.IsZero() || !to.After(from) {
+		return nil, ErrForbidden
+	}
+	if err := s.requireWorkspaceCalendarAccess(ctx, workspaceID, userID); err != nil {
+		return nil, err
+	}
+	var schedules []models.ScheduledPublication
+	if err := s.db.WithContext(ctx).
+		Preload("Project").
+		Preload("Publication").
+		Where("workspace_id = ? AND scheduled_at >= ? AND scheduled_at < ?", workspaceID, from, to).
+		Order("scheduled_at ASC").
+		Find(&schedules).Error; err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, 0, len(schedules))
+	for _, schedule := range schedules {
+		ids = append(ids, schedule.ID)
+	}
+	attemptsBySchedule := map[uuid.UUID][]models.PublishAttempt{}
+	if len(ids) > 0 {
+		var attempts []models.PublishAttempt
+		if err := s.db.WithContext(ctx).
+			Where("scheduled_publication_id IN ?", ids).
+			Order("attempt_no ASC").
+			Find(&attempts).Error; err != nil {
+			return nil, err
+		}
+		for _, attempt := range attempts {
+			attemptsBySchedule[attempt.ScheduledPublicationID] = append(attemptsBySchedule[attempt.ScheduledPublicationID], attempt)
+		}
+	}
+	items := make([]dto.ScheduledPublication, 0, len(schedules))
+	for _, schedule := range schedules {
+		items = append(items, scheduledPublicationFromModel(schedule, schedule.Project, schedule.Publication, attemptsBySchedule[schedule.ID]))
+	}
+	return &dto.ScheduledPublicationsResponse{Items: items}, nil
+}
+
+func (s *Service) requireWorkspaceCalendarAccess(ctx context.Context, workspaceID uuid.UUID, userID uuid.UUID) error {
+	db := s.db
+	if ctx != nil {
+		db = db.WithContext(ctx)
+	}
+	var workspace models.Workspace
+	if err := db.Select("id", "owner_user_id").First(&workspace, "id = ?", workspaceID).Error; err != nil {
+		return err
+	}
+	if workspace.OwnerUserID == userID {
+		return nil
+	}
+	var member models.WorkspaceMember
+	if err := db.Select("workspace_id", "user_id").First(&member, "workspace_id = ? AND user_id = ?", workspaceID, userID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrForbidden
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) latestProjectVersionID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
@@ -145,4 +269,45 @@ func (s *Service) finishPublishAttempt(attempt *models.PublishAttempt, status st
 				"last_error": errorMessage,
 			}).Error
 	})
+}
+
+func scheduledPublicationFromModel(schedule models.ScheduledPublication, project models.Project, pub models.ProjectPlatformPublication, attempts []models.PublishAttempt) dto.ScheduledPublication {
+	dtoAttempts := make([]dto.PublishAttempt, 0, len(attempts))
+	for _, attempt := range attempts {
+		dtoAttempts = append(dtoAttempts, dto.PublishAttempt{
+			ID:                     attempt.ID,
+			ScheduledPublicationID: attempt.ScheduledPublicationID,
+			AttemptNo:              attempt.AttemptNo,
+			StartedAt:              attempt.StartedAt,
+			FinishedAt:             attempt.FinishedAt,
+			Status:                 attempt.Status,
+			RemoteID:               attempt.RemoteID,
+			PublishURL:             attempt.PublishURL,
+			ErrorCode:              attempt.ErrorCode,
+			ErrorMessage:           attempt.ErrorMessage,
+		})
+	}
+	return dto.ScheduledPublication{
+		ID:                schedule.ID,
+		WorkspaceID:       schedule.WorkspaceID,
+		ProjectID:         schedule.ProjectID,
+		PublicationID:     schedule.PublicationID,
+		PlatformAccountID: schedule.PlatformAccountID,
+		ProjectVersionID:  schedule.ProjectVersionID,
+		Platform:          pub.Platform,
+		ProjectTitle:      project.Title,
+		ScheduledAt:       schedule.ScheduledAt,
+		Timezone:          schedule.Timezone,
+		Status:            schedule.Status,
+		IdempotencyKey:    schedule.IdempotencyKey,
+		CreatedBy:         schedule.CreatedBy,
+		ApprovedBy:        schedule.ApprovedBy,
+		CancelledBy:       schedule.CancelledBy,
+		LastError:         schedule.LastError,
+		ManualActionURL:   schedule.ManualActionURL,
+		ManualActionUntil: schedule.ManualActionUntil,
+		Attempts:          dtoAttempts,
+		CreatedAt:         schedule.CreatedAt,
+		UpdatedAt:         schedule.UpdatedAt,
+	}
 }

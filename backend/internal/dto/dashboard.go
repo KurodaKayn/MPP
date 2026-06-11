@@ -620,3 +620,51 @@ type ProjectPublicationsResponse struct {
 	ProjectID uuid.UUID           `json:"project_id"`
 	Items     []PublicationDetail `json:"items"`
 }
+
+type SchedulePublicationRequest struct {
+	Platform       string    `json:"platform"`
+	ScheduledAt    time.Time `json:"scheduled_at"`
+	Timezone       string    `json:"timezone,omitempty"`
+	IdempotencyKey string    `json:"idempotency_key,omitempty"`
+}
+
+type PublishAttempt struct {
+	ID                     uuid.UUID  `json:"id"`
+	ScheduledPublicationID uuid.UUID  `json:"scheduled_publication_id"`
+	AttemptNo              int        `json:"attempt_no"`
+	StartedAt              time.Time  `json:"started_at"`
+	FinishedAt             *time.Time `json:"finished_at,omitempty"`
+	Status                 string     `json:"status"`
+	RemoteID               string     `json:"remote_id,omitempty"`
+	PublishURL             string     `json:"publish_url,omitempty"`
+	ErrorCode              string     `json:"error_code,omitempty"`
+	ErrorMessage           string     `json:"error_message,omitempty"`
+}
+
+type ScheduledPublication struct {
+	ID                uuid.UUID        `json:"id"`
+	WorkspaceID       uuid.UUID        `json:"workspace_id"`
+	ProjectID         uuid.UUID        `json:"project_id"`
+	PublicationID     uuid.UUID        `json:"publication_id"`
+	PlatformAccountID *uuid.UUID       `json:"platform_account_id,omitempty"`
+	ProjectVersionID  *uuid.UUID       `json:"project_version_id,omitempty"`
+	Platform          string           `json:"platform"`
+	ProjectTitle      string           `json:"project_title"`
+	ScheduledAt       time.Time        `json:"scheduled_at"`
+	Timezone          string           `json:"timezone"`
+	Status            string           `json:"status"`
+	IdempotencyKey    string           `json:"idempotency_key,omitempty"`
+	CreatedBy         uuid.UUID        `json:"created_by"`
+	ApprovedBy        *uuid.UUID       `json:"approved_by,omitempty"`
+	CancelledBy       *uuid.UUID       `json:"cancelled_by,omitempty"`
+	LastError         string           `json:"last_error,omitempty"`
+	ManualActionURL   string           `json:"manual_action_url,omitempty"`
+	ManualActionUntil *time.Time       `json:"manual_action_until,omitempty"`
+	Attempts          []PublishAttempt `json:"attempts"`
+	CreatedAt         time.Time        `json:"created_at"`
+	UpdatedAt         time.Time        `json:"updated_at"`
+}
+
+type ScheduledPublicationsResponse struct {
+	Items []ScheduledPublication `json:"items"`
+}

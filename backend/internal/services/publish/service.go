@@ -412,6 +412,9 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 	if strings.TrimSpace(key) == "" {
 		return nil, false, nil
 	}
+	if !s.db.Migrator().HasTable(&models.PublishEvent{}) {
+		return nil, false, nil
+	}
 
 	var queued models.PublishEvent
 	err := s.db.
