@@ -608,6 +608,63 @@ func TestEnqueuePublishProjectDoesNotPersistScheduleWhenLockIsHeld(t *testing.T)
 	require.Zero(t, schedules)
 }
 
+func TestFlushScheduledPublicationsPublishesDueSchedules(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	require.NoError(t, db.AutoMigrate(&models.ScheduledPublication{}, &models.PublishAttempt{}, &models.ProjectVersion{}))
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+
+	publisher.Factory.Register("wechat", queueTestPublisher{})
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Scheduled post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	account := createConnectedQueueAccount(t, db, user.ID, "wechat")
+	publication := models.ProjectPlatformPublication{
+		ProjectID:         project.ID,
+		Platform:          "wechat",
+		PlatformAccountID: &account.ID,
+		Enabled:           true,
+		Status:            models.PublicationStatusAdapted,
+		Config:            datatypes.JSON(`{"title":"Scheduled post"}`),
+		AdaptedContent:    datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}
+	require.NoError(t, db.Create(&publication).Error)
+	schedule := models.ScheduledPublication{
+		WorkspaceID:       models.PersonalWorkspaceID(user.ID),
+		ProjectID:         project.ID,
+		PublicationID:     publication.ID,
+		PlatformAccountID: publication.PlatformAccountID,
+		ScheduledAt:       time.Now().UTC().Add(-time.Minute),
+		Status:            models.ScheduledPublicationStatusScheduled,
+		IdempotencyKey:    "due-schedule",
+		CreatedBy:         user.ID,
+	}
+	require.NoError(t, db.Create(&schedule).Error)
+
+	require.NoError(t, service.FlushScheduledPublications(context.Background(), 10))
+
+	var savedSchedule models.ScheduledPublication
+	require.NoError(t, db.First(&savedSchedule, "id = ?", schedule.ID).Error)
+	require.Equal(t, models.ScheduledPublicationStatusPublished, savedSchedule.Status)
+
+	var attempts []models.PublishAttempt
+	require.NoError(t, db.Order("attempt_no asc").Find(&attempts, "scheduled_publication_id = ?", schedule.ID).Error)
+	require.Len(t, attempts, 1)
+	require.Equal(t, models.PublishAttemptStatusSucceeded, attempts[0].Status)
+
+	lockKey := publishLockKey(project.ID, "wechat")
+	require.Empty(t, queue.locks[lockKey])
+}
+
 func TestEnqueuePublishProjectReplaysOriginalJobEventsAfterPublicationChanges(t *testing.T) {
 	db := setupPublishQueueTestDB(t)
 	service := newPublishTestService(db)
