@@ -6,7 +6,14 @@
     "schema_version": 1,
     "format": "text",
     "text": "Launch Notes\nMPP now supports rich drafts across platforms.\nRead the release notes before publishing.\nKeep platform rules deterministic.\nWeChat keeps HTML.\nZhihu gets Markdown.\n中文摘要保持可读。",
-    "summary": "Launch Notes\nMPP now supports rich drafts across platforms.\nRead the release not"
+    "summary": "Launch Notes\nMPP now supports rich drafts across platforms.\nRead the release not",
+    "assets": [
+      {
+        "type": "image",
+        "source_url": "https://example.com/assets/cover.png",
+        "alt": "Cover"
+      }
+    ]
   },
   "summary": "Launch Notes\nMPP now supports rich drafts across platforms.\nRead the release not",
   "warnings": []

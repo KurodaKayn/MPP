@@ -151,6 +151,41 @@ fn compiles_html_to_markdown_draft() {
 }
 
 #[test]
+fn emits_image_assets_for_media_publishing_profiles() {
+    let source = r#"
+        <p><img src="mpp://media/11111111-1111-1111-1111-111111111111" alt="Hero"></p>
+        <p><img src="https://example.com/inline.png"></p>
+    "#;
+
+    for platform in ["wechat", "zhihu", "douyin"] {
+        let output = compile_for(platform, &format!("{platform}@v1"), "Article", source);
+        let assets = output["assets"].as_array().expect("assets output");
+
+        assert_eq!(assets.len(), 2);
+        assert_eq!(assets[0]["type"], "image");
+        assert_eq!(
+            assets[0]["source_url"],
+            "mpp://media/11111111-1111-1111-1111-111111111111"
+        );
+        assert_eq!(assets[0]["alt"], "Hero");
+        assert_eq!(assets[1]["source_url"], "https://example.com/inline.png");
+        assert!(assets[1].get("alt").is_none());
+    }
+}
+
+#[test]
+fn omits_image_assets_for_x_text_profile() {
+    let output = compile_for(
+        "x",
+        "x@v1",
+        "Article",
+        r#"<p>Post body</p><img src="https://example.com/unused.png" alt="Unused">"#,
+    );
+
+    assert!(output.get("assets").is_none());
+}
+
+#[test]
 fn matches_wechat_representative_snapshot() {
     assert_representative_snapshot("wechat");
 }

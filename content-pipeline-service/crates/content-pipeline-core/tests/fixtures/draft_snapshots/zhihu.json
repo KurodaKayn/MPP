@@ -6,7 +6,14 @@
     "schema_version": 1,
     "format": "markdown",
     "markdown": "# Launch Notes\n\nMPP now supports **rich drafts** across platforms.\n\nRead the [release notes](https://example.com/release) before publishing.\n\n> Keep platform rules deterministic.\n\n- WeChat keeps HTML.\n- Zhihu gets Markdown.\n\n![Cover](https://example.com/assets/cover.png)\n\n中文摘要保持可读。",
-    "summary": "Launch Notes\nMPP now supports rich drafts across platforms.\nRead the release not"
+    "summary": "Launch Notes\nMPP now supports rich drafts across platforms.\nRead the release not",
+    "assets": [
+      {
+        "type": "image",
+        "source_url": "https://example.com/assets/cover.png",
+        "alt": "Cover"
+      }
+    ]
   },
   "summary": "Launch Notes\nMPP now supports rich drafts across platforms.\nRead the release not",
   "warnings": []

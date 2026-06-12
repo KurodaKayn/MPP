@@ -59,6 +59,11 @@ cargo test -p content-pipeline-core
 
 ## Changelog
 
+### 2026-06-12
+
+- Added compiler schema validation for adapted content emitted by Rust draft profiles.
+- Added image asset descriptors to WeChat, Zhihu, and Douyin draft outputs when source HTML contains images.
+
 ### 2026-06-11
 
 - Added X and Zhihu media profiles and platform-specific output MIME allowlists.
