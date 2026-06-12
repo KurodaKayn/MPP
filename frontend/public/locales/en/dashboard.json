@@ -65,6 +65,16 @@
       "none": "None"
     }
   },
+  "project": {
+    "delete": {
+      "label": "Delete project",
+      "confirm": "Delete \"{{title}}\"? This cannot be undone.",
+      "success": "Project deleted",
+      "failed": "Unable to delete project",
+      "retryLater": "Please try again later.",
+      "noPermission": "You do not have permission to delete this project"
+    }
+  },
   "workspace": {
     "switcher": {
       "label": "Workspace",

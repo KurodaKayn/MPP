@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, Inbox, RefreshCw, Share2, UsersRound } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  deleteDashboardProject,
   getDashboardProjects,
   getProjectCollaborators,
   getWorkspaceProjects,
@@ -24,11 +26,12 @@ import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 import { DashboardErrorCard } from "../../_components/dashboard-error-card";
 import { DashboardStatCard } from "../../_components/dashboard-stat-card";
-import { ProjectStatusBadge } from "../../_components/project-status-badge";
+import { ProjectDeleteButton } from "../../_components/project-delete-button";
 import { PlatformIconRow } from "../../_components/publication-platforms";
 import { WorkspaceSwitcher } from "../../_components/workspace-switcher";
 import { useDashboardWorkspaceSelection } from "../../_hooks/use-dashboard-workspace-selection";
 import { formatOptionalDashboardDate } from "../../_lib/formatters";
+import { canDeleteProjectCard } from "../../_lib/project-delete";
 import { getEnabledPublications } from "../../_lib/publications";
 import {
   getOwnedProjects,
@@ -91,21 +94,26 @@ function CollaborationSection({
 }
 
 function ProjectCard({
+  canDelete,
+  isDeleting,
   locale,
   metaLabel,
   metaValue,
+  onDelete,
   project,
   t,
   tCommon,
 }: {
+  canDelete: boolean;
+  isDeleting: boolean;
   locale: string;
   metaLabel: string;
   metaValue: string;
+  onDelete: (project: ProjectListItem) => void;
   project: ProjectListItem;
   t: any;
   tCommon: any;
 }) {
-  const statusLabel = t(`overview.status.${project.status}`) || project.status;
   const enabledPublications = getEnabledPublications(project);
 
   return (
@@ -126,7 +134,17 @@ function ProjectCard({
               })}
             </CardDescription>
           </div>
-          <ProjectStatusBadge label={statusLabel} status={project.status} />
+          <ProjectDeleteButton
+            disabled={!canDelete}
+            isDeleting={isDeleting}
+            label={
+              canDelete
+                ? t("project.delete.label")
+                : t("project.delete.noPermission")
+            }
+            title={!canDelete ? t("project.delete.noPermission") : undefined}
+            onDelete={() => onDelete(project)}
+          />
         </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-between gap-5">
@@ -190,6 +208,9 @@ export function CollaborationHubPage() {
   const [workspaceProjectsLoading, setWorkspaceProjectsLoading] =
     useState(false);
   const [workspaceProjectsError, setWorkspaceProjectsError] = useState("");
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
+    null,
+  );
 
   const loadSharedProjects = useCallback(async () => {
     setSharedProjectsLoading(true);
@@ -278,6 +299,43 @@ export function CollaborationHubPage() {
     void workspaceSelection.reloadWorkspaces();
     void loadWorkspaceProjects();
   };
+
+  const handleDeleteProject = useCallback(
+    async (project: ProjectListItem) => {
+      const confirmed =
+        globalThis.confirm?.(
+          t("project.delete.confirm", { title: project.title }),
+        ) ?? true;
+      if (!confirmed) {
+        return;
+      }
+
+      setDeletingProjectId(project.id);
+      try {
+        await deleteDashboardProject(project.id);
+        setAllProjects((items) =>
+          items.filter((item) => item.id !== project.id),
+        );
+        setSharedByMeProjects((items) =>
+          items.filter((item) => item.project.id !== project.id),
+        );
+        setWorkspaceProjects((items) =>
+          items.filter((item) => item.id !== project.id),
+        );
+        toast.success(t("project.delete.success"));
+      } catch (deleteError) {
+        toast.error(t("project.delete.failed"), {
+          description:
+            deleteError instanceof Error
+              ? deleteError.message
+              : t("project.delete.retryLater"),
+        });
+      } finally {
+        setDeletingProjectId(null);
+      }
+    },
+    [t],
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -374,12 +432,15 @@ export function CollaborationHubPage() {
           {sharedByMeProjects.map(({ collaboratorCount, project }) => (
             <ProjectCard
               key={project.id}
+              canDelete={canDeleteProjectCard(project, { surface: "owned" })}
+              isDeleting={deletingProjectId === project.id}
               locale={locale}
-              project={project}
               metaLabel={t("collab.hub.sharedByMe.access")}
               metaValue={t("collab.hub.sharedByMe.collaboratorCount", {
                 count: collaboratorCount,
               })}
+              onDelete={handleDeleteProject}
+              project={project}
               t={t}
               tCommon={tCommon}
             />
@@ -398,10 +459,16 @@ export function CollaborationHubPage() {
           {sharedWithMeProjects.map((project) => (
             <ProjectCard
               key={project.id}
+              canDelete={canDeleteProjectCard(project, {
+                surface: "shared-with-me",
+                workspaceRole: workspaceSelection.selectedWorkspace?.role,
+              })}
+              isDeleting={deletingProjectId === project.id}
               locale={locale}
-              project={project}
               metaLabel={t("collab.hub.sharedWithMe.role")}
               metaValue={projectRoleLabel(t, project.role)}
+              onDelete={handleDeleteProject}
+              project={project}
               t={t}
               tCommon={tCommon}
             />
@@ -424,10 +491,16 @@ export function CollaborationHubPage() {
           {workspaceProjects.map((project) => (
             <ProjectCard
               key={project.id}
+              canDelete={canDeleteProjectCard(project, {
+                surface: "workspace",
+                workspaceRole: workspaceSelection.selectedWorkspace?.role,
+              })}
+              isDeleting={deletingProjectId === project.id}
               locale={locale}
-              project={project}
               metaLabel={t("collab.hub.workspaceProjects.role")}
               metaValue={workspaceRoleLabel}
+              onDelete={handleDeleteProject}
+              project={project}
               t={t}
               tCommon={tCommon}
             />

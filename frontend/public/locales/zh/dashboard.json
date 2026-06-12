@@ -65,6 +65,16 @@
       "none": "暂无"
     }
   },
+  "project": {
+    "delete": {
+      "label": "删除项目",
+      "confirm": "删除「{{title}}」？此操作无法撤销。",
+      "success": "项目已删除",
+      "failed": "无法删除项目",
+      "retryLater": "请稍后重试。",
+      "noPermission": "你没有权限删除此项目"
+    }
+  },
   "workspace": {
     "switcher": {
       "label": "工作空间",

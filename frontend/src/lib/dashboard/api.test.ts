@@ -18,6 +18,7 @@ import {
   createProjectShareLink,
   createWorkspace,
   createWorkspaceProject,
+  deleteDashboardProject,
   getBrowserSession,
   getBrandProfiles,
   getContentTemplates,
@@ -1088,6 +1089,24 @@ describe("dashboard api client", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/user/dashboard/projects/project-1/collaborators/user-2",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "DELETE",
+      }),
+    );
+  });
+
+  it("deletes a dashboard project without parsing an empty response", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deleteDashboardProject("project-1")).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1",
       expect.objectContaining({
         credentials: "same-origin",
         headers: expect.any(Headers),

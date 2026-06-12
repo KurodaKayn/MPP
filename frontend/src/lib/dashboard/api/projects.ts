@@ -130,6 +130,12 @@ export function updateDashboardProject(
   );
 }
 
+export function deleteDashboardProject(projectId: string) {
+  return fetchDashboardNoContent(`/api/user/dashboard/projects/${projectId}`, {
+    method: "DELETE",
+  });
+}
+
 export function saveDashboardProjectContent(
   projectId: string,
   input: SaveProjectContentInput,
