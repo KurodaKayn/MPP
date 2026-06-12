@@ -16,6 +16,7 @@ import (
 )
 
 const archiveContentType = "application/x-ndjson"
+const archiveWorkerAdvisoryLockKey int64 = 2026061201
 
 type Worker struct {
 	db      *gorm.DB
@@ -31,6 +32,7 @@ type TableResult struct {
 	Table        string
 	RowsArchived int
 	ObjectKey    string
+	ObjectKeys   []string
 	Cutoff       time.Time
 }
 
@@ -68,15 +70,44 @@ func (w *Worker) Start(ctx context.Context) {
 	}()
 }
 
-// RunOnce archives at most one batch per managed table.
+// RunOnce archives eligible batches for each managed table.
 func (w *Worker) RunOnce(ctx context.Context, now time.Time) (RunResult, error) {
 	if w == nil || w.db == nil || w.storage == nil {
 		return RunResult{}, nil
 	}
 	now = now.UTC()
+	if w.db.Name() != "postgres" {
+		return w.runArchiveTables(ctx, w.db, now)
+	}
+
+	var result RunResult
+	err := w.db.WithContext(ctx).Connection(func(connection *gorm.DB) error {
+		locked, err := tryArchiveWorkerLock(ctx, connection)
+		if err != nil {
+			return err
+		}
+		if !locked {
+			return nil
+		}
+
+		tableResult, runErr := w.runArchiveTables(ctx, connection, now)
+		unlockErr := releaseArchiveWorkerLock(context.Background(), connection)
+		if runErr != nil {
+			return runErr
+		}
+		if unlockErr != nil {
+			return unlockErr
+		}
+		result = tableResult
+		return nil
+	})
+	return result, err
+}
+
+func (w *Worker) runArchiveTables(ctx context.Context, db *gorm.DB, now time.Time) (RunResult, error) {
 	result := RunResult{}
 
-	tables := []func(context.Context, time.Time) (TableResult, error){
+	tables := []func(context.Context, *gorm.DB, time.Time) (TableResult, error){
 		w.archivePublishEvents,
 		w.archiveExtensionExecutionEvents,
 		w.archiveProjectActivities,
@@ -84,7 +115,7 @@ func (w *Worker) RunOnce(ctx context.Context, now time.Time) (RunResult, error) 
 		w.archiveRemoteBrowserSessions,
 	}
 	for _, archiveTable := range tables {
-		tableResult, err := archiveTable(ctx, now)
+		tableResult, err := archiveTable(ctx, db, now)
 		if err != nil {
 			return result, err
 		}
@@ -93,37 +124,37 @@ func (w *Worker) RunOnce(ctx context.Context, now time.Time) (RunResult, error) 
 	return result, nil
 }
 
-func (w *Worker) archivePublishEvents(ctx context.Context, now time.Time) (TableResult, error) {
-	return archiveModel[models.PublishEvent](ctx, w.db, w.storage, w.config, "publish_events", w.config.PublishEventRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
+func (w *Worker) archivePublishEvents(ctx context.Context, db *gorm.DB, now time.Time) (TableResult, error) {
+	return archiveModel[models.PublishEvent](ctx, db, w.storage, w.config, "publish_events", w.config.PublishEventRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
 		return query.Where("created_at < ?", cutoff)
 	})
 }
 
-func (w *Worker) archiveExtensionExecutionEvents(ctx context.Context, now time.Time) (TableResult, error) {
-	return archiveModel[models.ExtensionExecutionEvent](ctx, w.db, w.storage, w.config, "extension_execution_events", w.config.ExtensionExecutionEventRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
+func (w *Worker) archiveExtensionExecutionEvents(ctx context.Context, db *gorm.DB, now time.Time) (TableResult, error) {
+	return archiveModel[models.ExtensionExecutionEvent](ctx, db, w.storage, w.config, "extension_execution_events", w.config.ExtensionExecutionEventRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
 		return query.Where("created_at < ?", cutoff)
 	})
 }
 
-func (w *Worker) archiveProjectActivities(ctx context.Context, now time.Time) (TableResult, error) {
-	return archiveModel[models.ProjectActivity](ctx, w.db, w.storage, w.config, "project_activities", w.config.ProjectActivityRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
+func (w *Worker) archiveProjectActivities(ctx context.Context, db *gorm.DB, now time.Time) (TableResult, error) {
+	return archiveModel[models.ProjectActivity](ctx, db, w.storage, w.config, "project_activities", w.config.ProjectActivityRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
 		return query.Where("created_at < ?", cutoff)
 	})
 }
 
-func (w *Worker) archiveWorkspaceActivities(ctx context.Context, now time.Time) (TableResult, error) {
-	return archiveModel[models.WorkspaceActivity](ctx, w.db, w.storage, w.config, "workspace_activities", w.config.WorkspaceActivityRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
+func (w *Worker) archiveWorkspaceActivities(ctx context.Context, db *gorm.DB, now time.Time) (TableResult, error) {
+	return archiveModel[models.WorkspaceActivity](ctx, db, w.storage, w.config, "workspace_activities", w.config.WorkspaceActivityRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
 		return query.Where("created_at < ?", cutoff)
 	})
 }
 
-func (w *Worker) archiveRemoteBrowserSessions(ctx context.Context, now time.Time) (TableResult, error) {
+func (w *Worker) archiveRemoteBrowserSessions(ctx context.Context, db *gorm.DB, now time.Time) (TableResult, error) {
 	terminalStatuses := []string{
 		models.BrowserSessionStatusConnected,
 		models.BrowserSessionStatusExpired,
 		models.BrowserSessionStatusFailed,
 	}
-	return archiveModel[models.RemoteBrowserSession](ctx, w.db, w.storage, w.config, "remote_browser_sessions", w.config.BrowserSessionHistoryRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
+	return archiveModel[models.RemoteBrowserSession](ctx, db, w.storage, w.config, "remote_browser_sessions", w.config.BrowserSessionHistoryRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
 		return query.Where("created_at < ? AND status IN ?", cutoff, terminalStatuses)
 	})
 }
@@ -139,6 +170,36 @@ func archiveModel[T any](
 	scope func(*gorm.DB, time.Time) *gorm.DB,
 ) (TableResult, error) {
 	cutoff := now.Add(-retention)
+	result := TableResult{Table: table, Cutoff: cutoff}
+
+	for batchNumber := 0; ; batchNumber++ {
+		batchResult, err := archiveModelBatch[T](ctx, db, storage, config, table, cutoff, now, batchNumber, scope)
+		if err != nil {
+			return result, err
+		}
+		if batchResult.RowsArchived == 0 {
+			return result, nil
+		}
+
+		result.RowsArchived += batchResult.RowsArchived
+		result.ObjectKeys = append(result.ObjectKeys, batchResult.ObjectKey)
+		if result.ObjectKey == "" {
+			result.ObjectKey = batchResult.ObjectKey
+		}
+	}
+}
+
+func archiveModelBatch[T any](
+	ctx context.Context,
+	db *gorm.DB,
+	storage objectstorage.Client,
+	config Config,
+	table string,
+	cutoff time.Time,
+	now time.Time,
+	batchNumber int,
+	scope func(*gorm.DB, time.Time) *gorm.DB,
+) (TableResult, error) {
 	result := TableResult{Table: table, Cutoff: cutoff}
 	var records []T
 	query := db.WithContext(ctx).Order("created_at ASC, id ASC").Limit(config.BatchSize)
@@ -156,7 +217,7 @@ func archiveModel[T any](
 	if err != nil {
 		return result, err
 	}
-	key := archiveObjectKey(config.ObjectKeyPrefix, table, cutoff, now)
+	key := archiveObjectKey(config.ObjectKeyPrefix, table, cutoff, now, batchNumber)
 	if _, err := storage.PutObject(ctx, objectstorage.UploadObjectInput{
 		Key:         key,
 		ContentType: archiveContentType,
@@ -164,13 +225,37 @@ func archiveModel[T any](
 	}); err != nil {
 		return result, fmt.Errorf("upload %s archive object: %w", table, err)
 	}
-	if err := db.WithContext(ctx).Delete(&records).Error; err != nil {
-		return result, fmt.Errorf("delete archived %s rows: %w", table, err)
+	deleteResult := db.WithContext(ctx).Delete(&records)
+	if deleteResult.Error != nil {
+		return result, fmt.Errorf("delete archived %s rows: %w", table, deleteResult.Error)
+	}
+	if deleteResult.RowsAffected != int64(len(records)) {
+		return result, fmt.Errorf("delete archived %s rows: expected %d, deleted %d", table, len(records), deleteResult.RowsAffected)
 	}
 
 	result.RowsArchived = len(records)
 	result.ObjectKey = key
+	result.ObjectKeys = []string{key}
 	return result, nil
+}
+
+func tryArchiveWorkerLock(ctx context.Context, db *gorm.DB) (bool, error) {
+	var locked bool
+	if err := db.WithContext(ctx).Raw("SELECT pg_try_advisory_lock(?)", archiveWorkerAdvisoryLockKey).Scan(&locked).Error; err != nil {
+		return false, fmt.Errorf("acquire archive worker lock: %w", err)
+	}
+	return locked, nil
+}
+
+func releaseArchiveWorkerLock(ctx context.Context, db *gorm.DB) error {
+	var released bool
+	if err := db.WithContext(ctx).Raw("SELECT pg_advisory_unlock(?)", archiveWorkerAdvisoryLockKey).Scan(&released).Error; err != nil {
+		return fmt.Errorf("release archive worker lock: %w", err)
+	}
+	if !released {
+		return fmt.Errorf("release archive worker lock: lock was not held")
+	}
+	return nil
 }
 
 func encodeJSONLines[T any](table string, cutoff time.Time, archivedAt time.Time, records []T) ([]byte, error) {
@@ -190,16 +275,17 @@ func encodeJSONLines[T any](table string, cutoff time.Time, archivedAt time.Time
 	return buffer.Bytes(), nil
 }
 
-func archiveObjectKey(prefix string, table string, cutoff time.Time, archivedAt time.Time) string {
+func archiveObjectKey(prefix string, table string, cutoff time.Time, archivedAt time.Time, batchNumber int) string {
 	normalizedPrefix := strings.Trim(strings.TrimSpace(prefix), "/")
 	if normalizedPrefix == "" {
 		normalizedPrefix = defaultArchiveObjectPrefix
 	}
 	return fmt.Sprintf(
-		"%s/%s/cutoff_date=%s/batch-%d.jsonl",
+		"%s/%s/cutoff_date=%s/batch-%d-%04d.jsonl",
 		normalizedPrefix,
 		table,
 		cutoff.UTC().Format("2006-01-02"),
 		archivedAt.UTC().UnixNano(),
+		batchNumber,
 	)
 }
