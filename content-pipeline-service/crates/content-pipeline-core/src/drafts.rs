@@ -4,6 +4,7 @@ mod profiles;
 mod schema;
 mod text;
 
+use assets::{adapted_image_assets, optional_assets};
 use html::{html_to_markdown, html_to_text};
 pub use profiles::{DraftFormat, DraftProfile, supported_draft_profiles};
 use schema::{AdaptedContent, encode_validated};
@@ -86,6 +87,7 @@ impl DraftCompiler {
 
         let text = html_to_text(&source_content);
         let source_summary = summarize(&text);
+        let image_assets = adapted_image_assets(&source_content);
         let (adapted_content_json, summary, warnings) = match platform.as_str() {
             "wechat" => encode_validated(
                 profile,
@@ -157,7 +159,7 @@ impl DraftCompiler {
                         markdown: None,
                         text: Some(text),
                         summary: Some(summary.as_str()),
-                        assets: None,
+                        assets: optional_assets(&image_assets),
                     },
                 )?;
                 (adapted_content_json, summary, Vec::new())
