@@ -3,6 +3,7 @@ package prepublish
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -22,10 +23,16 @@ type DashboardStatsCacheInvalidator interface {
 	InvalidateDashboardStatsCache(ctx context.Context)
 }
 
+type DashboardReadModelUpdater interface {
+	RefreshProjectAsync(ctx context.Context, projectID uuid.UUID)
+	RefreshWorkspaceAsync(ctx context.Context, workspaceID uuid.UUID)
+}
+
 type Service struct {
 	db         *gorm.DB
 	projects   *projectsvc.Service
 	statsCache DashboardStatsCacheInvalidator
+	readModels DashboardReadModelUpdater
 
 	draftCompiler ProjectDraftCompiler
 }
@@ -40,6 +47,10 @@ func (s *Service) SetDraftCompiler(draftCompiler ProjectDraftCompiler) {
 
 func (s *Service) SetDashboardStatsCacheInvalidator(invalidator DashboardStatsCacheInvalidator) {
 	s.statsCache = invalidator
+}
+
+func (s *Service) SetDashboardReadModelUpdater(updater DashboardReadModelUpdater) {
+	s.readModels = updater
 }
 
 func (s *Service) DraftCompiler() ProjectDraftCompiler {
@@ -64,6 +75,13 @@ func (s *Service) invalidateDashboardCaches() {
 	if s.statsCache != nil {
 		s.statsCache.InvalidateDashboardStatsCache(ctx)
 	}
+}
+
+func (s *Service) refreshProjectReadModel(projectID uuid.UUID) {
+	if s.readModels == nil || projectID == uuid.Nil {
+		return
+	}
+	s.readModels.RefreshProjectAsync(s.requestContext(), projectID)
 }
 
 func defaultDraftCompiler() ProjectDraftCompiler {

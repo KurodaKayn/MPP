@@ -23,6 +23,7 @@ func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, r
 	defer func() {
 		if mutated {
 			s.invalidateDashboardCaches()
+			s.refreshProjectReadModel(projectID)
 		}
 	}()
 
@@ -83,7 +84,6 @@ func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, r
 	if err := s.projects.RefreshProjectMediaUsages(projectID); err != nil {
 		return nil, err
 	}
-
 	return s.projects.GetProjectPublications(projectID, &userID, true)
 }
 
@@ -326,6 +326,7 @@ func (s *Service) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.
 	if err := s.projects.RefreshProjectMediaUsages(projectID); err != nil {
 		return nil, err
 	}
+	s.refreshProjectReadModel(projectID)
 
 	return s.projects.GetProjectPublications(projectID, &userID, true)
 }
