@@ -9,20 +9,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/kurodakayn/mpp-backend/internal/contracts/contentpipelinepb"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/contentpipeline"
-	"github.com/kurodakayn/mpp-backend/internal/pkg/envutil"
 )
 
 const (
-	contentPipelineMediaEnabledEnv = "CONTENT_PIPELINE_MEDIA_ENABLED"
-	contentPipelineHostEnv         = contentpipeline.HostEnv
-	contentPipelinePortEnv         = contentpipeline.PortEnv
-	contentPipelineRequestTimeout  = 20 * time.Second
-	mediaObjectRefPrefix           = "mpp://media/"
+	contentPipelineHostEnv        = contentpipeline.HostEnv
+	contentPipelinePortEnv        = contentpipeline.PortEnv
+	contentPipelineRequestTimeout = 20 * time.Second
+	mediaObjectRefPrefix          = "mpp://media/"
 )
 
 var errContentPipelineContract = errors.New("content pipeline contract error")
@@ -30,10 +26,6 @@ var errContentPipelineContract = errors.New("content pipeline contract error")
 type contentPipelineMediaClientFactory func(context.Context) (contentpipelinepb.MediaAssetProcessorClient, io.Closer, error)
 
 var newContentPipelineMediaClient contentPipelineMediaClientFactory = dialContentPipelineMediaClient
-
-func contentPipelineMediaEnabled() bool {
-	return envutil.Bool(contentPipelineMediaEnabledEnv, false)
-}
 
 func processWithContentPipeline(sourceURL string, platform string, usage string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), contentPipelineRequestTimeout)
@@ -48,11 +40,10 @@ func processWithContentPipeline(sourceURL string, platform string, usage string)
 	}
 
 	response, err := client.ProcessAsset(ctx, &contentpipelinepb.ProcessAssetRequest{
-		RequestId:   uuid.NewString(),
-		Platform:    strings.TrimSpace(platform),
-		Usage:       strings.TrimSpace(usage),
-		Source:      mediaSourceFromURL(sourceURL),
-		Constraints: mediaConstraintsForPlatform(platform),
+		RequestId: uuid.NewString(),
+		Platform:  strings.TrimSpace(platform),
+		Usage:     strings.TrimSpace(usage),
+		Source:    mediaSourceFromURL(sourceURL),
 	})
 	if err != nil {
 		return nil, err
@@ -67,15 +58,6 @@ func processWithContentPipeline(sourceURL string, platform string, usage string)
 		return nil, fmt.Errorf("%w: processed asset did not include inline bytes", errContentPipelineContract)
 	}
 	return inlineBytes, nil
-}
-
-func mediaConstraintsForPlatform(platform string) *contentpipelinepb.MediaConstraints {
-	if strings.EqualFold(strings.TrimSpace(platform), "wechat") {
-		return &contentpipelinepb.MediaConstraints{
-			MaxBytes: MaxWechatSize,
-		}
-	}
-	return nil
 }
 
 func dialContentPipelineMediaClient(_ context.Context) (contentpipelinepb.MediaAssetProcessorClient, io.Closer, error) {
@@ -104,20 +86,5 @@ func mediaSourceFromURL(sourceURL string) *contentpipelinepb.MediaSource {
 	}
 	return &contentpipelinepb.MediaSource{
 		Value: &contentpipelinepb.MediaSource_Url{Url: sourceURL},
-	}
-}
-
-func shouldFallbackContentPipelineError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, errContentPipelineContract) {
-		return false
-	}
-	switch status.Code(err) {
-	case codes.Unavailable, codes.DeadlineExceeded, codes.Unimplemented, codes.Unknown:
-		return true
-	default:
-		return false
 	}
 }

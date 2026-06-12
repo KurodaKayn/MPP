@@ -46,7 +46,7 @@ func (w *WechatPublisher) Publish(_ context.Context, pub *models.ProjectPlatform
 	client := pkgwechat.NewClient(cfg.AppID, cfg.AppSecret)
 	sourceHTML := extractWechatHTML(pub.AdaptedContent)
 
-	// 1. Process HTML images (Download -> Compress -> Upload to WeChat -> Replace URL)
+	// 1. Process HTML images through content-pipeline-service, upload to WeChat, and replace URLs.
 	processedHTML, err := htmlutil.ProcessHTMLImages(
 		sourceHTML,
 		media.DownloadAndProcess,
@@ -59,7 +59,6 @@ func (w *WechatPublisher) Publish(_ context.Context, pub *models.ProjectPlatform
 		},
 	)
 	if err != nil {
-		// Fallback to original content if processing fails, or return error
 		processedHTML = string(pub.AdaptedContent)
 	}
 

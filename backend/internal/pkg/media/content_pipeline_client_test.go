@@ -30,8 +30,7 @@ func (noopCloser) Close() error {
 	return nil
 }
 
-func TestDownloadAndProcessUsesContentPipelineWhenEnabled(t *testing.T) {
-	t.Setenv(contentPipelineMediaEnabledEnv, "true")
+func TestDownloadAndProcessDelegatesToContentPipeline(t *testing.T) {
 	fakeClient := &fakeContentPipelineMediaClient{
 		response: &contentpipelinepb.ProcessAssetResponse{
 			Asset: &contentpipelinepb.ProcessedAsset{
@@ -53,12 +52,11 @@ func TestDownloadAndProcessUsesContentPipelineWhenEnabled(t *testing.T) {
 	require.Equal(t, []byte("processed-by-rust"), data)
 	require.Equal(t, "wechat", fakeClient.request.GetPlatform())
 	require.Equal(t, "cover", fakeClient.request.GetUsage())
-	require.Equal(t, uint64(MaxWechatSize), fakeClient.request.GetConstraints().GetMaxBytes())
+	require.Nil(t, fakeClient.request.GetConstraints())
 	require.Equal(t, "data:image/png;base64,aGVsbG8=", fakeClient.request.GetSource().GetDataUrl())
 }
 
 func TestDownloadAndProcessSendsMediaObjectRefsToContentPipeline(t *testing.T) {
-	t.Setenv(contentPipelineMediaEnabledEnv, "true")
 	fakeClient := &fakeContentPipelineMediaClient{
 		response: &contentpipelinepb.ProcessAssetResponse{
 			Asset: &contentpipelinepb.ProcessedAsset{
@@ -84,7 +82,6 @@ func TestDownloadAndProcessSendsMediaObjectRefsToContentPipeline(t *testing.T) {
 }
 
 func TestDownloadAndProcessUsesContentPipelineDefaultsForNonWechatPlatforms(t *testing.T) {
-	t.Setenv(contentPipelineMediaEnabledEnv, "true")
 	fakeClient := &fakeContentPipelineMediaClient{
 		response: &contentpipelinepb.ProcessAssetResponse{
 			Asset: &contentpipelinepb.ProcessedAsset{
@@ -108,8 +105,7 @@ func TestDownloadAndProcessUsesContentPipelineDefaultsForNonWechatPlatforms(t *t
 	require.Nil(t, fakeClient.request.GetConstraints())
 }
 
-func TestDownloadAndProcessFallsBackForTransientContentPipelineErrors(t *testing.T) {
-	t.Setenv(contentPipelineMediaEnabledEnv, "true")
+func TestDownloadAndProcessPropagatesTransientContentPipelineErrors(t *testing.T) {
 	fakeClient := &fakeContentPipelineMediaClient{
 		err: status.Error(codes.Unavailable, "content pipeline unavailable"),
 	}
@@ -119,12 +115,12 @@ func TestDownloadAndProcessFallsBackForTransientContentPipelineErrors(t *testing
 
 	data, err := DownloadAndProcess("data:image/png;base64,aGVsbG8=")
 
-	require.NoError(t, err)
-	require.Equal(t, []byte("hello"), data)
+	require.Error(t, err)
+	require.Nil(t, data)
+	require.Contains(t, err.Error(), "content pipeline unavailable")
 }
 
-func TestDownloadAndProcessDoesNotFallbackForMediaObjectRefs(t *testing.T) {
-	t.Setenv(contentPipelineMediaEnabledEnv, "true")
+func TestDownloadAndProcessPropagatesObjectRefContentPipelineErrors(t *testing.T) {
 	fakeClient := &fakeContentPipelineMediaClient{
 		err: status.Error(codes.Unavailable, "content pipeline unavailable"),
 	}
@@ -139,8 +135,7 @@ func TestDownloadAndProcessDoesNotFallbackForMediaObjectRefs(t *testing.T) {
 	require.Contains(t, err.Error(), "content pipeline unavailable")
 }
 
-func TestDownloadAndProcessDoesNotFallbackForContentPipelineValidationErrors(t *testing.T) {
-	t.Setenv(contentPipelineMediaEnabledEnv, "true")
+func TestDownloadAndProcessPropagatesContentPipelineValidationErrors(t *testing.T) {
 	fakeClient := &fakeContentPipelineMediaClient{
 		err: status.Error(codes.InvalidArgument, "unsafe media URL"),
 	}
