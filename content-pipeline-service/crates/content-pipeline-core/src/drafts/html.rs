@@ -13,6 +13,21 @@ pub(super) fn html_to_text(value: &str) -> String {
     renderer.finish()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct HtmlImageAsset {
+    pub source_url: String,
+    pub alt: Option<String>,
+}
+
+pub(super) fn html_image_assets(value: &str) -> Vec<HtmlImageAsset> {
+    let fragment = Html::parse_fragment(value);
+    let mut assets = Vec::new();
+    for child in fragment.tree.root().children() {
+        collect_image_assets(child, &mut assets);
+    }
+    assets
+}
+
 #[derive(Default)]
 struct TextRenderer {
     output: String,
@@ -287,6 +302,23 @@ fn attr_value<'a>(node: NodeRef<'a, Node>, name: &str) -> &'a str {
     match node.value() {
         Node::Element(element) => element.attr(name).unwrap_or(""),
         _ => "",
+    }
+}
+
+fn collect_image_assets(node: NodeRef<'_, Node>, assets: &mut Vec<HtmlImageAsset>) {
+    if element_name(node) == Some("img") {
+        let source_url = attr_value(node, "src").trim();
+        if !source_url.is_empty() {
+            let alt = attr_value(node, "alt").trim();
+            assets.push(HtmlImageAsset {
+                source_url: source_url.to_string(),
+                alt: (!alt.is_empty()).then(|| alt.to_string()),
+            });
+        }
+    }
+
+    for child in node.children() {
+        collect_image_assets(child, assets);
     }
 }
 
