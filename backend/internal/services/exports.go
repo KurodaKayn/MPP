@@ -49,6 +49,7 @@ var ErrInvalidProjectVersion = dashboard.ErrInvalidProjectVersion
 var ErrInvalidWorkspace = dashboard.ErrInvalidWorkspace
 var ErrInvalidWorkspaceInvite = dashboard.ErrInvalidWorkspaceInvite
 var ErrInvalidWorkspaceMember = dashboard.ErrInvalidWorkspaceMember
+var ErrProjectDeletionBlocked = dashboard.ErrProjectDeletionBlocked
 var ErrProjectCollabUnavailable = dashboard.ErrProjectCollabUnavailable
 var ErrInvalidXOAuth2State = platformaccount.ErrInvalidXOAuth2State
 var ErrManualPublishUnsupported = dashboard.ErrManualPublishUnsupported
