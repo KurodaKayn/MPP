@@ -264,7 +264,7 @@ flowchart LR
 - Docker Compose 已配置 `postgres-exporter`，通过 `deploy/docker/observability/postgres-exporter/queries.yml` 采集 `pg_stat_user_tables`、`pg_relation_size`、`pg_indexes_size` 和 vacuum 计数。
 - Prometheus 已增加 `postgres-exporter` scrape job；Grafana `MPP Observability Baseline` 已增加表行数、24h 行数增长、表/索引/总大小、dead tuples、dead tuple ratio、vacuum age、vacuum runs 面板。
 - 手工快照仍使用 `script/db/audit_database_baseline.sh`，用于发布前后或事故期间导出 Top query、最大表、dead tuple 最高表和最大索引。
-- exporter 不继承应用 `.env`，只接收 `POSTGRES_EXPORTER_DATA_SOURCE_URI`、`POSTGRES_EXPORTER_USER`、`POSTGRES_EXPORTER_PASSWORD`；本地新库通过 `deploy/docker/postgres/init/002_create_postgres_exporter.sh` 创建 `postgres_exporter` 监控账号，已有 `postgres_data` volume 通过 `postgres-exporter-init` one-shot 服务重复执行同一段授权 SQL 后再启动 exporter。
+- exporter 不继承应用 `.env`，只接收 `POSTGRES_EXPORTER_DATA_SOURCE_URI`、`POSTGRES_EXPORTER_USER`、`POSTGRES_EXPORTER_PASSWORD`；本地新库通过 `deploy/docker/postgres/init/002_create_postgres_exporter.sh` 创建 `postgres_exporter` 监控账号。
 - 托管 PostgreSQL 如果不允许 exporter 使用超级用户，监控账号必须授予 `pg_monitor` 或 `pg_read_all_stats`；否则表级统计和 vacuum 状态可能为空或不完整。`DB_SSLMODE=verify-ca` 或 `verify-full` 时，`POSTGRES_EXPORTER_DATA_SOURCE_URI` 使用不含用户名密码的 `host:port/db?sslmode=verify-full&sslrootcert=/path/to/ca.crt` 形式；用户名和密码仍由 `POSTGRES_EXPORTER_USER`、`POSTGRES_EXPORTER_PASSWORD` 提供。
 - `DB_READER_MAX_REPLICA_LAG` 和 `DB_READER_LAG_CHECK_INTERVAL` 已纳入 env contract；未配置 reader 时不改变当前 writer-only 行为，配置 read replica 后用于 replica lag 回退判断。
 
