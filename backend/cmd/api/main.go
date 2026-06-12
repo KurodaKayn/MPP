@@ -24,6 +24,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/redisclient"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/archive"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/kurodakayn/mpp-backend/internal/services/email"
 )
@@ -59,12 +60,20 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	var objectStorageClient objectstorage.Client
 	if objectStorageConfig.Enabled {
-		objectStorageClient, err := objectstorager2.NewClient(objectStorageConfig)
+		objectStorageClient, err = objectstorager2.NewClient(objectStorageConfig)
 		if err != nil {
 			log.Fatal(err)
 		}
 		dashboardService.UseObjectStorage(objectStorageClient, objectStorageConfig)
+	}
+	archiveConfig, err := archive.ConfigFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if archiveConfig.Enabled && objectStorageClient == nil {
+		log.Fatal("EVENT_ARCHIVE_ENABLED requires OBJECT_STORAGE_PROVIDER=r2")
 	}
 	collabDocumentService := services.NewCollabDocumentService(db.DB)
 	collabSecret := []byte(app.CollabTokenSecret(jwtSecret))
@@ -97,6 +106,9 @@ func main() {
 		if runtimeConfig.RunsWorkers() {
 			dashboardService.StartPublishWorker(rootCtx)
 		}
+	}
+	if runtimeConfig.RunsWorkers() && archiveConfig.Enabled {
+		archive.NewWorker(db.DB, objectStorageClient, archiveConfig).Start(rootCtx)
 	}
 
 	baseEmailService, err := app.NewBaseEmailServiceFromEnv()
