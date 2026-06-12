@@ -87,7 +87,7 @@ module KubernetesValidation
       validate_backup_cronjob(
         context,
         name: "postgres-backup",
-        image: "docker.io/library/postgres:17",
+        image: "docker.io/library/postgres:18.4",
         secret_env: "PGPASSWORD",
         secret_key: "DB_PASSWORD",
         optional_secret: false,
