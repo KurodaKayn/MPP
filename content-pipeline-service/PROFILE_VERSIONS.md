@@ -20,6 +20,7 @@ The Rust core tests assert that:
 
 - Blank target profiles resolve to the registered default profile for the platform.
 - Every registered profile has a representative snapshot fixture.
+- Every registered draft and media profile is listed in this document's current profile tables.
 - Snapshot profile, schema version, and adapted content format match the registry.
 - Representative compiler output remains stable for WeChat, Zhihu, X, and Douyin.
 
@@ -61,6 +62,7 @@ cargo test -p content-pipeline-core
 
 ### 2026-06-12
 
+- Added profile version documentation checks that keep the current draft and media profile tables aligned with the Rust registries.
 - Added compiler schema validation for adapted content emitted by Rust draft profiles.
 - Added image asset descriptors to WeChat, Zhihu, and Douyin draft outputs when source HTML contains images.
 

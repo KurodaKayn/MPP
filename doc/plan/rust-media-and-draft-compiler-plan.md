@@ -420,10 +420,10 @@ Goal: make platform changes safer and easier to review.
 
 Deliverables:
 
-- Profile versioning policy.
-- Compatibility tests for old adapted content.
-- Per-platform fixtures.
-- Changelog for platform profile changes.
+- Profile versioning policy. Implemented in `content-pipeline-service/PROFILE_VERSIONS.md`.
+- Compatibility tests for old adapted content. Implemented with representative snapshot tests and profile documentation sync checks.
+- Per-platform fixtures. Implemented with representative draft fixtures for WeChat, Zhihu, X, and Douyin.
+- Changelog for platform profile changes. Implemented in `PROFILE_VERSIONS.md`.
 
 Acceptance:
 
