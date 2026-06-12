@@ -69,6 +69,8 @@ secretGenerator:
       - BROWSER_WORKER_INTERNAL_TOKEN=staging-example-browser-worker-token
       - AI_SERVICE_INTERNAL_TOKEN=staging-example-ai-service-token
       - CONTENT_PIPELINE_INTERNAL_TOKEN=staging-example-content-pipeline-token
+      - R2_ACCESS_KEY_ID=staging-example-r2-access-key
+      - R2_SECRET_ACCESS_KEY=staging-example-r2-secret-key
 
 images:
   - name: registry.example.invalid/kurodakayn/mpp-frontend
