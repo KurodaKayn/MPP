@@ -124,6 +124,7 @@ func (s *Service) CreateProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid
 		return nil, err
 	}
 	s.invalidateDashboardCaches(true)
+	s.refreshProjectReadModel(project.ID)
 
 	return &dto.ProjectListItem{
 		ID:               project.ID,
@@ -346,6 +347,7 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 		return nil, err
 	}
 	s.invalidateDashboardCaches(true)
+	s.refreshProjectReadModel(projectID)
 
 	return s.GetProject(projectID, &userID)
 }
@@ -413,6 +415,7 @@ func (s *Service) SaveProjectContent(projectID uuid.UUID, userID uuid.UUID, req 
 		return nil, err
 	}
 	s.invalidateDashboardCaches(false)
+	s.refreshProjectReadModel(projectID)
 
 	return s.GetProject(projectID, &userID)
 }
@@ -507,6 +510,7 @@ func (s *Service) SaveProjectPlatforms(projectID uuid.UUID, userID uuid.UUID, re
 		return nil, err
 	}
 	s.invalidateDashboardCaches(true)
+	s.refreshProjectReadModel(projectID)
 
 	return s.GetProject(projectID, &userID)
 }

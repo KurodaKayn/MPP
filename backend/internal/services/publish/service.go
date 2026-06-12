@@ -41,6 +41,7 @@ type Service struct {
 	objectStorage         objectstorage.Client
 	storageConfig         objectstorage.Config
 	dashboardCache        DashboardCacheInvalidator
+	readModels            DashboardReadModelUpdater
 }
 
 type PublishJobObserver interface {
@@ -50,6 +51,11 @@ type PublishJobObserver interface {
 type DashboardCacheInvalidator interface {
 	InvalidateDashboardProjectListCache(ctx context.Context)
 	InvalidateDashboardStatsCache(ctx context.Context)
+}
+
+type DashboardReadModelUpdater interface {
+	RefreshProjectAsync(ctx context.Context, projectID uuid.UUID)
+	RefreshWorkspaceAsync(ctx context.Context, workspaceID uuid.UUID)
 }
 
 const (
@@ -107,6 +113,10 @@ func (s *Service) SetDashboardCacheInvalidator(invalidator DashboardCacheInvalid
 	s.dashboardCache = invalidator
 }
 
+func (s *Service) SetDashboardReadModelUpdater(updater DashboardReadModelUpdater) {
+	s.readModels = updater
+}
+
 func (s *Service) UseRedis(client *redis.Client) {
 	if client == nil {
 		return
@@ -133,6 +143,13 @@ func (s *Service) invalidateDashboardProjectListCache(ctx context.Context) {
 		return
 	}
 	s.dashboardCache.InvalidateDashboardProjectListCache(ctx)
+}
+
+func (s *Service) refreshProjectReadModel(ctx context.Context, projectID uuid.UUID) {
+	if s.readModels == nil || projectID == uuid.Nil {
+		return
+	}
+	s.readModels.RefreshProjectAsync(ctx, projectID)
 }
 
 func SanitizeUserFacingErrorMessage(message string) string {
@@ -234,6 +251,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 		return nil, failAttempt(err)
 	}
 	s.invalidateDashboardCaches(ctx)
+	s.refreshProjectReadModel(ctx, projectID)
 
 	var remoteID string
 	var publishURL string
@@ -278,6 +296,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 	if err := s.db.Model(&pub).Updates(updates).Error; err != nil {
 		return nil, failAttempt(err)
 	}
+	s.refreshProjectReadModel(ctx, projectID)
 	attemptStatus := models.PublishAttemptStatusSucceeded
 	if status == models.PublicationStatusFailed {
 		attemptStatus = models.PublishAttemptStatusFailed
@@ -349,6 +368,7 @@ func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID)
 		return nil, err
 	}
 	s.invalidateDashboardProjectListCache(context.Background())
+	s.refreshProjectReadModel(context.Background(), projectID)
 
 	return map[string]any{
 		"status":      "manual_required",

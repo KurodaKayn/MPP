@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
@@ -156,6 +157,13 @@ func (s *Service) invalidateDashboardCaches(includeStats bool) {
 	if includeStats && s.statsCache != nil {
 		s.statsCache.InvalidateDashboardStatsCache(ctx)
 	}
+}
+
+func (s *Service) refreshProjectReadModel(projectID uuid.UUID) {
+	if s.readModels == nil || projectID == uuid.Nil {
+		return
+	}
+	s.readModels.RefreshProjectAsync(s.requestContext(), projectID)
 }
 
 func deleteDashboardProjectListCacheKeys(ctx context.Context, client *redis.Client) {

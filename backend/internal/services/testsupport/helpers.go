@@ -226,6 +226,15 @@ func SetupTestDB() *gorm.DB {
 		created_at DATETIME NOT NULL
 	)`)
 
+	db.Exec(`CREATE TABLE workspace_dashboard_stats (
+		workspace_id TEXT PRIMARY KEY,
+		total_projects INTEGER NOT NULL DEFAULT 0,
+		total_published_publications INTEGER NOT NULL DEFAULT 0,
+		total_failed_publications INTEGER NOT NULL DEFAULT 0,
+		total_members INTEGER NOT NULL DEFAULT 0,
+		refreshed_at DATETIME NOT NULL
+	)`)
+
 	db.Exec(`CREATE TABLE notifications (
 		id TEXT PRIMARY KEY,
 		workspace_id TEXT NOT NULL,
@@ -389,6 +398,18 @@ func SetupTestDB() *gorm.DB {
 		published_at DATETIME,
 		created_at DATETIME,
 		updated_at DATETIME
+	)`)
+
+	db.Exec(`CREATE TABLE project_list_summaries (
+		project_id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
+		title TEXT NOT NULL,
+		status TEXT NOT NULL,
+		publications TEXT NOT NULL DEFAULT '[]',
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		refreshed_at DATETIME NOT NULL
 	)`)
 
 	db.Exec(`CREATE TABLE media_asset_usages (

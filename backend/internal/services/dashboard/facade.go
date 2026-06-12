@@ -18,6 +18,7 @@ import (
 	prepublishsvc "github.com/kurodakayn/mpp-backend/internal/services/prepublish"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
+	readmodelsvc "github.com/kurodakayn/mpp-backend/internal/services/readmodel"
 	statssvc "github.com/kurodakayn/mpp-backend/internal/services/stats"
 	workspacesvc "github.com/kurodakayn/mpp-backend/internal/services/workspace"
 )
@@ -58,8 +59,9 @@ type DashboardService struct {
 	*AccountSettings
 	*Publisher
 
-	db       *gorm.DB
-	dbRouter *dbrouter.Router
+	db        *gorm.DB
+	dbRouter  *dbrouter.Router
+	readModel *readmodelsvc.Service
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
@@ -85,6 +87,9 @@ func (s *DashboardService) WithContext(ctx context.Context) *DashboardService {
 	scoped.Stats = &Stats{Service: s.Stats.WithContext(ctx)}
 	scoped.AccountSettings = &AccountSettings{Service: s.AccountSettings.WithContext(ctx)}
 	scoped.Publisher = &Publisher{Service: s.Publisher.WithContext(ctx)}
+	if s.readModel != nil {
+		scoped.readModel = s.readModel.WithContext(ctx)
+	}
 	scopedService := &scoped
 	scopedService.wireDashboardCacheInvalidators()
 	return scopedService
@@ -171,6 +176,7 @@ func newDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.
 	publisher := publishsvc.NewService(db, accounts)
 	stats := statssvc.NewServiceWithRouter(db, projects, router)
 	prepublish := prepublishsvc.NewService(db, projects, compiler.NewContentPipelineDraftCompiler())
+	readModel := readmodelsvc.NewService(db)
 	service := &DashboardService{
 		Project:         &Project{Service: projects},
 		Workspace:       &Workspace{Service: workspacesvc.NewServiceWithRouter(db, projects, router)},
@@ -182,6 +188,7 @@ func newDashboardServiceWithPlatformTesters(db *gorm.DB, tester platformaccount.
 		Publisher:       &Publisher{Service: publisher},
 		db:              db,
 		dbRouter:        router,
+		readModel:       readModel,
 	}
 	service.wireDashboardCacheInvalidators()
 	return service
@@ -194,6 +201,7 @@ func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider platformaccoun
 	publisher := publishsvc.NewService(db, accounts)
 	stats := statssvc.NewServiceWithRouter(db, projects, router)
 	prepublish := prepublishsvc.NewService(db, projects, compiler.NewContentPipelineDraftCompiler())
+	readModel := readmodelsvc.NewService(db)
 	service := &DashboardService{
 		Project:         &Project{Service: projects},
 		Workspace:       &Workspace{Service: workspacesvc.NewServiceWithRouter(db, projects, router)},
@@ -205,6 +213,7 @@ func NewDashboardServiceWithXOAuth2Provider(db *gorm.DB, provider platformaccoun
 		Publisher:       &Publisher{Service: publisher},
 		db:              db,
 		dbRouter:        router,
+		readModel:       readModel,
 	}
 	service.wireDashboardCacheInvalidators()
 	return service
@@ -231,11 +240,21 @@ func (s *DashboardService) wireDashboardCacheInvalidators() {
 	if s.Project != nil && s.Project.Service != nil && s.Stats != nil && s.Stats.Service != nil {
 		s.Project.SetDashboardStatsCacheInvalidator(s.Stats.Service)
 	}
+	if s.Project != nil && s.Project.Service != nil {
+		s.Project.SetDashboardReadModelUpdater(s.readModel)
+	}
 	if s.Prepublish != nil && s.Prepublish.Service != nil && s.Stats != nil && s.Stats.Service != nil {
 		s.Prepublish.SetDashboardStatsCacheInvalidator(s.Stats.Service)
 	}
+	if s.Prepublish != nil && s.Prepublish.Service != nil {
+		s.Prepublish.SetDashboardReadModelUpdater(s.readModel)
+	}
+	if s.Workspace != nil && s.Workspace.Service != nil {
+		s.Workspace.SetDashboardReadModelUpdater(s.readModel)
+	}
 	if s.Publisher != nil && s.Publisher.Service != nil {
 		s.SetDashboardCacheInvalidator(s)
+		s.Publisher.SetDashboardReadModelUpdater(s.readModel)
 	}
 }
 

@@ -28,6 +28,11 @@ type DashboardStatsCacheInvalidator interface {
 	InvalidateDashboardStatsCache(ctx context.Context)
 }
 
+type DashboardReadModelUpdater interface {
+	RefreshProjectAsync(ctx context.Context, projectID uuid.UUID)
+	RefreshWorkspaceAsync(ctx context.Context, workspaceID uuid.UUID)
+}
+
 var allowedProjectPlatforms = map[string]struct{}{
 	"douyin": {},
 	"wechat": {},
@@ -43,6 +48,7 @@ type Service struct {
 	cacheTTL        time.Duration
 	cacheGroup      *singleflight.Group
 	statsCache      DashboardStatsCacheInvalidator
+	readModels      DashboardReadModelUpdater
 }
 
 func NewService(db *gorm.DB) *Service {
@@ -83,6 +89,10 @@ func (s *Service) UseRedis(client *redis.Client) {
 
 func (s *Service) SetDashboardStatsCacheInvalidator(invalidator DashboardStatsCacheInvalidator) {
 	s.statsCache = invalidator
+}
+
+func (s *Service) SetDashboardReadModelUpdater(updater DashboardReadModelUpdater) {
+	s.readModels = updater
 }
 
 func (s *Service) requestContext() context.Context {
