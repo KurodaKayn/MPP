@@ -292,7 +292,7 @@ services:
       - traefik.http.services.collab.loadbalancer.server.port=8090
 
   db:
-    image: postgres:17-alpine
+    image: postgres:18.4-alpine
     env_file: .env
     command:
       - postgres
@@ -313,7 +313,7 @@ services:
       start_period: 20s
       retries: 3
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
 
   pgbouncer:

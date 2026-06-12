@@ -11,7 +11,7 @@ Install these tools on the host:
 - `pnpm`
 - Go
 - `uv`
-- PostgreSQL 17
+- PostgreSQL 18.4
 - Redis
 
 PostgreSQL and Redis must already be running locally before starting application services.
