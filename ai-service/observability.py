@@ -88,12 +88,8 @@ def configure_observability(app: FastAPI) -> None:
             route = _route_path(request)
             latency = time.perf_counter() - started_at
             REQUESTS.labels(SERVICE_NAME, request.method, route, str(status_code)).inc()
-            DURATION.labels(
-                SERVICE_NAME, request.method, route, str(status_code)
-            ).observe(latency)
-            _log_request(
-                request, trace_id, route, status_code, latency, response, error
-            )
+            DURATION.labels(SERVICE_NAME, request.method, route, str(status_code)).observe(latency)
+            _log_request(request, trace_id, route, status_code, latency, response, error)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
