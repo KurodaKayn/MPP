@@ -30,6 +30,7 @@ func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *browsersession.BrowserSes
 	// Migrate necessary tables
 	err = db.AutoMigrate(
 		&models.User{},
+		&models.Workspace{},
 		&models.PlatformAccount{},
 		&models.RemoteBrowserSession{},
 	)
@@ -171,12 +172,19 @@ func TestBrowserSessionService_FullLifecycle(t *testing.T) {
 }
 
 func TestBrowserSessionService_CompleteSessionInvalidatesDashboardAccountCache(t *testing.T) {
-	_, svc, _ := setupBrowserSessionTest(t)
+	db, svc, _ := setupBrowserSessionTest(t)
 	userID := uuid.New()
 	workspaceID := uuid.New()
 	invalidator := &fakeDashboardAccountCacheInvalidator{}
 	svc.UseDashboardAccountCacheInvalidator(invalidator)
 	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+	require.NoError(t, db.Create(&models.Workspace{
+		ID:          workspaceID,
+		OwnerUserID: userID,
+		Name:        "Workspace",
+		Slug:        "workspace",
+		Status:      models.WorkspaceStatusActive,
+	}).Error)
 
 	resp, err := svc.StartSessionForWorkspace(context.Background(), userID, "workspace", workspaceID, uuid.Nil, "douyin")
 	require.NoError(t, err)
