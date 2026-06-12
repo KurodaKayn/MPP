@@ -52,6 +52,15 @@ func TestReadProcessedObjectRejectsUnsupportedRefs(t *testing.T) {
 	require.Contains(t, err.Error(), "unsupported processed media object ref")
 }
 
+func TestReadProcessedObjectRejectsUnsupportedStores(t *testing.T) {
+	t.Setenv(contentPipelineMediaObjectStoreEnv, "s3")
+
+	_, err := ReadProcessedObject(context.Background(), defaultProcessedMediaObjectRefPrefix+"processed/ab/abcdef.png")
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), contentPipelineMediaObjectStoreEnv)
+}
+
 func TestReadProcessedObjectUsesConfiguredObjectRefPrefix(t *testing.T) {
 	root := t.TempDir()
 	key := "processed/ab/abcdef.png"
