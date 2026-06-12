@@ -17,8 +17,9 @@ const (
 // ErrObjectNotFound is returned when the requested object does not exist.
 var ErrObjectNotFound = errors.New("object not found")
 
-// Client is the storage boundary used by media upload and publishing flows.
+// Client is the storage boundary used by media upload, publishing, and archival flows.
 type Client interface {
+	PutObject(ctx context.Context, input UploadObjectInput) (ObjectInfo, error)
 	PresignPutObject(ctx context.Context, input PutObjectInput) (PresignedURL, error)
 	PresignGetObject(ctx context.Context, input GetObjectInput) (PresignedURL, error)
 	HeadObject(ctx context.Context, key string) (ObjectInfo, error)
@@ -62,6 +63,14 @@ type CopyObjectInput struct {
 	SourceKey         string
 	DestinationBucket string
 	DestinationKey    string
+}
+
+// UploadObjectInput describes a server-side object upload.
+type UploadObjectInput struct {
+	Bucket      string
+	Key         string
+	ContentType string
+	Body        io.Reader
 }
 
 // PresignedURL is a temporary URL and the headers required to use it.

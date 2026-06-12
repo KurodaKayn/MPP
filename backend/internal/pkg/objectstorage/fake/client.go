@@ -3,8 +3,10 @@ package fake
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 )
@@ -23,6 +25,29 @@ type storedObject struct {
 // NewClient creates an empty fake object storage client.
 func NewClient() *Client {
 	return &Client{objects: map[string]storedObject{}}
+}
+
+// PutObject stores an object in memory.
+func (c *Client) PutObject(ctx context.Context, input objectstorage.UploadObjectInput) (objectstorage.ObjectInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return objectstorage.ObjectInfo{}, err
+	}
+	if input.Body == nil {
+		return objectstorage.ObjectInfo{}, errors.New("object body is required")
+	}
+	body, err := io.ReadAll(input.Body)
+	if err != nil {
+		return objectstorage.ObjectInfo{}, err
+	}
+
+	info := objectstorage.ObjectInfo{
+		Key:          input.Key,
+		ContentType:  input.ContentType,
+		Size:         int64(len(body)),
+		LastModified: time.Now().UTC(),
+	}
+	c.StoreObject(input.Key, body, info)
+	return info, nil
 }
 
 // PresignPutObject returns a deterministic fake PUT URL.

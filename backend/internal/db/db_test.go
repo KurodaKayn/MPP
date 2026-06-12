@@ -120,6 +120,18 @@ func TestMigrateAddsWorkspaceTeamModel(t *testing.T) {
 	require.Equal(t, workspace.Name, loadedProject.Workspace.Name)
 }
 
+func TestMigrateAddsArchiveScanIndexes(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, migrate(database))
+
+	require.True(t, database.Migrator().HasIndex(&models.PublishEvent{}, "idx_publish_events_archive_created_id"))
+	require.True(t, database.Migrator().HasIndex(&models.ExtensionExecutionEvent{}, "idx_extension_execution_events_archive_created_id"))
+	require.True(t, database.Migrator().HasIndex(&models.ProjectActivity{}, "idx_project_activities_archive_created_id"))
+	require.True(t, database.Migrator().HasIndex(&models.WorkspaceActivity{}, "idx_workspace_activities_archive_created_id"))
+	require.True(t, database.Migrator().HasIndex(&models.RemoteBrowserSession{}, "idx_remote_browser_sessions_archive_status_created_id"))
+}
+
 func TestMigrateBackfillsPersonalWorkspaces(t *testing.T) {
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)

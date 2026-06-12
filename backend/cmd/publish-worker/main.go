@@ -20,9 +20,12 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/app"
 	"github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/observability"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
+	objectstorager2 "github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage/r2"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/redisclient"
 	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/archive"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	"github.com/kurodakayn/mpp-backend/internal/services/email"
 )
@@ -55,6 +58,21 @@ func main() {
 	dashboardService.SetBrowserSessionService(browserSessionService)
 	dashboardService.UseRedis(redisClient)
 
+	objectStorageConfig, objectStorageClient, err := objectStorageClientFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if objectStorageClient != nil {
+		dashboardService.UseObjectStorage(objectStorageClient, objectStorageConfig)
+	}
+	archiveConfig, err := archive.ConfigFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if archiveConfig.Enabled && objectStorageClient == nil {
+		log.Fatal("EVENT_ARCHIVE_ENABLED requires OBJECT_STORAGE_PROVIDER=r2")
+	}
+
 	baseEmailService, err := app.NewBaseEmailServiceFromEnv()
 	if err != nil {
 		log.Fatal(err)
@@ -77,6 +95,9 @@ func main() {
 	var workerWG sync.WaitGroup
 	publishWorkerErrors := dashboardService.StartPublishWorkerWithErrors(rootCtx)
 	browserSessionService.StartCleanupWorker(rootCtx)
+	if archiveConfig.Enabled {
+		archive.NewWorker(db.DB, objectStorageClient, archiveConfig).Start(rootCtx)
+	}
 	workerWG.Go(func() {
 		if err := asyncEmailService.StartWorker(rootCtx, baseEmailService); err != nil && rootCtx.Err() == nil {
 			select {
@@ -142,4 +163,13 @@ func portFromEnv() string {
 		return "8080"
 	}
 	return port
+}
+
+func objectStorageClientFromEnv() (objectstorage.Config, objectstorage.Client, error) {
+	config, err := objectstorage.ConfigFromEnv()
+	if err != nil || !config.Enabled {
+		return config, nil, err
+	}
+	client, err := objectstorager2.NewClient(config)
+	return config, client, err
 }
