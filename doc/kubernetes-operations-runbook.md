@@ -713,9 +713,6 @@ curl -fsS http://127.0.0.1:9090/metrics | head
 Mitigation:
 
 - Roll back `content-pipeline-service`.
-- Disable feature flags such as `CONTENT_PIPELINE_MEDIA_ENABLED` or
-  `CONTENT_PIPELINE_DRAFTS_ENABLED` through the overlay if the rollout path
-  supports fallback behavior.
 - Restore service name and port config if backend cannot reach the gRPC service.
 
 ## Redis Incident

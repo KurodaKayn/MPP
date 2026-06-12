@@ -254,7 +254,6 @@ This endpoint lets `content-pipeline-service` exchange an object ref for a short
 | `STREAM_GATE_ENABLED`, `STREAM_GATE_KEY_PREFIX` | No | `true`, `mpp:stream` | AI/browser stream concurrency gate |
 | `AI_STREAM_*`, `BROWSER_STREAM_*` | No | Code defaults | Stream connection limits and TTLs, such as user/tenant/IP/global limits |
 | `CONTENT_PIPELINE_HOST`, `CONTENT_PIPELINE_PORT` | No | host empty, port `50051` | Content Pipeline gRPC address |
-| `CONTENT_PIPELINE_MEDIA_ENABLED`, `CONTENT_PIPELINE_DRAFTS_ENABLED` | No | `false` | Controls whether Rust content pipeline capabilities are enabled |
 | `CONTENT_PIPELINE_MEDIA_RESOLVER_URL` | Yes when media object refs are enabled | `http://backend:8080/internal/media/resolve` in Compose | Object ref resolver URL |
 | `CONTENT_PIPELINE_INTERNAL_TOKEN` | Yes when internal resolver is enabled | Empty | Internal media resolver token |
 | `COLLAB_TOKEN_SECRET` | Yes when collaboration is enabled | Falls back to `JWT_SECRET` | Signs collab session tokens and authorizes collab internal API calls |
