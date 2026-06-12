@@ -74,7 +74,7 @@ Business APIs should be gRPC-first. HTTP should only be used for operational end
 | Platform asset adaptation | Yes | Convert source assets into platform-ready asset descriptors. |
 | Draft compilation | Yes | Compile source project content into platform draft payloads. |
 | Draft schema validation | Yes | Validate input and output against versioned platform draft schemas. |
-| Object storage upload | Future | Keep an interface ready, but do not require it for the first implementation. |
+| Object storage upload | Partial | Rust can optionally write processed media to object storage and return internal object refs; inline bytes remain the default until callers consume the refs. |
 | Platform API publishing | No | Publishing execution remains in Go for this phase. |
 | Browser automation | No | Browser-based publishing stays in `browser-worker`. |
 | User permissions | No | Go backend remains the permission boundary. |
@@ -392,10 +392,25 @@ Goal: prevent large media bytes from moving repeatedly through the Go backend.
 
 Deliverables:
 
-- Object storage abstraction in Rust.
-- Signed or internal object references returned to Go.
-- Asset hash and deduplication support.
-- Expiration policy for temporary objects.
+- Object storage abstraction in Rust. Implemented in `content-pipeline-service` behind `CONTENT_PIPELINE_MEDIA_OBJECT_STORE`.
+- Signed or internal object references returned to Go. Implemented as `mpp://content-pipeline/media/...` refs when Rust output storage is configured.
+- Asset hash and deduplication support. Implemented with deterministic sha256 object keys and same-size existing object reuse.
+- Expiration policy for temporary objects. Implemented as retention tags/metadata; bucket lifecycle policy should expire the configured processed-media prefix.
+
+The Rust service owns this storage integration directly. Do not add a Go-side processed-media upload proxy for this phase; that would create an extra migration surface to remove later.
+
+Rust output storage is disabled unless `CONTENT_PIPELINE_MEDIA_OBJECT_STORE` is set. Supported values are `filesystem`, `r2`, and `s3`. The key configuration variables are:
+
+| Variable | Purpose |
+| --- | --- |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_STORE` | Enables processed-media object output and selects `filesystem`, `r2`, or `s3`. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_ROOT` | Filesystem root for local object-store mode. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_BUCKET`, `CONTENT_PIPELINE_MEDIA_OBJECT_ENDPOINT`, `CONTENT_PIPELINE_MEDIA_OBJECT_REGION` | S3/R2 bucket, endpoint, and region overrides. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_ACCESS_KEY_ID`, `CONTENT_PIPELINE_MEDIA_OBJECT_SECRET_ACCESS_KEY` | S3/R2 credentials; R2 mode can also use existing `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_PREFIX` | Object key prefix; defaults to `content-pipeline/processed-media`. Attach lifecycle expiration to this prefix. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_REF_PREFIX` | Internal ref prefix; defaults to `mpp://content-pipeline/media/`. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_MIN_BYTES` | Minimum processed byte size for object-ref output; defaults to `0` once output storage is enabled. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_RETENTION_DAYS` | Retention metadata/tag value; defaults to `7`. |
 
 Acceptance:
 
