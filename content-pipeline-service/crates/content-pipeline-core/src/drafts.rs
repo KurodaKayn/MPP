@@ -1,10 +1,12 @@
+mod assets;
 mod html;
 mod profiles;
+mod schema;
 mod text;
 
 use html::{html_to_markdown, html_to_text};
 pub use profiles::{DraftFormat, DraftProfile, supported_draft_profiles};
-use serde::Serialize;
+use schema::{AdaptedContent, encode_validated};
 use text::{
     SHORT_TEXT_MAX_WEIGHT, SHORT_TEXT_WEIGHT_RULES, join_title_and_body_text, text_with_fallback,
     truncate_weighted_text_with_ellipsis,
@@ -48,6 +50,12 @@ pub enum DraftCompileError {
     UnsupportedProfile { platform: String, profile: String },
     #[error("failed to encode adapted content: {0}")]
     Encode(#[from] serde_json::Error),
+    #[error("compiled draft failed schema validation for {platform} {profile}: {reason}")]
+    SchemaValidation {
+        platform: String,
+        profile: String,
+        reason: String,
+    },
 }
 
 #[derive(Debug, Default, Clone)]
@@ -79,25 +87,33 @@ impl DraftCompiler {
         let text = html_to_text(&source_content);
         let source_summary = summarize(&text);
         let (adapted_content_json, summary, warnings) = match platform.as_str() {
-            "wechat" => encode(AdaptedContent {
-                schema_version: profile.schema_version,
-                format: profile.format.as_str(),
-                html: Some(source_content.as_str()),
-                markdown: None,
-                text: None,
-                summary: Some(source_summary.as_str()),
-            })
+            "wechat" => encode_validated(
+                profile,
+                AdaptedContent {
+                    schema_version: profile.schema_version,
+                    format: profile.format.as_str(),
+                    html: Some(source_content.as_str()),
+                    markdown: None,
+                    text: None,
+                    summary: Some(source_summary.as_str()),
+                    assets: None,
+                },
+            )
             .map(|value| (value, source_summary.clone(), Vec::new()))?,
             "zhihu" => {
                 let markdown = html_to_markdown(&source_content);
-                encode(AdaptedContent {
-                    schema_version: profile.schema_version,
-                    format: profile.format.as_str(),
-                    html: None,
-                    markdown: Some(markdown.as_str()),
-                    text: None,
-                    summary: Some(source_summary.as_str()),
-                })
+                encode_validated(
+                    profile,
+                    AdaptedContent {
+                        schema_version: profile.schema_version,
+                        format: profile.format.as_str(),
+                        html: None,
+                        markdown: Some(markdown.as_str()),
+                        text: None,
+                        summary: Some(source_summary.as_str()),
+                        assets: None,
+                    },
+                )
                 .map(|value| (value, source_summary.clone(), Vec::new()))?
             }
             "x" => {
@@ -115,27 +131,35 @@ impl DraftCompiler {
                         profile.profile
                     ));
                 }
-                let adapted_content_json = encode(AdaptedContent {
-                    schema_version: profile.schema_version,
-                    format: profile.format.as_str(),
-                    html: None,
-                    markdown: None,
-                    text: Some(truncated_text.as_str()),
-                    summary: Some(summary.as_str()),
-                })?;
+                let adapted_content_json = encode_validated(
+                    profile,
+                    AdaptedContent {
+                        schema_version: profile.schema_version,
+                        format: profile.format.as_str(),
+                        html: None,
+                        markdown: None,
+                        text: Some(truncated_text.as_str()),
+                        summary: Some(summary.as_str()),
+                        assets: None,
+                    },
+                )?;
                 (adapted_content_json, summary, warnings)
             }
             "douyin" => {
                 let text = text_with_fallback(&text, &project.title, &source_content);
                 let summary = summarize(text);
-                let adapted_content_json = encode(AdaptedContent {
-                    schema_version: profile.schema_version,
-                    format: profile.format.as_str(),
-                    html: None,
-                    markdown: None,
-                    text: Some(text),
-                    summary: Some(summary.as_str()),
-                })?;
+                let adapted_content_json = encode_validated(
+                    profile,
+                    AdaptedContent {
+                        schema_version: profile.schema_version,
+                        format: profile.format.as_str(),
+                        html: None,
+                        markdown: None,
+                        text: Some(text),
+                        summary: Some(summary.as_str()),
+                        assets: None,
+                    },
+                )?;
                 (adapted_content_json, summary, Vec::new())
             }
             _ => unreachable!("draft platform was validated before compilation"),
@@ -150,24 +174,6 @@ impl DraftCompiler {
             warnings,
         })
     }
-}
-
-#[derive(Serialize)]
-struct AdaptedContent<'a> {
-    schema_version: u32,
-    format: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    html: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    markdown: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    text: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    summary: Option<&'a str>,
-}
-
-fn encode(value: AdaptedContent<'_>) -> Result<String, serde_json::Error> {
-    serde_json::to_string(&value)
 }
 
 fn summarize(value: &str) -> String {
