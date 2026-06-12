@@ -37,7 +37,7 @@ func (w *WechatPublisher) ValidateConfig(config []byte) error {
 	return nil
 }
 
-func (w *WechatPublisher) Publish(_ context.Context, pub *models.ProjectPlatformPublication, _ *models.PlatformAccount) (string, string, error) {
+func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, _ *models.PlatformAccount) (string, string, error) {
 	var cfg WechatConfig
 	if err := json.Unmarshal(pub.Config, &cfg); err != nil {
 		return "", "", fmt.Errorf("failed to parse wechat config: %w", err)
@@ -50,7 +50,11 @@ func (w *WechatPublisher) Publish(_ context.Context, pub *models.ProjectPlatform
 	processedHTML, err := htmlutil.ProcessHTMLImages(
 		sourceHTML,
 		media.DownloadAndProcess,
-		func(imgData []byte) (string, error) {
+		func(objectRef string) (string, error) {
+			imgData, err := media.ReadProcessedObject(ctx, objectRef)
+			if err != nil {
+				return "", err
+			}
 			res, err := client.UploadImage(imgData, "content_image.jpg")
 			if err != nil {
 				return "", err
@@ -63,7 +67,7 @@ func (w *WechatPublisher) Publish(_ context.Context, pub *models.ProjectPlatform
 	}
 
 	// 2. Upload cover image for thumb_media_id.
-	coverData, err := loadCoverImage(cfg.CoverImageURL)
+	coverData, err := loadCoverImage(ctx, cfg.CoverImageURL)
 	if err != nil {
 		return "", "", err
 	}
@@ -108,11 +112,15 @@ func (w *WechatPublisher) Publish(_ context.Context, pub *models.ProjectPlatform
 	return draftMediaID, publishURL, nil
 }
 
-func loadCoverImage(coverImageURL string) ([]byte, error) {
+func loadCoverImage(ctx context.Context, coverImageURL string) ([]byte, error) {
 	if strings.TrimSpace(coverImageURL) != "" {
-		coverData, err := media.DownloadAndProcess(coverImageURL)
+		coverObjectRef, err := media.DownloadAndProcess(coverImageURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to download wechat cover image: %w", err)
+		}
+		coverData, err := media.ReadProcessedObject(ctx, coverObjectRef)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read wechat cover image: %w", err)
 		}
 		return coverData, nil
 	}

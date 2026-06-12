@@ -35,6 +35,9 @@ configMapGenerator:
       - COLLAB_WEBSOCKET_URL_BASE=wss://mpp.example.invalid
       - LLM_PROVIDER_URL=https://llm.example.invalid/v1
       - LLM_MODEL=validation-model
+      - R2_ACCOUNT_ID=validation-r2-account
+      - R2_BUCKET=validation-r2-bucket
+      - R2_ENDPOINT=https://validation-r2-account.r2.cloudflarestorage.com
 
 secretGenerator:
   - name: mpp-app-secrets
@@ -49,6 +52,8 @@ secretGenerator:
       - AI_SERVICE_INTERNAL_TOKEN=validation-ai-service-token
       - BROWSER_WORKER_INTERNAL_TOKEN=validation-browser-worker-token
       - CONTENT_PIPELINE_INTERNAL_TOKEN=validation-content-pipeline-token
+      - R2_ACCESS_KEY_ID=validation-r2-access-key
+      - R2_SECRET_ACCESS_KEY=validation-r2-secret-key
 
 images:
   - name: registry.example.invalid/kurodakayn/mpp-frontend

@@ -17,6 +17,10 @@ data:
   LLM_MODEL: replace-with-llm-model
   CONTENT_PIPELINE_HOST: content-pipeline-service
   CONTENT_PIPELINE_PORT: "50051"
+  CONTENT_PIPELINE_MEDIA_OBJECT_STORE: r2
+  CONTENT_PIPELINE_MEDIA_OBJECT_PREFIX: content-pipeline/processed-media
+  CONTENT_PIPELINE_MEDIA_OBJECT_REF_PREFIX: mpp://content-pipeline/media/
+  CONTENT_PIPELINE_MEDIA_OBJECT_RETENTION_DAYS: "7"
   COLLAB_INTERNAL_URL: http://collab-service:8090
   COLLAB_WEBSOCKET_URL_BASE: wss://replace-with-public-host.example.invalid
   COLLAB_REDIS_SYNC_ENABLED: "true"
@@ -34,3 +38,8 @@ data:
   REDIS_ADDR: replace-with-redis-host.example.invalid:6379
   REDIS_DB: "0"
   REDIS_TLS: "false"
+  OBJECT_STORAGE_PROVIDER: r2
+  R2_ACCOUNT_ID: replace-with-r2-account-id
+  R2_BUCKET: replace-with-r2-bucket
+  R2_ENDPOINT: https://replace-with-r2-account-id.r2.cloudflarestorage.com
+  R2_REGION: auto

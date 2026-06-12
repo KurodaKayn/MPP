@@ -74,7 +74,7 @@ Business APIs should be gRPC-first. HTTP should only be used for operational end
 | Platform asset adaptation | Yes | Convert source assets into platform-ready asset descriptors. |
 | Draft compilation | Yes | Compile source project content into platform draft payloads. |
 | Draft schema validation | Yes | Validate input and output against versioned platform draft schemas. |
-| Object storage upload | Future | Keep an interface ready, but do not require it for the first implementation. |
+| Object storage upload | Yes | Rust writes processed media to object storage and returns internal object refs; callers consume `object_ref` rather than inline byte payloads. |
 | Platform API publishing | No | Publishing execution remains in Go for this phase. |
 | Browser automation | No | Browser-based publishing stays in `browser-worker`. |
 | User permissions | No | Go backend remains the permission boundary. |
@@ -178,10 +178,8 @@ message ProcessAssetResponse {
 }
 
 message ProcessedAsset {
-  oneof content {
-    bytes inline_bytes = 1;
-    string object_ref = 2;
-  }
+  reserved 1;
+  string object_ref = 2;
   string mime_type = 3;
   uint64 byte_size = 4;
   uint32 width = 5;
@@ -190,7 +188,7 @@ message ProcessedAsset {
 }
 ```
 
-For the first version, returning `inline_bytes` is acceptable for small assets. Once object storage is introduced, the service should prefer returning `object_ref` instead.
+Processed media responses use `object_ref` only. The Rust service must be configured with processed-media object storage before it can serve media processing requests.
 
 ### 6.4 Why This Should Not Stay in Go Long Term
 
@@ -392,10 +390,24 @@ Goal: prevent large media bytes from moving repeatedly through the Go backend.
 
 Deliverables:
 
-- Object storage abstraction in Rust.
-- Signed or internal object references returned to Go.
-- Asset hash and deduplication support.
-- Expiration policy for temporary objects.
+- Object storage abstraction in Rust. Implemented in `content-pipeline-service` behind `CONTENT_PIPELINE_MEDIA_OBJECT_STORE`.
+- Signed or internal object references returned to Go. Implemented as `mpp://content-pipeline/media/...` refs when Rust output storage is configured.
+- Asset hash and deduplication support. Implemented with deterministic sha256 object keys and same-size existing object reuse.
+- Expiration policy for temporary objects. Implemented as retention tags/metadata; bucket lifecycle policy should expire the configured processed-media prefix.
+
+The Rust service owns this storage integration directly. Do not add a Go-side processed-media upload proxy for this phase; that would create an extra migration surface to remove later.
+
+Rust output storage is required because processed-media responses carry object refs only. Supported `CONTENT_PIPELINE_MEDIA_OBJECT_STORE` values are `filesystem` and `r2`. R2 uses the existing S3-compatible object-storage client path with an explicit endpoint. The key configuration variables are:
+
+| Variable | Purpose |
+| --- | --- |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_STORE` | Enables processed-media object output and selects `filesystem` or `r2`. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_ROOT` | Filesystem root for local object-store mode. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_BUCKET`, `CONTENT_PIPELINE_MEDIA_OBJECT_ENDPOINT`, `CONTENT_PIPELINE_MEDIA_OBJECT_REGION` | S3/R2 bucket, endpoint, and region overrides. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_ACCESS_KEY_ID`, `CONTENT_PIPELINE_MEDIA_OBJECT_SECRET_ACCESS_KEY` | S3/R2 credentials; R2 mode can also use existing `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_PREFIX` | Object key prefix; defaults to `content-pipeline/processed-media`. Attach lifecycle expiration to this prefix. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_REF_PREFIX` | Internal ref prefix; defaults to `mpp://content-pipeline/media/`. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_RETENTION_DAYS` | Retention metadata/tag value; defaults to `7`. |
 
 Acceptance:
 
@@ -500,7 +512,7 @@ This plan does not include:
 | Risk | Mitigation |
 | --- | --- |
 | The service boundary adds latency. | Batch draft compilation by project and targets; keep media processing async where possible. |
-| Byte payloads become expensive over gRPC. | Use object references after Phase 3; keep inline bytes only for small initial cases. |
+| Byte payloads become expensive over gRPC. | Return object references for processed media and let platform upload boundaries materialize bytes only when required. |
 | Draft output changes unexpectedly. | Use fixtures, golden tests, and profile versioning. |
 | Platform rules duplicate Go logic during migration. | Keep platform media and draft rules in Rust profiles and leave Go as the orchestration boundary. |
 | Rust service failure blocks prepublish sync. | Treat `content-pipeline-service` as a required dependency and surface structured service errors. |

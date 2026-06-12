@@ -192,6 +192,8 @@ module KubernetesAppSecret
         "AI_SERVICE_INTERNAL_TOKEN" => "ai-service-token",
         "BROWSER_WORKER_INTERNAL_TOKEN" => "browser-worker-token",
         "CONTENT_PIPELINE_INTERNAL_TOKEN" => "content-pipeline-token",
+        "R2_ACCESS_KEY_ID" => "r2-access-key",
+        "R2_SECRET_ACCESS_KEY" => "r2-secret-key",
       }
     end
 
