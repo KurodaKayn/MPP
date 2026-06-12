@@ -1,4 +1,12 @@
-import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from "vitest";
 import { cookies } from "next/headers";
 import { DELETE, GET, POST } from "./route";
 
@@ -29,6 +37,10 @@ function createPostRequest(token: string) {
 }
 
 describe("auth session route", () => {
+  beforeEach(() => {
+    process.env.ENABLE_MOCK_LOGIN = "false";
+  });
+
   afterEach(() => {
     process.env.APP_ENV = originalAppEnv;
     process.env.BACKEND_API_BASE_URL = originalBackendApiBaseUrl;

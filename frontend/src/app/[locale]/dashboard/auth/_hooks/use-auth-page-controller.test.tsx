@@ -112,6 +112,7 @@ async function flushPromises() {
 
 describe("useAuthPageController", () => {
   beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "test");
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     vi.useFakeTimers();
     mocks.cancelBrowserSession.mockReset();
@@ -158,6 +159,7 @@ describe("useAuthPageController", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.useRealTimers();
   });
 
