@@ -823,7 +823,6 @@ func TestPublishProjectValidatesWorkspaceLibraryMediaReadyState(t *testing.T) {
 }
 
 func TestPublishProjectPreservesReadyMediaRefsWhenContentPipelineResolverIsConfigured(t *testing.T) {
-	t.Setenv("CONTENT_PIPELINE_MEDIA_ENABLED", "true")
 	t.Setenv("CONTENT_PIPELINE_MEDIA_RESOLVER_URL", "http://backend:8080/internal/media/resolve")
 	t.Setenv("CONTENT_PIPELINE_INTERNAL_TOKEN", "test-internal-token")
 

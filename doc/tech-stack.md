@@ -42,7 +42,6 @@ Technology selection rationale: this layer favors Go because publishing orchestr
 | chromedp and cdproto | Needs controlled browser automation for platforms that require web sessions. | Drives Chromium, reads browser state, captures cookies, and supports platform automation. |
 | gorilla/websocket | Needs browser stream proxying and bidirectional browser-session traffic. | Supports remote browser session streaming between frontend, backend, and worker paths. |
 | golang.org/x/net/html | Needs reliable HTML parsing and conversion. | Powers HTML-to-text and HTML-to-Markdown draft adaptation. |
-| golang.org/x/image | Needs image decoding and compression for platform media upload. | Processes images before upload to platforms such as WeChat. |
 | google/uuid | Needs stable identifiers across users, projects, publications, and sessions. | Generates and stores UUID-based domain IDs. |
 | godotenv | Needs local configuration without hardcoding environment variables. | Loads backend settings during local development. |
 | testify, miniredis, and sqlite test driver | Needs isolated backend tests without real external services. | Provides assertions, in-memory Redis behavior, and lightweight database test support. |

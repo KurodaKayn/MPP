@@ -17,8 +17,6 @@ data:
   LLM_MODEL: replace-with-llm-model
   CONTENT_PIPELINE_HOST: content-pipeline-service
   CONTENT_PIPELINE_PORT: "50051"
-  CONTENT_PIPELINE_MEDIA_ENABLED: "false"
-  CONTENT_PIPELINE_DRAFTS_ENABLED: "false"
   COLLAB_INTERNAL_URL: http://collab-service:8090
   COLLAB_WEBSOCKET_URL_BASE: wss://replace-with-public-host.example.invalid
   COLLAB_REDIS_SYNC_ENABLED: "true"

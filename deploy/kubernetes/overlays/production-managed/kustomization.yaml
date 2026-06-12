@@ -68,8 +68,6 @@ configMapGenerator:
       - COLLAB_WEBSOCKET_URL_BASE=wss://mpp.example.invalid
       - LLM_PROVIDER_URL=https://llm.production.example.invalid/v1
       - LLM_MODEL=replace-with-production-model
-      - CONTENT_PIPELINE_MEDIA_ENABLED=false
-      - CONTENT_PIPELINE_DRAFTS_ENABLED=false
 
 images:
   - name: registry.example.invalid/kurodakayn/mpp-frontend

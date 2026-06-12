@@ -22,7 +22,6 @@ const publishMediaObjectRefPrefix = "mpp://media/"
 var publishMediaObjectRefPattern = regexp.MustCompile(`mpp://media/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})`)
 
 const (
-	contentPipelineMediaEnabledEnv     = "CONTENT_PIPELINE_MEDIA_ENABLED"
 	contentPipelineMediaResolverURLEnv = "CONTENT_PIPELINE_MEDIA_RESOLVER_URL"
 	contentPipelineInternalTokenEnv    = "CONTENT_PIPELINE_INTERNAL_TOKEN"
 )
@@ -126,9 +125,6 @@ func (s *Service) publishMediaAssetForProject(ctx context.Context, project model
 }
 
 func (s *Service) shouldPreserveMediaObjectRefsForContentPipeline() bool {
-	if !envBool(contentPipelineMediaEnabledEnv) {
-		return false
-	}
 	return strings.TrimSpace(os.Getenv(contentPipelineMediaResolverURLEnv)) != "" &&
 		strings.TrimSpace(os.Getenv(contentPipelineInternalTokenEnv)) != ""
 }
@@ -195,9 +191,4 @@ func replaceMediaRefsInString(value string, replacements map[string]string) stri
 		value = strings.ReplaceAll(value, ref, replacement)
 	}
 	return value
-}
-
-func envBool(name string) bool {
-	value := strings.ToLower(strings.TrimSpace(os.Getenv(name)))
-	return value == "1" || value == "true" || value == "yes" || value == "on"
 }
