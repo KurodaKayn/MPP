@@ -9,6 +9,11 @@ pre-commit:
       run: pnpm format {staged_files}
       stage_fixed: true
 
+    frontend-lint:
+      root: "frontend/"
+      glob: "*.{js,jsx,ts,tsx}"
+      run: pnpm lint
+
     backend-format:
       root: "backend/"
       glob: "*.go"
@@ -19,6 +24,11 @@ pre-commit:
           mv "$tmp" "$file"
         done
       stage_fixed: true
+
+    backend-lint:
+      root: "backend/"
+      glob: "*.go"
+      run: golangci-lint run
 
     browser-worker-format:
       root: "browser-worker/"
@@ -31,11 +41,21 @@ pre-commit:
         done
       stage_fixed: true
 
+    browser-worker-lint:
+      root: "browser-worker/"
+      glob: "*.go"
+      run: golangci-lint run
+
     ai-service-format:
       root: "ai-service/"
       glob: "*.py"
       run: uv run ruff format {staged_files}
       stage_fixed: true
+
+    ai-service-lint:
+      root: "ai-service/"
+      glob: "*.py"
+      run: uv run ruff check {staged_files}
 
     extension-format:
       root: "extension/"
@@ -43,14 +63,29 @@ pre-commit:
       run: pnpm format {staged_files}
       stage_fixed: true
 
+    extension-lint:
+      root: "extension/"
+      glob: "*.{js,jsx,ts,tsx}"
+      run: pnpm lint
+
     collab-service-format:
       root: "collab-service/"
       glob: "*.{ts}"
       run: pnpm format {staged_files}
       stage_fixed: true
 
+    collab-service-lint:
+      root: "collab-service/"
+      glob: "*.{ts}"
+      run: pnpm lint
+
     content-pipeline-service-format:
       root: "content-pipeline-service/"
       glob: "*.rs"
       run: cargo fmt -- {staged_files}
       stage_fixed: true
+
+    content-pipeline-service-lint:
+      root: "content-pipeline-service/"
+      glob: "*.rs"
+      run: cargo clippy -- -D warnings
