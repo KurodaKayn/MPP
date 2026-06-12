@@ -98,7 +98,7 @@ impl DraftCompiler {
                     markdown: None,
                     text: None,
                     summary: Some(source_summary.as_str()),
-                    assets: None,
+                    assets: optional_assets(&image_assets),
                 },
             )
             .map(|value| (value, source_summary.clone(), Vec::new()))?,
@@ -113,7 +113,7 @@ impl DraftCompiler {
                         markdown: Some(markdown.as_str()),
                         text: None,
                         summary: Some(source_summary.as_str()),
-                        assets: None,
+                        assets: optional_assets(&image_assets),
                     },
                 )
                 .map(|value| (value, source_summary.clone(), Vec::new()))?
