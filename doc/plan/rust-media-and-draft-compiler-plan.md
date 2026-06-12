@@ -84,7 +84,7 @@ Business APIs should be gRPC-first. HTTP should only be used for operational end
 
 The current Go backend already contains the natural seams for these modules:
 
-- `backend/internal/pkg/media/compressor.go` downloads and compresses images for platform constraints.
+- `backend/internal/pkg/media` delegates media processing to `content-pipeline-service`.
 - `backend/internal/pkg/html/processor.go` scans HTML and replaces image sources.
 - `backend/internal/publisher/platforms/wechat/wechat.go` processes inline images and cover images before creating a WeChat draft.
 - `backend/internal/publisher/platforms/x/x.go` contains X text extraction, URL weighting, and truncation rules.
@@ -356,7 +356,6 @@ Deliverables:
 
 - Rust `MediaAssetProcessor.ProcessAsset` gRPC endpoint.
 - Go client wrapper in the existing media package.
-- Feature flag to switch between Go implementation and Rust implementation.
 - Golden tests comparing output constraints, not exact bytes.
 - Metrics for input size, output size, duration, failures, and platform usage.
 
@@ -365,7 +364,7 @@ Acceptance:
 - WeChat cover images remain under the required size limit.
 - Inline image replacement still works for WeChat drafts.
 - Unsafe or oversized inputs fail with structured errors.
-- Go fallback can be re-enabled without schema changes.
+- Go does not keep an in-process media implementation.
 
 ### Phase 2: Extract Platform Draft Compilation
 
@@ -503,8 +502,8 @@ This plan does not include:
 | The service boundary adds latency. | Batch draft compilation by project and targets; keep media processing async where possible. |
 | Byte payloads become expensive over gRPC. | Use object references after Phase 3; keep inline bytes only for small initial cases. |
 | Draft output changes unexpectedly. | Use fixtures, golden tests, and profile versioning. |
-| Platform rules duplicate Go logic during migration. | Keep Go fallback temporarily, then delete old adapter logic once contract tests pass. |
-| Rust service failure blocks prepublish sync. | Add feature flag and fallback path during rollout. |
+| Platform rules duplicate Go logic during migration. | Keep platform media and draft rules in Rust profiles and leave Go as the orchestration boundary. |
+| Rust service failure blocks prepublish sync. | Treat `content-pipeline-service` as a required dependency and surface structured service errors. |
 
 ## 16. Success Criteria
 
