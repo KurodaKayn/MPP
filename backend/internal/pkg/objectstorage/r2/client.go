@@ -46,6 +46,33 @@ func NewClient(config objectstorage.Config) (*Client, error) {
 	}, nil
 }
 
+// PutObject stores an object directly through the R2 S3-compatible API.
+func (c *Client) PutObject(ctx context.Context, input objectstorage.UploadObjectInput) (objectstorage.ObjectInfo, error) {
+	if input.Body == nil {
+		return objectstorage.ObjectInfo{}, fmt.Errorf("R2 object body is required")
+	}
+	bucket := c.bucketFor(input.Bucket)
+	output, err := c.s3.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(bucket),
+		Key:         aws.String(input.Key),
+		Body:        input.Body,
+		ContentType: contentType(input.ContentType),
+	})
+	if err != nil {
+		return objectstorage.ObjectInfo{}, mapObjectError(err)
+	}
+
+	info, headErr := c.HeadObject(ctx, input.Key)
+	if headErr == nil {
+		return info, nil
+	}
+	return objectstorage.ObjectInfo{
+		Key:         input.Key,
+		ContentType: strings.TrimSpace(input.ContentType),
+		ETag:        trimETag(aws.ToString(output.ETag)),
+	}, nil
+}
+
 // PresignPutObject creates a temporary PUT URL for an R2 object.
 func (c *Client) PresignPutObject(ctx context.Context, input objectstorage.PutObjectInput) (objectstorage.PresignedURL, error) {
 	bucket := c.bucketFor(input.Bucket)
