@@ -443,6 +443,16 @@ type WorkspaceActivity struct {
 	TargetUser   *User          `gorm:"foreignKey:TargetUserID;constraint:OnDelete:SET NULL"`
 }
 
+type WorkspaceDashboardStats struct {
+	WorkspaceID                uuid.UUID `gorm:"type:uuid;primaryKey"`
+	TotalProjects              int64     `gorm:"not null;default:0"`
+	TotalPublishedPublications int64     `gorm:"not null;default:0"`
+	TotalFailedPublications    int64     `gorm:"not null;default:0"`
+	TotalMembers               int64     `gorm:"not null;default:0"`
+	RefreshedAt                time.Time `gorm:"not null;index"`
+	Workspace                  Workspace `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
+}
+
 const (
 	NotificationStatusUnread   = "unread"
 	NotificationStatusRead     = "read"
@@ -485,6 +495,21 @@ type ProjectPlatformPublication struct {
 	PublishedAt       *time.Time
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+}
+
+type ProjectListSummary struct {
+	ProjectID    uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	UserID       uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_list_summaries_user_status_created_at,priority:1"`
+	WorkspaceID  uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_list_summaries_workspace_status_created_at,priority:1"`
+	Title        string         `gorm:"not null"`
+	Status       string         `gorm:"not null;index:idx_project_list_summaries_user_status_created_at,priority:2;index:idx_project_list_summaries_workspace_status_created_at,priority:2"`
+	Publications datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	CreatedAt    time.Time      `gorm:"not null;index:idx_project_list_summaries_user_status_created_at,priority:3;index:idx_project_list_summaries_workspace_status_created_at,priority:3"`
+	UpdatedAt    time.Time      `gorm:"not null"`
+	RefreshedAt  time.Time      `gorm:"not null;index"`
+	Project      Project        `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	Workspace    Workspace      `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
+	User         User           `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 }
 
 type PublishEvent struct {
