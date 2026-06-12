@@ -170,6 +170,39 @@ func TestCookieStore(t *testing.T) {
 		assert.Contains(t, string(created.Cookies), "ciphertext")
 	})
 
+	t.Run("Account ID Save Requires Matching Workspace", func(t *testing.T) {
+		t.Setenv("COOKIE_ENCRYPTION_KEY", encryptionKey)
+		victimWorkspaceID := uuid.New()
+		attackerWorkspaceID := uuid.New()
+		accountUserID := uuid.New()
+		existing := models.PlatformAccount{
+			UserID:       accountUserID,
+			WorkspaceID:  &victimWorkspaceID,
+			Platform:     platform,
+			Username:     "existing",
+			DisplayName:  "existing",
+			Cookies:      datatypes.JSON([]byte(`[]`)),
+			Status:       models.PlatformAccountStatusConnected,
+			HealthStatus: models.PlatformAccountHealthHealthy,
+		}
+		require.NoError(t, db.Create(&existing).Error)
+
+		cookies := []Cookie{
+			{Name: "sessionid", Value: "new-secret", Domain: ".douyin.com", Path: "/"},
+			{Name: "sid_guard", Value: "new-guard", Domain: ".douyin.com", Path: "/"},
+			{Name: "passport_csrf_token", Value: "new-csrf", Domain: ".douyin.com", Path: "/"},
+		}
+		err := store.SaveForAccount(context.Background(), accountUserID, attackerWorkspaceID, existing.ID, platform, cookies, RemoteAccountProfile{
+			Username: "attacker-update",
+		})
+		require.ErrorIs(t, err, ErrCookieNotFound)
+
+		var unchanged models.PlatformAccount
+		require.NoError(t, db.First(&unchanged, "id = ?", existing.ID).Error)
+		assert.Equal(t, "existing", unchanged.Username)
+		assert.JSONEq(t, `[]`, string(unchanged.Cookies))
+	})
+
 	t.Run("Workspace Save Without Remote ID Updates Matching Display Account", func(t *testing.T) {
 		t.Setenv("COOKIE_ENCRYPTION_KEY", encryptionKey)
 		workspaceID := uuid.New()
