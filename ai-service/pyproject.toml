@@ -25,3 +25,33 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "UP",
+  "B",
+  "SIM",
+  "C4",
+  "N",
+  "S",
+  "RUF",
+]
+ignore = [
+  "S101", # allow assert, especially in tests
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+[tool.basedpyright]
+typeCheckingMode = "standard"
+pythonVersion = "3.12"

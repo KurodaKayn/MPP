@@ -1,8 +1,8 @@
-from types import SimpleNamespace
 import logging
+from types import SimpleNamespace
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 import routes
 from main import app
@@ -29,7 +29,7 @@ class FakeLLM:
 
 
 client = TestClient(app)
-INTERNAL_TOKEN = "test-ai-service-token"
+INTERNAL_TOKEN = "test-ai-service-token"  # noqa: S105
 
 
 @pytest.fixture(autouse=True)
