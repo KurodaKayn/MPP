@@ -1,11 +1,11 @@
 # MPP: multi-platform-poster
 
 <p align="center">
-  <a href="README.md">English</a> | <strong>简体中文</strong>
+  <a href="../../README.md">English</a> | <strong>简体中文</strong>
 </p>
 
 <p align="center">
-  <img src="doc/assets/mpp-with-name-white.svg" alt="MPP logo" width="640" />
+  <img src="../assets/mpp-with-name-white.svg" alt="MPP logo" width="640" />
   <br>
   <img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="License" />
 </p>
@@ -18,24 +18,24 @@
   <br>
   <img src="https://img.shields.io/badge/shadcn-UI_Primitives-000000?style=for-the-badge&logo=shadcnui&logoColor=white&labelColor=000000" alt="shadcn" />
   <img src="https://img.shields.io/badge/WXT-Extension_Shell-67D8EF?style=for-the-badge&logo=wxt&logoColor=66FF66" alt="WXT" />
-  <img src="doc/assets/badges/go.svg" alt="Go" />
-  <img src="doc/assets/badges/python.svg" alt="Python" />
+  <img src="../assets/badges/go.svg" alt="Go" />
+  <img src="../assets/badges/python.svg" alt="Python" />
   <br>
-  <img src="doc/assets/badges/rust.svg" alt="Rust" />
-  <img src="doc/assets/badges/fastify.svg" alt="Fastify" />
-  <img src="doc/assets/badges/yjs.svg" alt="Yjs" />
+  <img src="../assets/badges/rust.svg" alt="Rust" />
+  <img src="../assets/badges/fastify.svg" alt="Fastify" />
+  <img src="../assets/badges/yjs.svg" alt="Yjs" />
   <br>
   <img src="https://img.shields.io/badge/FastAPI-AI_HTTP_API-05998B?style=for-the-badge&logo=fastapi&logoColor=05998B" alt="FastAPI" />
   <img src="https://img.shields.io/badge/LangChain-LLM_Boundary-1C3C3C?style=for-the-badge&logo=langchaincorporate&logoColor=1C3C3C" alt="LangChain" />
-  <img src="doc/assets/badges/postgresql.svg" alt="PostgreSQL" />
+  <img src="../assets/badges/postgresql.svg" alt="PostgreSQL" />
   <br>
-  <img src="doc/assets/badges/echo.svg" alt="Echo" />
-  <img src="doc/assets/badges/gorm.svg" alt="GORM" />
-  <img src="doc/assets/badges/chromium.svg" alt="Chromium" />
+  <img src="../assets/badges/echo.svg" alt="Echo" />
+  <img src="../assets/badges/gorm.svg" alt="GORM" />
+  <img src="../assets/badges/chromium.svg" alt="Chromium" />
   <br>
   <img src="https://img.shields.io/badge/Docker-Local_Stack-2496ED?style=for-the-badge&logo=docker&logoColor=2496ED" alt="Docker" />
   <img src="https://img.shields.io/badge/Traefik-Edge_Proxy-24A1C1?style=for-the-badge&logo=traefikproxy&logoColor=24A1C1" alt="Traefik" />
-  <img src="doc/assets/badges/redis.svg" alt="Redis" />
+  <img src="../assets/badges/redis.svg" alt="Redis" />
 </p>
 
 ## 项目概览
@@ -76,16 +76,16 @@ MPP 使用独立的 FastAPI AI 服务、流式响应和“生成建议后确认�
 
 请选择对应的启动文档：
 
-- [Production setup](doc/setup.md)
-- [Docker development setup](doc/setup-dev.md)
-- [Standalone local development setup](doc/setup-standalone.md)
+- [Production setup](../setup.md)
+- [Docker development setup](../setup-dev.md)
+- [Standalone local development setup](../setup-standalone.md)
 
 ### 架构
 
-![MPP Overall Architecture](./doc/assets/module-architecture/project-overall-architecture.png)
+![MPP Overall Architecture](./../assets/module-architecture/project-overall-architecture.png)
 
 ### 模块设计
 
-模块设计说明见 [module-design.md](doc/module-design.md)。
-按模块拆分的技术栈说明见 [tech-stack.md](doc/tech-stack.md)。
-模块外部接口和运行参数见 [module-interface.md](doc/module-interface.md)。
+模块设计说明见 [module-design.md](../module-design.md)。
+按模块拆分的技术栈说明见 [tech-stack.md](../tech-stack.md)。
+模块外部接口和运行参数见 [module-interface.md](../module-interface.md)。
