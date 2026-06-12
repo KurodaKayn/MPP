@@ -57,9 +57,15 @@ var rolePermissions = map[string]map[Permission]struct{}{
 }
 
 type Service struct {
-	db       *gorm.DB
-	router   *dbrouter.Router
-	projects *projectsvc.Service
+	db         *gorm.DB
+	router     *dbrouter.Router
+	projects   *projectsvc.Service
+	readModels DashboardReadModelUpdater
+}
+
+type DashboardReadModelUpdater interface {
+	RefreshProjectAsync(ctx context.Context, projectID uuid.UUID)
+	RefreshWorkspaceAsync(ctx context.Context, workspaceID uuid.UUID)
 }
 
 func RoleHasPermission(role string, permission Permission) bool {
@@ -97,6 +103,10 @@ func NewServiceWithRouter(db *gorm.DB, projects *projectsvc.Service, router *dbr
 	return &Service{db: db, router: router, projects: projects}
 }
 
+func (s *Service) SetDashboardReadModelUpdater(updater DashboardReadModelUpdater) {
+	s.readModels = updater
+}
+
 func (s *Service) requestContext() context.Context {
 	if s.db != nil && s.db.Statement != nil && s.db.Statement.Context != nil {
 		return s.db.Statement.Context
@@ -109,4 +119,11 @@ func (s *Service) strongReadDB() *gorm.DB {
 		return s.db
 	}
 	return s.router.Reader(s.requestContext(), dbrouter.StrongRead)
+}
+
+func (s *Service) refreshWorkspaceReadModel(workspaceID uuid.UUID) {
+	if s.readModels == nil || workspaceID == uuid.Nil {
+		return
+	}
+	s.readModels.RefreshWorkspaceAsync(s.requestContext(), workspaceID)
 }

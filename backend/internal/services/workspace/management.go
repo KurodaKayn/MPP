@@ -265,6 +265,7 @@ func (s *Service) CreateWorkspace(actorUserID uuid.UUID, req dto.CreateWorkspace
 	if err != nil {
 		return nil, err
 	}
+	s.refreshWorkspaceReadModel(workspace.ID)
 
 	item := workspaceFromModel(workspace, models.WorkspaceRoleOwner)
 	return &item, nil
@@ -447,6 +448,7 @@ func (s *Service) AddWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUI
 	}); err != nil {
 		return nil, err
 	}
+	s.refreshWorkspaceReadModel(workspaceID)
 
 	return s.getWorkspaceMember(workspaceID, user.ID)
 }
@@ -584,6 +586,7 @@ func (s *Service) AcceptWorkspaceInvite(actorUserID uuid.UUID, req dto.AcceptWor
 	}); err != nil {
 		return nil, err
 	}
+	s.refreshWorkspaceReadModel(member.WorkspaceID)
 	return s.getWorkspaceMember(member.WorkspaceID, actorUserID)
 }
 
@@ -655,6 +658,7 @@ func (s *Service) UpdateWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.
 	}); err != nil {
 		return nil, err
 	}
+	s.refreshWorkspaceReadModel(workspaceID)
 	return s.getWorkspaceMember(workspaceID, targetUserID)
 }
 
@@ -674,7 +678,7 @@ func (s *Service) RemoveWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.
 		return ErrInvalidWorkspaceMember
 	}
 
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		var member models.WorkspaceMember
 		if err := tx.First(&member, "workspace_id = ? AND user_id = ?", workspaceID, targetUserID).Error; err != nil {
 			return err
@@ -689,7 +693,11 @@ func (s *Service) RemoveWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.
 		return s.recordWorkspaceActivity(tx, workspaceID, actorUserID, models.WorkspaceActivityMemberRemoved, &targetUserID, map[string]any{
 			"previous_role": member.Role,
 		})
-	})
+	}); err != nil {
+		return err
+	}
+	s.refreshWorkspaceReadModel(workspaceID)
+	return nil
 }
 
 func (s *Service) resolveWorkspaceMemberUser(req dto.AddWorkspaceMemberRequest) (*models.User, error) {
