@@ -316,6 +316,7 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		return nil, err
 	}
 	s.invalidateDashboardCaches(ctx)
+	s.refreshProjectReadModel(ctx, project.ID)
 	if err := s.dispatchOutboxEvent(ctx, outboxEventID); err != nil {
 		log.Printf("failed to dispatch publish outbox event %s for job %s: %v", outboxEventID, job.JobID, err)
 	}

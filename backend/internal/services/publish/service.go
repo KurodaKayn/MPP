@@ -251,6 +251,7 @@ func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUser
 		return nil, failAttempt(err)
 	}
 	s.invalidateDashboardCaches(ctx)
+	s.refreshProjectReadModel(ctx, projectID)
 
 	var remoteID string
 	var publishURL string
@@ -367,6 +368,7 @@ func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID)
 		return nil, err
 	}
 	s.invalidateDashboardProjectListCache(context.Background())
+	s.refreshProjectReadModel(context.Background(), projectID)
 
 	return map[string]any{
 		"status":      "manual_required",
