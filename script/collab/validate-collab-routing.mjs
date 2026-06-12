@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const composePath = resolve(process.cwd(), "docker/docker-compose.yml");
+const composePath = resolve(process.cwd(), "deploy/docker/docker-compose.yml");
 const compose = readFileSync(composePath, "utf8");
 
 const checks = [

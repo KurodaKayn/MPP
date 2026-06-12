@@ -28,7 +28,7 @@ services:
 
   frontend:
     build:
-      context: ../frontend
+      context: ../../frontend
       dockerfile: Dockerfile
       args:
         FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://127.0.0.1}
@@ -66,7 +66,7 @@ services:
 
   backend:
     build:
-      context: ../backend
+      context: ../../backend
       dockerfile: Dockerfile
       args:
         GOPROXY: ${GOPROXY:-direct}
@@ -119,7 +119,7 @@ services:
 
   publish-worker:
     build:
-      context: ../backend
+      context: ../../backend
       dockerfile: Dockerfile
       args:
         GOPROXY: ${GOPROXY:-direct}
@@ -168,7 +168,7 @@ services:
 
   browser-worker:
     build:
-      context: ../browser-worker
+      context: ../../browser-worker
       dockerfile: Dockerfile
       args:
         GOPROXY: ${GOPROXY:-direct}
@@ -204,7 +204,7 @@ services:
   browser-runtime-image:
     image: ${BROWSER_RUNTIME_IMAGE:-mpp-browser-runtime}
     build:
-      context: ../browser-worker/runtime
+      context: ../../browser-worker/runtime
       dockerfile: Dockerfile
       args:
         BROWSER_RUNTIME_BASE_IMAGE: ${BROWSER_RUNTIME_BASE_IMAGE:-debian:bookworm-slim}
@@ -217,7 +217,7 @@ services:
 
   ai-service:
     build:
-      context: ../ai-service
+      context: ../../ai-service
       dockerfile: Dockerfile
     env_file: .env
     environment:
@@ -231,7 +231,7 @@ services:
 
   content-pipeline-service:
     build:
-      context: ../content-pipeline-service
+      context: ../../content-pipeline-service
       dockerfile: Dockerfile
     env_file: .env
     expose:
@@ -252,7 +252,7 @@ services:
 
   collab-service:
     build:
-      context: ../collab-service
+      context: ../../collab-service
       dockerfile: Dockerfile
     env_file: .env
     environment:

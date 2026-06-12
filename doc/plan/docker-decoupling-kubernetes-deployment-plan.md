@@ -282,7 +282,7 @@ It should not receive broad cluster-admin privileges.
 
 | ID | Work Item | Area | Status | Progress | Owner | Evidence / Notes |
 | --- | --- | --- | --- | ---: | --- | --- |
-| K8S-001 | Keep Docker Compose deployment working | Deployment baseline | Done | 100% | DevOps | `docker/docker-compose.yml` and setup docs exist. |
+| K8S-001 | Keep Docker Compose deployment working | Deployment baseline | Done | 100% | DevOps | `deploy/docker/docker-compose.yml` and setup docs exist. |
 | K8S-002 | Service Dockerfiles for app services | Image baseline | Done | 100% | DevOps | Service Dockerfiles exist for the main modules. |
 | K8S-003 | HTTP health and readiness endpoints | Operations | Done | 100% | Backend / Services | Main HTTP services expose readiness, and `deploy/kubernetes/app-baseline` configures content-pipeline-service with Kubernetes gRPC readiness and liveness probes. |
 | K8S-004 | Identify Docker coupling points | Architecture | Done | 100% | Architecture | Coupling points are listed in this document. |

@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = process.cwd();
-const compose = readFileSync(resolve(root, "docker/docker-compose.yml"), "utf8");
+const compose = readFileSync(resolve(root, "deploy/docker/docker-compose.yml"), "utf8");
 const devCompose = readFileSync(
-  resolve(root, "docker/docker-compose.dev.yml"),
+  resolve(root, "deploy/docker/docker-compose.dev.yml"),
   "utf8",
 );
 

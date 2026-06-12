@@ -11,16 +11,16 @@ FRONTEND_CONTAINER="mpp-dev-frontend-1"
 FRONTEND_NEXT_VOLUME="mpp-dev_frontend_next"
 HELPER_IMAGE="${DOCKER_CACHE_HELPER_IMAGE:-node:24-alpine}"
 
-compose() {
-  env_file_args=""
-  if [ -f docker/.env ]; then
-    env_file_args="--env-file docker/.env"
-  fi
+ensure_env_file() {
+  cp -n deploy/docker/.env.dev.example deploy/docker/.env
+}
 
-  # shellcheck disable=SC2086
-  docker compose $env_file_args \
-    -f docker/docker-compose.yml \
-    -f docker/docker-compose.dev.yml \
+compose() {
+  ensure_env_file
+  docker compose \
+    --env-file deploy/docker/.env \
+    -f deploy/docker/docker-compose.yml \
+    -f deploy/docker/docker-compose.dev.yml \
     "$@"
 }
 

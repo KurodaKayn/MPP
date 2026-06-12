@@ -382,7 +382,7 @@ options = {
 }
 
 parser = OptionParser.new do |opts|
-  opts.banner = "Usage: script/env/doctor.rb --profile dev --file docker/.env"
+  opts.banner = "Usage: script/env/doctor.rb --profile dev --file deploy/docker/.env"
 
   opts.on("--schema PATH", "Schema path. Defaults to contracts/env.schema.yaml.") do |value|
     options[:schema] = value
@@ -407,7 +407,7 @@ end
 parser.parse!
 
 if options[:files].empty?
-  options[:files] << "docker/.env"
+  options[:files] << "deploy/docker/.env"
 end
 
 exit EnvDoctor.new(options).run

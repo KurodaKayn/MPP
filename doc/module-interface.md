@@ -4,7 +4,7 @@ This document describes the external interfaces, authentication methods, key req
 
 - REST/shared type contract: `contracts/openapi.yaml`
 - Content Pipeline gRPC contract: `content-pipeline-service/proto/mpp/contentpipeline/v1/content_pipeline.proto`
-- Environment templates: `contracts/env.schema.yaml`, `docker/.env.dev.example`, `docker/.env.deploy.example`
+- Environment templates: `contracts/env.schema.yaml`, `deploy/docker/.env.dev.example`, `deploy/docker/.env.deploy.example`
 - Module responsibility design: `doc/module-design.md`
 
 ## 1. Module Overview

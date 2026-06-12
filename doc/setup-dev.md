@@ -9,7 +9,8 @@ For production-style deployment, see [Production setup](setup.md). For running s
 Run from the repository root:
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml watch
+cp -n deploy/docker/.env.dev.example deploy/docker/.env
+docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml -f deploy/docker/docker-compose.dev.yml watch
 ```
 
 The dev Compose project name is `mpp-dev`.
@@ -38,7 +39,7 @@ This mode starts the frontend, backend, AI service, browser-worker, content pipe
 If you want dev containers running in the background without Compose watch rebuilds:
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d
+docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml -f deploy/docker/docker-compose.dev.yml up -d
 ```
 
 Source hot reload still works, but dependency file changes will not automatically trigger Compose rebuilds.
@@ -71,7 +72,7 @@ The browser extension dev service is an optional Compose profile. It is not star
 Start it with:
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml --profile extension up extension-dev
+docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml -f deploy/docker/docker-compose.dev.yml --profile extension up extension-dev
 ```
 
 This runs the WXT dev server from the `extension` directory. Docker dev mode disables the container browser runner, so load `extension/.output/chrome-mv3-dev` as an unpacked extension in the host browser.

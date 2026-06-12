@@ -11,7 +11,7 @@ ACTION="${1:-up}"
 export COMPOSE_PROFILES="${COMPOSE_PROFILES:-gateway}"
 
 ensure_env_file() {
-  cp -n docker/.env.dev.example docker/.env
+  cp -n deploy/docker/.env.dev.example deploy/docker/.env
 }
 
 env_value() {
@@ -24,7 +24,7 @@ env_value() {
   fi
 
   value=$(
-    awk -F= -v key="$name" '$1 == key { print substr($0, length(key) + 2); exit }' docker/.env 2>/dev/null || true
+    awk -F= -v key="$name" '$1 == key { print substr($0, length(key) + 2); exit }' deploy/docker/.env 2>/dev/null || true
   )
   if [ -n "$value" ]; then
     printf '%s\n' "$value"
@@ -39,9 +39,9 @@ compose() {
   export TRAEFIK_HTTP_PORT="$(env_value TRAEFIK_HTTP_PORT 8088)"
   export TRAEFIK_HTTPS_PORT="$(env_value TRAEFIK_HTTPS_PORT 8443)"
   docker compose \
-    --env-file docker/.env \
-    -f docker/docker-compose.yml \
-    -f docker/docker-compose.dev.yml \
+    --env-file deploy/docker/.env \
+    -f deploy/docker/docker-compose.yml \
+    -f deploy/docker/docker-compose.dev.yml \
     --profile gateway \
     "$@"
 }

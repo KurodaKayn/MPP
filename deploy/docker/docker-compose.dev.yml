@@ -17,15 +17,15 @@ services:
       PORT: "3000"
       WATCHPACK_POLLING: "true"
     volumes:
-      - ../frontend:/app
+      - ../../frontend:/app
       - frontend_node_modules:/app/node_modules
       - frontend_next:/app/.next
     develop:
       watch:
         - action: rebuild
-          path: ../frontend/package.json
+          path: ../../frontend/package.json
         - action: rebuild
-          path: ../frontend/pnpm-lock.yaml
+          path: ../../frontend/pnpm-lock.yaml
 
   backend:
     build:
@@ -48,15 +48,15 @@ services:
     healthcheck:
       start_period: 120s
     volumes:
-      - ../backend:/app
+      - ../../backend:/app
       - backend_go_cache:/go/pkg/mod
       - backend_go_build_cache:/root/.cache/go-build
     develop:
       watch:
         - action: rebuild
-          path: ../backend/go.mod
+          path: ../../backend/go.mod
         - action: rebuild
-          path: ../backend/go.sum
+          path: ../../backend/go.sum
 
   publish-worker:
     build:
@@ -80,15 +80,15 @@ services:
       BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-change-me-browser-worker-internal-token}
       AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-change-me-ai-service-internal-token}
     volumes:
-      - ../backend:/app
+      - ../../backend:/app
       - backend_go_cache:/go/pkg/mod
       - backend_go_build_cache:/root/.cache/go-build
     develop:
       watch:
         - action: rebuild
-          path: ../backend/go.mod
+          path: ../../backend/go.mod
         - action: rebuild
-          path: ../backend/go.sum
+          path: ../../backend/go.sum
 
   browser-worker:
     build:
@@ -99,16 +99,16 @@ services:
       APP_ENV: development
       BROWSER_WORKER_INTERNAL_TOKEN: ${BROWSER_WORKER_INTERNAL_TOKEN:-change-me-browser-worker-internal-token}
     volumes:
-      - ../browser-worker:/app
+      - ../../browser-worker:/app
       - browser_worker_go_cache:/go/pkg/mod
       - browser_worker_go_build_cache:/root/.cache/go-build
       - /var/run/docker.sock:/var/run/docker.sock
     develop:
       watch:
         - action: rebuild
-          path: ../browser-worker/go.mod
+          path: ../../browser-worker/go.mod
         - action: rebuild
-          path: ../browser-worker/go.sum
+          path: ../../browser-worker/go.sum
 
   ai-service:
     build:
@@ -118,15 +118,15 @@ services:
     environment:
       AI_SERVICE_INTERNAL_TOKEN: ${AI_SERVICE_INTERNAL_TOKEN:-change-me-ai-service-internal-token}
     volumes:
-      - ../ai-service:/app
+      - ../../ai-service:/app
       - ai_service_venv:/app/.venv
       - ai_service_uv_cache:/root/.cache/uv
     develop:
       watch:
         - action: rebuild
-          path: ../ai-service/pyproject.toml
+          path: ../../ai-service/pyproject.toml
         - action: rebuild
-          path: ../ai-service/uv.lock
+          path: ../../ai-service/uv.lock
 
   content-pipeline-service:
     build:
@@ -135,7 +135,7 @@ services:
       CONTENT_PIPELINE_MEDIA_RESOLVER_URL: ${CONTENT_PIPELINE_MEDIA_RESOLVER_URL:-http://backend:8080/internal/media/resolve}
       CONTENT_PIPELINE_INTERNAL_TOKEN: ${CONTENT_PIPELINE_INTERNAL_TOKEN:-change-me-content-pipeline-internal-token}
     volumes:
-      - ../content-pipeline-service:/app
+      - ../../content-pipeline-service:/app
       - content_pipeline_cargo_registry:/usr/local/cargo/registry
       - content_pipeline_cargo_target:/app/target
 
@@ -152,15 +152,15 @@ services:
       BACKEND_INTERNAL_URL: http://backend:8080
       COLLAB_TOKEN_SECRET: ${COLLAB_TOKEN_SECRET:-change-me-collab-token-secret}
     volumes:
-      - ../collab-service:/app
+      - ../../collab-service:/app
       - collab_service_node_modules:/app/node_modules
       - collab_service_pnpm_store:/pnpm/store
     develop:
       watch:
         - action: rebuild
-          path: ../collab-service/package.json
+          path: ../../collab-service/package.json
         - action: rebuild
-          path: ../collab-service/pnpm-lock.yaml
+          path: ../../collab-service/pnpm-lock.yaml
 
   extension-dev:
     image: node:24-alpine
@@ -182,7 +182,7 @@ services:
       CHOKIDAR_USEPOLLING: "true"
       WXT_MANUAL_RUNNER: "true"
     volumes:
-      - ../extension:/app
+      - ../../extension:/app
       - extension_node_modules:/app/node_modules
       - extension_pnpm_store:/pnpm/store
 

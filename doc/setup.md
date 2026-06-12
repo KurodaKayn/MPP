@@ -13,12 +13,12 @@ For development workflows, see:
 Start all services with Docker Compose:
 
 ```bash
-cd docker
+cd deploy/docker
 
 # Create the gateway/deploy environment file. Stop if the existing file is a dev env,
 # because mixing dev and production settings is easy to miss.
 if [ -f .env ] && grep -q '^APP_ENV=development$' .env; then
-  echo "docker/.env is currently a dev env. Back it up or remove it before copying .env.deploy.example." >&2
+  echo "deploy/docker/.env is currently a dev env. Back it up or remove it before copying .env.deploy.example." >&2
   exit 1
 fi
 cp -n .env.deploy.example .env
@@ -36,7 +36,7 @@ The default Compose project name is `mpp`. This mode starts Traefik as the gatew
 - Web workspace: [http://localhost](http://localhost)
 - HTTPS entrypoint: [https://localhost](https://localhost)
 
-`frontend`, `backend`, `ai-service`, `browser-worker`, `collab-service`, PostgreSQL, and Redis run as internal Compose services. If host ports `80` or `443` are already in use, set `TRAEFIK_HTTP_PORT` or `TRAEFIK_HTTPS_PORT` in `docker/.env`, for example:
+`frontend`, `backend`, `ai-service`, `browser-worker`, `collab-service`, PostgreSQL, and Redis run as internal Compose services. If host ports `80` or `443` are already in use, set `TRAEFIK_HTTP_PORT` or `TRAEFIK_HTTPS_PORT` in `deploy/docker/.env`, for example:
 
 ```env
 TRAEFIK_HTTP_PORT=8088
@@ -85,7 +85,7 @@ Prerequisites:
 
 - The domain A/AAAA record points to the server public IP.
 - Public ports `80` and `443` are reachable by Let's Encrypt.
-- `docker/.env` contains the real domain, ACME email, and public URLs.
+- `deploy/docker/.env` contains the real domain, ACME email, and public URLs.
 
 Key environment variables:
 
@@ -101,7 +101,7 @@ X_OAUTH2_REDIRECT_URL=https://your-domain.example/api/user/dashboard/settings/x/
 Start the stack:
 
 ```bash
-cd docker
+cd deploy/docker
 docker compose -f docker-compose.yml -f docker-compose.tls-letsencrypt.yml up -d
 docker compose -f docker-compose.yml -f docker-compose.tls-letsencrypt.yml logs -f traefik
 ```
@@ -119,8 +119,8 @@ Use this when certificates are issued by an external provider, internal CA, ente
 Place certificate files here:
 
 ```text
-docker/traefik/certs/fullchain.pem
-docker/traefik/certs/privkey.pem
+deploy/docker/traefik/certs/fullchain.pem
+deploy/docker/traefik/certs/privkey.pem
 ```
 
 You can also store certificates outside the repository and point Traefik at that directory:
@@ -139,7 +139,7 @@ privkey.pem
 Start the stack:
 
 ```bash
-cd docker
+cd deploy/docker
 docker compose -f docker-compose.yml -f docker-compose.tls-manual.yml up -d
 docker compose -f docker-compose.yml -f docker-compose.tls-manual.yml logs -f traefik
 ```
@@ -147,15 +147,15 @@ docker compose -f docker-compose.yml -f docker-compose.tls-manual.yml logs -f tr
 After replacing manual certificates, restart Traefik:
 
 ```bash
-cd docker
+cd deploy/docker
 docker compose -f docker-compose.yml -f docker-compose.tls-manual.yml restart traefik
 ```
 
 ## Environment Variables
 
-All production-style Compose environment variables are managed in `docker/.env`.
+All production-style Compose environment variables are managed in `deploy/docker/.env`.
 
-- Deploy template: `docker/.env.deploy.example`
+- Deploy template: `deploy/docker/.env.deploy.example`
 - Default public frontend origin: `https://your-domain.example`
 - AI provider key: `LLM_PROVIDER_KEY`
 - Database connection settings: `DB_*`

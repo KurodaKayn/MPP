@@ -21,7 +21,7 @@ PostgreSQL and Redis must already be running locally before starting application
 Use the dev environment template as the starting point:
 
 ```bash
-cp -n docker/.env.dev.example docker/.env
+cp -n deploy/docker/.env.dev.example deploy/docker/.env
 ```
 
 If you run services outside Compose, make sure host-facing values are used for PostgreSQL, Redis, and service URLs. The dev template defaults are intended for local development and direct ports.
