@@ -1,5 +1,6 @@
 mod drafts;
 mod media;
+mod media_store;
 mod metrics;
 
 use std::net::SocketAddr;
@@ -14,7 +15,7 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     init_tracing();
 
     let addr = service_addr()?;
