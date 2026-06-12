@@ -89,7 +89,7 @@ func openProcessedObject(ctx context.Context, objectRef string) (io.ReadCloser, 
 	switch strings.ToLower(envString(contentPipelineMediaObjectStoreEnv)) {
 	case "filesystem":
 		return openFilesystemProcessedObject(ctx, key)
-	case "r2", "s3":
+	case "r2":
 		client, err := processedObjectStorageClient()
 		if err != nil {
 			return nil, objectstorage.ObjectInfo{}, err

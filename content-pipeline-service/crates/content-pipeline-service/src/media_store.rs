@@ -32,7 +32,6 @@ const R2_SECRET_ACCESS_KEY_ENV: &str = "R2_SECRET_ACCESS_KEY";
 
 const STORE_FILESYSTEM: &str = "filesystem";
 const STORE_R2: &str = "r2";
-const STORE_S3: &str = "s3";
 const DEFAULT_OBJECT_PREFIX: &str = "content-pipeline/processed-media";
 const DEFAULT_OBJECT_REF_PREFIX: &str = "mpp://content-pipeline/media/";
 const DEFAULT_RETENTION_DAYS: u16 = 7;
@@ -67,10 +66,9 @@ impl ProcessedMediaObjectStore {
         let store: Arc<DynObjectStore> = match provider.to_ascii_lowercase().as_str() {
             STORE_FILESYSTEM => Arc::new(filesystem_store()?),
             STORE_R2 => Arc::new(r2_store()?),
-            STORE_S3 => Arc::new(s3_store()?),
             _ => {
                 return Err(MediaObjectStoreConfigError(format!(
-                    "{STORE_ENV} must be one of {STORE_FILESYSTEM}, {STORE_R2}, or {STORE_S3}"
+                    "{STORE_ENV} must be one of {STORE_FILESYSTEM} or {STORE_R2}"
                 )));
             }
         };
@@ -291,32 +289,6 @@ fn r2_store() -> Result<object_store::aws::AmazonS3, MediaObjectStoreConfigError
         .with_virtual_hosted_style_request(parse_bool_env(VIRTUAL_HOSTED_STYLE_ENV, false))
         .build()
         .map_err(|err| MediaObjectStoreConfigError(format!("invalid R2 media object store: {err}")))
-}
-
-fn s3_store() -> Result<object_store::aws::AmazonS3, MediaObjectStoreConfigError> {
-    let mut builder = AmazonS3Builder::from_env();
-    if let Some(endpoint) = env_value(ENDPOINT_ENV) {
-        builder = builder.with_endpoint(endpoint);
-    }
-    if let Some(region) = env_value(REGION_ENV) {
-        builder = builder.with_region(region);
-    }
-    if let Some(bucket) = env_value(BUCKET_ENV) {
-        builder = builder.with_bucket_name(bucket);
-    }
-    if let Some(access_key_id) = env_value(ACCESS_KEY_ID_ENV) {
-        builder = builder.with_access_key_id(access_key_id);
-    }
-    if let Some(secret_access_key) = env_value(SECRET_ACCESS_KEY_ENV) {
-        builder = builder.with_secret_access_key(secret_access_key);
-    }
-    builder = builder
-        .with_allow_http(parse_bool_env(ALLOW_HTTP_ENV, false))
-        .with_virtual_hosted_style_request(parse_bool_env(VIRTUAL_HOSTED_STYLE_ENV, false));
-
-    builder
-        .build()
-        .map_err(|err| MediaObjectStoreConfigError(format!("invalid S3 media object store: {err}")))
 }
 
 fn env_value(key: &str) -> Option<String> {
