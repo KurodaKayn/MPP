@@ -501,6 +501,45 @@ func (h *UserDashboardHandler) UpdateProject(c echo.Context) error {
 	return c.JSON(http.StatusOK, project)
 }
 
+func (h *UserDashboardHandler) DeleteProject(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+
+	if err := h.serviceFor(c).DeleteProject(projectID, userID); err != nil {
+		if errors.Is(err, services.ErrInvalidProject) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		if errors.Is(err, services.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		if errors.Is(err, services.ErrProjectDeletionBlocked) {
+			return sendError(c, http.StatusConflict, "conflict", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (h *UserDashboardHandler) SaveProjectContent(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
