@@ -82,6 +82,9 @@ func (h *BrowserSessionHandler) StartSession(c echo.Context) error {
 		if errors.Is(err, browsersession.ErrPlatformNotSupported) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		}
+		if errors.Is(err, browsersession.ErrPlatformAccountForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 

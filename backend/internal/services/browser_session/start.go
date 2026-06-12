@@ -29,8 +29,10 @@ func (s *BrowserSessionService) StartSessionForWorkspace(ctx context.Context, us
 	}
 
 	tenantID = normalizeBrowserSessionTenantID(tenantID)
-	if workspaceID == uuid.Nil {
-		workspaceID = models.PersonalWorkspaceID(userID)
+	var err error
+	workspaceID, err = s.authorizeSessionTarget(ctx, userID, workspaceID, accountID, platform)
+	if err != nil {
+		return nil, err
 	}
 	now := time.Now()
 	sessionID := uuid.New()
