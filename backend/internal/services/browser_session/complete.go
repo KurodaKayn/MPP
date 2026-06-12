@@ -100,6 +100,25 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 	if session.PlatformAccountID != nil {
 		accountID = *session.PlatformAccountID
 	}
+	authorizedWorkspaceID, err := s.authorizeSessionTarget(ctx, userID, workspaceID, accountID, session.Platform)
+	if err != nil {
+		s.db.Model(&session).Update("status", models.BrowserSessionStatusReady)
+		_ = s.saveRedisLiveSession(ctx, browserSessionLiveState{
+			SessionID:         session.ID,
+			UserID:            session.UserID,
+			Platform:          session.Platform,
+			Status:            models.BrowserSessionStatusReady,
+			WorkerSessionRef:  session.WorkerSessionRef,
+			ContainerID:       session.ContainerID,
+			CDPEndpointRef:    session.CDPEndpointRef,
+			StreamEndpointRef: session.StreamEndpointRef,
+			Message:           err.Error(),
+			CreatedAt:         session.CreatedAt,
+			ExpiresAt:         session.ExpiresAt,
+		})
+		return nil, err
+	}
+	workspaceID = authorizedWorkspaceID
 	err = s.cookieStore.SaveForAccount(ctx, userID, workspaceID, accountID, session.Platform, captureResp.Cookies, profile)
 	if err != nil {
 		s.db.Model(&session).Update("status", models.BrowserSessionStatusReady)

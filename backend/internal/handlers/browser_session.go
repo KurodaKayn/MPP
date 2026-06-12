@@ -297,6 +297,9 @@ func (h *BrowserSessionHandler) CompleteSession(c echo.Context) error {
 		if errors.Is(err, browsersession.ErrLoginNotDetected) || errors.Is(err, browsersession.ErrSessionNotReady) {
 			return sendError(c, http.StatusUnprocessableEntity, "unprocessable_entity", err.Error())
 		}
+		if errors.Is(err, browsersession.ErrPlatformAccountForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 
