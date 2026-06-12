@@ -759,4 +759,82 @@ mod tests {
 
         assert_eq!(err.code(), tonic::Code::FailedPrecondition);
     }
+
+    #[tokio::test]
+    async fn returns_object_ref_when_output_store_is_configured() {
+        use std::fs;
+        use std::sync::Arc;
+
+        use crate::media_store::ProcessedMediaObjectStore;
+        use object_store::ObjectStoreExt;
+        use object_store::local::LocalFileSystem;
+        use object_store::path::Path as ObjectPath;
+
+        const TINY_PNG_DATA_URL: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+        const OBJECT_REF_PREFIX: &str = "mpp://content-pipeline/media/";
+
+        let temp_dir = std::env::temp_dir().join(format!(
+            "mpp-content-pipeline-service-output-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).expect("temp object root should be created");
+        let local_store = Arc::new(
+            LocalFileSystem::new_with_prefix(&temp_dir)
+                .expect("local object store should initialize"),
+        );
+        let output_store = ProcessedMediaObjectStore::new(
+            local_store.clone(),
+            "processed".to_string(),
+            OBJECT_REF_PREFIX.to_string(),
+            0,
+            7,
+        )
+        .expect("media output store should initialize");
+        let service = MediaAssetProcessorService::new_with_config(
+            ContentPipelineMetrics::new().expect("metrics should initialize"),
+            None,
+            Some(output_store),
+        )
+        .expect("service should initialize");
+
+        let outcome = service
+            .process_asset_inner(ProcessAssetRequest {
+                request_id: "request-1".to_string(),
+                platform: "generic".to_string(),
+                usage: "inline_image".to_string(),
+                source: Some(
+                    content_pipeline_proto::mpp::contentpipeline::v1::MediaSource {
+                        value: Some(media_source::Value::DataUrl(TINY_PNG_DATA_URL.to_string())),
+                    },
+                ),
+                constraints: None,
+            })
+            .await
+            .expect("asset should process");
+
+        let asset = outcome
+            .response
+            .asset
+            .expect("processed asset should be returned");
+        let Some(processed_asset::Content::ObjectRef(object_ref)) = asset.content else {
+            panic!("processed asset should be returned as an object ref");
+        };
+        assert!(object_ref.starts_with(OBJECT_REF_PREFIX));
+        assert!(object_ref.ends_with(".png"));
+
+        let key = object_ref
+            .strip_prefix(OBJECT_REF_PREFIX)
+            .expect("object ref should include configured prefix");
+        let stored = local_store
+            .get(&ObjectPath::from(key))
+            .await
+            .expect("stored object should exist")
+            .bytes()
+            .await
+            .expect("stored object should be readable");
+        assert!(!stored.is_empty());
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
 }

@@ -382,3 +382,125 @@ fn extension_for_mime_type(mime_type: &str) -> Option<&'static str> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use object_store::local::LocalFileSystem;
+    use object_store::path::Path as ObjectPath;
+    use object_store::{ObjectStoreExt, PutPayload};
+    use std::fs;
+
+    fn processed_asset(bytes: Vec<u8>, sha256: &str) -> ProcessedAsset {
+        ProcessedAsset {
+            input_byte_size: bytes.len() as u64,
+            byte_size: bytes.len() as u64,
+            bytes,
+            mime_type: "image/png".to_string(),
+            width: 1,
+            height: 1,
+            sha256: sha256.to_string(),
+            warnings: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn stores_processed_asset_under_hash_key() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "mpp-content-pipeline-media-store-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).expect("temp object root should be created");
+        let store = Arc::new(
+            LocalFileSystem::new_with_prefix(&temp_dir)
+                .expect("local object store should initialize"),
+        );
+        let sink = ProcessedMediaObjectStore::new(
+            store.clone(),
+            "processed".to_string(),
+            "mpp://content-pipeline/media".to_string(),
+            0,
+            7,
+        )
+        .expect("media object store should initialize");
+
+        let stored = sink
+            .put_processed_asset(&processed_asset(vec![1, 2, 3], "abcdef"))
+            .await
+            .expect("processed asset should be stored");
+
+        assert_eq!(
+            stored.object_ref,
+            "mpp://content-pipeline/media/processed/ab/abcdef.png"
+        );
+        let data = store
+            .get(&ObjectPath::from("processed/ab/abcdef.png"))
+            .await
+            .expect("stored object should exist")
+            .bytes()
+            .await
+            .expect("stored object should be readable");
+        assert_eq!(&data[..], &[1, 2, 3]);
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[tokio::test]
+    async fn skips_reupload_when_same_hash_and_size_exists() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "mpp-content-pipeline-media-dedup-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).expect("temp object root should be created");
+        let store = Arc::new(
+            LocalFileSystem::new_with_prefix(&temp_dir)
+                .expect("local object store should initialize"),
+        );
+        store
+            .put(
+                &ObjectPath::from("processed/ab/abcdef.png"),
+                PutPayload::from(vec![9, 9, 9]),
+            )
+            .await
+            .expect("existing object should be stored");
+        let sink = ProcessedMediaObjectStore::new(
+            store.clone(),
+            "processed".to_string(),
+            "mpp://content-pipeline/media/".to_string(),
+            0,
+            7,
+        )
+        .expect("media object store should initialize");
+
+        let stored = sink
+            .put_processed_asset(&processed_asset(vec![1, 2, 3], "abcdef"))
+            .await
+            .expect("existing object should be reused");
+
+        assert_eq!(
+            stored.object_ref,
+            "mpp://content-pipeline/media/processed/ab/abcdef.png"
+        );
+        let data = store
+            .get(&ObjectPath::from("processed/ab/abcdef.png"))
+            .await
+            .expect("stored object should exist")
+            .bytes()
+            .await
+            .expect("stored object should be readable");
+        assert_eq!(&data[..], &[9, 9, 9]);
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn normalizes_key_and_ref_prefixes() {
+        assert_eq!(normalize_key_prefix("/tmp//processed/"), "tmp/processed");
+        assert_eq!(
+            normalize_object_ref_prefix("mpp://content-pipeline/media"),
+            "mpp://content-pipeline/media/"
+        );
+    }
+}
