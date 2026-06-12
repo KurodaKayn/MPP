@@ -290,13 +290,13 @@ type ProjectCollaborator struct {
 }
 
 type ProjectActivity struct {
-	ID           uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	ID           uuid.UUID      `gorm:"type:uuid;primaryKey;index:idx_project_activities_archive_created_id,priority:2"`
 	ProjectID    uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_activities_project_created_at,priority:1"`
 	ActorUserID  uuid.UUID      `gorm:"type:uuid;not null;index"`
 	TargetUserID *uuid.UUID     `gorm:"type:uuid;index"`
 	EventType    string         `gorm:"not null;index"`
 	Metadata     datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt    time.Time      `gorm:"not null;index:idx_project_activities_project_created_at,priority:2"`
+	CreatedAt    time.Time      `gorm:"not null;index:idx_project_activities_project_created_at,priority:2;index:idx_project_activities_archive_created_id,priority:1"`
 	Project      Project        `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
 	Actor        User           `gorm:"foreignKey:ActorUserID;constraint:OnDelete:CASCADE"`
 	TargetUser   *User          `gorm:"foreignKey:TargetUserID;constraint:OnDelete:SET NULL"`
@@ -431,13 +431,13 @@ type WorkspaceInvite struct {
 }
 
 type WorkspaceActivity struct {
-	ID           uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	ID           uuid.UUID      `gorm:"type:uuid;primaryKey;index:idx_workspace_activities_archive_created_id,priority:2"`
 	WorkspaceID  uuid.UUID      `gorm:"type:uuid;not null;index:idx_workspace_activities_workspace_created_at,priority:1"`
 	ActorUserID  uuid.UUID      `gorm:"type:uuid;not null;index"`
 	TargetUserID *uuid.UUID     `gorm:"type:uuid;index"`
 	EventType    string         `gorm:"not null;index"`
 	Metadata     datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt    time.Time      `gorm:"not null;index:idx_workspace_activities_workspace_created_at,priority:2"`
+	CreatedAt    time.Time      `gorm:"not null;index:idx_workspace_activities_workspace_created_at,priority:2;index:idx_workspace_activities_archive_created_id,priority:1"`
 	Workspace    Workspace      `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
 	Actor        User           `gorm:"foreignKey:ActorUserID;constraint:OnDelete:CASCADE"`
 	TargetUser   *User          `gorm:"foreignKey:TargetUserID;constraint:OnDelete:SET NULL"`
@@ -488,7 +488,7 @@ type ProjectPlatformPublication struct {
 }
 
 type PublishEvent struct {
-	ID             uuid.UUID `gorm:"type:uuid;primaryKey"`
+	ID             uuid.UUID `gorm:"type:uuid;primaryKey;index:idx_publish_events_archive_created_id,priority:2"`
 	PublicationID  uuid.UUID `gorm:"type:uuid;not null;index"`
 	ProjectID      uuid.UUID `gorm:"type:uuid;not null;index"`
 	UserID         uuid.UUID `gorm:"type:uuid;not null;index:idx_publish_events_user_idempotency"`
@@ -502,7 +502,7 @@ type PublishEvent struct {
 	PublishURL     string
 	ErrorMessage   string
 	Metadata       datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt      time.Time
+	CreatedAt      time.Time      `gorm:"index:idx_publish_events_archive_created_id,priority:1"`
 }
 
 type ScheduledPublication struct {
@@ -599,12 +599,12 @@ type PlatformAccount struct {
 }
 
 type RemoteBrowserSession struct {
-	ID                    uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	ID                    uuid.UUID  `gorm:"type:uuid;primaryKey;index:idx_remote_browser_sessions_archive_status_created_id,priority:3"`
 	UserID                uuid.UUID  `gorm:"type:uuid;not null;index:idx_browser_sessions_user_platform"`
 	WorkspaceID           *uuid.UUID `gorm:"type:uuid;index"`
 	PlatformAccountID     *uuid.UUID `gorm:"type:uuid;index"`
 	Platform              string     `gorm:"not null;index:idx_browser_sessions_user_platform"`
-	Status                string     `gorm:"not null;index:idx_browser_sessions_user_platform"`
+	Status                string     `gorm:"not null;index:idx_browser_sessions_user_platform;index:idx_remote_browser_sessions_archive_status_created_id,priority:1"`
 	WorkerSessionRef      string     `gorm:"not null;default:''"`
 	ContainerID           string     `gorm:"not null;default:''"`
 	CDPEndpointRef        string     `gorm:"not null;default:''"`
@@ -612,7 +612,7 @@ type RemoteBrowserSession struct {
 	ConnectTokenHash      string     `gorm:"not null"`
 	ConnectTokenExpiresAt time.Time
 	ErrorMessage          string    `gorm:"not null;default:''"`
-	CreatedAt             time.Time `gorm:"not null"`
+	CreatedAt             time.Time `gorm:"not null;index:idx_remote_browser_sessions_archive_status_created_id,priority:2"`
 	ExpiresAt             time.Time `gorm:"not null"`
 	CompletedAt           *time.Time
 }
@@ -644,7 +644,7 @@ type ExtensionCallbackToken struct {
 }
 
 type ExtensionExecutionEvent struct {
-	ID              uuid.UUID `gorm:"type:uuid;primaryKey"`
+	ID              uuid.UUID `gorm:"type:uuid;primaryKey;index:idx_extension_execution_events_archive_created_id,priority:2"`
 	CallbackTokenID uuid.UUID `gorm:"type:uuid;not null;index"`
 	ExecutionID     string    `gorm:"not null;index"`
 	ProjectID       uuid.UUID `gorm:"type:uuid;not null;index"`
@@ -657,7 +657,7 @@ type ExtensionExecutionEvent struct {
 	PublishURL      string
 	ErrorMessage    string
 	Metadata        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt       time.Time
+	CreatedAt       time.Time      `gorm:"index:idx_extension_execution_events_archive_created_id,priority:1"`
 }
 
 // BeforeCreate hook to generate UUID if not set
