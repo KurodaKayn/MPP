@@ -57,7 +57,7 @@ func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.
 	if err != nil {
 		return nil, err
 	}
-	draft, err := buildDouyinWorkerDraft(project, pub)
+	draft, err := buildDouyinWorkerDraft(ctx, project, pub)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (s *Service) cancelActiveDouyinBrowserSessions(ctx context.Context, userID 
 	return nil
 }
 
-func buildDouyinWorkerDraft(project models.Project, pub models.ProjectPlatformPublication) (publisher.StartDouyinPublishRequest, error) {
+func buildDouyinWorkerDraft(ctx context.Context, project models.Project, pub models.ProjectPlatformPublication) (publisher.StartDouyinPublishRequest, error) {
 	title := publishercontent.ExtractPublicationTitle(pub.Config)
 	if title == "" {
 		title = strings.TrimSpace(project.Title)
@@ -127,7 +127,7 @@ func buildDouyinWorkerDraft(project models.Project, pub models.ProjectPlatformPu
 		return publisher.StartDouyinPublishRequest{}, fmt.Errorf("douyin text content is empty")
 	}
 
-	imageData, imageName, err := douyinWorkerCoverImage(pub.Config)
+	imageData, imageName, err := douyinWorkerCoverImage(ctx, pub.Config)
 	if err != nil {
 		return publisher.StartDouyinPublishRequest{}, err
 	}
@@ -163,16 +163,20 @@ func extractDouyinWorkerText(raw []byte) string {
 	return strings.TrimSpace(string(raw))
 }
 
-func douyinWorkerCoverImage(rawConfig []byte) ([]byte, string, error) {
+func douyinWorkerCoverImage(ctx context.Context, rawConfig []byte) ([]byte, string, error) {
 	var config struct {
 		CoverImageURL string `json:"cover_image_url"`
 	}
 	_ = json.Unmarshal(rawConfig, &config)
 
 	if source := strings.TrimSpace(config.CoverImageURL); source != "" {
-		data, err := media.DownloadAndProcess(source)
+		objectRef, err := media.DownloadAndProcess(source)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to prepare douyin cover image: %w", err)
+		}
+		data, err := media.ReadProcessedObject(ctx, objectRef)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to read douyin cover image: %w", err)
 		}
 		return data, filepath.Base(source), nil
 	}

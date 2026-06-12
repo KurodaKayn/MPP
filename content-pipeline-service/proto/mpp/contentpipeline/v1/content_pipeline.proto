@@ -40,10 +40,8 @@ message ProcessAssetResponse {
 }
 
 message ProcessedAsset {
-  oneof content {
-    bytes inline_bytes = 1;
-    string object_ref = 2;
-  }
+  reserved 1;
+  string object_ref = 2;
   string mime_type = 3;
   uint64 byte_size = 4;
   uint32 width = 5;

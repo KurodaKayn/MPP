@@ -27,13 +27,13 @@ type contentPipelineMediaClientFactory func(context.Context) (contentpipelinepb.
 
 var newContentPipelineMediaClient contentPipelineMediaClientFactory = dialContentPipelineMediaClient
 
-func processWithContentPipeline(sourceURL string, platform string, usage string) ([]byte, error) {
+func processWithContentPipeline(sourceURL string, platform string, usage string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), contentPipelineRequestTimeout)
 	defer cancel()
 
 	client, closer, err := newContentPipelineMediaClient(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("connect content pipeline: %w", err)
+		return "", fmt.Errorf("connect content pipeline: %w", err)
 	}
 	if closer != nil {
 		defer func() { _ = closer.Close() }()
@@ -46,18 +46,18 @@ func processWithContentPipeline(sourceURL string, platform string, usage string)
 		Source:    mediaSourceFromURL(sourceURL),
 	})
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	asset := response.GetAsset()
 	if asset == nil {
-		return nil, fmt.Errorf("%w: missing processed asset", errContentPipelineContract)
+		return "", fmt.Errorf("%w: missing processed asset", errContentPipelineContract)
 	}
-	inlineBytes := asset.GetInlineBytes()
-	if inlineBytes == nil {
-		return nil, fmt.Errorf("%w: processed asset did not include inline bytes", errContentPipelineContract)
+	objectRef := strings.TrimSpace(asset.GetObjectRef())
+	if objectRef == "" {
+		return "", fmt.Errorf("%w: processed asset did not include object ref", errContentPipelineContract)
 	}
-	return inlineBytes, nil
+	return objectRef, nil
 }
 
 func dialContentPipelineMediaClient(_ context.Context) (contentpipelinepb.MediaAssetProcessorClient, io.Closer, error) {

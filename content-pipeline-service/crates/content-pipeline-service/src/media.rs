@@ -4,7 +4,7 @@ use std::time::Duration;
 use content_pipeline_core::{DEFAULT_MAX_BYTES, MediaConstraints, MediaProcessor};
 use content_pipeline_proto::mpp::contentpipeline::v1::{
     ProcessAssetRequest, ProcessAssetResponse, ProcessedAsset as ProtoProcessedAsset,
-    media_asset_processor_server::MediaAssetProcessor, media_source, processed_asset,
+    media_asset_processor_server::MediaAssetProcessor, media_source,
 };
 use futures_util::StreamExt;
 use reqwest::header::{CONTENT_TYPE, LOCATION};
@@ -29,7 +29,7 @@ pub(crate) struct MediaAssetProcessorService {
     metrics: ContentPipelineMetrics,
     object_ref_resolver: Option<ObjectRefResolverConfig>,
     object_ref_resolver_client: Client,
-    output_store: Option<ProcessedMediaObjectStore>,
+    output_store: ProcessedMediaObjectStore,
 }
 
 impl MediaAssetProcessorService {
@@ -48,13 +48,17 @@ impl MediaAssetProcessorService {
         metrics: ContentPipelineMetrics,
         object_ref_resolver: Option<ObjectRefResolverConfig>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::new_with_config(metrics, object_ref_resolver, None)
+        Self::new_with_config(
+            metrics,
+            object_ref_resolver,
+            ProcessedMediaObjectStore::test_store()?,
+        )
     }
 
     fn new_with_config(
         metrics: ContentPipelineMetrics,
         object_ref_resolver: Option<ObjectRefResolverConfig>,
-        output_store: Option<ProcessedMediaObjectStore>,
+        output_store: ProcessedMediaObjectStore,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         Ok(Self {
             processor: MediaProcessor::new(),
@@ -168,23 +172,17 @@ impl MediaAssetProcessorService {
         processed: content_pipeline_core::ProcessedAsset,
     ) -> Result<(ProtoProcessedAsset, Vec<String>), Status> {
         let warnings = processed.warnings.clone();
-        let content = if let Some(output_store) = &self.output_store
-            && output_store.should_store(&processed)
-        {
-            let stored = output_store
-                .put_processed_asset(&processed)
-                .await
-                .map_err(|err| {
-                    Status::unavailable(format!("failed to store processed media object: {err}"))
-                })?;
-            processed_asset::Content::ObjectRef(stored.object_ref)
-        } else {
-            processed_asset::Content::InlineBytes(processed.bytes)
-        };
+        let stored = self
+            .output_store
+            .put_processed_asset(&processed)
+            .await
+            .map_err(|err| {
+                Status::unavailable(format!("failed to store processed media object: {err}"))
+            })?;
 
         Ok((
             ProtoProcessedAsset {
-                content: Some(content),
+                object_ref: stored.object_ref,
                 mime_type: processed.mime_type,
                 byte_size: processed.byte_size,
                 width: processed.width,
@@ -787,14 +785,13 @@ mod tests {
             local_store.clone(),
             "processed".to_string(),
             OBJECT_REF_PREFIX.to_string(),
-            0,
             7,
         )
         .expect("media output store should initialize");
         let service = MediaAssetProcessorService::new_with_config(
             ContentPipelineMetrics::new().expect("metrics should initialize"),
             None,
-            Some(output_store),
+            output_store,
         )
         .expect("service should initialize");
 
@@ -817,9 +814,7 @@ mod tests {
             .response
             .asset
             .expect("processed asset should be returned");
-        let Some(processed_asset::Content::ObjectRef(object_ref)) = asset.content else {
-            panic!("processed asset should be returned as an object ref");
-        };
+        let object_ref = asset.object_ref;
         assert!(object_ref.starts_with(OBJECT_REF_PREFIX));
         assert!(object_ref.ends_with(".png"));
 

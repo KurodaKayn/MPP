@@ -22,7 +22,6 @@ const ALLOW_HTTP_ENV: &str = "CONTENT_PIPELINE_MEDIA_OBJECT_ALLOW_HTTP";
 const VIRTUAL_HOSTED_STYLE_ENV: &str = "CONTENT_PIPELINE_MEDIA_OBJECT_VIRTUAL_HOSTED_STYLE";
 const PREFIX_ENV: &str = "CONTENT_PIPELINE_MEDIA_OBJECT_PREFIX";
 const OBJECT_REF_PREFIX_ENV: &str = "CONTENT_PIPELINE_MEDIA_OBJECT_REF_PREFIX";
-const MIN_BYTES_ENV: &str = "CONTENT_PIPELINE_MEDIA_OBJECT_MIN_BYTES";
 const RETENTION_DAYS_ENV: &str = "CONTENT_PIPELINE_MEDIA_OBJECT_RETENTION_DAYS";
 
 const R2_BUCKET_ENV: &str = "R2_BUCKET";
@@ -43,7 +42,6 @@ pub(crate) struct ProcessedMediaObjectStore {
     store: Arc<DynObjectStore>,
     key_prefix: String,
     object_ref_prefix: String,
-    min_bytes: u64,
     retention_days: u16,
 }
 
@@ -53,17 +51,18 @@ impl fmt::Debug for ProcessedMediaObjectStore {
             .field("store", &self.store.to_string())
             .field("key_prefix", &self.key_prefix)
             .field("object_ref_prefix", &self.object_ref_prefix)
-            .field("min_bytes", &self.min_bytes)
             .field("retention_days", &self.retention_days)
             .finish()
     }
 }
 
 impl ProcessedMediaObjectStore {
-    pub(crate) fn from_env() -> Result<Option<Self>, MediaObjectStoreConfigError> {
-        let Some(provider) = env_value(STORE_ENV) else {
-            return Ok(None);
-        };
+    pub(crate) fn from_env() -> Result<Self, MediaObjectStoreConfigError> {
+        let provider = env_value(STORE_ENV).ok_or_else(|| {
+            MediaObjectStoreConfigError(format!(
+                "{STORE_ENV} is required because processed media responses use object_ref only"
+            ))
+        })?;
 
         let store: Arc<DynObjectStore> = match provider.to_ascii_lowercase().as_str() {
             STORE_FILESYSTEM => Arc::new(filesystem_store()?),
@@ -76,21 +75,29 @@ impl ProcessedMediaObjectStore {
             }
         };
 
-        Ok(Some(Self::new(
+        Self::new(
             store,
             env_value(PREFIX_ENV).unwrap_or_else(|| DEFAULT_OBJECT_PREFIX.to_string()),
             env_value(OBJECT_REF_PREFIX_ENV)
                 .unwrap_or_else(|| DEFAULT_OBJECT_REF_PREFIX.to_string()),
-            parse_optional_u64(MIN_BYTES_ENV)?.unwrap_or(0),
             parse_optional_u16(RETENTION_DAYS_ENV)?.unwrap_or(DEFAULT_RETENTION_DAYS),
-        )?))
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_store() -> Result<Self, MediaObjectStoreConfigError> {
+        Self::new(
+            Arc::new(object_store::memory::InMemory::new()),
+            "processed".to_string(),
+            "mpp://content-pipeline/media/".to_string(),
+            DEFAULT_RETENTION_DAYS,
+        )
     }
 
     pub(crate) fn new(
         store: Arc<DynObjectStore>,
         key_prefix: String,
         object_ref_prefix: String,
-        min_bytes: u64,
         retention_days: u16,
     ) -> Result<Self, MediaObjectStoreConfigError> {
         let key_prefix = normalize_key_prefix(&key_prefix);
@@ -116,13 +123,8 @@ impl ProcessedMediaObjectStore {
             store,
             key_prefix,
             object_ref_prefix,
-            min_bytes,
             retention_days,
         })
-    }
-
-    pub(crate) fn should_store(&self, processed: &ProcessedAsset) -> bool {
-        processed.byte_size >= self.min_bytes
     }
 
     pub(crate) async fn put_processed_asset(
@@ -324,16 +326,6 @@ fn env_value(key: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn parse_optional_u64(key: &str) -> Result<Option<u64>, MediaObjectStoreConfigError> {
-    env_value(key)
-        .map(|value| {
-            value
-                .parse::<u64>()
-                .map_err(|_| MediaObjectStoreConfigError(format!("{key} must be an integer")))
-        })
-        .transpose()
-}
-
 fn parse_optional_u16(key: &str) -> Result<Option<u16>, MediaObjectStoreConfigError> {
     env_value(key)
         .map(|value| {
@@ -420,7 +412,6 @@ mod tests {
             store.clone(),
             "processed".to_string(),
             "mpp://content-pipeline/media".to_string(),
-            0,
             7,
         )
         .expect("media object store should initialize");
@@ -469,7 +460,6 @@ mod tests {
             store.clone(),
             "processed".to_string(),
             "mpp://content-pipeline/media/".to_string(),
-            0,
             7,
         )
         .expect("media object store should initialize");

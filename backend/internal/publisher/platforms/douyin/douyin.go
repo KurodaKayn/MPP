@@ -38,7 +38,7 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	if content == "" {
 		return "", "", fmt.Errorf("douyin text content is empty")
 	}
-	localImagePath, cleanupImage, err := douyinUploadImagePath(pub.Config)
+	localImagePath, cleanupImage, err := douyinUploadImagePath(ctx, pub.Config)
 	if err != nil {
 		return "", "", err
 	}
@@ -196,31 +196,22 @@ func extractDouyinText(raw []byte) string {
 	return strings.TrimSpace(string(raw))
 }
 
-func douyinUploadImagePath(rawConfig []byte) (string, func(), error) {
+func douyinUploadImagePath(ctx context.Context, rawConfig []byte) (string, func(), error) {
 	var config struct {
 		CoverImageURL string `json:"cover_image_url"`
 	}
 	_ = json.Unmarshal(rawConfig, &config)
 
 	if source := strings.TrimSpace(config.CoverImageURL); source != "" {
-		data, err := media.DownloadAndProcess(source)
+		objectRef, err := media.DownloadAndProcess(source)
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to prepare douyin cover image: %w", err)
 		}
-		file, err := os.CreateTemp("", "mpp-douyin-cover-*")
+		path, cleanup, err := media.MaterializeProcessedObject(ctx, objectRef, "mpp-douyin-cover-*")
 		if err != nil {
-			return "", nil, fmt.Errorf("failed to create douyin cover image: %w", err)
+			return "", nil, fmt.Errorf("failed to materialize douyin cover image: %w", err)
 		}
-		if _, err := file.Write(data); err != nil {
-			_ = file.Close()
-			_ = os.Remove(file.Name())
-			return "", nil, fmt.Errorf("failed to write douyin cover image: %w", err)
-		}
-		if err := file.Close(); err != nil {
-			_ = os.Remove(file.Name())
-			return "", nil, fmt.Errorf("failed to close douyin cover image: %w", err)
-		}
-		return file.Name(), func() { _ = os.Remove(file.Name()) }, nil
+		return path, cleanup, nil
 	}
 
 	path, err := bundledDouyinImagePath()
