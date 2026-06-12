@@ -136,3 +136,63 @@ fn schema_validation_error(profile: &DraftProfile, reason: impl Into<String>) ->
         reason: reason.into(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::profiles;
+    use super::*;
+
+    #[test]
+    fn validates_schema_matching_profile() {
+        validate_adapted_content_json(
+            profile("wechat"),
+            r#"{"schema_version":1,"format":"html","html":"<p>Hello</p>","assets":[{"type":"image","source_url":"mpp://media/11111111-1111-1111-1111-111111111111","alt":"Hero"}]}"#,
+        )
+        .expect("valid adapted content should pass schema validation");
+    }
+
+    #[test]
+    fn rejects_schema_format_mismatch() {
+        let err = validate_adapted_content_json(
+            profile("zhihu"),
+            r#"{"schema_version":1,"format":"html","html":"<p>Hello</p>"}"#,
+        )
+        .expect_err("format mismatch should fail");
+
+        assert_schema_validation_reason(err, "format must match the draft profile");
+    }
+
+    #[test]
+    fn rejects_schema_missing_primary_content() {
+        let err = validate_adapted_content_json(
+            profile("x"),
+            r#"{"schema_version":1,"format":"text","summary":"Only summary"}"#,
+        )
+        .expect_err("missing text should fail");
+
+        assert_schema_validation_reason(err, "text content is required");
+    }
+
+    #[test]
+    fn rejects_schema_invalid_asset() {
+        let err = validate_adapted_content_json(
+            profile("douyin"),
+            r#"{"schema_version":1,"format":"text","text":"Hello","assets":[{"type":"image","source_url":""}]}"#,
+        )
+        .expect_err("empty source_url should fail");
+
+        assert_schema_validation_reason(err, "asset source_url is required");
+    }
+
+    fn profile(platform: &str) -> &'static DraftProfile {
+        profiles::resolve_draft_profile(platform, &format!("{platform}@v1"))
+            .expect("test profile should exist")
+    }
+
+    fn assert_schema_validation_reason(err: DraftCompileError, expected: &str) {
+        match err {
+            DraftCompileError::SchemaValidation { reason, .. } => assert_eq!(reason, expected),
+            other => panic!("expected schema validation error, got {other:?}"),
+        }
+    }
+}
