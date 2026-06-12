@@ -115,7 +115,10 @@ func (s *CookieStore) SaveForAccount(ctx context.Context, userID uuid.UUID, work
 
 	query := s.db.WithContext(ctx).Model(&models.PlatformAccount{})
 	if accountID != uuid.Nil {
-		query = query.Where("id = ?", accountID)
+		query = query.Where("id = ? AND platform = ?", accountID, platform)
+		if workspaceID != uuid.Nil {
+			query = query.Where("workspace_id = ?", workspaceID)
+		}
 	} else if profile.PlatformUserID != "" {
 		if workspaceID != uuid.Nil {
 			query = query.Where("workspace_id = ? AND platform = ? AND platform_user_id = ?", workspaceID, platform, profile.PlatformUserID)
@@ -133,6 +136,9 @@ func (s *CookieStore) SaveForAccount(ctx context.Context, userID uuid.UUID, work
 		return fmt.Errorf("failed to update platform account: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
+		if accountID != uuid.Nil {
+			return ErrCookieNotFound
+		}
 		// Create if not exists? Usually it should exist by the time we have a browser session.
 		// For safety, let's assume it might not exist if we allow direct connection.
 		account := models.PlatformAccount{
@@ -176,7 +182,7 @@ func (s *CookieStore) LoadForAccount(ctx context.Context, userID uuid.UUID, acco
 	var account models.PlatformAccount
 	query := s.db.WithContext(ctx)
 	if accountID != uuid.Nil {
-		query = query.Where("id = ?", accountID)
+		query = query.Where("id = ? AND platform = ?", accountID, platform)
 	} else {
 		query = query.Where("user_id = ? AND platform = ?", userID, platform)
 	}
