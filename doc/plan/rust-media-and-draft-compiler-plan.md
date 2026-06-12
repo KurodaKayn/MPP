@@ -397,11 +397,11 @@ Deliverables:
 
 The Rust service owns this storage integration directly. Do not add a Go-side processed-media upload proxy for this phase; that would create an extra migration surface to remove later.
 
-Rust output storage is required because processed-media responses carry object refs only. Supported `CONTENT_PIPELINE_MEDIA_OBJECT_STORE` values are `filesystem`, `r2`, and `s3`. The key configuration variables are:
+Rust output storage is required because processed-media responses carry object refs only. Supported `CONTENT_PIPELINE_MEDIA_OBJECT_STORE` values are `filesystem` and `r2`. R2 uses the existing S3-compatible object-storage client path with an explicit endpoint. The key configuration variables are:
 
 | Variable | Purpose |
 | --- | --- |
-| `CONTENT_PIPELINE_MEDIA_OBJECT_STORE` | Enables processed-media object output and selects `filesystem`, `r2`, or `s3`. |
+| `CONTENT_PIPELINE_MEDIA_OBJECT_STORE` | Enables processed-media object output and selects `filesystem` or `r2`. |
 | `CONTENT_PIPELINE_MEDIA_OBJECT_ROOT` | Filesystem root for local object-store mode. |
 | `CONTENT_PIPELINE_MEDIA_OBJECT_BUCKET`, `CONTENT_PIPELINE_MEDIA_OBJECT_ENDPOINT`, `CONTENT_PIPELINE_MEDIA_OBJECT_REGION` | S3/R2 bucket, endpoint, and region overrides. |
 | `CONTENT_PIPELINE_MEDIA_OBJECT_ACCESS_KEY_ID`, `CONTENT_PIPELINE_MEDIA_OBJECT_SECRET_ACCESS_KEY` | S3/R2 credentials; R2 mode can also use existing `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`. |
