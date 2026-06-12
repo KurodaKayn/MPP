@@ -626,6 +626,7 @@ func (s *Service) markPublicationFailed(ctx context.Context, projectID uuid.UUID
 		return err
 	}
 	s.invalidateDashboardCaches(ctx)
+	s.refreshProjectReadModel(ctx, projectID)
 	return nil
 }
 
