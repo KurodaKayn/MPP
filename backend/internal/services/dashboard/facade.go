@@ -32,6 +32,7 @@ var ErrInvalidProjectVersion = projectsvc.ErrInvalidProjectVersion
 var ErrInvalidWorkspace = workspacesvc.ErrInvalidWorkspace
 var ErrInvalidWorkspaceInvite = workspacesvc.ErrInvalidWorkspaceInvite
 var ErrInvalidWorkspaceMember = workspacesvc.ErrInvalidWorkspaceMember
+var ErrProjectDeletionBlocked = projectsvc.ErrProjectDeletionBlocked
 var ErrProjectCollabUnavailable = projectsvc.ErrProjectCollabUnavailable
 var ErrPublicationDisabled = publishsvc.ErrPublicationDisabled
 var ErrPublicationRequiresSync = publishsvc.ErrPublicationRequiresSync

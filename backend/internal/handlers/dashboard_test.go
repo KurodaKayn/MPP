@@ -322,6 +322,14 @@ func setContextUser(c echo.Context, userID uuid.UUID) {
 	}))
 }
 
+func countHandlerRows(t *testing.T, db *gorm.DB, model any, query string, args ...any) int64 {
+	t.Helper()
+
+	var count int64
+	require.NoError(t, db.Model(model).Where(query, args...).Count(&count).Error)
+	return count
+}
+
 type fakeAIContentEditor struct {
 	contentReq       dto.AIEditContentRequest
 	contentResp      *dto.AIEditContentResponse
@@ -781,6 +789,147 @@ func TestUserDashboardHandlerGetAndUpdateProject(t *testing.T) {
 	require.Equal(t, "Updated title", detail.Title)
 	require.Equal(t, "<p>Updated body</p>", detail.SourceContent)
 	require.Len(t, detail.Publications, 2)
+}
+
+func TestUserDashboardHandlerDeleteProjectReturnsNoContent(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "delete-owner", Email: "delete-owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Delete title",
+		SourceContent: "Delete body",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusDraft,
+	}).Error)
+
+	c, rec := newHandlerTestContext(e, http.MethodDelete, "/api/user/dashboard/projects/"+project.ID.String())
+	c.SetParamNames("id")
+	c.SetParamValues(project.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.DeleteProject(c))
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Empty(t, rec.Body.String())
+	require.Zero(t, countHandlerRows(t, db, &models.Project{}, "id = ?", project.ID))
+}
+
+func TestUserDashboardHandlerDeleteProjectRejectsInvalidUUID(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "delete-invalid", Email: "delete-invalid@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+
+	c, rec := newHandlerTestContext(e, http.MethodDelete, "/api/user/dashboard/projects/not-a-uuid")
+	c.SetParamNames("id")
+	c.SetParamValues("not-a-uuid")
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.DeleteProject(c))
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var resp dto.ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "invalid_request", resp.Error.Code)
+}
+
+func TestUserDashboardHandlerDeleteProjectReturnsNotFound(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "delete-missing", Email: "delete-missing@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	projectID := uuid.New()
+
+	c, rec := newHandlerTestContext(e, http.MethodDelete, "/api/user/dashboard/projects/"+projectID.String())
+	c.SetParamNames("id")
+	c.SetParamValues(projectID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.DeleteProject(c))
+	require.Equal(t, http.StatusNotFound, rec.Code)
+
+	var resp dto.ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "not_found", resp.Error.Code)
+}
+
+func TestUserDashboardHandlerDeleteProjectReturnsForbidden(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	owner := models.User{Username: "delete-forbidden-owner", Email: "delete-forbidden-owner@example.com"}
+	stranger := models.User{Username: "delete-forbidden-stranger", Email: "delete-forbidden-stranger@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&stranger).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		Title:         "Owner project",
+		SourceContent: "Owner body",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+
+	c, rec := newHandlerTestContext(e, http.MethodDelete, "/api/user/dashboard/projects/"+project.ID.String())
+	c.SetParamNames("id")
+	c.SetParamValues(project.ID.String())
+	setContextUser(c, stranger.ID)
+
+	require.NoError(t, handler.DeleteProject(c))
+	require.Equal(t, http.StatusForbidden, rec.Code)
+
+	var resp dto.ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "forbidden", resp.Error.Code)
+	require.Equal(t, int64(1), countHandlerRows(t, db, &models.Project{}, "id = ?", project.ID))
+}
+
+func TestUserDashboardHandlerDeleteProjectReturnsConflictForActivePublishing(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	user := models.User{Username: "delete-conflict", Email: "delete-conflict@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Publishing project",
+		SourceContent: "Publishing body",
+		Status:        models.ProjectStatusPublishing,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Enabled:   true,
+		Status:    models.PublicationStatusPublishing,
+	}).Error)
+
+	c, rec := newHandlerTestContext(e, http.MethodDelete, "/api/user/dashboard/projects/"+project.ID.String())
+	c.SetParamNames("id")
+	c.SetParamValues(project.ID.String())
+	setContextUser(c, user.ID)
+
+	require.NoError(t, handler.DeleteProject(c))
+	require.Equal(t, http.StatusConflict, rec.Code)
+
+	var resp dto.ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "conflict", resp.Error.Code)
+	require.Equal(t, int64(1), countHandlerRows(t, db, &models.Project{}, "id = ?", project.ID))
 }
 
 func TestUserDashboardHandlerProjectCollaborators(t *testing.T) {

@@ -186,6 +186,7 @@ func registerUserDashboardRoutes(e *echo.Echo, config serverConfig, h serverHand
 	userGroup.POST("/projects", h.userDashboard.CreateProject)
 	userGroup.GET("/projects/:id", h.userDashboard.GetMyProject)
 	userGroup.PUT("/projects/:id", h.userDashboard.UpdateProject)
+	userGroup.DELETE("/projects/:id", h.userDashboard.DeleteProject)
 	userGroup.GET("/projects/:id/collaborators", h.userDashboard.ListProjectCollaborators)
 	userGroup.POST("/projects/:id/collaborators", h.userDashboard.AddProjectCollaborator)
 	userGroup.PATCH("/projects/:id/collaborators/:userId", h.userDashboard.UpdateProjectCollaborator)

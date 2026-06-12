@@ -21,6 +21,7 @@ var ErrForbidden = publishsvc.ErrForbidden
 var ErrInvalidProject = errors.New("invalid project")
 var ErrInvalidProjectCollaborator = errors.New("invalid project collaborator")
 var ErrProjectCollabUnavailable = errors.New("project collaboration unavailable")
+var ErrProjectDeletionBlocked = errors.New("project deletion blocked")
 
 const dashboardProjectListCacheTTL = 15 * time.Second
 
