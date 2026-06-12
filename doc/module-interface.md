@@ -260,10 +260,14 @@ This endpoint lets `content-pipeline-service` exchange an object ref for a short
 | `COLLAB_TOKEN_SECRET` | Yes when collaboration is enabled | Falls back to `JWT_SECRET` | Signs collab session tokens and authorizes collab internal API calls |
 | `COLLAB_INTERNAL_URL` | No | `http://localhost:8090` | Backend-to-Collab Service URL |
 | `COLLAB_WEBSOCKET_URL_BASE` | No | `ws://localhost:8090` | WebSocket base URL returned to the frontend |
-| `OBJECT_STORAGE_PROVIDER` | No | disabled | Set to `r2` to enable media upload storage |
+| `OBJECT_STORAGE_PROVIDER` | No | disabled | Set to `r2` to enable media uploads and archive exports |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Yes when R2 is enabled | None | R2 object storage settings |
 | `R2_ENDPOINT`, `R2_REGION` | Partially required when R2 is enabled | endpoint can be inferred from account id; region defaults to `auto` | R2 endpoint and region |
 | `MEDIA_UPLOAD_URL_TTL`, `MEDIA_DOWNLOAD_URL_TTL` | No | `10m`, `5m` | Signed upload/download URL TTLs |
+| `EVENT_ARCHIVE_ENABLED` | No | `false` | Enables the cold event archive worker when R2/S3 object storage is configured |
+| `EVENT_ARCHIVE_INTERVAL`, `EVENT_ARCHIVE_BATCH_SIZE`, `EVENT_ARCHIVE_OBJECT_PREFIX` | No | `24h`, `500`, `archives/database` | Archive worker cadence, per-table batch size, and object key prefix |
+| `PUBLISH_EVENT_RETENTION_DAYS`, `EXTENSION_EXECUTION_EVENT_RETENTION_DAYS` | No | `180`, `180` | Hot-table retention for publish and extension execution events |
+| `PROJECT_ACTIVITY_RETENTION_DAYS`, `WORKSPACE_ACTIVITY_RETENTION_DAYS`, `BROWSER_SESSION_HISTORY_RETENTION_DAYS` | No | `365`, `365`, `90` | Hot-table retention for activity history and terminal browser sessions |
 | `COOKIE_ENCRYPTION_KEY` | Yes when remote browser accounts are enabled | None | Cookie encryption key; the code expects 32 bytes |
 | `APP_RATE_LIMIT_ENABLED`, `APP_RATE_LIMIT_KEY_PREFIX` | No | Enabled in templates | Application-level rate limiting |
 | `X_OAUTH2_CLIENT_ID`, `X_OAUTH2_CLIENT_SECRET`, `X_OAUTH2_REDIRECT_URL` | Yes when X OAuth2 is enabled | None | X OAuth2 settings |
