@@ -37,8 +37,6 @@ configMapGenerator:
       - COLLAB_WEBSOCKET_URL_BASE=wss://mpp-staging.example.invalid
       - LLM_PROVIDER_URL=https://llm.staging.example.invalid/v1
       - LLM_MODEL=staging-validation-model
-      - CONTENT_PIPELINE_MEDIA_ENABLED=false
-      - CONTENT_PIPELINE_DRAFTS_ENABLED=false
 
 secretGenerator:
   - name: mpp-app-secrets
