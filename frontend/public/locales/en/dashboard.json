@@ -439,7 +439,7 @@
     },
     "userFallback": "Collaborator"
   },
-    "content": {
+  "content": {
     "header": {
       "titleCreate": "Content Creation",
       "titleEdit": "Edit Content",
