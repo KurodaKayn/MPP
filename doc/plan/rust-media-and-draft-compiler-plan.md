@@ -74,7 +74,7 @@ Business APIs should be gRPC-first. HTTP should only be used for operational end
 | Platform asset adaptation | Yes | Convert source assets into platform-ready asset descriptors. |
 | Draft compilation | Yes | Compile source project content into platform draft payloads. |
 | Draft schema validation | Yes | Validate input and output against versioned platform draft schemas. |
-| Object storage upload | Partial | Rust can optionally write processed media to object storage and return internal object refs; inline bytes remain the default until callers consume the refs. |
+| Object storage upload | Yes | Rust writes processed media to object storage and returns internal object refs; callers consume `object_ref` rather than inline byte payloads. |
 | Platform API publishing | No | Publishing execution remains in Go for this phase. |
 | Browser automation | No | Browser-based publishing stays in `browser-worker`. |
 | User permissions | No | Go backend remains the permission boundary. |
@@ -178,10 +178,8 @@ message ProcessAssetResponse {
 }
 
 message ProcessedAsset {
-  oneof content {
-    bytes inline_bytes = 1;
-    string object_ref = 2;
-  }
+  reserved 1;
+  string object_ref = 2;
   string mime_type = 3;
   uint64 byte_size = 4;
   uint32 width = 5;
@@ -190,7 +188,7 @@ message ProcessedAsset {
 }
 ```
 
-For the first version, returning `inline_bytes` is acceptable for small assets. Once object storage is introduced, the service should prefer returning `object_ref` instead.
+Processed media responses use `object_ref` only. The Rust service must be configured with processed-media object storage before it can serve media processing requests.
 
 ### 6.4 Why This Should Not Stay in Go Long Term
 
@@ -399,7 +397,7 @@ Deliverables:
 
 The Rust service owns this storage integration directly. Do not add a Go-side processed-media upload proxy for this phase; that would create an extra migration surface to remove later.
 
-Rust output storage is disabled unless `CONTENT_PIPELINE_MEDIA_OBJECT_STORE` is set. Supported values are `filesystem`, `r2`, and `s3`. The key configuration variables are:
+Rust output storage is required because processed-media responses carry object refs only. Supported `CONTENT_PIPELINE_MEDIA_OBJECT_STORE` values are `filesystem`, `r2`, and `s3`. The key configuration variables are:
 
 | Variable | Purpose |
 | --- | --- |
@@ -409,7 +407,6 @@ Rust output storage is disabled unless `CONTENT_PIPELINE_MEDIA_OBJECT_STORE` is 
 | `CONTENT_PIPELINE_MEDIA_OBJECT_ACCESS_KEY_ID`, `CONTENT_PIPELINE_MEDIA_OBJECT_SECRET_ACCESS_KEY` | S3/R2 credentials; R2 mode can also use existing `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`. |
 | `CONTENT_PIPELINE_MEDIA_OBJECT_PREFIX` | Object key prefix; defaults to `content-pipeline/processed-media`. Attach lifecycle expiration to this prefix. |
 | `CONTENT_PIPELINE_MEDIA_OBJECT_REF_PREFIX` | Internal ref prefix; defaults to `mpp://content-pipeline/media/`. |
-| `CONTENT_PIPELINE_MEDIA_OBJECT_MIN_BYTES` | Minimum processed byte size for object-ref output; defaults to `0` once output storage is enabled. |
 | `CONTENT_PIPELINE_MEDIA_OBJECT_RETENTION_DAYS` | Retention metadata/tag value; defaults to `7`. |
 
 Acceptance:
@@ -515,7 +512,7 @@ This plan does not include:
 | Risk | Mitigation |
 | --- | --- |
 | The service boundary adds latency. | Batch draft compilation by project and targets; keep media processing async where possible. |
-| Byte payloads become expensive over gRPC. | Use object references after Phase 3; keep inline bytes only for small initial cases. |
+| Byte payloads become expensive over gRPC. | Return object references for processed media and let platform upload boundaries materialize bytes only when required. |
 | Draft output changes unexpectedly. | Use fixtures, golden tests, and profile versioning. |
 | Platform rules duplicate Go logic during migration. | Keep platform media and draft rules in Rust profiles and leave Go as the orchestration boundary. |
 | Rust service failure blocks prepublish sync. | Treat `content-pipeline-service` as a required dependency and surface structured service errors. |
