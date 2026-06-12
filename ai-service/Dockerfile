@@ -1,5 +1,7 @@
+FROM ghcr.io/astral-sh/uv:0.11.21 AS uv
+
 FROM python:3.12-alpine AS builder
-RUN pip install uv -i https://pypi.tuna.tsinghua.edu.cn/simple
+COPY --from=uv /uv /uvx /bin/
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 WORKDIR /app
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -11,7 +13,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 FROM python:3.12-alpine AS dev
-RUN pip install uv -i https://pypi.tuna.tsinghua.edu.cn/simple
+COPY --from=uv /uv /uvx /bin/
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
