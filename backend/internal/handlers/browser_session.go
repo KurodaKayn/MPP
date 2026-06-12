@@ -82,6 +82,9 @@ func (h *BrowserSessionHandler) StartSession(c echo.Context) error {
 		if errors.Is(err, browsersession.ErrPlatformNotSupported) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		}
+		if errors.Is(err, browsersession.ErrPlatformAccountForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}
 
@@ -293,6 +296,9 @@ func (h *BrowserSessionHandler) CompleteSession(c echo.Context) error {
 		}
 		if errors.Is(err, browsersession.ErrLoginNotDetected) || errors.Is(err, browsersession.ErrSessionNotReady) {
 			return sendError(c, http.StatusUnprocessableEntity, "unprocessable_entity", err.Error())
+		}
+		if errors.Is(err, browsersession.ErrPlatformAccountForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 	}

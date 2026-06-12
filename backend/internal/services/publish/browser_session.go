@@ -66,7 +66,7 @@ func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.
 	if project.WorkspaceID != nil {
 		workspaceID = *project.WorkspaceID
 	}
-	resp, err := s.browserSessionService.StartSessionForWorkspace(ctx, userID, "", workspaceID, account.ID, "douyin")
+	resp, err := s.browserSessionService.StartPreauthorizedSessionForWorkspace(ctx, userID, "", workspaceID, account.ID, "douyin")
 	if err != nil {
 		if !errors.Is(err, browsersession.ErrActiveSessionExists) {
 			return nil, err
@@ -74,7 +74,7 @@ func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.
 		if cleanupErr := s.cancelActiveDouyinBrowserSessions(ctx, userID); cleanupErr != nil {
 			return nil, cleanupErr
 		}
-		resp, err = s.browserSessionService.StartSessionForWorkspace(ctx, userID, "", workspaceID, account.ID, "douyin")
+		resp, err = s.browserSessionService.StartPreauthorizedSessionForWorkspace(ctx, userID, "", workspaceID, account.ID, "douyin")
 		if err != nil {
 			return nil, err
 		}

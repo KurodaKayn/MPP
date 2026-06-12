@@ -23,13 +23,27 @@ func (s *BrowserSessionService) StartSessionForTenant(ctx context.Context, userI
 }
 
 func (s *BrowserSessionService) StartSessionForWorkspace(ctx context.Context, userID uuid.UUID, tenantID string, workspaceID uuid.UUID, accountID uuid.UUID, platform string) (*dto.StartBrowserSessionResponse, error) {
+	return s.startSessionForWorkspace(ctx, userID, tenantID, workspaceID, accountID, platform, true)
+}
+
+func (s *BrowserSessionService) StartPreauthorizedSessionForWorkspace(ctx context.Context, userID uuid.UUID, tenantID string, workspaceID uuid.UUID, accountID uuid.UUID, platform string) (*dto.StartBrowserSessionResponse, error) {
+	return s.startSessionForWorkspace(ctx, userID, tenantID, workspaceID, accountID, platform, false)
+}
+
+func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, userID uuid.UUID, tenantID string, workspaceID uuid.UUID, accountID uuid.UUID, platform string, authorizeTarget bool) (*dto.StartBrowserSessionResponse, error) {
 	adapter, ok := s.adapters[platform]
 	if !ok {
 		return nil, ErrPlatformNotSupported
 	}
 
 	tenantID = normalizeBrowserSessionTenantID(tenantID)
-	if workspaceID == uuid.Nil {
+	if authorizeTarget {
+		var err error
+		workspaceID, err = s.authorizeSessionTarget(ctx, userID, workspaceID, accountID, platform)
+		if err != nil {
+			return nil, err
+		}
+	} else if workspaceID == uuid.Nil {
 		workspaceID = models.PersonalWorkspaceID(userID)
 	}
 	now := time.Now()
