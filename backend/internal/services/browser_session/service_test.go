@@ -278,6 +278,64 @@ func TestBrowserSessionService_StartSessionRejectsUnauthorizedWorkspace(t *testi
 	assert.Zero(t, attackerSessions)
 }
 
+func TestBrowserSessionService_CompleteSessionRejectsUnauthorizedStoredPlatformAccount(t *testing.T) {
+	db, svc, worker := setupBrowserSessionTest(t)
+	ctx := context.Background()
+	attackerID := uuid.New()
+	victimID := uuid.New()
+	victimWorkspaceID := models.PersonalWorkspaceID(victimID)
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+	store := publisher.NewCookieStore(db)
+
+	require.NoError(t, store.SaveForAccount(ctx, victimID, victimWorkspaceID, uuid.Nil, "douyin", []publisher.Cookie{
+		{Name: "sessionid", Value: "victim-session", Domain: ".douyin.com", Path: "/"},
+		{Name: "sid_guard", Value: "victim-guard", Domain: ".douyin.com", Path: "/"},
+		{Name: "passport_csrf_token", Value: "victim-csrf", Domain: ".douyin.com", Path: "/"},
+	}, publisher.RemoteAccountProfile{
+		Username:       "victim",
+		PlatformUserID: "victim-platform-user",
+	}))
+
+	var victimAccount models.PlatformAccount
+	require.NoError(t, db.Where("workspace_id = ? AND platform = ?", victimWorkspaceID, "douyin").First(&victimAccount).Error)
+
+	workerResp, err := worker.CreateSession(ctx, publisher.StartWorkerSessionRequest{
+		SessionID:  uuid.New(),
+		UserID:     attackerID,
+		Platform:   "douyin",
+		TTLSeconds: 900,
+	})
+	require.NoError(t, err)
+
+	now := time.Now()
+	sessionID := uuid.New()
+	require.NoError(t, db.Create(&models.RemoteBrowserSession{
+		ID:                    sessionID,
+		UserID:                attackerID,
+		WorkspaceID:           &victimWorkspaceID,
+		PlatformAccountID:     &victimAccount.ID,
+		Platform:              "douyin",
+		Status:                models.BrowserSessionStatusReady,
+		WorkerSessionRef:      workerResp.WorkerSessionRef,
+		ConnectTokenHash:      "token-hash",
+		ConnectTokenExpiresAt: now.Add(5 * time.Minute),
+		CreatedAt:             now,
+		ExpiresAt:             now.Add(15 * time.Minute),
+	}).Error)
+
+	_, err = svc.CompleteSession(ctx, attackerID, sessionID)
+	require.Error(t, err)
+
+	var unchanged models.PlatformAccount
+	require.NoError(t, db.First(&unchanged, "id = ?", victimAccount.ID).Error)
+	assert.Equal(t, "victim", unchanged.Username)
+	assert.Equal(t, "victim-platform-user", unchanged.PlatformUserID)
+
+	cookies, err := store.LoadForAccount(ctx, victimID, victimAccount.ID, "douyin")
+	require.NoError(t, err)
+	assert.Contains(t, cookies, publisher.Cookie{Name: "sessionid", Value: "victim-session", Domain: ".douyin.com", Path: "/"})
+}
+
 func TestBrowserSessionService_GetStreamEndpointRejectsExpiredDatabaseToken(t *testing.T) {
 	db, svc, _ := setupBrowserSessionTest(t)
 	userID := uuid.New()
