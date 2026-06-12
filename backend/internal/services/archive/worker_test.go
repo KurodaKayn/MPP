@@ -3,14 +3,18 @@ package archive
 import (
 	"bufio"
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -30,17 +34,20 @@ func TestWorkerRunOnceArchivesColdEventsAndDeletesRows(t *testing.T) {
 	publicationID := uuid.New()
 	jobID := uuid.New()
 
-	coldEvent := models.PublishEvent{
-		PublicationID:  publicationID,
-		ProjectID:      projectID,
-		UserID:         userID,
-		Platform:       "wechat",
-		JobID:          jobID,
-		IdempotencyKey: "cold",
-		EventType:      "publish.completed",
-		Status:         models.PublicationStatusSucceeded,
-		Metadata:       datatypes.JSON(`{"source":"test"}`),
-		CreatedAt:      coldCreatedAt,
+	coldEvents := []models.PublishEvent{}
+	for i := range 3 {
+		coldEvents = append(coldEvents, models.PublishEvent{
+			PublicationID:  publicationID,
+			ProjectID:      projectID,
+			UserID:         userID,
+			Platform:       "wechat",
+			JobID:          jobID,
+			IdempotencyKey: "cold-" + string(rune('a'+i)),
+			EventType:      "publish.completed",
+			Status:         models.PublicationStatusSucceeded,
+			Metadata:       datatypes.JSON(`{"source":"test"}`),
+			CreatedAt:      coldCreatedAt.Add(time.Duration(i) * time.Second),
+		})
 	}
 	hotEvent := models.PublishEvent{
 		PublicationID:  publicationID,
@@ -54,8 +61,10 @@ func TestWorkerRunOnceArchivesColdEventsAndDeletesRows(t *testing.T) {
 		Metadata:       datatypes.JSON(`{}`),
 		CreatedAt:      hotCreatedAt,
 	}
-	if err := db.Create(&coldEvent).Error; err != nil {
-		t.Fatalf("create cold publish event: %v", err)
+	for i := range coldEvents {
+		if err := db.Create(&coldEvents[i]).Error; err != nil {
+			t.Fatalf("create cold publish event: %v", err)
+		}
 	}
 	if err := db.Create(&hotEvent).Error; err != nil {
 		t.Fatalf("create hot publish event: %v", err)
@@ -64,7 +73,7 @@ func TestWorkerRunOnceArchivesColdEventsAndDeletesRows(t *testing.T) {
 	worker := NewWorker(db, storage, Config{
 		Enabled:                          true,
 		Interval:                         time.Hour,
-		BatchSize:                        10,
+		BatchSize:                        2,
 		ObjectKeyPrefix:                  "test-archive",
 		PublishEventRetention:            180 * 24 * time.Hour,
 		ExtensionExecutionEventRetention: 180 * 24 * time.Hour,
@@ -78,8 +87,11 @@ func TestWorkerRunOnceArchivesColdEventsAndDeletesRows(t *testing.T) {
 	}
 
 	publishResult := tableResult(result, "publish_events")
-	if publishResult.RowsArchived != 1 {
-		t.Fatalf("expected one archived publish event, got %d", publishResult.RowsArchived)
+	if publishResult.RowsArchived != 3 {
+		t.Fatalf("expected three archived publish events, got %d", publishResult.RowsArchived)
+	}
+	if len(publishResult.ObjectKeys) != 2 {
+		t.Fatalf("expected two archive objects, got %#v", publishResult.ObjectKeys)
 	}
 	if !strings.HasPrefix(publishResult.ObjectKey, "test-archive/publish_events/cutoff_date=2025-12-13/") {
 		t.Fatalf("unexpected archive object key %q", publishResult.ObjectKey)
@@ -93,17 +105,27 @@ func TestWorkerRunOnceArchivesColdEventsAndDeletesRows(t *testing.T) {
 		t.Fatalf("expected only hot event to remain, got %#v", remaining)
 	}
 
-	body := readObject(t, storage, publishResult.ObjectKey)
-	lines := jsonLines(t, body)
-	if len(lines) != 1 {
-		t.Fatalf("expected one archived JSONL row, got %d", len(lines))
+	archivedIDs := map[string]bool{}
+	totalLines := 0
+	for _, objectKey := range publishResult.ObjectKeys {
+		body := readObject(t, storage, objectKey)
+		lines := jsonLines(t, body)
+		totalLines += len(lines)
+		for _, line := range lines {
+			if line["table"] != "publish_events" {
+				t.Fatalf("expected table metadata, got %#v", line["table"])
+			}
+			row := line["row"].(map[string]any)
+			archivedIDs[row["ID"].(string)] = true
+		}
 	}
-	if lines[0]["table"] != "publish_events" {
-		t.Fatalf("expected table metadata, got %#v", lines[0]["table"])
+	if totalLines != len(coldEvents) {
+		t.Fatalf("expected %d archived JSONL rows, got %d", len(coldEvents), totalLines)
 	}
-	row := lines[0]["row"].(map[string]any)
-	if row["ID"] != coldEvent.ID.String() {
-		t.Fatalf("expected archived row ID %s, got %#v", coldEvent.ID, row["ID"])
+	for _, coldEvent := range coldEvents {
+		if !archivedIDs[coldEvent.ID.String()] {
+			t.Fatalf("expected archived row ID %s, got %#v", coldEvent.ID, archivedIDs)
+		}
 	}
 }
 
@@ -173,6 +195,33 @@ func TestWorkerRunOnceArchivesOnlyTerminalColdBrowserSessions(t *testing.T) {
 	}
 }
 
+func TestRunOnceSkipsWhenPostgresArchiveLockIsHeld(t *testing.T) {
+	state := &archiveLockTestState{tryLockResult: false}
+	db := openArchiveLockTestDB(t, state)
+	worker := NewWorker(db, fake.NewClient(), Config{
+		Enabled:                          true,
+		Interval:                         time.Hour,
+		BatchSize:                        10,
+		ObjectKeyPrefix:                  "test-archive",
+		PublishEventRetention:            180 * 24 * time.Hour,
+		ExtensionExecutionEventRetention: 180 * 24 * time.Hour,
+		ProjectActivityRetention:         365 * 24 * time.Hour,
+		WorkspaceActivityRetention:       365 * 24 * time.Hour,
+		BrowserSessionHistoryRetention:   90 * 24 * time.Hour,
+	})
+
+	result, err := worker.RunOnce(context.Background(), time.Date(2026, 6, 11, 10, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("run archive worker: %v", err)
+	}
+	if len(result.Tables) != 0 {
+		t.Fatalf("expected lock-held run to skip archive tables, got %#v", result.Tables)
+	}
+	if len(state.queries) != 1 || !strings.Contains(state.queries[0], "pg_try_advisory_lock") {
+		t.Fatalf("expected only advisory lock query, got %#v", state.queries)
+	}
+}
+
 func tableResult(result RunResult, table string) TableResult {
 	for _, tableResult := range result.Tables {
 		if tableResult.Table == table {
@@ -180,6 +229,102 @@ func tableResult(result RunResult, table string) TableResult {
 		}
 	}
 	return TableResult{}
+}
+
+var registerArchiveLockDriverOnce sync.Once
+var archiveLockDriverState *archiveLockTestState
+
+type archiveLockTestState struct {
+	tryLockResult bool
+	queries       []string
+}
+
+type archiveLockDriver struct{}
+
+func (archiveLockDriver) Open(_ string) (driver.Conn, error) {
+	return &archiveLockConn{state: archiveLockDriverState}, nil
+}
+
+type archiveLockConn struct {
+	state *archiveLockTestState
+}
+
+func (c *archiveLockConn) Prepare(_ string) (driver.Stmt, error) {
+	return nil, driver.ErrSkip
+}
+
+func (c *archiveLockConn) Close() error {
+	return nil
+}
+
+func (c *archiveLockConn) Begin() (driver.Tx, error) {
+	return archiveLockTx{}, nil
+}
+
+func (c *archiveLockConn) QueryContext(_ context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
+	c.state.queries = append(c.state.queries, query)
+	if strings.Contains(query, "pg_try_advisory_lock") {
+		return &archiveLockRows{value: c.state.tryLockResult}, nil
+	}
+	if strings.Contains(query, "pg_advisory_unlock") {
+		return &archiveLockRows{value: true}, nil
+	}
+	return nil, driver.ErrSkip
+}
+
+type archiveLockTx struct{}
+
+func (archiveLockTx) Commit() error {
+	return nil
+}
+
+func (archiveLockTx) Rollback() error {
+	return nil
+}
+
+type archiveLockRows struct {
+	value bool
+	read  bool
+}
+
+func (r *archiveLockRows) Columns() []string {
+	return []string{"locked"}
+}
+
+func (r *archiveLockRows) Close() error {
+	return nil
+}
+
+func (r *archiveLockRows) Next(dest []driver.Value) error {
+	if r.read {
+		return io.EOF
+	}
+	dest[0] = r.value
+	r.read = true
+	return nil
+}
+
+func openArchiveLockTestDB(t *testing.T, state *archiveLockTestState) *gorm.DB {
+	t.Helper()
+	registerArchiveLockDriverOnce.Do(func() {
+		sql.Register("archive-lock-test", archiveLockDriver{})
+	})
+	archiveLockDriverState = state
+	sqlDB, err := sql.Open("archive-lock-test", "")
+	if err != nil {
+		t.Fatalf("open archive lock sql db: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = sqlDB.Close()
+	})
+	db, err := gorm.Open(postgres.New(postgres.Config{
+		Conn:                 sqlDB,
+		PreferSimpleProtocol: true,
+	}), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open archive lock gorm db: %v", err)
+	}
+	return db
 }
 
 func setupArchiveTestDB(t *testing.T) *gorm.DB {
