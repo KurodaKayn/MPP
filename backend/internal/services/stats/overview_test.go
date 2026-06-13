@@ -65,7 +65,7 @@ func TestGetStatsUsesCompleteWorkspaceReadModel(t *testing.T) {
 
 	require.NoError(t, db.Create(&models.User{ID: userID, Username: "stats-readmodel", Email: "stats-readmodel@example.com", PasswordHash: "hash"}).Error)
 	require.NoError(t, db.Create(&models.Workspace{ID: workspaceID, OwnerUserID: userID, Name: "Stats read model", Status: models.WorkspaceStatusActive, CreatedAt: now, UpdatedAt: now}).Error)
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		project := models.Project{
 			ID:            uuid.New(),
 			UserID:        userID,
@@ -113,7 +113,7 @@ func TestGetStatsFallsBackWhenWorkspaceReadModelProjectTotalMismatchesFacts(t *t
 
 	require.NoError(t, db.Create(&models.User{ID: userID, Username: "stats-mismatch", Email: "stats-mismatch@example.com", PasswordHash: "hash"}).Error)
 	require.NoError(t, db.Create(&models.Workspace{ID: workspaceID, OwnerUserID: userID, Name: "Stats mismatch", Status: models.WorkspaceStatusActive, CreatedAt: now, UpdatedAt: now}).Error)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		require.NoError(t, db.Create(&models.Project{
 			ID:            uuid.New(),
 			UserID:        userID,
