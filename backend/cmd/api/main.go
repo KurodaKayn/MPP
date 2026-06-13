@@ -119,6 +119,7 @@ func main() {
 	emailService := baseEmailService
 	workerErrors := make(chan error, 1)
 	var workerWG sync.WaitGroup
+	var readModelWorkerErrors <-chan error
 	if redisClient != nil {
 		asyncEmailService := email.NewAsyncEmailService(redisClient)
 		emailService = asyncEmailService
@@ -132,6 +133,7 @@ func main() {
 					}
 				}
 			})
+			readModelWorkerErrors = dashboardService.StartDashboardReadModelRebuildWorkerWithErrors(rootCtx)
 		}
 	}
 
@@ -194,6 +196,11 @@ func main() {
 		}
 	case err := <-workerErrors:
 		log.Fatalf("email worker stopped: %v", err)
+	case err := <-readModelWorkerErrors:
+		ready.Store(false)
+		if err != nil {
+			log.Fatalf("dashboard read model rebuild worker stopped: %v", err)
+		}
 	case <-rootCtx.Done():
 		ready.Store(false)
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)

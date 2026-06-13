@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::ops::Deref;
 
@@ -28,6 +29,15 @@ pub(super) fn html_image_assets(value: &str) -> Vec<HtmlImageAsset> {
     assets
 }
 
+pub(super) fn html_lossy_warnings(value: &str) -> Vec<String> {
+    let fragment = Html::parse_fragment(value);
+    let mut warnings = BTreeSet::new();
+    for child in fragment.tree.root().children() {
+        collect_lossy_warnings(child, &mut warnings);
+    }
+    warnings.into_iter().collect()
+}
+
 #[derive(Default)]
 struct TextRenderer {
     output: String,
@@ -38,6 +48,9 @@ impl TextRenderer {
         match node.value() {
             Node::Text(text) => self.write_text(text.deref()),
             Node::Element(element) => {
+                if is_non_content_element(element.name()) {
+                    return;
+                }
                 if element.name() == "br" {
                     self.output.push('\n');
                 }
@@ -126,6 +139,10 @@ impl MarkdownRenderer {
     }
 
     fn render_element(&mut self, node: NodeRef<'_, Node>, name: &str) {
+        if is_non_content_element(name) {
+            return;
+        }
+
         match name {
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                 self.ensure_blank_line();
@@ -322,6 +339,33 @@ fn collect_image_assets(node: NodeRef<'_, Node>, assets: &mut Vec<HtmlImageAsset
     }
 }
 
+fn collect_lossy_warnings(node: NodeRef<'_, Node>, warnings: &mut BTreeSet<String>) {
+    if let Node::Element(element) = node.value() {
+        let name = element.name();
+        if is_unsupported_element(name) {
+            warnings.insert(format!(
+                "unsupported HTML element <{name}> may be dropped or sanitized"
+            ));
+        }
+        for (attr_name, attr_value) in element.attrs() {
+            if attr_name.to_ascii_lowercase().starts_with("on") {
+                warnings.insert(format!(
+                    "event handler attribute {attr_name} may be dropped or sanitized"
+                ));
+            }
+            if is_url_attribute(attr_name) && has_unsafe_url_scheme(attr_value) {
+                warnings.insert(format!(
+                    "unsafe URL in {attr_name} attribute may be dropped or sanitized"
+                ));
+            }
+        }
+    }
+
+    for child in node.children() {
+        collect_lossy_warnings(child, warnings);
+    }
+}
+
 fn element_name(node: NodeRef<'_, Node>) -> Option<&str> {
     match node.value() {
         Node::Element(element) => Some(element.name()),
@@ -347,6 +391,41 @@ fn is_block_element(name: &str) -> bool {
             | "p"
             | "section"
     )
+}
+
+fn is_non_content_element(name: &str) -> bool {
+    matches!(name, "script" | "style" | "template" | "noscript")
+}
+
+fn is_unsupported_element(name: &str) -> bool {
+    matches!(
+        name,
+        "audio"
+            | "button"
+            | "canvas"
+            | "embed"
+            | "form"
+            | "iframe"
+            | "input"
+            | "link"
+            | "meta"
+            | "object"
+            | "script"
+            | "select"
+            | "style"
+            | "svg"
+            | "textarea"
+            | "video"
+    )
+}
+
+fn is_url_attribute(name: &str) -> bool {
+    matches!(name, "href" | "src" | "poster" | "xlink:href")
+}
+
+fn has_unsafe_url_scheme(value: &str) -> bool {
+    let value = value.trim_start().to_ascii_lowercase();
+    value.starts_with("javascript:")
 }
 
 fn collapse_inline_whitespace(value: &str) -> String {

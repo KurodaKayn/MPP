@@ -63,6 +63,43 @@ fn reports_truncation_warning_and_matching_summary() {
 }
 
 #[test]
+fn reports_lossy_html_warnings_and_drops_script_text() {
+    let output = compile_output(
+        "x",
+        "x@v1",
+        "",
+        "html",
+        r#"<p onclick="steal()">Visible</p><script>alert("secret")</script><a href="javascript:steal()">bad</a><iframe src="https://example.com/embed"></iframe>"#,
+    )
+    .expect("x draft should compile with warnings");
+    let adapted_content = decode_adapted_content(&output);
+    let text = adapted_content["text"].as_str().expect("text output");
+
+    assert!(text.contains("Visible"));
+    assert!(!text.contains("secret"));
+    assert!(
+        output
+            .warnings
+            .contains(&"event handler attribute onclick may be dropped or sanitized".to_string())
+    );
+    assert!(
+        output
+            .warnings
+            .contains(&"unsafe URL in href attribute may be dropped or sanitized".to_string())
+    );
+    assert!(
+        output
+            .warnings
+            .contains(&"unsupported HTML element <iframe> may be dropped or sanitized".to_string())
+    );
+    assert!(
+        output
+            .warnings
+            .contains(&"unsupported HTML element <script> may be dropped or sanitized".to_string())
+    );
+}
+
+#[test]
 fn rejects_unsupported_source_format() {
     let err = compile_output("x", "x@v1", "Hello", "markdown", "# Hello")
         .expect_err("markdown input is not supported yet");

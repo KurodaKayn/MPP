@@ -35,6 +35,14 @@ func (s *Service) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse,
 }
 
 func (s *Service) computeStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
+	if scopeUserID == nil && s.canUseReadModels() {
+		if stats, ok, err := s.globalStatsFromReadModel(); err != nil {
+			return nil, err
+		} else if ok {
+			return stats, nil
+		}
+	}
+
 	var stats dto.DashboardStatsResponse
 	readDB := s.statsReadDB(scopeUserID)
 
@@ -81,6 +89,57 @@ func (s *Service) computeStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsRespo
 	}
 
 	return &stats, nil
+}
+
+func (s *Service) globalStatsFromReadModel() (*dto.DashboardStatsResponse, bool, error) {
+	readDB := s.eventualReadDB()
+	var workspaceCount int64
+	if err := readDB.Model(&models.Workspace{}).Count(&workspaceCount).Error; err != nil {
+		return nil, false, err
+	}
+	if workspaceCount == 0 {
+		return nil, false, nil
+	}
+	var statsRows int64
+	if err := readDB.Model(&models.WorkspaceDashboardStats{}).Count(&statsRows).Error; err != nil {
+		return nil, false, err
+	}
+	if statsRows != workspaceCount {
+		return nil, false, nil
+	}
+
+	var totals struct {
+		TotalProjects              int64
+		TotalPublishedPublications int64
+		TotalFailedPublications    int64
+	}
+	if err := readDB.Model(&models.WorkspaceDashboardStats{}).
+		Select(`
+			COALESCE(SUM(total_projects), 0) AS total_projects,
+			COALESCE(SUM(total_published_publications), 0) AS total_published_publications,
+			COALESCE(SUM(total_failed_publications), 0) AS total_failed_publications
+		`).
+		Scan(&totals).Error; err != nil {
+		return nil, false, err
+	}
+
+	var factProjectsCount int64
+	if err := readDB.Model(&models.Project{}).Count(&factProjectsCount).Error; err != nil {
+		return nil, false, err
+	}
+	if totals.TotalProjects != factProjectsCount {
+		return nil, false, nil
+	}
+
+	stats := dto.DashboardStatsResponse{
+		TotalProjects:              totals.TotalProjects,
+		TotalPublishedPublications: totals.TotalPublishedPublications,
+		TotalFailedPublications:    totals.TotalFailedPublications,
+	}
+	if err := readDB.Model(&models.User{}).Count(&stats.TotalUsers).Error; err != nil {
+		return nil, false, err
+	}
+	return &stats, true, nil
 }
 
 func (s *Service) getCachedStats() (*dto.DashboardStatsResponse, error) {
@@ -196,19 +255,38 @@ func (s *Service) GetWorkspaceStats(workspaceID uuid.UUID, scopeUserID uuid.UUID
 	if _, err := s.projects.WorkspaceProjectRole(workspaceID, scopeUserID); err != nil {
 		return nil, err
 	}
+	if s.canUseReadModels() {
+		var readModel models.WorkspaceDashboardStats
+		if err := s.eventualReadDB().First(&readModel, "workspace_id = ?", workspaceID).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, err
+			}
+		} else {
+			return &dto.DashboardStatsResponse{
+				TotalUsers:                 1,
+				TotalProjects:              readModel.TotalProjects,
+				TotalPublishedPublications: readModel.TotalPublishedPublications,
+				TotalFailedPublications:    readModel.TotalFailedPublications,
+			}, nil
+		}
+	}
 
 	var stats dto.DashboardStatsResponse
 	stats.TotalUsers = 1
 	readDB := s.strongReadDB()
+	where, args, err := s.workspaceProjectWhere(readDB, workspaceID)
+	if err != nil {
+		return nil, err
+	}
 
-	projQuery := readDB.Model(&models.Project{}).Where("workspace_id = ?", workspaceID)
+	projQuery := readDB.Model(&models.Project{}).Where(where, args...)
 	if err := projQuery.Count(&stats.TotalProjects).Error; err != nil {
 		return nil, err
 	}
 
 	pubQuery := readDB.Model(&models.ProjectPlatformPublication{}).
 		Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
-		Where("projects.workspace_id = ?", workspaceID)
+		Where(where, args...)
 	if err := pubQuery.Where("project_platform_publications.status = ?", models.PublicationStatusPublished).
 		Count(&stats.TotalPublishedPublications).Error; err != nil {
 		return nil, err
@@ -216,13 +294,28 @@ func (s *Service) GetWorkspaceStats(workspaceID uuid.UUID, scopeUserID uuid.UUID
 
 	pubQuery = readDB.Model(&models.ProjectPlatformPublication{}).
 		Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
-		Where("projects.workspace_id = ?", workspaceID)
+		Where(where, args...)
 	if err := pubQuery.Where("project_platform_publications.status = ?", models.PublicationStatusFailed).
 		Count(&stats.TotalFailedPublications).Error; err != nil {
 		return nil, err
 	}
 
 	return &stats, nil
+}
+
+func (s *Service) workspaceProjectWhere(readDB *gorm.DB, workspaceID uuid.UUID) (string, []any, error) {
+	var workspace models.Workspace
+	err := readDB.Select("id", "owner_user_id").First(&workspace, "id = ?", workspaceID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "projects.workspace_id = ?", []any{workspaceID}, nil
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	if workspace.OwnerUserID != uuid.Nil && workspaceID == models.PersonalWorkspaceID(workspace.OwnerUserID) {
+		return "(projects.workspace_id = ? OR (projects.workspace_id IS NULL AND projects.user_id = ?))", []any{workspaceID, workspace.OwnerUserID}, nil
+	}
+	return "projects.workspace_id = ?", []any{workspaceID}, nil
 }
 
 func (s *Service) statsReadDB(scopeUserID *uuid.UUID) *gorm.DB {
@@ -236,6 +329,10 @@ func (s *Service) canUseDashboardStatsCache() bool {
 	if s.cache == nil || s.cacheTTL <= 0 {
 		return false
 	}
+	return s.canUseReadModels()
+}
+
+func (s *Service) canUseReadModels() bool {
 	stickyUntil, sticky := dbrouter.StickyWriterUntil(s.requestContext())
 	return !sticky || !stickyUntil.After(time.Now())
 }
@@ -250,7 +347,6 @@ func (s *Service) InvalidateDashboardStatsCache(ctx context.Context) {
 	invalidateCtx, cancel := dashboardStatsInvalidationContext(s.requestContext())
 	defer cancel()
 	_ = s.cache.Incr(invalidateCtx, dashboardStatsCacheGenerationKey).Err()
-	deleteDashboardStatsCacheKeys(invalidateCtx, s.cache)
 }
 
 func dashboardStatsInvalidationContext(parent context.Context) (context.Context, context.CancelFunc) {
@@ -267,21 +363,4 @@ func (s *Service) dashboardStatsCacheGeneration(ctx context.Context) (string, er
 
 func dashboardStatsCacheKey(generation string) string {
 	return dashboardStatsCachePrefix + ":" + generation
-}
-
-func deleteDashboardStatsCacheKeys(ctx context.Context, client *redis.Client) {
-	var cursor uint64
-	for {
-		keys, next, err := client.Scan(ctx, cursor, dashboardStatsCachePrefix+":*", 100).Result()
-		if err != nil {
-			return
-		}
-		if len(keys) > 0 {
-			_ = client.Del(ctx, keys...).Err()
-		}
-		if next == 0 {
-			return
-		}
-		cursor = next
-	}
 }

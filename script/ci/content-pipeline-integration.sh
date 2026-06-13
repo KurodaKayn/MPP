@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GRPC_ADDR="${CONTENT_PIPELINE_INTEGRATION_GRPC_ADDR:-127.0.0.1:55051}"
 METRICS_ADDR="${CONTENT_PIPELINE_INTEGRATION_METRICS_ADDR:-127.0.0.1:59090}"
 LOG_FILE="${CONTENT_PIPELINE_INTEGRATION_LOG_FILE:-$(mktemp)}"
+OBJECT_ROOT="${CONTENT_PIPELINE_INTEGRATION_OBJECT_ROOT:-$(mktemp -d)}"
 
 if [[ "$GRPC_ADDR" != 127.0.0.1:* ]]; then
   echo "CONTENT_PIPELINE_INTEGRATION_GRPC_ADDR must use 127.0.0.1:<port>" >&2
@@ -19,6 +20,9 @@ cleanup() {
     kill "$SERVICE_PID" 2>/dev/null || true
     wait "$SERVICE_PID" 2>/dev/null || true
   fi
+  if [[ -z "${CONTENT_PIPELINE_INTEGRATION_OBJECT_ROOT:-}" ]]; then
+    rm -rf "$OBJECT_ROOT"
+  fi
 }
 trap cleanup EXIT
 
@@ -30,6 +34,8 @@ trap cleanup EXIT
 (
   CONTENT_PIPELINE_ADDR="$GRPC_ADDR" \
     CONTENT_PIPELINE_METRICS_ADDR="$METRICS_ADDR" \
+    CONTENT_PIPELINE_MEDIA_OBJECT_STORE=filesystem \
+    CONTENT_PIPELINE_MEDIA_OBJECT_ROOT="$OBJECT_ROOT" \
     "$ROOT_DIR/content-pipeline-service/target/debug/content-pipeline-service"
 ) >"$LOG_FILE" 2>&1 &
 SERVICE_PID=$!
@@ -58,5 +64,7 @@ fi
   cd "$ROOT_DIR/backend"
   CONTENT_PIPELINE_HOST="$GRPC_HOST" \
     CONTENT_PIPELINE_PORT="$GRPC_PORT" \
+    CONTENT_PIPELINE_MEDIA_OBJECT_STORE=filesystem \
+    CONTENT_PIPELINE_MEDIA_OBJECT_ROOT="$OBJECT_ROOT" \
     go test -tags=contentpipeline_integration ./internal/pkg/media ./internal/services/compiler
 )

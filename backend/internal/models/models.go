@@ -498,18 +498,21 @@ type ProjectPlatformPublication struct {
 }
 
 type ProjectListSummary struct {
-	ProjectID    uuid.UUID      `gorm:"type:uuid;primaryKey"`
-	UserID       uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_list_summaries_user_status_created_at,priority:1"`
-	WorkspaceID  uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_list_summaries_workspace_status_created_at,priority:1"`
-	Title        string         `gorm:"not null"`
-	Status       string         `gorm:"not null;index:idx_project_list_summaries_user_status_created_at,priority:2;index:idx_project_list_summaries_workspace_status_created_at,priority:2"`
-	Publications datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
-	CreatedAt    time.Time      `gorm:"not null;index:idx_project_list_summaries_user_status_created_at,priority:3;index:idx_project_list_summaries_workspace_status_created_at,priority:3"`
-	UpdatedAt    time.Time      `gorm:"not null"`
-	RefreshedAt  time.Time      `gorm:"not null;index"`
-	Project      Project        `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
-	Workspace    Workspace      `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
-	User         User           `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	ProjectID        uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	UserID           uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_list_summaries_user_status_created_at,priority:1"`
+	WorkspaceID      uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_list_summaries_workspace_status_created_at,priority:1"`
+	CollabDocumentID *uuid.UUID     `gorm:"type:uuid;index"`
+	TemplateID       *uuid.UUID     `gorm:"type:uuid;index"`
+	BrandProfileID   *uuid.UUID     `gorm:"type:uuid;index"`
+	Title            string         `gorm:"not null"`
+	Status           string         `gorm:"not null;index:idx_project_list_summaries_user_status_created_at,priority:2;index:idx_project_list_summaries_workspace_status_created_at,priority:2"`
+	Publications     datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	CreatedAt        time.Time      `gorm:"not null;index:idx_project_list_summaries_user_status_created_at,priority:3;index:idx_project_list_summaries_workspace_status_created_at,priority:3"`
+	UpdatedAt        time.Time      `gorm:"not null"`
+	RefreshedAt      time.Time      `gorm:"not null;index"`
+	Project          Project        `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	Workspace        Workspace      `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
+	User             User           `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
 }
 
 type PublishEvent struct {

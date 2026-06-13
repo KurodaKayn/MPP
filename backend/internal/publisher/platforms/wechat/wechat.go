@@ -11,6 +11,7 @@ import (
 	htmlutil "github.com/kurodakayn/mpp-backend/internal/pkg/html"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/media"
 	pkgwechat "github.com/kurodakayn/mpp-backend/internal/pkg/wechat"
+	publishercontent "github.com/kurodakayn/mpp-backend/internal/publisher/content"
 )
 
 type WechatPublisher struct{}
@@ -37,7 +38,7 @@ func (w *WechatPublisher) ValidateConfig(config []byte) error {
 	return nil
 }
 
-func (w *WechatPublisher) Publish(_ context.Context, pub *models.ProjectPlatformPublication, _ *models.PlatformAccount) (string, string, error) {
+func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatformPublication, _ *models.PlatformAccount) (string, string, error) {
 	var cfg WechatConfig
 	if err := json.Unmarshal(pub.Config, &cfg); err != nil {
 		return "", "", fmt.Errorf("failed to parse wechat config: %w", err)
@@ -46,24 +47,14 @@ func (w *WechatPublisher) Publish(_ context.Context, pub *models.ProjectPlatform
 	client := pkgwechat.NewClient(cfg.AppID, cfg.AppSecret)
 	sourceHTML := extractWechatHTML(pub.AdaptedContent)
 
-	// 1. Process HTML images through content-pipeline-service, upload to WeChat, and replace URLs.
-	processedHTML, err := htmlutil.ProcessHTMLImages(
-		sourceHTML,
-		media.DownloadAndProcess,
-		func(imgData []byte) (string, error) {
-			res, err := client.UploadImage(imgData, "content_image.jpg")
-			if err != nil {
-				return "", err
-			}
-			return res.URL, nil
-		},
-	)
+	// 1. Upload compiled inline image assets to WeChat and replace source URLs in HTML.
+	processedHTML, err := processWechatInlineImages(ctx, sourceHTML, pub.AdaptedContent, client)
 	if err != nil {
-		processedHTML = string(pub.AdaptedContent)
+		processedHTML = sourceHTML
 	}
 
 	// 2. Upload cover image for thumb_media_id.
-	coverData, err := loadCoverImage(cfg.CoverImageURL)
+	coverData, err := loadCoverImage(ctx, cfg.CoverImageURL)
 	if err != nil {
 		return "", "", err
 	}
@@ -108,11 +99,15 @@ func (w *WechatPublisher) Publish(_ context.Context, pub *models.ProjectPlatform
 	return draftMediaID, publishURL, nil
 }
 
-func loadCoverImage(coverImageURL string) ([]byte, error) {
+func loadCoverImage(ctx context.Context, coverImageURL string) ([]byte, error) {
 	if strings.TrimSpace(coverImageURL) != "" {
-		coverData, err := media.DownloadAndProcess(coverImageURL)
+		coverObjectRef, err := media.DownloadAndProcessForPlatform(coverImageURL, "wechat", "cover")
 		if err != nil {
 			return nil, fmt.Errorf("failed to download wechat cover image: %w", err)
+		}
+		coverData, err := media.ReadProcessedObject(ctx, coverObjectRef)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read wechat cover image: %w", err)
 		}
 		return coverData, nil
 	}
@@ -122,6 +117,58 @@ func loadCoverImage(coverImageURL string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to read default wechat cover image: %w", err)
 	}
 	return coverData, nil
+}
+
+func processWechatInlineImages(ctx context.Context, sourceHTML string, adaptedContent []byte, client *pkgwechat.Client) (string, error) {
+	if processedHTML, ok, err := processWechatInlineImagesFromCompiledAssets(ctx, sourceHTML, adaptedContent, client); ok || err != nil {
+		return processedHTML, err
+	}
+
+	return htmlutil.ProcessHTMLImages(
+		sourceHTML,
+		media.DownloadAndProcess,
+		func(objectRef string) (string, error) {
+			imgData, err := media.ReadProcessedObject(ctx, objectRef)
+			if err != nil {
+				return "", err
+			}
+			res, err := client.UploadImage(imgData, "content_image.jpg")
+			if err != nil {
+				return "", err
+			}
+			return res.URL, nil
+		},
+	)
+}
+
+func processWechatInlineImagesFromCompiledAssets(ctx context.Context, sourceHTML string, adaptedContent []byte, client *pkgwechat.Client) (string, bool, error) {
+	imageSources := publishercontent.ExtractImageAssetSources(adaptedContent)
+	if len(imageSources) == 0 {
+		return "", false, nil
+	}
+
+	processedHTML, err := htmlutil.ProcessHTMLImageSources(
+		sourceHTML,
+		imageSources,
+		func(source string) (string, error) {
+			return media.DownloadAndProcessForPlatform(source, "wechat", "inline_image")
+		},
+		func(objectRef string) (string, error) {
+			imgData, err := media.ReadProcessedObject(ctx, objectRef)
+			if err != nil {
+				return "", err
+			}
+			res, err := client.UploadImage(imgData, "content_image.jpg")
+			if err != nil {
+				return "", err
+			}
+			return res.URL, nil
+		},
+	)
+	if err != nil {
+		return "", true, err
+	}
+	return processedHTML, true, nil
 }
 
 func extractWechatHTML(adaptedContent []byte) string {

@@ -24,6 +24,8 @@ module KubernetesValidation
       "BROWSER_WORKER_INTERNAL_TOKEN",
       "AI_SERVICE_INTERNAL_TOKEN",
       "CONTENT_PIPELINE_INTERNAL_TOKEN",
+      "R2_ACCESS_KEY_ID",
+      "R2_SECRET_ACCESS_KEY",
     ].freeze
     OPTIONAL_EXTERNAL_SECRET_KEYS = ["REDIS_PASSWORD"].freeze
     APP_IMAGES = {
@@ -154,6 +156,8 @@ module KubernetesValidation
         "BROWSER_WORKER_INTERNAL_TOKEN",
         "AI_SERVICE_INTERNAL_TOKEN",
         "CONTENT_PIPELINE_INTERNAL_TOKEN",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
       ].each do |key|
         value = secret_value(secret, key)
         if value.empty?

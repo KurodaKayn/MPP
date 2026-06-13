@@ -27,12 +27,22 @@ module KubernetesValidation
       "AI_SERVICE_URL",
       "CONTENT_PIPELINE_HOST",
       "CONTENT_PIPELINE_PORT",
+      "CONTENT_PIPELINE_MEDIA_RESOLVER_URL",
+      "CONTENT_PIPELINE_MEDIA_OBJECT_STORE",
+      "CONTENT_PIPELINE_MEDIA_OBJECT_PREFIX",
+      "CONTENT_PIPELINE_MEDIA_OBJECT_REF_PREFIX",
+      "CONTENT_PIPELINE_MEDIA_OBJECT_RETENTION_DAYS",
       "COLLAB_INTERNAL_URL",
       "COLLAB_WEBSOCKET_URL_BASE",
       "DB_HOST",
       "DB_SSLMODE",
       "REDIS_ADDR",
       "REDIS_TLS",
+      "OBJECT_STORAGE_PROVIDER",
+      "R2_ACCOUNT_ID",
+      "R2_BUCKET",
+      "R2_ENDPOINT",
+      "R2_REGION",
     ].freeze
 
     SECRET_KEYS = [
@@ -44,10 +54,12 @@ module KubernetesValidation
       "AI_SERVICE_INTERNAL_TOKEN",
       "BROWSER_WORKER_INTERNAL_TOKEN",
       "CONTENT_PIPELINE_INTERNAL_TOKEN",
+      "R2_ACCESS_KEY_ID",
+      "R2_SECRET_ACCESS_KEY",
     ].freeze
 
     INTERNAL_INGRESS_POLICIES = {
-      "frontend-backend-access" => ["backend", 8080, ["frontend"]],
+      "frontend-backend-access" => ["backend", 8080, ["frontend", "content-pipeline-service"]],
       "browser-worker-internal-access" => ["browser-worker", 8081, ["backend", "publish-worker"]],
       "ai-service-internal-access" => ["ai-service", 8000, ["backend", "publish-worker"]],
       "content-pipeline-internal-access" => [
@@ -141,12 +153,18 @@ module KubernetesValidation
         "BROWSER_WORKER_INTERNAL_TOKEN",
         "AI_SERVICE_INTERNAL_TOKEN",
         "CONTENT_PIPELINE_INTERNAL_TOKEN",
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
       ]
       require_secret_refs(context, "backend", backend_secret_keys)
       require_secret_refs(context, "publish-worker", backend_secret_keys)
       require_secret_refs(context, "browser-worker", ["REDIS_PASSWORD", "BROWSER_WORKER_INTERNAL_TOKEN"])
       require_secret_refs(context, "ai-service", ["LLM_PROVIDER_KEY", "AI_SERVICE_INTERNAL_TOKEN"])
-      require_secret_refs(context, "content-pipeline-service", ["CONTENT_PIPELINE_INTERNAL_TOKEN"])
+      require_secret_refs(
+        context,
+        "content-pipeline-service",
+        ["CONTENT_PIPELINE_INTERNAL_TOKEN", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"],
+      )
       require_secret_refs(context, "collab-service", ["COLLAB_TOKEN_SECRET", "DB_PASSWORD", "REDIS_PASSWORD"])
 
       validate_content_pipeline(context)

@@ -51,7 +51,7 @@ The baseline denies ingress to `mpp-system` Pods by default and then opens
 only the expected public and service-to-service paths:
 
 - public ingress controller namespaces to `frontend` and `collab-service`
-- `frontend` to `backend`
+- `frontend` and `content-pipeline-service` to `backend`
 - `backend` and `publish-worker` to browser-worker, AI, content pipeline, and
   collaboration services
 

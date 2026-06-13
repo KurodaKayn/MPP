@@ -308,17 +308,13 @@ func (x *ProcessAssetResponse) GetWarnings() []string {
 }
 
 type ProcessedAsset struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Content:
-	//
-	//	*ProcessedAsset_InlineBytes
-	//	*ProcessedAsset_ObjectRef
-	Content       isProcessedAsset_Content `protobuf_oneof:"content"`
-	MimeType      string                   `protobuf:"bytes,3,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
-	ByteSize      uint64                   `protobuf:"varint,4,opt,name=byte_size,json=byteSize,proto3" json:"byte_size,omitempty"`
-	Width         uint32                   `protobuf:"varint,5,opt,name=width,proto3" json:"width,omitempty"`
-	Height        uint32                   `protobuf:"varint,6,opt,name=height,proto3" json:"height,omitempty"`
-	Sha256        string                   `protobuf:"bytes,7,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ObjectRef     string                 `protobuf:"bytes,2,opt,name=object_ref,json=objectRef,proto3" json:"object_ref,omitempty"`
+	MimeType      string                 `protobuf:"bytes,3,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
+	ByteSize      uint64                 `protobuf:"varint,4,opt,name=byte_size,json=byteSize,proto3" json:"byte_size,omitempty"`
+	Width         uint32                 `protobuf:"varint,5,opt,name=width,proto3" json:"width,omitempty"`
+	Height        uint32                 `protobuf:"varint,6,opt,name=height,proto3" json:"height,omitempty"`
+	Sha256        string                 `protobuf:"bytes,7,opt,name=sha256,proto3" json:"sha256,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -353,27 +349,9 @@ func (*ProcessedAsset) Descriptor() ([]byte, []int) {
 	return file_mpp_contentpipeline_v1_content_pipeline_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *ProcessedAsset) GetContent() isProcessedAsset_Content {
-	if x != nil {
-		return x.Content
-	}
-	return nil
-}
-
-func (x *ProcessedAsset) GetInlineBytes() []byte {
-	if x != nil {
-		if x, ok := x.Content.(*ProcessedAsset_InlineBytes); ok {
-			return x.InlineBytes
-		}
-	}
-	return nil
-}
-
 func (x *ProcessedAsset) GetObjectRef() string {
 	if x != nil {
-		if x, ok := x.Content.(*ProcessedAsset_ObjectRef); ok {
-			return x.ObjectRef
-		}
+		return x.ObjectRef
 	}
 	return ""
 }
@@ -412,22 +390,6 @@ func (x *ProcessedAsset) GetSha256() string {
 	}
 	return ""
 }
-
-type isProcessedAsset_Content interface {
-	isProcessedAsset_Content()
-}
-
-type ProcessedAsset_InlineBytes struct {
-	InlineBytes []byte `protobuf:"bytes,1,opt,name=inline_bytes,json=inlineBytes,proto3,oneof"`
-}
-
-type ProcessedAsset_ObjectRef struct {
-	ObjectRef string `protobuf:"bytes,2,opt,name=object_ref,json=objectRef,proto3,oneof"`
-}
-
-func (*ProcessedAsset_InlineBytes) isProcessedAsset_Content() {}
-
-func (*ProcessedAsset_ObjectRef) isProcessedAsset_Content() {}
 
 type CompileDraftsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -769,17 +731,15 @@ const file_mpp_contentpipeline_v1_content_pipeline_proto_rawDesc = "" +
 	"\x14ProcessAssetResponse\x12<\n" +
 	"\x05asset\x18\x01 \x01(\v2&.mpp.contentpipeline.v1.ProcessedAssetR\x05asset\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x1a\n" +
-	"\bwarnings\x18\x03 \x03(\tR\bwarnings\"\xe1\x01\n" +
-	"\x0eProcessedAsset\x12#\n" +
-	"\finline_bytes\x18\x01 \x01(\fH\x00R\vinlineBytes\x12\x1f\n" +
+	"\bwarnings\x18\x03 \x03(\tR\bwarnings\"\xb5\x01\n" +
+	"\x0eProcessedAsset\x12\x1d\n" +
 	"\n" +
-	"object_ref\x18\x02 \x01(\tH\x00R\tobjectRef\x12\x1b\n" +
+	"object_ref\x18\x02 \x01(\tR\tobjectRef\x12\x1b\n" +
 	"\tmime_type\x18\x03 \x01(\tR\bmimeType\x12\x1b\n" +
 	"\tbyte_size\x18\x04 \x01(\x04R\bbyteSize\x12\x14\n" +
 	"\x05width\x18\x05 \x01(\rR\x05width\x12\x16\n" +
 	"\x06height\x18\x06 \x01(\rR\x06height\x12\x16\n" +
-	"\x06sha256\x18\a \x01(\tR\x06sha256B\t\n" +
-	"\acontent\"\xb5\x01\n" +
+	"\x06sha256\x18\a \x01(\tR\x06sha256J\x04\b\x01\x10\x02\"\xb5\x01\n" +
 	"\x14CompileDraftsRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12?\n" +
@@ -861,10 +821,6 @@ func file_mpp_contentpipeline_v1_content_pipeline_proto_init() {
 		(*MediaSource_Url)(nil),
 		(*MediaSource_DataUrl)(nil),
 		(*MediaSource_ObjectRef)(nil),
-	}
-	file_mpp_contentpipeline_v1_content_pipeline_proto_msgTypes[4].OneofWrappers = []any{
-		(*ProcessedAsset_InlineBytes)(nil),
-		(*ProcessedAsset_ObjectRef)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

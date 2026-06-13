@@ -34,10 +34,8 @@ func TestDownloadAndProcessDelegatesToContentPipeline(t *testing.T) {
 	fakeClient := &fakeContentPipelineMediaClient{
 		response: &contentpipelinepb.ProcessAssetResponse{
 			Asset: &contentpipelinepb.ProcessedAsset{
-				Content: &contentpipelinepb.ProcessedAsset_InlineBytes{
-					InlineBytes: []byte("processed-by-rust"),
-				},
-				MimeType: "image/jpeg",
+				ObjectRef: "mpp://content-pipeline/media/processed/aa/asset.jpg",
+				MimeType:  "image/jpeg",
 			},
 			Status: "processed",
 		},
@@ -46,10 +44,10 @@ func TestDownloadAndProcessDelegatesToContentPipeline(t *testing.T) {
 		return fakeClient, noopCloser{}, nil
 	})
 
-	data, err := DownloadAndProcessForPlatform("data:image/png;base64,aGVsbG8=", "wechat", "cover")
+	objectRef, err := DownloadAndProcessForPlatform("data:image/png;base64,aGVsbG8=", "wechat", "cover")
 
 	require.NoError(t, err)
-	require.Equal(t, []byte("processed-by-rust"), data)
+	require.Equal(t, "mpp://content-pipeline/media/processed/aa/asset.jpg", objectRef)
 	require.Equal(t, "wechat", fakeClient.request.GetPlatform())
 	require.Equal(t, "cover", fakeClient.request.GetUsage())
 	require.Nil(t, fakeClient.request.GetConstraints())
@@ -60,10 +58,8 @@ func TestDownloadAndProcessSendsMediaObjectRefsToContentPipeline(t *testing.T) {
 	fakeClient := &fakeContentPipelineMediaClient{
 		response: &contentpipelinepb.ProcessAssetResponse{
 			Asset: &contentpipelinepb.ProcessedAsset{
-				Content: &contentpipelinepb.ProcessedAsset_InlineBytes{
-					InlineBytes: []byte("processed-object-ref"),
-				},
-				MimeType: "image/jpeg",
+				ObjectRef: "mpp://content-pipeline/media/processed/bb/asset.jpg",
+				MimeType:  "image/jpeg",
 			},
 			Status: "processed",
 		},
@@ -73,10 +69,10 @@ func TestDownloadAndProcessSendsMediaObjectRefsToContentPipeline(t *testing.T) {
 	})
 
 	source := "mpp://media/11111111-1111-4111-8111-111111111111"
-	data, err := DownloadAndProcessForPlatform(source, "wechat", "cover")
+	objectRef, err := DownloadAndProcessForPlatform(source, "wechat", "cover")
 
 	require.NoError(t, err)
-	require.Equal(t, []byte("processed-object-ref"), data)
+	require.Equal(t, "mpp://content-pipeline/media/processed/bb/asset.jpg", objectRef)
 	require.Equal(t, source, fakeClient.request.GetSource().GetObjectRef())
 	require.Empty(t, fakeClient.request.GetSource().GetUrl())
 }
@@ -85,10 +81,8 @@ func TestDownloadAndProcessUsesContentPipelineDefaultsForNonWechatPlatforms(t *t
 	fakeClient := &fakeContentPipelineMediaClient{
 		response: &contentpipelinepb.ProcessAssetResponse{
 			Asset: &contentpipelinepb.ProcessedAsset{
-				Content: &contentpipelinepb.ProcessedAsset_InlineBytes{
-					InlineBytes: []byte("processed-by-rust"),
-				},
-				MimeType: "image/jpeg",
+				ObjectRef: "mpp://content-pipeline/media/processed/cc/asset.jpg",
+				MimeType:  "image/jpeg",
 			},
 			Status: "processed",
 		},
@@ -97,10 +91,10 @@ func TestDownloadAndProcessUsesContentPipelineDefaultsForNonWechatPlatforms(t *t
 		return fakeClient, noopCloser{}, nil
 	})
 
-	data, err := DownloadAndProcessForPlatform("data:image/png;base64,aGVsbG8=", "douyin", "cover")
+	objectRef, err := DownloadAndProcessForPlatform("data:image/png;base64,aGVsbG8=", "douyin", "cover")
 
 	require.NoError(t, err)
-	require.Equal(t, []byte("processed-by-rust"), data)
+	require.Equal(t, "mpp://content-pipeline/media/processed/cc/asset.jpg", objectRef)
 	require.Equal(t, "douyin", fakeClient.request.GetPlatform())
 	require.Nil(t, fakeClient.request.GetConstraints())
 }
@@ -113,10 +107,10 @@ func TestDownloadAndProcessPropagatesTransientContentPipelineErrors(t *testing.T
 		return fakeClient, noopCloser{}, nil
 	})
 
-	data, err := DownloadAndProcess("data:image/png;base64,aGVsbG8=")
+	objectRef, err := DownloadAndProcess("data:image/png;base64,aGVsbG8=")
 
 	require.Error(t, err)
-	require.Nil(t, data)
+	require.Empty(t, objectRef)
 	require.Contains(t, err.Error(), "content pipeline unavailable")
 }
 
@@ -128,10 +122,10 @@ func TestDownloadAndProcessPropagatesObjectRefContentPipelineErrors(t *testing.T
 		return fakeClient, noopCloser{}, nil
 	})
 
-	data, err := DownloadAndProcess("mpp://media/11111111-1111-4111-8111-111111111111")
+	objectRef, err := DownloadAndProcess("mpp://media/11111111-1111-4111-8111-111111111111")
 
 	require.Error(t, err)
-	require.Nil(t, data)
+	require.Empty(t, objectRef)
 	require.Contains(t, err.Error(), "content pipeline unavailable")
 }
 
@@ -143,10 +137,10 @@ func TestDownloadAndProcessPropagatesContentPipelineValidationErrors(t *testing.
 		return fakeClient, noopCloser{}, nil
 	})
 
-	data, err := DownloadAndProcess("data:image/png;base64,aGVsbG8=")
+	objectRef, err := DownloadAndProcess("data:image/png;base64,aGVsbG8=")
 
 	require.Error(t, err)
-	require.Nil(t, data)
+	require.Empty(t, objectRef)
 }
 
 func TestContentPipelineAddrUsesConfiguredHostAndPort(t *testing.T) {

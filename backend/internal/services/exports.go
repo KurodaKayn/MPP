@@ -7,6 +7,7 @@ import (
 	mediaassetsvc "github.com/kurodakayn/mpp-backend/internal/services/mediaasset"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
+	readmodelsvc "github.com/kurodakayn/mpp-backend/internal/services/readmodel"
 )
 
 type AIContentEditor = ai.AIContentEditor
@@ -22,6 +23,7 @@ type MemoryXOAuth2StateStore = platformaccount.MemoryXOAuth2StateStore
 type PublishJob = publishsvc.PublishJob
 type PublishQueue = publishsvc.PublishQueue
 type PublishRequest = publishsvc.PublishRequest
+type DashboardRebuildTaskInfo = readmodelsvc.DashboardRebuildTaskInfo
 type WorkspacePermission = dashboard.WorkspacePermission
 type RedisPublishQueue = publishsvc.RedisPublishQueue
 type RedisXOAuth2StateStore = platformaccount.RedisXOAuth2StateStore
@@ -62,6 +64,7 @@ var ErrPublicationDisabled = dashboard.ErrPublicationDisabled
 var ErrPublicationRequiresSync = dashboard.ErrPublicationRequiresSync
 var ErrPublishMediaAssetNotReady = dashboard.ErrPublishMediaAssetNotReady
 var ErrPublishQueueEmpty = publishsvc.ErrPublishQueueEmpty
+var ErrDashboardRebuildQueueUnavailable = readmodelsvc.ErrDashboardRebuildQueueUnavailable
 var ErrXOAuth2NotConfigured = platformaccount.ErrXOAuth2NotConfigured
 
 const PermissionAccountManage = dashboard.PermissionAccountManage

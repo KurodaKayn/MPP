@@ -158,6 +158,16 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: CONTENT_PIPELINE_INTERNAL_TOKEN
+            - name: R2_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: R2_ACCESS_KEY_ID
+            - name: R2_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: R2_SECRET_ACCESS_KEY
           readinessProbe:
             httpGet:
               path: /ready
@@ -273,6 +283,16 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: CONTENT_PIPELINE_INTERNAL_TOKEN
+            - name: R2_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: R2_ACCESS_KEY_ID
+            - name: R2_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: R2_SECRET_ACCESS_KEY
           readinessProbe:
             httpGet:
               path: /ready
@@ -529,6 +549,16 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: CONTENT_PIPELINE_INTERNAL_TOKEN
+            - name: R2_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: R2_ACCESS_KEY_ID
+            - name: R2_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: R2_SECRET_ACCESS_KEY
           readinessProbe:
             grpc:
               port: 50051

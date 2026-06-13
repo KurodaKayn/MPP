@@ -3,11 +3,11 @@ package media
 import "strings"
 
 // DownloadAndProcess delegates platform media handling to content-pipeline-service.
-func DownloadAndProcess(sourceURL string) ([]byte, error) {
+func DownloadAndProcess(sourceURL string) (string, error) {
 	return DownloadAndProcessForPlatform(sourceURL, "wechat", "inline_image")
 }
 
-func DownloadAndProcessForPlatform(sourceURL string, platform string, usage string) ([]byte, error) {
+func DownloadAndProcessForPlatform(sourceURL string, platform string, usage string) (string, error) {
 	return processWithContentPipeline(sourceURL, platform, usage)
 }
 
