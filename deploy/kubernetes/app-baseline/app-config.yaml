@@ -17,6 +17,7 @@ data:
   LLM_MODEL: replace-with-llm-model
   CONTENT_PIPELINE_HOST: content-pipeline-service
   CONTENT_PIPELINE_PORT: "50051"
+  CONTENT_PIPELINE_MEDIA_RESOLVER_URL: http://backend:8080/internal/media/resolve
   CONTENT_PIPELINE_MEDIA_OBJECT_STORE: r2
   CONTENT_PIPELINE_MEDIA_OBJECT_PREFIX: content-pipeline/processed-media
   CONTENT_PIPELINE_MEDIA_OBJECT_REF_PREFIX: mpp://content-pipeline/media/

@@ -127,7 +127,7 @@ func buildDouyinWorkerDraft(ctx context.Context, project models.Project, pub mod
 		return publisher.StartDouyinPublishRequest{}, fmt.Errorf("douyin text content is empty")
 	}
 
-	imageData, imageName, err := douyinWorkerCoverImage(ctx, pub.Config)
+	imageData, imageName, err := douyinWorkerCoverImage(ctx, pub.Config, pub.AdaptedContent)
 	if err != nil {
 		return publisher.StartDouyinPublishRequest{}, err
 	}
@@ -163,22 +163,9 @@ func extractDouyinWorkerText(raw []byte) string {
 	return strings.TrimSpace(string(raw))
 }
 
-func douyinWorkerCoverImage(ctx context.Context, rawConfig []byte) ([]byte, string, error) {
-	var config struct {
-		CoverImageURL string `json:"cover_image_url"`
-	}
-	_ = json.Unmarshal(rawConfig, &config)
-
-	if source := strings.TrimSpace(config.CoverImageURL); source != "" {
-		objectRef, err := media.DownloadAndProcess(source)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to prepare douyin cover image: %w", err)
-		}
-		data, err := media.ReadProcessedObject(ctx, objectRef)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to read douyin cover image: %w", err)
-		}
-		return data, filepath.Base(source), nil
+func douyinWorkerCoverImage(ctx context.Context, rawConfig []byte, adaptedContent []byte) ([]byte, string, error) {
+	if source := publishercontent.SelectCoverImageSource(rawConfig, adaptedContent); source != "" {
+		return readDouyinWorkerImageSource(ctx, source)
 	}
 
 	path, err := bundledDouyinWorkerImagePath()
@@ -190,6 +177,18 @@ func douyinWorkerCoverImage(ctx context.Context, rawConfig []byte) ([]byte, stri
 		return nil, "", fmt.Errorf("failed to read douyin cover image: %w", err)
 	}
 	return data, filepath.Base(path), nil
+}
+
+func readDouyinWorkerImageSource(ctx context.Context, source string) ([]byte, string, error) {
+	objectRef, err := media.DownloadAndProcessForPlatform(source, "douyin", "cover")
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to prepare douyin cover image: %w", err)
+	}
+	data, err := media.ReadProcessedObject(ctx, objectRef)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read douyin cover image: %w", err)
+	}
+	return data, filepath.Base(source), nil
 }
 
 func bundledDouyinWorkerImagePath() (string, error) {
