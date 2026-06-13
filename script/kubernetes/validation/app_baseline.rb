@@ -59,7 +59,7 @@ module KubernetesValidation
     ].freeze
 
     INTERNAL_INGRESS_POLICIES = {
-      "frontend-backend-access" => ["backend", 8080, ["frontend"]],
+      "frontend-backend-access" => ["backend", 8080, ["frontend", "content-pipeline-service"]],
       "browser-worker-internal-access" => ["browser-worker", 8081, ["backend", "publish-worker"]],
       "ai-service-internal-access" => ["ai-service", 8000, ["backend", "publish-worker"]],
       "content-pipeline-internal-access" => [
