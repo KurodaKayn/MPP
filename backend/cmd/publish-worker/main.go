@@ -94,6 +94,7 @@ func main() {
 	workerErrors := make(chan error, 1)
 	var workerWG sync.WaitGroup
 	publishWorkerErrors := dashboardService.StartPublishWorkerWithErrors(rootCtx)
+	readModelWorkerErrors := dashboardService.StartDashboardReadModelRebuildWorkerWithErrors(rootCtx)
 	browserSessionService.StartCleanupWorker(rootCtx)
 	if archiveConfig.Enabled {
 		archive.NewWorker(db.DB, objectStorageClient, archiveConfig).Start(rootCtx)
@@ -120,6 +121,11 @@ func main() {
 		ready.Store(false)
 		if err != nil {
 			log.Fatalf("publish worker stopped: %v", err)
+		}
+	case err := <-readModelWorkerErrors:
+		ready.Store(false)
+		if err != nil {
+			log.Fatalf("dashboard read model rebuild worker stopped: %v", err)
 		}
 	case <-rootCtx.Done():
 		ready.Store(false)
