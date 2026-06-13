@@ -11,10 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/glebarez/sqlite"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
@@ -98,6 +100,15 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		event_type TEXT NOT NULL,
 		metadata TEXT NOT NULL DEFAULT '{}',
 		created_at DATETIME NOT NULL
+	)`).Error)
+
+	require.NoError(t, db.Exec(`CREATE TABLE workspace_dashboard_stats (
+		workspace_id TEXT PRIMARY KEY,
+		total_projects INTEGER NOT NULL DEFAULT 0,
+		total_published_publications INTEGER NOT NULL DEFAULT 0,
+		total_failed_publications INTEGER NOT NULL DEFAULT 0,
+		total_members INTEGER NOT NULL DEFAULT 0,
+		refreshed_at DATETIME NOT NULL
 	)`).Error)
 
 	require.NoError(t, db.Exec(`CREATE TABLE notifications (
@@ -242,6 +253,21 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		published_at DATETIME,
 		created_at DATETIME,
 		updated_at DATETIME
+	)`).Error)
+
+	require.NoError(t, db.Exec(`CREATE TABLE project_list_summaries (
+		project_id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
+		collab_document_id TEXT,
+		template_id TEXT,
+		brand_profile_id TEXT,
+		title TEXT NOT NULL,
+		status TEXT NOT NULL,
+		publications TEXT NOT NULL DEFAULT '[]',
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		refreshed_at DATETIME NOT NULL
 	)`).Error)
 
 	require.NoError(t, db.Exec(`CREATE TABLE media_asset_usages (
@@ -411,6 +437,43 @@ func TestDashboardHandlerPropagatesTraceContextToDatabaseQueries(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.NotEmpty(t, observer.traceIDs)
 	require.Contains(t, observer.traceIDs, "trace-123")
+}
+
+func TestDashboardHandlerRebuildReadModelsRequiresQueue(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewDashboardHandler(services.NewDashboardService(db))
+	c, rec := newHandlerTestContext(e, http.MethodPost, "/api/admin/dashboard/read-model/rebuild")
+
+	require.NoError(t, handler.RebuildReadModels(c))
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+
+	var resp dto.ErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "queue_unavailable", resp.Error.Code)
+}
+
+func TestDashboardHandlerRebuildReadModelsEnqueuesTask(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	redisServer := miniredis.RunT(t)
+	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() {
+		require.NoError(t, redisClient.Close())
+	})
+	service := services.NewDashboardService(db)
+	service.UseRedis(redisClient)
+	handler := NewDashboardHandler(service)
+	c, rec := newHandlerTestContext(e, http.MethodPost, "/api/admin/dashboard/read-model/rebuild")
+
+	require.NoError(t, handler.RebuildReadModels(c))
+	require.Equal(t, http.StatusAccepted, rec.Code)
+
+	var info services.DashboardRebuildTaskInfo
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &info))
+	require.Equal(t, "readmodel", info.Queue)
+	require.Equal(t, "readmodel:dashboard:rebuild", info.Type)
+	require.False(t, info.Duplicate)
 }
 
 func TestDashboardHandlerGetProjectPublicationsRejectsInvalidUUID(t *testing.T) {
