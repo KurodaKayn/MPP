@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"net"
 	"net/http"
@@ -75,6 +76,65 @@ func TestWebSocket(t *testing.T) {
 	require.NoError(t, conn.SetWriteDeadline(time.Now().Add(time.Second)))
 	err = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	require.NoError(t, err)
+}
+
+func TestWebSocketSupportsTLSTarget(t *testing.T) {
+	originalTLSConfig := webSocketTLSConfig
+	webSocketTLSConfig = func(*url.URL) *tls.Config {
+		return &tls.Config{
+			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
+		}
+	}
+	t.Cleanup(func() {
+		webSocketTLSConfig = originalTLSConfig
+	})
+
+	upgrader := websocket.Upgrader{}
+	targetServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		for {
+			mt, message, err := conn.ReadMessage()
+			if err != nil {
+				break
+			}
+			if err := conn.WriteMessage(mt, message); err != nil {
+				break
+			}
+		}
+	}))
+	defer targetServer.Close()
+
+	targetURL, err := url.Parse(strings.Replace(targetServer.URL, "https", "wss", 1))
+	require.NoError(t, err)
+
+	e := echo.New()
+	e.GET("/ws", func(c echo.Context) error {
+		return WebSocket(c, targetURL)
+	})
+
+	proxyServer := httptest.NewServer(e)
+	defer proxyServer.Close()
+
+	proxyWSURL := strings.Replace(proxyServer.URL, "http", "ws", 1) + "/ws"
+	conn, resp, err := websocket.DefaultDialer.Dial(proxyWSURL, nil)
+	require.NoError(t, err)
+	if resp != nil && resp.Body != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
+	defer func() { _ = conn.Close() }()
+	require.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
+
+	message := []byte("hello secure websocket")
+	require.NoError(t, conn.WriteMessage(websocket.TextMessage, message))
+
+	_, payload, err := conn.ReadMessage()
+	require.NoError(t, err)
+	require.Equal(t, message, payload)
 }
 
 func TestWebSocketProxyConfigFromEnv(t *testing.T) {
