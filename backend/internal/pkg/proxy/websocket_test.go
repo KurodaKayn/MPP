@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"net"
 	"net/http"
@@ -79,17 +80,6 @@ func TestWebSocket(t *testing.T) {
 }
 
 func TestWebSocketSupportsTLSTarget(t *testing.T) {
-	originalTLSConfig := webSocketTLSConfig
-	webSocketTLSConfig = func(*url.URL) *tls.Config {
-		return &tls.Config{
-			InsecureSkipVerify: true,
-			MinVersion:         tls.VersionTLS12,
-		}
-	}
-	t.Cleanup(func() {
-		webSocketTLSConfig = originalTLSConfig
-	})
-
 	upgrader := websocket.Upgrader{}
 	targetServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -108,6 +98,20 @@ func TestWebSocketSupportsTLSTarget(t *testing.T) {
 		}
 	}))
 	defer targetServer.Close()
+
+	rootCAs := x509.NewCertPool()
+	rootCAs.AddCert(targetServer.Certificate())
+	originalTLSConfig := webSocketTLSConfig
+	webSocketTLSConfig = func(target *url.URL) *tls.Config {
+		return &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    rootCAs,
+			ServerName: target.Hostname(),
+		}
+	}
+	t.Cleanup(func() {
+		webSocketTLSConfig = originalTLSConfig
+	})
 
 	targetURL, err := url.Parse(strings.Replace(targetServer.URL, "https", "wss", 1))
 	require.NoError(t, err)
