@@ -258,6 +258,7 @@ func (s *DashboardService) StartDashboardReadModelRebuildWorkerWithErrors(ctx co
 
 	workerErrors := make(chan error, 1)
 	go func() {
+		defer close(workerErrors)
 		if err := s.readModelRebuildQueue.StartWorker(ctx, s.readModel); err != nil && ctx.Err() == nil {
 			workerErrors <- err
 		}
