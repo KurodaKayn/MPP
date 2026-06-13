@@ -317,6 +317,27 @@ components:
     AIEditPrepublishResponse:
       $ref: "./components/ai.yaml#/components/schemas/AIEditPrepublishResponse"
 
+    AIContextSnapshot:
+      $ref: "./components/ai.yaml#/components/schemas/AIContextSnapshot"
+
+    AIGrowthOptimizationRun:
+      $ref: "./components/ai.yaml#/components/schemas/AIGrowthOptimizationRun"
+
+    AIProposal:
+      $ref: "./components/ai.yaml#/components/schemas/AIProposal"
+
+    AIDraftingSession:
+      $ref: "./components/ai.yaml#/components/schemas/AIDraftingSession"
+
+    AIDraftingMessage:
+      $ref: "./components/ai.yaml#/components/schemas/AIDraftingMessage"
+
+    AIToolCall:
+      $ref: "./components/ai.yaml#/components/schemas/AIToolCall"
+
+    AIDraftingSessionSummary:
+      $ref: "./components/ai.yaml#/components/schemas/AIDraftingSessionSummary"
+
     RequirementStatus:
       $ref: "./components/account.yaml#/components/schemas/RequirementStatus"
 

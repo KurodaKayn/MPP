@@ -87,3 +87,387 @@ components:
           $ref: "./content.yaml#/components/schemas/AdaptedContent"
         content:
           type: string
+
+    AIContextSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspace_id
+        - project_id
+        - created_by
+        - context_kind
+        - project_summary
+        - source_content
+        - selected_range
+        - comments_summary
+        - versions_summary
+        - media_summary
+        - performance_summary
+        - token_estimate
+        - context_budget
+        - compaction_level
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        context_kind:
+          type: string
+          enum:
+            - growth_optimization
+            - drafting
+        source_version_id:
+          type: string
+          format: uuid
+        project_summary:
+          type: string
+        source_content:
+          type: string
+        selected_range:
+          type: string
+        platforms:
+          type: object
+        publications:
+          type: object
+        brand_profile:
+          type: object
+        content_template:
+          type: object
+        comments_summary:
+          type: string
+        versions_summary:
+          type: string
+        media_summary:
+          type: string
+        performance_summary:
+          type: string
+        token_estimate:
+          type: integer
+        context_budget:
+          type: integer
+        compaction_level:
+          type: string
+          enum:
+            - none
+            - partial
+            - session_summary
+            - memory_summary
+        raw_context_refs:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+    AIGrowthOptimizationRun:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspace_id
+        - project_id
+        - context_snapshot_id
+        - goal
+        - intensity
+        - target_platforms
+        - status
+        - model
+        - prompt_version
+        - created_by
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        context_snapshot_id:
+          type: string
+          format: uuid
+        goal:
+          type: string
+        intensity:
+          type: string
+          enum:
+            - conservative
+            - balanced
+            - aggressive
+        target_platforms:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum:
+            - running
+            - ready
+            - applied
+            - failed
+            - cancelled
+        model:
+          type: string
+        prompt_version:
+          type: string
+        usage:
+          type: object
+        quality_summary:
+          type: string
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AIProposal:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspace_id
+        - project_id
+        - context_snapshot_id
+        - proposal_type
+        - target_platform
+        - status
+        - summary
+        - patch
+        - full_content
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        context_snapshot_id:
+          type: string
+          format: uuid
+        proposal_type:
+          type: string
+          enum:
+            - source_rewrite
+            - title_candidates
+            - prepublish_patch
+            - comment_reply
+            - checklist
+            - tag_candidates
+        target_platform:
+          type: string
+        status:
+          type: string
+          enum:
+            - proposed
+            - accepted
+            - rejected
+            - superseded
+        summary:
+          type: string
+        patch:
+          type: string
+        full_content:
+          type: string
+        quality_checks:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        decided_at:
+          type: string
+          format: date-time
+        decided_by:
+          type: string
+          format: uuid
+
+    AIDraftingSession:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - workspace_id
+        - project_id
+        - created_by
+        - title
+        - status
+        - last_message_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+          enum:
+            - active
+            - archived
+        active_context_snapshot_id:
+          type: string
+          format: uuid
+        last_message_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AIDraftingMessage:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - session_id
+        - role
+        - content
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum:
+            - user
+            - assistant
+            - system
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AIToolCall:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - session_id
+        - tool_name
+        - version
+        - arguments
+        - result
+        - error
+        - duration_ms
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        tool_name:
+          type: string
+        version:
+          type: string
+        arguments:
+          type: object
+        result:
+          type: string
+        error:
+          type: string
+        duration_ms:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    AIDraftingSessionSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - session_id
+        - summary
+        - user_intent
+        - accepted_changes
+        - rejected_directions
+        - open_tasks
+        - active_artifacts
+        - source_refs
+        - next_step_hint
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        summary:
+          type: string
+        user_intent:
+          type: string
+        accepted_changes:
+          type: array
+          items:
+            type: object
+        rejected_directions:
+          type: array
+          items:
+            type: object
+        open_tasks:
+          type: array
+          items:
+            type: object
+        active_artifacts:
+          type: array
+          items:
+            type: object
+        source_refs:
+          type: array
+          items:
+            type: object
+        next_step_hint:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
