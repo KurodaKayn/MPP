@@ -65,6 +65,28 @@ func TestGetStatsUsesCompleteWorkspaceReadModel(t *testing.T) {
 
 	require.NoError(t, db.Create(&models.User{ID: userID, Username: "stats-readmodel", Email: "stats-readmodel@example.com", PasswordHash: "hash"}).Error)
 	require.NoError(t, db.Create(&models.Workspace{ID: workspaceID, OwnerUserID: userID, Name: "Stats read model", Status: models.WorkspaceStatusActive, CreatedAt: now, UpdatedAt: now}).Error)
+	for i := 0; i < 7; i++ {
+		project := models.Project{
+			ID:            uuid.New(),
+			UserID:        userID,
+			WorkspaceID:   &workspaceID,
+			Title:         "Stats read model fact",
+			SourceContent: "content",
+			Status:        models.ProjectStatusReady,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		}
+		require.NoError(t, db.Create(&project).Error)
+		publicationStatus := models.PublicationStatusPublished
+		if i >= 5 {
+			publicationStatus = models.PublicationStatusFailed
+		}
+		require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+			ProjectID: project.ID,
+			Platform:  "wechat",
+			Status:    publicationStatus,
+		}).Error)
+	}
 	require.NoError(t, db.Create(&models.WorkspaceDashboardStats{
 		WorkspaceID:                workspaceID,
 		TotalProjects:              7,
@@ -80,6 +102,42 @@ func TestGetStatsUsesCompleteWorkspaceReadModel(t *testing.T) {
 	assert.Equal(t, int64(7), stats.TotalProjects)
 	assert.Equal(t, int64(5), stats.TotalPublishedPublications)
 	assert.Equal(t, int64(2), stats.TotalFailedPublications)
+}
+
+func TestGetStatsFallsBackWhenWorkspaceReadModelProjectTotalMismatchesFacts(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	now := time.Now().UTC()
+
+	require.NoError(t, db.Create(&models.User{ID: userID, Username: "stats-mismatch", Email: "stats-mismatch@example.com", PasswordHash: "hash"}).Error)
+	require.NoError(t, db.Create(&models.Workspace{ID: workspaceID, OwnerUserID: userID, Name: "Stats mismatch", Status: models.WorkspaceStatusActive, CreatedAt: now, UpdatedAt: now}).Error)
+	for i := 0; i < 2; i++ {
+		require.NoError(t, db.Create(&models.Project{
+			ID:            uuid.New(),
+			UserID:        userID,
+			WorkspaceID:   &workspaceID,
+			Title:         "Stats mismatch fact",
+			SourceContent: "content",
+			Status:        models.ProjectStatusReady,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		}).Error)
+	}
+	require.NoError(t, db.Create(&models.WorkspaceDashboardStats{
+		WorkspaceID:   workspaceID,
+		TotalProjects: 1,
+		TotalMembers:  1,
+		RefreshedAt:   now,
+	}).Error)
+
+	stats, err := s.GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalUsers)
+	assert.Equal(t, int64(2), stats.TotalProjects)
+	assert.Equal(t, int64(0), stats.TotalPublishedPublications)
+	assert.Equal(t, int64(0), stats.TotalFailedPublications)
 }
 
 func TestGetStatsCachesGlobalDashboardStats(t *testing.T) {
@@ -132,7 +190,7 @@ func TestCreateProjectInvalidatesDashboardStatsCache(t *testing.T) {
 	stats, err := s.WithContext(context.Background()).GetStats(nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), stats.TotalProjects)
-	requireSingleStatsCacheKey(t, redisClient)
+	staleKey := requireSingleStatsCacheKey(t, redisClient)
 
 	_, err = s.WithContext(context.Background()).CreateProject(user.ID, dto.CreateProjectRequest{
 		Title:         "stats-create-fresh",
@@ -140,11 +198,12 @@ func TestCreateProjectInvalidatesDashboardStatsCache(t *testing.T) {
 		Platforms:     []string{"zhihu"},
 	})
 	require.NoError(t, err)
-	requireStatsCacheKeys(t, redisClient, 0)
+	require.Contains(t, requireStatsCacheKeys(t, redisClient, 1), staleKey)
 
 	refreshed, err := s.WithContext(context.Background()).GetStats(nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), refreshed.TotalProjects)
+	requireStatsCacheKeys(t, redisClient, 2)
 }
 
 func TestStatsCacheIgnoresStaleRefillAfterInvalidation(t *testing.T) {
@@ -169,7 +228,7 @@ func TestStatsCacheIgnoresStaleRefillAfterInvalidation(t *testing.T) {
 		Platforms:     []string{"zhihu"},
 	})
 	require.NoError(t, err)
-	requireStatsCacheKeys(t, redisClient, 0)
+	requireStatsCacheKeys(t, redisClient, 1)
 
 	require.NoError(t, redisClient.Set(ctx, staleKey, stalePayload, time.Minute).Err())
 
@@ -192,7 +251,7 @@ func TestUpdateProjectInvalidatesDashboardStatsCache(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
 	assert.Equal(t, int64(1), stats.TotalFailedPublications)
-	requireSingleStatsCacheKey(t, redisClient)
+	staleKey := requireSingleStatsCacheKey(t, redisClient)
 
 	_, err = s.WithContext(ctx).UpdateProject(project.ID, user.ID, dto.UpdateProjectRequest{
 		Title:         "stats-update-fresh",
@@ -200,7 +259,7 @@ func TestUpdateProjectInvalidatesDashboardStatsCache(t *testing.T) {
 		Platforms:     []string{"zhihu", "douyin"},
 	})
 	require.NoError(t, err)
-	requireStatsCacheKeys(t, redisClient, 0)
+	require.Contains(t, requireStatsCacheKeys(t, redisClient, 1), staleKey)
 
 	refreshed, err := s.WithContext(ctx).GetStats(nil)
 	require.NoError(t, err)
@@ -221,13 +280,13 @@ func TestSaveProjectPlatformsInvalidatesDashboardStatsCache(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
 	assert.Equal(t, int64(1), stats.TotalFailedPublications)
-	requireSingleStatsCacheKey(t, redisClient)
+	staleKey := requireSingleStatsCacheKey(t, redisClient)
 
 	_, err = s.WithContext(ctx).SaveProjectPlatforms(project.ID, user.ID, dto.SaveProjectPlatformsRequest{
 		Platforms: []string{"douyin"},
 	})
 	require.NoError(t, err)
-	requireStatsCacheKeys(t, redisClient, 0)
+	require.Contains(t, requireStatsCacheKeys(t, redisClient, 1), staleKey)
 
 	refreshed, err := s.WithContext(ctx).GetStats(nil)
 	require.NoError(t, err)
@@ -364,6 +423,57 @@ func TestGetStatsDoesNotCacheScopedCounts(t *testing.T) {
 	assert.Equal(t, int64(2), freshStats.TotalProjects)
 	assert.Equal(t, int64(1), freshStats.TotalPublishedPublications)
 	assert.Equal(t, int64(1), freshStats.TotalFailedPublications)
+}
+
+func TestGetWorkspaceStatsFallbackIncludesLegacyPersonalProjects(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	now := time.Now().UTC()
+	user := models.User{
+		ID:           uuid.New(),
+		Username:     "workspace-legacy-owner",
+		Email:        "workspace-legacy-owner@example.com",
+		PasswordHash: "hash",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	workspaceID := models.PersonalWorkspaceID(user.ID)
+	require.NoError(t, db.Create(&models.Workspace{
+		ID:          workspaceID,
+		OwnerUserID: user.ID,
+		Name:        models.PersonalWorkspaceName,
+		Status:      models.WorkspaceStatusActive,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}).Error)
+	project := models.Project{
+		ID:            uuid.New(),
+		UserID:        user.ID,
+		Title:         "Legacy personal project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ID:        uuid.New(),
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Status:    models.PublicationStatusPublished,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ID:        uuid.New(),
+		ProjectID: project.ID,
+		Platform:  "zhihu",
+		Status:    models.PublicationStatusFailed,
+	}).Error)
+
+	stats, err := s.GetWorkspaceStats(workspaceID, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalUsers)
+	assert.Equal(t, int64(1), stats.TotalProjects)
+	assert.Equal(t, int64(1), stats.TotalPublishedPublications)
+	assert.Equal(t, int64(1), stats.TotalFailedPublications)
 }
 
 func TestGetStatsUsesReaderForEventualCounts(t *testing.T) {
