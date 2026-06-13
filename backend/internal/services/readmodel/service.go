@@ -16,7 +16,18 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
-const asyncRefreshTimeout = 15 * time.Second
+const (
+	asyncRefreshTimeout       = 15 * time.Second
+	rebuildProjectBatchSize   = 200
+	rebuildWorkspaceBatchSize = 200
+)
+
+type RebuildDashboardResult struct {
+	ProjectsRefreshed             int64
+	WorkspacesRefreshed           int64
+	OrphanProjectSummariesDeleted int64
+	OrphanWorkspaceStatsDeleted   int64
+}
 
 type Service struct {
 	db *gorm.DB
@@ -80,11 +91,7 @@ func (s *Service) RefreshProject(projectID uuid.UUID) error {
 		return nil
 	}
 
-	var project models.Project
-	err := s.db.Preload("Publications", func(db *gorm.DB) *gorm.DB {
-		return db.Select("id, project_id, platform, enabled, status, draft_status, review_status, sync_required, publish_url").
-			Order("platform asc")
-	}).First(&project, "id = ?", projectID).Error
+	summary, err := s.refreshProjectSummary(projectID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return s.db.Delete(&models.ProjectListSummary{}, "project_id = ?", projectID).Error
 	}
@@ -92,15 +99,42 @@ func (s *Service) RefreshProject(projectID uuid.UUID) error {
 		return err
 	}
 
+	return s.RefreshWorkspace(summary.WorkspaceID)
+}
+
+func (s *Service) refreshProjectSummary(projectID uuid.UUID) (models.ProjectListSummary, error) {
+	var project models.Project
+	err := s.db.Preload("Publications", func(db *gorm.DB) *gorm.DB {
+		return db.Select("id, project_id, platform, enabled, status, draft_status, review_status, sync_required, publish_url").
+			Order("platform asc")
+	}).First(&project, "id = ?", projectID).Error
+	if err != nil {
+		return models.ProjectListSummary{}, err
+	}
+
 	summary, err := projectListSummary(project)
 	if err != nil {
-		return err
+		return models.ProjectListSummary{}, err
 	}
-	if err := s.db.Clauses(clause.OnConflict{
+	if err := s.upsertProjectSummaries([]models.ProjectListSummary{summary}); err != nil {
+		return models.ProjectListSummary{}, err
+	}
+
+	return summary, nil
+}
+
+func (s *Service) upsertProjectSummaries(summaries []models.ProjectListSummary) error {
+	if len(summaries) == 0 {
+		return nil
+	}
+	return s.db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "project_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"user_id",
 			"workspace_id",
+			"collab_document_id",
+			"template_id",
+			"brand_profile_id",
 			"title",
 			"status",
 			"publications",
@@ -108,11 +142,7 @@ func (s *Service) RefreshProject(projectID uuid.UUID) error {
 			"updated_at",
 			"refreshed_at",
 		}),
-	}).Create(&summary).Error; err != nil {
-		return err
-	}
-
-	return s.RefreshWorkspace(summary.WorkspaceID)
+	}).Create(&summaries).Error
 }
 
 func (s *Service) RefreshWorkspace(workspaceID uuid.UUID) error {
@@ -124,8 +154,11 @@ func (s *Service) RefreshWorkspace(workspaceID uuid.UUID) error {
 		WorkspaceID: workspaceID,
 		RefreshedAt: time.Now().UTC(),
 	}
-	if err := s.db.Model(&models.Project{}).
-		Where("workspace_id = ?", workspaceID).
+	projectScope, err := s.workspaceProjectScope(workspaceID)
+	if err != nil {
+		return err
+	}
+	if err := projectScope.
 		Count(&stats.TotalProjects).Error; err != nil {
 		return err
 	}
@@ -154,11 +187,100 @@ func (s *Service) RefreshWorkspace(workspaceID uuid.UUID) error {
 }
 
 func (s *Service) countWorkspacePublications(workspaceID uuid.UUID, status string, count *int64) error {
+	where, args, err := s.workspaceProjectWhere(workspaceID)
+	if err != nil {
+		return err
+	}
 	return s.db.Model(&models.ProjectPlatformPublication{}).
 		Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
-		Where("projects.workspace_id = ?", workspaceID).
+		Where(where, args...).
 		Where("project_platform_publications.status = ?", status).
 		Count(count).Error
+}
+
+func (s *Service) workspaceProjectScope(workspaceID uuid.UUID) (*gorm.DB, error) {
+	where, args, err := s.workspaceProjectWhere(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return s.db.Model(&models.Project{}).Where(where, args...), nil
+}
+
+func (s *Service) workspaceProjectWhere(workspaceID uuid.UUID) (string, []any, error) {
+	var workspace models.Workspace
+	err := s.db.Select("id", "owner_user_id").First(&workspace, "id = ?", workspaceID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "projects.workspace_id = ?", []any{workspaceID}, nil
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	if workspace.OwnerUserID != uuid.Nil && workspaceID == models.PersonalWorkspaceID(workspace.OwnerUserID) {
+		return "(projects.workspace_id = ? OR (projects.workspace_id IS NULL AND projects.user_id = ?))", []any{workspaceID, workspace.OwnerUserID}, nil
+	}
+	return "projects.workspace_id = ?", []any{workspaceID}, nil
+}
+
+func (s *Service) RebuildDashboard() (RebuildDashboardResult, error) {
+	var result RebuildDashboardResult
+	if s == nil {
+		return result, nil
+	}
+
+	deletedSummaries := s.db.Where(
+		"project_id NOT IN (?)",
+		s.db.Model(&models.Project{}).Select("id"),
+	).Delete(&models.ProjectListSummary{})
+	if deletedSummaries.Error != nil {
+		return result, deletedSummaries.Error
+	}
+	result.OrphanProjectSummariesDeleted = deletedSummaries.RowsAffected
+
+	var projects []models.Project
+	if err := s.db.Omit("source_content").Preload("Publications", func(db *gorm.DB) *gorm.DB {
+		return db.Select("id, project_id, platform, enabled, status, draft_status, review_status, sync_required, publish_url").
+			Order("platform asc")
+	}).FindInBatches(&projects, rebuildProjectBatchSize, func(_ *gorm.DB, _ int) error {
+		summaries := make([]models.ProjectListSummary, 0, len(projects))
+		for _, project := range projects {
+			summary, err := projectListSummary(project)
+			if err != nil {
+				return err
+			}
+			summaries = append(summaries, summary)
+		}
+		if err := s.upsertProjectSummaries(summaries); err != nil {
+			return err
+		}
+		result.ProjectsRefreshed += int64(len(summaries))
+		return nil
+	}).Error; err != nil {
+		return result, err
+	}
+
+	deletedStats := s.db.Where(
+		"workspace_id NOT IN (?)",
+		s.db.Model(&models.Workspace{}).Select("id"),
+	).Delete(&models.WorkspaceDashboardStats{})
+	if deletedStats.Error != nil {
+		return result, deletedStats.Error
+	}
+	result.OrphanWorkspaceStatsDeleted = deletedStats.RowsAffected
+
+	var workspaces []models.Workspace
+	if err := s.db.Select("id").FindInBatches(&workspaces, rebuildWorkspaceBatchSize, func(_ *gorm.DB, _ int) error {
+		for _, workspace := range workspaces {
+			if err := s.RefreshWorkspace(workspace.ID); err != nil {
+				return err
+			}
+			result.WorkspacesRefreshed++
+		}
+		return nil
+	}).Error; err != nil {
+		return result, err
+	}
+
+	return result, nil
 }
 
 func projectListSummary(project models.Project) (models.ProjectListSummary, error) {
@@ -186,14 +308,17 @@ func projectListSummary(project models.Project) (models.ProjectListSummary, erro
 	}
 
 	return models.ProjectListSummary{
-		ProjectID:    project.ID,
-		UserID:       project.UserID,
-		WorkspaceID:  *workspaceID,
-		Title:        project.Title,
-		Status:       project.Status,
-		Publications: datatypes.JSON(payload),
-		CreatedAt:    project.CreatedAt,
-		UpdatedAt:    project.UpdatedAt,
-		RefreshedAt:  time.Now().UTC(),
+		ProjectID:        project.ID,
+		UserID:           project.UserID,
+		WorkspaceID:      *workspaceID,
+		CollabDocumentID: project.CollabDocumentID,
+		TemplateID:       project.TemplateID,
+		BrandProfileID:   project.BrandProfileID,
+		Title:            project.Title,
+		Status:           project.Status,
+		Publications:     datatypes.JSON(payload),
+		CreatedAt:        project.CreatedAt,
+		UpdatedAt:        project.UpdatedAt,
+		RefreshedAt:      time.Now().UTC(),
 	}, nil
 }

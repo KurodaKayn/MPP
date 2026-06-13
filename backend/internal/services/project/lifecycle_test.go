@@ -54,6 +54,46 @@ func TestListProjects(t *testing.T) {
 	}
 }
 
+func TestListProjectsUsesCompleteReadModelForAdminList(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	projectID := uuid.New()
+	now := time.Now().UTC()
+
+	require.NoError(t, db.Create(&models.User{ID: userID, Username: "list-readmodel", Email: "list-readmodel@example.com", PasswordHash: "hash"}).Error)
+	require.NoError(t, db.Create(&models.Project{
+		ID:            projectID,
+		UserID:        userID,
+		WorkspaceID:   &workspaceID,
+		Title:         "fact title",
+		SourceContent: "fact body",
+		Status:        models.ProjectStatusReady,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectListSummary{
+		ProjectID:    projectID,
+		UserID:       userID,
+		WorkspaceID:  workspaceID,
+		Title:        "summary title",
+		Status:       models.ProjectStatusReady,
+		Publications: datatypes.JSON(`[]`),
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		RefreshedAt:  now,
+	}).Error)
+
+	resp, err := s.ListProjects(1, 10, "", "", "", nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), resp.Total)
+	items := resp.Items.([]dto.ProjectListItem)
+	require.Len(t, items, 1)
+	require.Equal(t, projectID, items[0].ID)
+	require.Equal(t, "summary title", items[0].Title)
+}
+
 func TestListProjectsUsesKeysetCursor(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	s := services.NewDashboardService(db)

@@ -60,9 +60,15 @@ type DashboardService struct {
 	*AccountSettings
 	*Publisher
 
-	db        *gorm.DB
-	dbRouter  *dbrouter.Router
-	readModel *readmodelsvc.Service
+	db                    *gorm.DB
+	dbRouter              *dbrouter.Router
+	readModel             *readmodelsvc.Service
+	readModelRebuildQueue DashboardReadModelRebuildQueue
+}
+
+type DashboardReadModelRebuildQueue interface {
+	EnqueueDashboardRebuild(ctx context.Context) (readmodelsvc.DashboardRebuildTaskInfo, error)
+	StartWorker(ctx context.Context, service *readmodelsvc.Service) error
 }
 
 func NewDashboardService(db *gorm.DB) *DashboardService {
@@ -232,6 +238,32 @@ func (s *DashboardService) UseRedis(client *redis.Client) {
 	s.AccountSettings.UseRedis(client)
 	s.Publisher.UseRedis(client)
 	s.Stats.UseRedis(client)
+	s.readModelRebuildQueue = readmodelsvc.NewRedisDashboardRebuildQueue(client)
+}
+
+func (s *DashboardService) EnqueueDashboardReadModelRebuild(ctx context.Context) (readmodelsvc.DashboardRebuildTaskInfo, error) {
+	if s == nil || s.readModelRebuildQueue == nil {
+		return readmodelsvc.DashboardRebuildTaskInfo{}, readmodelsvc.ErrDashboardRebuildQueueUnavailable
+	}
+	return s.readModelRebuildQueue.EnqueueDashboardRebuild(ctx)
+}
+
+func (s *DashboardService) StartDashboardReadModelRebuildWorkerWithErrors(ctx context.Context) <-chan error {
+	if s == nil || s.readModelRebuildQueue == nil || s.readModel == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	workerErrors := make(chan error, 1)
+	go func() {
+		defer close(workerErrors)
+		if err := s.readModelRebuildQueue.StartWorker(ctx, s.readModel); err != nil && ctx.Err() == nil {
+			workerErrors <- err
+		}
+	}()
+	return workerErrors
 }
 
 func (s *DashboardService) wireDashboardCacheInvalidators() {

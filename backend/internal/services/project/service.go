@@ -117,6 +117,11 @@ func (s *Service) strongReadDB() *gorm.DB {
 	return s.router.Reader(s.requestContext(), dbrouter.StrongRead)
 }
 
+func (s *Service) canUseReadModels() bool {
+	stickyUntil, sticky := dbrouter.StickyWriterUntil(s.requestContext())
+	return !sticky || !stickyUntil.After(time.Now())
+}
+
 func ensurePersonalWorkspace(tx *gorm.DB, ownerUserID uuid.UUID) error {
 	workspaceID := models.PersonalWorkspaceID(ownerUserID)
 	workspace := models.Workspace{

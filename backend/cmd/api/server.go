@@ -161,6 +161,7 @@ func registerAdminDashboardRoutes(e *echo.Echo, config serverConfig, h serverHan
 	adminGroup.GET("/stats", h.adminDashboard.GetStats)
 	adminGroup.GET("/projects", h.adminDashboard.ListProjects)
 	adminGroup.GET("/projects/:id/publications", h.adminDashboard.GetProjectPublications)
+	adminGroup.POST("/read-model/rebuild", h.adminDashboard.RebuildReadModels)
 }
 
 func registerUserDashboardRoutes(e *echo.Echo, config serverConfig, h serverHandlers) error {

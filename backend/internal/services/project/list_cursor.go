@@ -40,6 +40,10 @@ func normalizeProjectListPage(page, limit int) (int, int) {
 }
 
 func applyProjectListCursor(query *gorm.DB, cursor string) (*gorm.DB, error) {
+	return applyProjectListCursorColumns(query, cursor, "projects.created_at", "projects.id")
+}
+
+func applyProjectListCursorColumns(query *gorm.DB, cursor, createdAtColumn, idColumn string) (*gorm.DB, error) {
 	if strings.TrimSpace(cursor) == "" {
 		return query, nil
 	}
@@ -48,7 +52,7 @@ func applyProjectListCursor(query *gorm.DB, cursor string) (*gorm.DB, error) {
 		return nil, err
 	}
 	return query.Where(
-		"(projects.created_at < ? OR (projects.created_at = ? AND projects.id > ?))",
+		fmt.Sprintf("(%s < ? OR (%s = ? AND %s > ?))", createdAtColumn, createdAtColumn, idColumn),
 		decoded.CreatedAt,
 		decoded.CreatedAt,
 		decoded.ID,
@@ -75,9 +79,13 @@ func decodeProjectListCursor(cursor string) (*projectListCursor, error) {
 }
 
 func encodeProjectListCursor(project models.Project) string {
+	return encodeProjectListCursorValues(project.CreatedAt, project.ID)
+}
+
+func encodeProjectListCursorValues(createdAt time.Time, id uuid.UUID) string {
 	encoded, err := json.Marshal(projectListCursor{
-		CreatedAt: project.CreatedAt,
-		ID:        project.ID,
+		CreatedAt: createdAt,
+		ID:        id,
 	})
 	if err != nil {
 		return ""

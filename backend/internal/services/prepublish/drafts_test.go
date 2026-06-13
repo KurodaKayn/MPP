@@ -151,7 +151,7 @@ func TestSyncProjectPrepublishInvalidatesDashboardCaches(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), stats.TotalFailedPublications)
 	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 1)
-	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1)
+	staleStatsKey := requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1)[0]
 
 	_, err = s.WithContext(context.Background()).SyncProjectPrepublish(project.ID, owner.ID, dto.SyncPrepublishRequest{
 		Platforms: []string{"wechat"},
@@ -159,11 +159,12 @@ func TestSyncProjectPrepublishInvalidatesDashboardCaches(t *testing.T) {
 	})
 	require.NoError(t, err)
 	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 0)
-	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 0)
+	require.Contains(t, requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1), staleStatsKey)
 
 	refreshedStats, err := s.WithContext(context.Background()).GetStats(nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), refreshedStats.TotalFailedPublications)
+	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 2)
 }
 
 func TestSyncProjectPrepublishSanitizesHTMLDraftsBeforePersisting(t *testing.T) {
@@ -414,7 +415,7 @@ func TestSyncProjectPrepublishInvalidatesCachesAfterCommittedEnsureBeforeActiveP
 	require.NoError(t, err)
 	require.Equal(t, int64(1), stats.TotalProjects)
 	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 1)
-	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1)
+	staleStatsKey := requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1)[0]
 
 	resp, err := s.WithContext(context.Background()).SyncProjectPrepublish(project.ID, owner.ID, dto.SyncPrepublishRequest{
 		Platforms: []string{"zhihu", "wechat"},
@@ -425,7 +426,12 @@ func TestSyncProjectPrepublishInvalidatesCachesAfterCommittedEnsureBeforeActiveP
 	require.Nil(t, resp)
 	require.Empty(t, compiler.LastPlatforms)
 	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 0)
-	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 0)
+	require.Contains(t, requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1), staleStatsKey)
+
+	refreshedStats, err := s.WithContext(context.Background()).GetStats(nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), refreshedStats.TotalProjects)
+	requirePrepublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 2)
 
 	var enabledPublication models.ProjectPlatformPublication
 	require.NoError(t, db.First(&enabledPublication, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
@@ -559,10 +565,11 @@ func newPrepublishCacheRedisClient(t *testing.T) *redis.Client {
 	return client
 }
 
-func requirePrepublishCacheKeys(t *testing.T, client *redis.Client, pattern string, count int) {
+func requirePrepublishCacheKeys(t *testing.T, client *redis.Client, pattern string, count int) []string {
 	t.Helper()
 
 	cacheKeys, err := client.Keys(context.Background(), pattern).Result()
 	require.NoError(t, err)
 	require.Len(t, cacheKeys, count)
+	return cacheKeys
 }

@@ -81,3 +81,14 @@ func (h *DashboardHandler) GetProjectPublications(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, resp)
 }
+
+func (h *DashboardHandler) RebuildReadModels(c echo.Context) error {
+	info, err := h.serviceFor(c).EnqueueDashboardReadModelRebuild(c.Request().Context())
+	if err != nil {
+		if errors.Is(err, services.ErrDashboardRebuildQueueUnavailable) {
+			return sendError(c, http.StatusServiceUnavailable, "queue_unavailable", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	return c.JSON(http.StatusAccepted, info)
+}
