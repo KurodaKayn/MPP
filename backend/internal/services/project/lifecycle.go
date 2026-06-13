@@ -622,6 +622,31 @@ func projectListItemFromModel(project models.Project, access projectAccessResolu
 	}
 }
 
+func projectListItemFromSummary(summary models.ProjectListSummary, access projectAccessResolution) (dto.ProjectListItem, error) {
+	publications := []dto.PublicationSummary{}
+	if len(summary.Publications) > 0 {
+		if err := json.Unmarshal(summary.Publications, &publications); err != nil {
+			return dto.ProjectListItem{}, err
+		}
+	}
+	workspaceID := summary.WorkspaceID
+	return dto.ProjectListItem{
+		ID:               summary.ProjectID,
+		UserID:           summary.UserID,
+		WorkspaceID:      &workspaceID,
+		CollabDocumentID: summary.CollabDocumentID,
+		TemplateID:       summary.TemplateID,
+		BrandProfileID:   summary.BrandProfileID,
+		Title:            summary.Title,
+		Status:           summary.Status,
+		Role:             access.role,
+		AccessSource:     access.source,
+		CreatedAt:        summary.CreatedAt,
+		UpdatedAt:        summary.UpdatedAt,
+		Publications:     publications,
+	}, nil
+}
+
 func NormalizeProjectPlatforms(input []string) ([]string, error) {
 	seen := map[string]struct{}{}
 	platforms := make([]string, 0, len(input))
@@ -683,6 +708,14 @@ func (s *Service) ListProjectsCursor(cursor string, page, limit int, status, fil
 }
 
 func (s *Service) computeProjectList(cursor string, page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
+	if scopeUserID == nil && platform == "" && s.canUseReadModels() {
+		if resp, ok, err := s.adminProjectListFromReadModel(cursor, page, limit, status, filterUserID); err != nil {
+			return nil, err
+		} else if ok {
+			return resp, nil
+		}
+	}
+
 	query := s.projectListReadDB(scopeUserID).Model(&models.Project{})
 
 	// Apply scope (User dashboard enforces scopeUserID, overriding any filterUserID)
@@ -706,6 +739,42 @@ func (s *Service) computeProjectList(cursor string, page, limit int, status, fil
 	}
 
 	return s.ListProjectPage(query, cursor, page, limit, scopeUserID)
+}
+
+func (s *Service) adminProjectListFromReadModel(cursor string, page, limit int, status, filterUserID string) (*dto.PaginationResponse, bool, error) {
+	query := s.projectListReadDB(nil).Model(&models.ProjectListSummary{})
+	factQuery := s.projectListReadDB(nil).Model(&models.Project{})
+	if filterUserID != "" {
+		if uid, err := uuid.Parse(filterUserID); err == nil {
+			query = query.Where("user_id = ?", uid)
+			factQuery = factQuery.Where("user_id = ?", uid)
+		}
+	}
+	if status != "" {
+		query = query.Where("status = ?", status)
+		factQuery = factQuery.Where("status = ?", status)
+	}
+
+	var summaryCount int64
+	if err := query.Count(&summaryCount).Error; err != nil {
+		return nil, false, err
+	}
+	if summaryCount == 0 {
+		return nil, false, nil
+	}
+	var factCount int64
+	if err := factQuery.Count(&factCount).Error; err != nil {
+		return nil, false, err
+	}
+	if summaryCount != factCount {
+		return nil, false, nil
+	}
+
+	resp, err := s.ListProjectSummaryPage(query, cursor, page, limit)
+	if err != nil {
+		return nil, false, err
+	}
+	return resp, true, nil
 }
 
 func (s *Service) projectListReadDB(scopeUserID *uuid.UUID) *gorm.DB {
@@ -777,6 +846,69 @@ func (s *Service) ListProjectPage(query *gorm.DB, cursor string, page, limit int
 	nextCursor := ""
 	if hasMore && len(projects) > 0 {
 		nextCursor = encodeProjectListCursor(projects[len(projects)-1])
+	}
+
+	return &dto.PaginationResponse{
+		Items:      items,
+		Page:       page,
+		Limit:      limit,
+		Total:      total,
+		TotalPages: totalPages,
+		Cursor:     strings.TrimSpace(cursor),
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	}, nil
+}
+
+func (s *Service) ListProjectSummaryPage(query *gorm.DB, cursor string, page, limit int) (*dto.PaginationResponse, error) {
+	var summaries []models.ProjectListSummary
+
+	page, limit = normalizeProjectListPage(page, limit)
+	query, err := applyProjectListCursorColumns(query, cursor, "project_list_summaries.created_at", "project_list_summaries.project_id")
+	if err != nil {
+		return nil, err
+	}
+
+	if err := query.
+		Order("project_list_summaries.created_at DESC").
+		Order("project_list_summaries.project_id ASC").
+		Limit(limit + 1).
+		Find(&summaries).Error; err != nil {
+		return nil, err
+	}
+
+	hasMore := len(summaries) > limit
+	if hasMore {
+		summaries = summaries[:limit]
+	}
+
+	items := make([]dto.ProjectListItem, 0, len(summaries))
+	for _, summary := range summaries {
+		item, err := projectListItemFromSummary(summary, projectAccessResolution{
+			role:   models.ProjectRoleOwner,
+			source: models.ProjectAccessSourceOwner,
+		})
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+
+	total := int64((page-1)*limit + len(items))
+	if hasMore {
+		total++
+	}
+	totalPages := page
+	if len(items) == 0 && page == 1 {
+		totalPages = 0
+	} else if hasMore {
+		totalPages = page + 1
+	}
+
+	nextCursor := ""
+	if hasMore && len(summaries) > 0 {
+		last := summaries[len(summaries)-1]
+		nextCursor = encodeProjectListCursorValues(last.CreatedAt, last.ProjectID)
 	}
 
 	return &dto.PaginationResponse{

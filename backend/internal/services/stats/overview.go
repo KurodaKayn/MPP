@@ -35,6 +35,14 @@ func (s *Service) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse,
 }
 
 func (s *Service) computeStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
+	if scopeUserID == nil && s.canUseReadModels() {
+		if stats, ok, err := s.globalStatsFromReadModel(); err != nil {
+			return nil, err
+		} else if ok {
+			return stats, nil
+		}
+	}
+
 	var stats dto.DashboardStatsResponse
 	readDB := s.statsReadDB(scopeUserID)
 
@@ -81,6 +89,49 @@ func (s *Service) computeStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsRespo
 	}
 
 	return &stats, nil
+}
+
+func (s *Service) globalStatsFromReadModel() (*dto.DashboardStatsResponse, bool, error) {
+	readDB := s.eventualReadDB()
+	var workspaceCount int64
+	if err := readDB.Model(&models.Workspace{}).Count(&workspaceCount).Error; err != nil {
+		return nil, false, err
+	}
+	if workspaceCount == 0 {
+		return nil, false, nil
+	}
+	var statsRows int64
+	if err := readDB.Model(&models.WorkspaceDashboardStats{}).Count(&statsRows).Error; err != nil {
+		return nil, false, err
+	}
+	if statsRows != workspaceCount {
+		return nil, false, nil
+	}
+
+	var totals struct {
+		TotalProjects              int64
+		TotalPublishedPublications int64
+		TotalFailedPublications    int64
+	}
+	if err := readDB.Model(&models.WorkspaceDashboardStats{}).
+		Select(`
+			COALESCE(SUM(total_projects), 0) AS total_projects,
+			COALESCE(SUM(total_published_publications), 0) AS total_published_publications,
+			COALESCE(SUM(total_failed_publications), 0) AS total_failed_publications
+		`).
+		Scan(&totals).Error; err != nil {
+		return nil, false, err
+	}
+
+	stats := dto.DashboardStatsResponse{
+		TotalProjects:              totals.TotalProjects,
+		TotalPublishedPublications: totals.TotalPublishedPublications,
+		TotalFailedPublications:    totals.TotalFailedPublications,
+	}
+	if err := readDB.Model(&models.User{}).Count(&stats.TotalUsers).Error; err != nil {
+		return nil, false, err
+	}
+	return &stats, true, nil
 }
 
 func (s *Service) getCachedStats() (*dto.DashboardStatsResponse, error) {
@@ -196,6 +247,21 @@ func (s *Service) GetWorkspaceStats(workspaceID uuid.UUID, scopeUserID uuid.UUID
 	if _, err := s.projects.WorkspaceProjectRole(workspaceID, scopeUserID); err != nil {
 		return nil, err
 	}
+	if s.canUseReadModels() {
+		var readModel models.WorkspaceDashboardStats
+		if err := s.eventualReadDB().First(&readModel, "workspace_id = ?", workspaceID).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, err
+			}
+		} else {
+			return &dto.DashboardStatsResponse{
+				TotalUsers:                 1,
+				TotalProjects:              readModel.TotalProjects,
+				TotalPublishedPublications: readModel.TotalPublishedPublications,
+				TotalFailedPublications:    readModel.TotalFailedPublications,
+			}, nil
+		}
+	}
 
 	var stats dto.DashboardStatsResponse
 	stats.TotalUsers = 1
@@ -236,6 +302,10 @@ func (s *Service) canUseDashboardStatsCache() bool {
 	if s.cache == nil || s.cacheTTL <= 0 {
 		return false
 	}
+	return s.canUseReadModels()
+}
+
+func (s *Service) canUseReadModels() bool {
 	stickyUntil, sticky := dbrouter.StickyWriterUntil(s.requestContext())
 	return !sticky || !stickyUntil.After(time.Now())
 }
