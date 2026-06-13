@@ -211,17 +211,18 @@ func TestPublishProjectInvalidatesDashboardCaches(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), stats.TotalPublishedPublications)
 	requirePublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 1)
-	requirePublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1)
+	staleStatsKey := requirePublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1)[0]
 
 	resp, err := s.WithContext(context.Background()).PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	require.NoError(t, err)
 	assert.Equal(t, models.PublicationStatusPublished, resp["status"])
 	requirePublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 0)
-	requirePublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 0)
+	require.Contains(t, requirePublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1), staleStatsKey)
 
 	refreshed, err := s.WithContext(context.Background()).GetStats(nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), refreshed.TotalPublishedPublications)
+	requirePublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 2)
 }
 
 func TestEnqueuePublishProjectCreatesImmediateScheduleAndAttempt(t *testing.T) {
@@ -1568,10 +1569,11 @@ func newPublishCacheRedisClient(t *testing.T) *redis.Client {
 	return client
 }
 
-func requirePublishCacheKeys(t *testing.T, client *redis.Client, pattern string, count int) {
+func requirePublishCacheKeys(t *testing.T, client *redis.Client, pattern string, count int) []string {
 	t.Helper()
 
 	cacheKeys, err := client.Keys(context.Background(), pattern).Result()
 	require.NoError(t, err)
 	require.Len(t, cacheKeys, count)
+	return cacheKeys
 }
