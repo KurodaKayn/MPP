@@ -349,7 +349,10 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
       });
     }
 
-    const backoffAttempt = Math.min(attempt - 1, this.maxFlushRetryAttempts - 1);
+    const backoffAttempt = Math.min(
+      attempt - 1,
+      this.maxFlushRetryAttempts - 1,
+    );
     const retryDelayMs = Math.min(
       this.flushIntervalMs * 2 ** backoffAttempt,
       this.maxFlushRetryDelayMs,
