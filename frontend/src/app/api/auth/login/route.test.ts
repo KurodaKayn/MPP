@@ -52,6 +52,7 @@ describe("auth login route", () => {
 
     expect(body).toEqual({ authenticated: true, username: "u" });
     expect(JSON.stringify(body)).not.toContain("jwt-token");
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
     expect(setCookieHeader).toContain("sevenoxcloud.auth_token=jwt-token");
     expect(setCookieHeader).toContain("HttpOnly");
     expect(setCookieHeader).toContain("SameSite=lax");

@@ -67,6 +67,9 @@ describe("auth session route", () => {
         token: true,
       },
     });
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    expect(response.headers.get("expires")).toBe("0");
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [targetUrl, init] = fetchMock.mock.calls[0];
@@ -92,6 +95,7 @@ describe("auth session route", () => {
     const setCookieHeader = response.headers.get("set-cookie");
 
     expect(body.authenticated).toBe(false);
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
     expect(setCookieHeader).toContain("sevenoxcloud.auth_token=");
     expect(setCookieHeader).toContain("Max-Age=0");
     expect(setCookieHeader).toContain("HttpOnly");
@@ -115,6 +119,7 @@ describe("auth session route", () => {
         token: true,
       },
     });
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
     expect(setCookieHeader).toContain("sevenoxcloud.auth_token=session-token");
     expect(setCookieHeader).toContain("HttpOnly");
     expect(setCookieHeader).toContain("SameSite=lax");
@@ -137,6 +142,7 @@ describe("auth session route", () => {
     const setCookieHeader = response.headers.get("set-cookie");
 
     expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
     expect(body.error.code).toBe("invalid_token");
     expect(setCookieHeader).toContain("sevenoxcloud.auth_token=");
     expect(setCookieHeader).toContain("Max-Age=0");
@@ -154,6 +160,7 @@ describe("auth session route", () => {
     const body = await response.json();
 
     expect(body.loginMethods.mock).toBe(true);
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -161,6 +168,7 @@ describe("auth session route", () => {
     const response = DELETE();
     const setCookieHeader = response.headers.get("set-cookie");
 
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
     expect(setCookieHeader).toContain("sevenoxcloud.auth_token=");
     expect(setCookieHeader).toContain("Max-Age=0");
     expect(setCookieHeader).toContain("HttpOnly");
