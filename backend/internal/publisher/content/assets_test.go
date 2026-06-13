@@ -38,3 +38,25 @@ func TestExtractFirstImageAssetSourceReturnsFirstCompiledImage(t *testing.T) {
 		t.Fatalf("expected first image source, got %q", source)
 	}
 }
+
+func TestSelectCoverImageSourcePrefersExplicitCoverImageURL(t *testing.T) {
+	source := SelectCoverImageSource(
+		datatypes.JSON(`{"cover_image_url":" https://example.com/cover.jpg "}`),
+		datatypes.JSON(`{"assets":[{"type":"image","source_url":"https://example.com/body.png"}]}`),
+	)
+
+	if source != "https://example.com/cover.jpg" {
+		t.Fatalf("expected explicit cover image source, got %q", source)
+	}
+}
+
+func TestSelectCoverImageSourceFallsBackToFirstCompiledImage(t *testing.T) {
+	source := SelectCoverImageSource(
+		datatypes.JSON(`{}`),
+		datatypes.JSON(`{"assets":[{"type":"image","source_url":"https://example.com/body.png"}]}`),
+	)
+
+	if source != "https://example.com/body.png" {
+		t.Fatalf("expected compiled image fallback, got %q", source)
+	}
+}
