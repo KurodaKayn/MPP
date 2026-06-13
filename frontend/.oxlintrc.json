@@ -1,6 +1,15 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc"],
+  "ignorePatterns": [
+    "node_modules/",
+    ".next/",
+    "out/",
+    "build/",
+    "coverage/",
+    "next-env.d.ts",
+    "*.tsbuildinfo"
+  ],
   "categories": {
     "correctness": "error"
   },
