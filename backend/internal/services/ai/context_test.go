@@ -225,13 +225,13 @@ func TestAIContextAssemblerAndBudgeter(t *testing.T) {
 		require.NoError(t, err)
 
 		snapshot := models.AIContextSnapshot{
-			ID:          uuid.New(),
-			WorkspaceID: workspaceID,
-			ProjectID:   projectID,
-			CreatedByID: userID,
-			ContextKind: "drafting",
-			Platforms:   datatypes.JSON(raw),
-			SourceContent: "small",
+			ID:              uuid.New(),
+			WorkspaceID:     workspaceID,
+			ProjectID:       projectID,
+			CreatedByID:     userID,
+			ContextKind:     "drafting",
+			Platforms:       datatypes.JSON(raw),
+			SourceContent:   "small",
 			CompactionLevel: "none",
 		}
 
