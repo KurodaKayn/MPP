@@ -38,7 +38,7 @@ func (d *DouyinPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 	if content == "" {
 		return "", "", fmt.Errorf("douyin text content is empty")
 	}
-	localImagePath, cleanupImage, err := douyinUploadImagePath(ctx, pub.Config)
+	localImagePath, cleanupImage, err := douyinUploadImagePath(ctx, pub.Config, pub.AdaptedContent)
 	if err != nil {
 		return "", "", err
 	}
@@ -196,22 +196,18 @@ func extractDouyinText(raw []byte) string {
 	return strings.TrimSpace(string(raw))
 }
 
-func douyinUploadImagePath(ctx context.Context, rawConfig []byte) (string, func(), error) {
+func douyinUploadImagePath(ctx context.Context, rawConfig []byte, adaptedContent []byte) (string, func(), error) {
+	if source := content.ExtractFirstImageAssetSource(adaptedContent); source != "" {
+		return materializeDouyinImageSource(ctx, source)
+	}
+
 	var config struct {
 		CoverImageURL string `json:"cover_image_url"`
 	}
 	_ = json.Unmarshal(rawConfig, &config)
 
 	if source := strings.TrimSpace(config.CoverImageURL); source != "" {
-		objectRef, err := media.DownloadAndProcess(source)
-		if err != nil {
-			return "", nil, fmt.Errorf("failed to prepare douyin cover image: %w", err)
-		}
-		path, cleanup, err := media.MaterializeProcessedObject(ctx, objectRef, "mpp-douyin-cover-*")
-		if err != nil {
-			return "", nil, fmt.Errorf("failed to materialize douyin cover image: %w", err)
-		}
-		return path, cleanup, nil
+		return materializeDouyinImageSource(ctx, source)
 	}
 
 	path, err := bundledDouyinImagePath()
@@ -219,6 +215,18 @@ func douyinUploadImagePath(ctx context.Context, rawConfig []byte) (string, func(
 		return "", nil, err
 	}
 	return path, func() {}, nil
+}
+
+func materializeDouyinImageSource(ctx context.Context, source string) (string, func(), error) {
+	objectRef, err := media.DownloadAndProcessForPlatform(source, "douyin", "cover")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to prepare douyin cover image: %w", err)
+	}
+	path, cleanup, err := media.MaterializeProcessedObject(ctx, objectRef, "mpp-douyin-cover-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to materialize douyin cover image: %w", err)
+	}
+	return path, cleanup, nil
 }
 
 func bundledDouyinImagePath() (string, error) {
