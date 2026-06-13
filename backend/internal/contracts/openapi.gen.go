@@ -15,6 +15,33 @@ const (
 	AIChatMessageRoleUser      AIChatMessageRole = "user"
 )
 
+// Defines values for AIContextSnapshotCompactionLevel.
+const (
+	MemorySummary  AIContextSnapshotCompactionLevel = "memory_summary"
+	None           AIContextSnapshotCompactionLevel = "none"
+	Partial        AIContextSnapshotCompactionLevel = "partial"
+	SessionSummary AIContextSnapshotCompactionLevel = "session_summary"
+)
+
+// Defines values for AIContextSnapshotContextKind.
+const (
+	Drafting           AIContextSnapshotContextKind = "drafting"
+	GrowthOptimization AIContextSnapshotContextKind = "growth_optimization"
+)
+
+// Defines values for AIDraftingMessageRole.
+const (
+	AIDraftingMessageRoleAssistant AIDraftingMessageRole = "assistant"
+	AIDraftingMessageRoleSystem    AIDraftingMessageRole = "system"
+	AIDraftingMessageRoleUser      AIDraftingMessageRole = "user"
+)
+
+// Defines values for AIDraftingSessionStatus.
+const (
+	AIDraftingSessionStatusActive   AIDraftingSessionStatus = "active"
+	AIDraftingSessionStatusArchived AIDraftingSessionStatus = "archived"
+)
+
 // Defines values for AIEditContentResponseChannel.
 const (
 	Content AIEditContentResponseChannel = "content"
@@ -39,6 +66,40 @@ const (
 	AIEditPrepublishResponsePlatformWechat AIEditPrepublishResponsePlatform = "wechat"
 	AIEditPrepublishResponsePlatformX      AIEditPrepublishResponsePlatform = "x"
 	AIEditPrepublishResponsePlatformZhihu  AIEditPrepublishResponsePlatform = "zhihu"
+)
+
+// Defines values for AIGrowthOptimizationRunIntensity.
+const (
+	Aggressive   AIGrowthOptimizationRunIntensity = "aggressive"
+	Balanced     AIGrowthOptimizationRunIntensity = "balanced"
+	Conservative AIGrowthOptimizationRunIntensity = "conservative"
+)
+
+// Defines values for AIGrowthOptimizationRunStatus.
+const (
+	AIGrowthOptimizationRunStatusApplied   AIGrowthOptimizationRunStatus = "applied"
+	AIGrowthOptimizationRunStatusCancelled AIGrowthOptimizationRunStatus = "cancelled"
+	AIGrowthOptimizationRunStatusFailed    AIGrowthOptimizationRunStatus = "failed"
+	AIGrowthOptimizationRunStatusReady     AIGrowthOptimizationRunStatus = "ready"
+	AIGrowthOptimizationRunStatusRunning   AIGrowthOptimizationRunStatus = "running"
+)
+
+// Defines values for AIProposalProposalType.
+const (
+	Checklist       AIProposalProposalType = "checklist"
+	CommentReply    AIProposalProposalType = "comment_reply"
+	PrepublishPatch AIProposalProposalType = "prepublish_patch"
+	SourceRewrite   AIProposalProposalType = "source_rewrite"
+	TagCandidates   AIProposalProposalType = "tag_candidates"
+	TitleCandidates AIProposalProposalType = "title_candidates"
+)
+
+// Defines values for AIProposalStatus.
+const (
+	AIProposalStatusAccepted   AIProposalStatus = "accepted"
+	AIProposalStatusProposed   AIProposalStatus = "proposed"
+	AIProposalStatusRejected   AIProposalStatus = "rejected"
+	AIProposalStatusSuperseded AIProposalStatus = "superseded"
 )
 
 // Defines values for AdaptedAssetType.
@@ -85,7 +146,7 @@ const (
 
 // Defines values for CollabDocumentStatus.
 const (
-	Active CollabDocumentStatus = "active"
+	CollabDocumentStatusActive CollabDocumentStatus = "active"
 )
 
 // Defines values for CompleteBrowserSessionResultPlatform.
@@ -235,10 +296,10 @@ const (
 
 // Defines values for PublicationReviewStatus.
 const (
-	PublicationReviewStatusApproved         PublicationReviewStatus = "approved"
-	PublicationReviewStatusChangesRequested PublicationReviewStatus = "changes_requested"
-	PublicationReviewStatusDraft            PublicationReviewStatus = "draft"
-	PublicationReviewStatusReviewing        PublicationReviewStatus = "reviewing"
+	Approved         PublicationReviewStatus = "approved"
+	ChangesRequested PublicationReviewStatus = "changes_requested"
+	Draft            PublicationReviewStatus = "draft"
+	Reviewing        PublicationReviewStatus = "reviewing"
 )
 
 // Defines values for PublicationStatus.
@@ -334,10 +395,10 @@ const (
 
 // Defines values for WorkspaceInviteWithTokenStatus.
 const (
-	WorkspaceInviteWithTokenStatusAccepted WorkspaceInviteWithTokenStatus = "accepted"
-	WorkspaceInviteWithTokenStatusExpired  WorkspaceInviteWithTokenStatus = "expired"
-	WorkspaceInviteWithTokenStatusPending  WorkspaceInviteWithTokenStatus = "pending"
-	WorkspaceInviteWithTokenStatusRevoked  WorkspaceInviteWithTokenStatus = "revoked"
+	Accepted WorkspaceInviteWithTokenStatus = "accepted"
+	Expired  WorkspaceInviteWithTokenStatus = "expired"
+	Pending  WorkspaceInviteWithTokenStatus = "pending"
+	Revoked  WorkspaceInviteWithTokenStatus = "revoked"
 )
 
 // Defines values for WorkspaceMemberRequestRole.
@@ -385,6 +446,83 @@ type AIChatMessage struct {
 
 // AIChatMessageRole defines model for AIChatMessage.Role.
 type AIChatMessageRole string
+
+// AIContextSnapshot defines model for AIContextSnapshot.
+type AIContextSnapshot struct {
+	BrandProfile       *map[string]interface{}          `json:"brand_profile,omitempty"`
+	CommentsSummary    string                           `json:"comments_summary"`
+	CompactionLevel    AIContextSnapshotCompactionLevel `json:"compaction_level"`
+	ContentTemplate    *map[string]interface{}          `json:"content_template,omitempty"`
+	ContextBudget      int                              `json:"context_budget"`
+	ContextKind        AIContextSnapshotContextKind     `json:"context_kind"`
+	CreatedAt          time.Time                        `json:"created_at"`
+	CreatedBy          openapi_types.UUID               `json:"created_by"`
+	Id                 openapi_types.UUID               `json:"id"`
+	MediaSummary       string                           `json:"media_summary"`
+	PerformanceSummary string                           `json:"performance_summary"`
+	Platforms          *map[string]interface{}          `json:"platforms,omitempty"`
+	ProjectId          openapi_types.UUID               `json:"project_id"`
+	ProjectSummary     string                           `json:"project_summary"`
+	Publications       *map[string]interface{}          `json:"publications,omitempty"`
+	RawContextRefs     *map[string]interface{}          `json:"raw_context_refs,omitempty"`
+	SelectedRange      string                           `json:"selected_range"`
+	SourceContent      string                           `json:"source_content"`
+	SourceVersionId    *openapi_types.UUID              `json:"source_version_id,omitempty"`
+	TokenEstimate      int                              `json:"token_estimate"`
+	VersionsSummary    string                           `json:"versions_summary"`
+	WorkspaceId        openapi_types.UUID               `json:"workspace_id"`
+}
+
+// AIContextSnapshotCompactionLevel defines model for AIContextSnapshot.CompactionLevel.
+type AIContextSnapshotCompactionLevel string
+
+// AIContextSnapshotContextKind defines model for AIContextSnapshot.ContextKind.
+type AIContextSnapshotContextKind string
+
+// AIDraftingMessage defines model for AIDraftingMessage.
+type AIDraftingMessage struct {
+	Content   string                `json:"content"`
+	CreatedAt time.Time             `json:"created_at"`
+	Id        openapi_types.UUID    `json:"id"`
+	Role      AIDraftingMessageRole `json:"role"`
+	SessionId openapi_types.UUID    `json:"session_id"`
+}
+
+// AIDraftingMessageRole defines model for AIDraftingMessage.Role.
+type AIDraftingMessageRole string
+
+// AIDraftingSession defines model for AIDraftingSession.
+type AIDraftingSession struct {
+	ActiveContextSnapshotId *openapi_types.UUID     `json:"active_context_snapshot_id,omitempty"`
+	CreatedAt               time.Time               `json:"created_at"`
+	CreatedBy               openapi_types.UUID      `json:"created_by"`
+	Id                      openapi_types.UUID      `json:"id"`
+	LastMessageAt           time.Time               `json:"last_message_at"`
+	ProjectId               openapi_types.UUID      `json:"project_id"`
+	Status                  AIDraftingSessionStatus `json:"status"`
+	Title                   string                  `json:"title"`
+	UpdatedAt               time.Time               `json:"updated_at"`
+	WorkspaceId             openapi_types.UUID      `json:"workspace_id"`
+}
+
+// AIDraftingSessionStatus defines model for AIDraftingSession.Status.
+type AIDraftingSessionStatus string
+
+// AIDraftingSessionSummary defines model for AIDraftingSessionSummary.
+type AIDraftingSessionSummary struct {
+	AcceptedChanges    []map[string]interface{} `json:"accepted_changes"`
+	ActiveArtifacts    []map[string]interface{} `json:"active_artifacts"`
+	CreatedAt          time.Time                `json:"created_at"`
+	Id                 openapi_types.UUID       `json:"id"`
+	NextStepHint       string                   `json:"next_step_hint"`
+	OpenTasks          []map[string]interface{} `json:"open_tasks"`
+	RejectedDirections []map[string]interface{} `json:"rejected_directions"`
+	SessionId          openapi_types.UUID       `json:"session_id"`
+	SourceRefs         []map[string]interface{} `json:"source_refs"`
+	Summary            string                   `json:"summary"`
+	UpdatedAt          time.Time                `json:"updated_at"`
+	UserIntent         string                   `json:"user_intent"`
+}
 
 // AIEditContentRequest defines model for AIEditContentRequest.
 type AIEditContentRequest struct {
@@ -452,6 +590,70 @@ type AIEditPrepublishResponseChannel string
 
 // AIEditPrepublishResponsePlatform defines model for AIEditPrepublishResponse.Platform.
 type AIEditPrepublishResponsePlatform string
+
+// AIGrowthOptimizationRun defines model for AIGrowthOptimizationRun.
+type AIGrowthOptimizationRun struct {
+	ContextSnapshotId openapi_types.UUID               `json:"context_snapshot_id"`
+	CreatedAt         time.Time                        `json:"created_at"`
+	CreatedBy         openapi_types.UUID               `json:"created_by"`
+	Goal              string                           `json:"goal"`
+	Id                openapi_types.UUID               `json:"id"`
+	Intensity         AIGrowthOptimizationRunIntensity `json:"intensity"`
+	Model             string                           `json:"model"`
+	ProjectId         openapi_types.UUID               `json:"project_id"`
+	PromptVersion     string                           `json:"prompt_version"`
+	QualitySummary    *string                          `json:"quality_summary,omitempty"`
+	Status            AIGrowthOptimizationRunStatus    `json:"status"`
+	TargetPlatforms   []string                         `json:"target_platforms"`
+	UpdatedAt         time.Time                        `json:"updated_at"`
+	Usage             *map[string]interface{}          `json:"usage,omitempty"`
+	WorkspaceId       openapi_types.UUID               `json:"workspace_id"`
+}
+
+// AIGrowthOptimizationRunIntensity defines model for AIGrowthOptimizationRun.Intensity.
+type AIGrowthOptimizationRunIntensity string
+
+// AIGrowthOptimizationRunStatus defines model for AIGrowthOptimizationRun.Status.
+type AIGrowthOptimizationRunStatus string
+
+// AIProposal defines model for AIProposal.
+type AIProposal struct {
+	ContextSnapshotId openapi_types.UUID      `json:"context_snapshot_id"`
+	CreatedAt         time.Time               `json:"created_at"`
+	DecidedAt         *time.Time              `json:"decided_at,omitempty"`
+	DecidedBy         *openapi_types.UUID     `json:"decided_by,omitempty"`
+	FullContent       string                  `json:"full_content"`
+	Id                openapi_types.UUID      `json:"id"`
+	Patch             string                  `json:"patch"`
+	ProjectId         openapi_types.UUID      `json:"project_id"`
+	ProposalType      AIProposalProposalType  `json:"proposal_type"`
+	QualityChecks     *map[string]interface{} `json:"quality_checks,omitempty"`
+	RunId             *openapi_types.UUID     `json:"run_id,omitempty"`
+	SessionId         *openapi_types.UUID     `json:"session_id,omitempty"`
+	Status            AIProposalStatus        `json:"status"`
+	Summary           string                  `json:"summary"`
+	TargetPlatform    string                  `json:"target_platform"`
+	WorkspaceId       openapi_types.UUID      `json:"workspace_id"`
+}
+
+// AIProposalProposalType defines model for AIProposal.ProposalType.
+type AIProposalProposalType string
+
+// AIProposalStatus defines model for AIProposal.Status.
+type AIProposalStatus string
+
+// AIToolCall defines model for AIToolCall.
+type AIToolCall struct {
+	Arguments  map[string]interface{} `json:"arguments"`
+	CreatedAt  time.Time              `json:"created_at"`
+	DurationMs int                    `json:"duration_ms"`
+	Error      string                 `json:"error"`
+	Id         openapi_types.UUID     `json:"id"`
+	Result     string                 `json:"result"`
+	SessionId  openapi_types.UUID     `json:"session_id"`
+	ToolName   string                 `json:"tool_name"`
+	Version    string                 `json:"version"`
+}
 
 // AcceptProjectShareLinkResponse defines model for AcceptProjectShareLinkResponse.
 type AcceptProjectShareLinkResponse struct {

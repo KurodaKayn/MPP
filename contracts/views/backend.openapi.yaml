@@ -306,6 +306,27 @@ components:
     AIEditPrepublishResponse:
       $ref: "../openapi.yaml#/components/schemas/AIEditPrepublishResponse"
 
+    AIContextSnapshot:
+      $ref: "../openapi.yaml#/components/schemas/AIContextSnapshot"
+
+    AIGrowthOptimizationRun:
+      $ref: "../openapi.yaml#/components/schemas/AIGrowthOptimizationRun"
+
+    AIProposal:
+      $ref: "../openapi.yaml#/components/schemas/AIProposal"
+
+    AIDraftingSession:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingSession"
+
+    AIDraftingMessage:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingMessage"
+
+    AIToolCall:
+      $ref: "../openapi.yaml#/components/schemas/AIToolCall"
+
+    AIDraftingSessionSummary:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingSessionSummary"
+
     RequirementStatus:
       $ref: "../openapi.yaml#/components/schemas/RequirementStatus"
 
