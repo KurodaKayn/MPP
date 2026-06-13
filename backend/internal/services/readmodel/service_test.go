@@ -199,3 +199,43 @@ func TestRebuildDashboardReplaysFactsAndRemovesOrphanReadModels(t *testing.T) {
 	require.NoError(t, db.Model(&models.WorkspaceDashboardStats{}).Where("workspace_id = ?", orphanWorkspaceID).Count(&orphanStats).Error)
 	require.Zero(t, orphanStats)
 }
+
+func TestRebuildDashboardBatchesAllProjectsWhenCreatedAtOrderDiffersFromPrimaryKey(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	service := readmodel.NewService(db)
+
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	now := time.Now().UTC()
+	require.NoError(t, db.Create(&models.User{ID: userID, Username: "batch-owner", Email: "batch-owner@example.com", PasswordHash: "hash"}).Error)
+	require.NoError(t, db.Create(&models.Workspace{ID: workspaceID, OwnerUserID: userID, Name: "Batch", Status: models.WorkspaceStatusActive, CreatedAt: now, UpdatedAt: now}).Error)
+
+	const totalProjects = 201
+	for i := range totalProjects {
+		projectID := uuid.New()
+		if i == 199 {
+			projectID = uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff")
+		}
+		if i == 200 {
+			projectID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+		}
+		require.NoError(t, db.Create(&models.Project{
+			ID:            projectID,
+			UserID:        userID,
+			WorkspaceID:   &workspaceID,
+			Title:         "Batch project",
+			SourceContent: "content",
+			Status:        models.ProjectStatusReady,
+			CreatedAt:     now.Add(time.Duration(totalProjects-i) * time.Second),
+			UpdatedAt:     now,
+		}).Error)
+	}
+
+	result, err := service.RebuildDashboard()
+	require.NoError(t, err)
+	require.Equal(t, int64(totalProjects), result.ProjectsRefreshed)
+
+	var summaries int64
+	require.NoError(t, db.Model(&models.ProjectListSummary{}).Count(&summaries).Error)
+	require.Equal(t, int64(totalProjects), summaries)
+}
