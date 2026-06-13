@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
 	"testing"
 
 	"gorm.io/datatypes"
@@ -25,22 +26,6 @@ func (f *fakeXTweetClient) CreateTweet(_ context.Context, text string) (pkgx.Twe
 	return pkgx.Tweet{ID: "tweet-1", Text: text}, nil
 }
 
-func TestXWeightedLengthCountsCJKAndEmojiAsDouble(t *testing.T) {
-	text := "abc\u4e2d\u6587\U0001F600"
-
-	if got := xWeightedLength(text); got != 9 {
-		t.Fatalf("expected weighted length 9, got %d", got)
-	}
-}
-
-func TestXWeightedLengthCountsURLsAsTransformedLength(t *testing.T) {
-	text := "go https://example.com/really/long/path"
-
-	if got := xWeightedLength(text); got != 26 {
-		t.Fatalf("expected URL weighted length 26, got %d", got)
-	}
-}
-
 func TestBuildXPostIntentURLUsesAdaptedText(t *testing.T) {
 	intentURL, err := BuildXPostIntentURL(datatypes.JSON(`{"text":"hello x & \u4e2d\u6587"}`))
 	if err != nil {
@@ -56,6 +41,22 @@ func TestBuildXPostIntentURLUsesAdaptedText(t *testing.T) {
 	}
 	if got := parsed.Query().Get("text"); got != "hello x & \u4e2d\u6587" {
 		t.Fatalf("expected text query to round-trip, got %q", got)
+	}
+}
+
+func TestBuildXPostIntentURLDoesNotApplyGoSideTruncation(t *testing.T) {
+	text := "compiled " + strings.Repeat("x", 320)
+	intentURL, err := BuildXPostIntentURL(datatypes.JSON(`{"text":"` + text + `"}`))
+	if err != nil {
+		t.Fatalf("expected intent URL, got %v", err)
+	}
+
+	parsed, err := url.Parse(intentURL)
+	if err != nil {
+		t.Fatalf("expected valid URL, got %v", err)
+	}
+	if got := parsed.Query().Get("text"); got != text {
+		t.Fatalf("expected compiled text to be preserved, got %q", got)
 	}
 }
 
