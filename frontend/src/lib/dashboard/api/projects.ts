@@ -130,6 +130,20 @@ export function updateDashboardProject(
   );
 }
 
+type DashboardProjectWorkspaceOptions = {
+  workspaceId?: string | null;
+};
+
+export function deleteDashboardProject(
+  projectId: string,
+  options: DashboardProjectWorkspaceOptions = {},
+) {
+  return fetchDashboardNoContent(`/api/user/dashboard/projects/${projectId}`, {
+    method: "DELETE",
+    workspaceId: options.workspaceId,
+  });
+}
+
 export function saveDashboardProjectContent(
   projectId: string,
   input: SaveProjectContentInput,

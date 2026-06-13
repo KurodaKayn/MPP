@@ -9,6 +9,10 @@ type ApiErrorResponse = {
   };
 };
 
+type DashboardRequestInit = Omit<RequestInit, "headers" | "credentials"> & {
+  workspaceId?: string | null;
+};
+
 const selectedWorkspaceStorageKey = "mpp.dashboard.selectedWorkspaceId";
 
 function getStoredWorkspaceId() {
@@ -37,6 +41,16 @@ function pathWithWorkspaceContext(path: string, workspaceId: string) {
   }
   const nextQuery = params.toString();
   return nextQuery ? `${pathname}?${nextQuery}` : pathname;
+}
+
+function resolveWorkspaceContext(workspaceId: string | null | undefined) {
+  if (workspaceId === null) {
+    return "";
+  }
+  if (typeof workspaceId === "string") {
+    return workspaceId.trim();
+  }
+  return getStoredWorkspaceId();
 }
 
 async function getDashboardErrorMessage(response: Response) {
@@ -70,22 +84,23 @@ async function createDashboardError(response: Response) {
 
 export async function fetchDashboard<T>(
   path: string,
-  init?: Omit<RequestInit, "headers" | "credentials">,
+  init?: DashboardRequestInit,
 ): Promise<T> {
+  const { workspaceId: workspaceIdOption, ...fetchInit } = init ?? {};
   const headers = new Headers({
     Accept: "application/json",
   });
 
-  if (init?.body) {
+  if (fetchInit.body) {
     headers.set("Content-Type", "application/json");
   }
-  const workspaceId = getStoredWorkspaceId();
+  const workspaceId = resolveWorkspaceContext(workspaceIdOption);
   if (workspaceId) {
     headers.set("X-Workspace-ID", workspaceId);
   }
 
   const response = await fetch(pathWithWorkspaceContext(path, workspaceId), {
-    ...init,
+    ...fetchInit,
     credentials: "same-origin",
     headers,
   });
@@ -99,22 +114,23 @@ export async function fetchDashboard<T>(
 
 export async function fetchDashboardNoContent(
   path: string,
-  init?: Omit<RequestInit, "headers" | "credentials">,
+  init?: DashboardRequestInit,
 ): Promise<void> {
+  const { workspaceId: workspaceIdOption, ...fetchInit } = init ?? {};
   const headers = new Headers({
     Accept: "application/json",
   });
 
-  if (init?.body) {
+  if (fetchInit.body) {
     headers.set("Content-Type", "application/json");
   }
-  const workspaceId = getStoredWorkspaceId();
+  const workspaceId = resolveWorkspaceContext(workspaceIdOption);
   if (workspaceId) {
     headers.set("X-Workspace-ID", workspaceId);
   }
 
   const response = await fetch(pathWithWorkspaceContext(path, workspaceId), {
-    ...init,
+    ...fetchInit,
     credentials: "same-origin",
     headers,
   });

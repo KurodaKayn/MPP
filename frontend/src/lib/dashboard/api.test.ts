@@ -18,6 +18,7 @@ import {
   createProjectShareLink,
   createWorkspace,
   createWorkspaceProject,
+  deleteDashboardProject,
   getBrowserSession,
   getBrandProfiles,
   getContentTemplates,
@@ -189,6 +190,60 @@ describe("dashboard api client", () => {
     const [, init] = fetchMock.mock.calls[0];
     const headers = init!.headers as Headers;
     expect(headers.get("X-Workspace-ID")).toBe("workspace-1");
+  });
+
+  it("omits the selected workspace context when explicitly disabled", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem(
+      "mpp.dashboard.selectedWorkspaceId",
+      "workspace-1",
+    );
+
+    await expect(
+      deleteDashboardProject("project-1", { workspaceId: null }),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "DELETE",
+      }),
+    );
+    const [, init] = fetchMock.mock.calls[0];
+    const headers = init!.headers as Headers;
+    expect(headers.get("X-Workspace-ID")).toBeNull();
+  });
+
+  it("uses an explicit workspace context when provided", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem(
+      "mpp.dashboard.selectedWorkspaceId",
+      "workspace-1",
+    );
+
+    await expect(
+      deleteDashboardProject("project-1", { workspaceId: "workspace-2" }),
+    ).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1?workspace_id=workspace-2",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "DELETE",
+      }),
+    );
+    const [, init] = fetchMock.mock.calls[0];
+    const headers = init!.headers as Headers;
+    expect(headers.get("X-Workspace-ID")).toBe("workspace-2");
   });
 
   it("uses backend error messages from JSON responses", async () => {
@@ -1088,6 +1143,24 @@ describe("dashboard api client", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/user/dashboard/projects/project-1/collaborators/user-2",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+        method: "DELETE",
+      }),
+    );
+  });
+
+  it("deletes a dashboard project without parsing an empty response", async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(null, { status: 204 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deleteDashboardProject("project-1")).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/project-1",
       expect.objectContaining({
         credentials: "same-origin",
         headers: expect.any(Headers),

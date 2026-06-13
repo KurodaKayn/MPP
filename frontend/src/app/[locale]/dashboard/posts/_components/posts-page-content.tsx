@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Pencil, RefreshCw, XCircle } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  deleteDashboardProject,
   getWorkspaceProjects,
   type ProjectListItem,
 } from "@/lib/dashboard/api";
@@ -21,11 +23,12 @@ import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 
 import { DashboardErrorCard } from "../../_components/dashboard-error-card";
 import { DashboardStatCard } from "../../_components/dashboard-stat-card";
-import { ProjectStatusBadge } from "../../_components/project-status-badge";
+import { ProjectDeleteButton } from "../../_components/project-delete-button";
 import { PlatformIconRow } from "../../_components/publication-platforms";
 import { WorkspaceSwitcher } from "../../_components/workspace-switcher";
 import { useDashboardWorkspaceSelection } from "../../_hooks/use-dashboard-workspace-selection";
 import { formatOptionalDashboardDate } from "../../_lib/formatters";
+import { canDeleteProjectCard } from "../../_lib/project-delete";
 import {
   getEnabledPublications,
   getPublicationTotals,
@@ -89,12 +92,18 @@ function PostsStatsGrid({
 }
 
 function PostProjectCard({
+  canDelete,
+  isDeleting,
   locale,
+  onDelete,
   project,
   t,
   tCommon,
 }: {
+  canDelete: boolean;
+  isDeleting: boolean;
   locale: string;
+  onDelete: (project: ProjectListItem) => void;
   project: ProjectListItem;
   t: any;
   tCommon: any;
@@ -106,7 +115,6 @@ function PostProjectCard({
   const failedPublications = enabledPublications.filter(
     (publication) => publication.status === "failed",
   );
-  const statusLabel = t(`overview.status.${project.status}`) || project.status;
 
   return (
     <Card className="flex min-h-56 flex-col">
@@ -124,7 +132,23 @@ function PostProjectCard({
               })}
             </CardDescription>
           </div>
-          <ProjectStatusBadge label={statusLabel} status={project.status} />
+          <ProjectDeleteButton
+            confirmCancelLabel={t("project.delete.cancel")}
+            confirmDescription={t("project.delete.confirm", {
+              title: project.title,
+            })}
+            confirmSubmitLabel={t("project.delete.submit")}
+            confirmTitle={t("project.delete.title")}
+            disabled={!canDelete}
+            isDeleting={isDeleting}
+            label={
+              canDelete
+                ? t("project.delete.label")
+                : t("project.delete.noPermission")
+            }
+            title={!canDelete ? t("project.delete.noPermission") : undefined}
+            onDelete={() => onDelete(project)}
+          />
         </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-between gap-5">
@@ -171,6 +195,9 @@ export function PostsPageContent() {
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(
+    null,
+  );
 
   const loadPosts = useCallback(async () => {
     const workspaceId = workspaceSelection.selectedWorkspaceId;
@@ -202,6 +229,27 @@ export function PostsPageContent() {
   useEffect(() => {
     void loadPosts();
   }, [loadPosts]);
+
+  const handleDeleteProject = useCallback(
+    async (project: ProjectListItem) => {
+      setDeletingProjectId(project.id);
+      try {
+        await deleteDashboardProject(project.id);
+        setProjects((items) => items.filter((item) => item.id !== project.id));
+        toast.success(t("project.delete.success"));
+      } catch (deleteError) {
+        toast.error(t("project.delete.failed"), {
+          description:
+            deleteError instanceof Error
+              ? deleteError.message
+              : t("project.delete.retryLater"),
+        });
+      } finally {
+        setDeletingProjectId(null);
+      }
+    },
+    [t],
+  );
 
   const publicationTotals = useMemo(
     () => getPublicationTotals(projects),
@@ -280,7 +328,13 @@ export function PostsPageContent() {
           {projects.map((project) => (
             <PostProjectCard
               key={project.id}
+              canDelete={canDeleteProjectCard(project, {
+                surface: "workspace",
+                workspaceRole: workspaceSelection.selectedWorkspace?.role,
+              })}
+              isDeleting={deletingProjectId === project.id}
               locale={locale}
+              onDelete={handleDeleteProject}
               project={project}
               t={t}
               tCommon={tCommon}

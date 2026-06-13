@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContentValue } from "@/lib/content/types";
 import type { Workspace } from "@/lib/dashboard/api";
 import { useContentPageStore } from "../_stores/content-page-store";
@@ -136,6 +136,7 @@ function renderController(
 
 describe("useContentPageController", () => {
   beforeEach(() => {
+    vi.stubEnv("NODE_ENV", "test");
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     mocks.cancelBrowserSession.mockReset();
     mocks.cancelScheduledPublication.mockReset();
@@ -168,6 +169,10 @@ describe("useContentPageController", () => {
     mocks.getWorkspaceContentTemplates.mockResolvedValue({ items: [] });
     mocks.getWorkspacePublicationCalendar.mockResolvedValue({ items: [] });
     useContentPageStore.getState().resetForCreate();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("reports loading before the current edit project has loaded", () => {

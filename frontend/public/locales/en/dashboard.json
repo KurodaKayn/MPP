@@ -65,6 +65,19 @@
       "none": "None"
     }
   },
+  "project": {
+    "delete": {
+      "label": "Delete project",
+      "title": "Delete project",
+      "confirm": "Delete \"{{title}}\"? This cannot be undone.",
+      "cancel": "Cancel",
+      "submit": "Delete",
+      "success": "Project deleted",
+      "failed": "Unable to delete project",
+      "retryLater": "Please try again later.",
+      "noPermission": "You do not have permission to delete this project"
+    }
+  },
   "workspace": {
     "switcher": {
       "label": "Workspace",
@@ -429,7 +442,7 @@
     },
     "userFallback": "Collaborator"
   },
-    "content": {
+  "content": {
     "header": {
       "titleCreate": "Content Creation",
       "titleEdit": "Edit Content",
