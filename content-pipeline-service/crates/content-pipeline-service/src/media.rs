@@ -521,7 +521,7 @@ fn is_public_ip(ip: IpAddr) -> bool {
 }
 
 fn is_public_ipv4(ip: Ipv4Addr) -> bool {
-    let [first, second, _, _] = ip.octets();
+    let [first, second, third, _] = ip.octets();
 
     !(first == 0
         || first == 10
@@ -529,8 +529,13 @@ fn is_public_ipv4(ip: Ipv4Addr) -> bool {
         || (first == 100 && (64..=127).contains(&second))
         || (first == 169 && second == 254)
         || (first == 172 && (16..=31).contains(&second))
+        || (first == 192 && second == 0 && third == 0)
+        || (first == 192 && second == 0 && third == 2)
         || (first == 192 && second == 168)
-        || ip == Ipv4Addr::BROADCAST)
+        || (first == 198 && (second == 18 || second == 19))
+        || (first == 198 && second == 51 && third == 100)
+        || (first == 203 && second == 0 && third == 113)
+        || first >= 224)
 }
 
 fn is_public_ipv6(ip: Ipv6Addr) -> bool {
@@ -539,10 +544,23 @@ fn is_public_ipv6(ip: Ipv6Addr) -> bool {
     }
 
     let first_segment = ip.segments()[0];
+    let second_segment = ip.segments()[1];
     let is_unique_local = (first_segment & 0xfe00) == 0xfc00;
     let is_link_local = (first_segment & 0xffc0) == 0xfe80;
+    let is_multicast = (first_segment & 0xff00) == 0xff00;
+    let is_documentation = first_segment == 0x2001 && second_segment == 0x0db8;
+    let is_benchmark = first_segment == 0x2001 && second_segment == 0x0002;
+    let is_discard_prefix =
+        first_segment == 0x0100 && ip.segments()[1..4].iter().all(|segment| *segment == 0);
 
-    !(ip.is_loopback() || ip.is_unspecified() || is_unique_local || is_link_local)
+    !(ip.is_loopback()
+        || ip.is_unspecified()
+        || is_unique_local
+        || is_link_local
+        || is_multicast
+        || is_documentation
+        || is_benchmark
+        || is_discard_prefix)
 }
 
 fn media_error_to_status(err: content_pipeline_core::MediaError) -> Status {
