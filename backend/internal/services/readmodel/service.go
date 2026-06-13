@@ -240,7 +240,7 @@ func (s *Service) RebuildDashboard() (RebuildDashboardResult, error) {
 	if err := s.db.Omit("source_content").Preload("Publications", func(db *gorm.DB) *gorm.DB {
 		return db.Select("id, project_id, platform, enabled, status, draft_status, review_status, sync_required, publish_url").
 			Order("platform asc")
-	}).Order("created_at DESC").Order("id ASC").FindInBatches(&projects, rebuildProjectBatchSize, func(_ *gorm.DB, _ int) error {
+	}).FindInBatches(&projects, rebuildProjectBatchSize, func(_ *gorm.DB, _ int) error {
 		summaries := make([]models.ProjectListSummary, 0, len(projects))
 		for _, project := range projects {
 			summary, err := projectListSummary(project)
