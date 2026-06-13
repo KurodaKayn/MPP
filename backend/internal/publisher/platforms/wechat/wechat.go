@@ -147,21 +147,26 @@ func processWechatInlineImagesFromCompiledAssets(ctx context.Context, sourceHTML
 		return "", false, nil
 	}
 
-	processedHTML := sourceHTML
-	for _, source := range imageSources {
-		objectRef, err := media.DownloadAndProcessForPlatform(source, "wechat", "inline_image")
-		if err != nil {
-			return "", true, err
-		}
-		imgData, err := media.ReadProcessedObject(ctx, objectRef)
-		if err != nil {
-			return "", true, err
-		}
-		res, err := client.UploadImage(imgData, "content_image.jpg")
-		if err != nil {
-			return "", true, err
-		}
-		processedHTML = strings.ReplaceAll(processedHTML, source, res.URL)
+	processedHTML, err := htmlutil.ProcessHTMLImageSources(
+		sourceHTML,
+		imageSources,
+		func(source string) (string, error) {
+			return media.DownloadAndProcessForPlatform(source, "wechat", "inline_image")
+		},
+		func(objectRef string) (string, error) {
+			imgData, err := media.ReadProcessedObject(ctx, objectRef)
+			if err != nil {
+				return "", err
+			}
+			res, err := client.UploadImage(imgData, "content_image.jpg")
+			if err != nil {
+				return "", err
+			}
+			return res.URL, nil
+		},
+	)
+	if err != nil {
+		return "", true, err
 	}
 	return processedHTML, true, nil
 }
