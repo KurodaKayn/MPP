@@ -649,6 +649,21 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn rejects_non_global_ip_media_url() {
+        for value in [
+            "https://198.18.0.1/image.png",
+            "https://224.0.0.1/image.png",
+            "https://240.0.0.1/image.png",
+            "https://[ff02::1]/image.png",
+        ] {
+            let err = validate_media_url(url(value))
+                .await
+                .expect_err("non-global IP URL should be rejected");
+            assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        }
+    }
+
     #[test]
     fn treats_zero_max_bytes_as_unset() {
         let request = ProcessAssetRequest {
