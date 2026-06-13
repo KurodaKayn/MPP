@@ -5,7 +5,7 @@ mod schema;
 mod text;
 
 use assets::{adapted_image_assets, optional_assets};
-use html::{html_to_markdown, html_to_text};
+use html::{html_lossy_warnings, html_to_markdown, html_to_text};
 pub use profiles::{DraftFormat, DraftProfile, supported_draft_profiles};
 use schema::{AdaptedContent, encode_validated};
 use text::{
@@ -88,6 +88,7 @@ impl DraftCompiler {
         let text = html_to_text(&source_content);
         let source_summary = summarize(&text);
         let image_assets = adapted_image_assets(&source_content);
+        let source_warnings = html_lossy_warnings(&source_content);
         let (adapted_content_json, summary, warnings) = match platform.as_str() {
             "wechat" => encode_validated(
                 profile,
@@ -101,7 +102,7 @@ impl DraftCompiler {
                     assets: optional_assets(&image_assets),
                 },
             )
-            .map(|value| (value, source_summary.clone(), Vec::new()))?,
+            .map(|value| (value, source_summary.clone(), source_warnings.clone()))?,
             "zhihu" => {
                 let markdown = html_to_markdown(&source_content);
                 encode_validated(
@@ -116,7 +117,7 @@ impl DraftCompiler {
                         assets: optional_assets(&image_assets),
                     },
                 )
-                .map(|value| (value, source_summary.clone(), Vec::new()))?
+                .map(|value| (value, source_summary.clone(), source_warnings.clone()))?
             }
             "x" => {
                 let text = join_title_and_body_text(&project.title, &text);
@@ -126,7 +127,7 @@ impl DraftCompiler {
                     SHORT_TEXT_WEIGHT_RULES,
                 );
                 let summary = summarize(&truncated_text);
-                let mut warnings = Vec::new();
+                let mut warnings = source_warnings.clone();
                 if truncated_text != text {
                     warnings.push(format!(
                         "text truncated to satisfy {} weighted length limit",
@@ -162,7 +163,7 @@ impl DraftCompiler {
                         assets: optional_assets(&image_assets),
                     },
                 )?;
-                (adapted_content_json, summary, Vec::new())
+                (adapted_content_json, summary, source_warnings)
             }
             _ => unreachable!("draft platform was validated before compilation"),
         };
