@@ -2,6 +2,8 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -201,10 +203,62 @@ func TestAIContextAssemblerAndBudgeter(t *testing.T) {
 		}
 
 		budgeter := NewAIContextBudgeter(2000) // Small budget
-		tokens := budgeter.Budget(&snapshot)
+		tokens, err := budgeter.Budget(&snapshot)
 
 		assert.Equal(t, "partial", snapshot.CompactionLevel)
 		assert.Contains(t, snapshot.CommentsSummary, "[TRUNCATED]")
-		assert.Less(t, tokens, 3000)
+		// After truncation the estimate must be ≤ budget (ASCII-heavy content).
+		assert.LessOrEqual(t, tokens, 2000)
+		assert.NoError(t, err, "ASCII-heavy content should fit within budget after truncation")
+	})
+
+	t.Run("JSON Field Truncation", func(t *testing.T) {
+		// Build a Platforms JSON with many entries to exceed perFieldTokenBudget.
+		platforms := make(map[string]any)
+		for i := range 50 {
+			platforms[fmt.Sprintf("account-%d", i)] = map[string]any{
+				"platform": "wechat",
+				"username": strings.Repeat("x", 100),
+			}
+		}
+		raw, err := json.Marshal(platforms)
+		require.NoError(t, err)
+
+		snapshot := models.AIContextSnapshot{
+			ID:          uuid.New(),
+			WorkspaceID: workspaceID,
+			ProjectID:   projectID,
+			CreatedByID: userID,
+			ContextKind: "drafting",
+			Platforms:   datatypes.JSON(raw),
+			SourceContent: "small",
+			CompactionLevel: "none",
+		}
+
+		budgeter := NewAIContextBudgeter(500)
+		_, _ = budgeter.Budget(&snapshot)
+
+		// _truncated key must be present in the compacted JSON.
+		assert.Contains(t, string(snapshot.Platforms), "_truncated")
+		assert.Equal(t, "partial", snapshot.CompactionLevel)
+	})
+
+	t.Run("ErrContextBudgetExceeded when irreducible", func(t *testing.T) {
+		// Budget=1 means even the truncation marker "... [TRUNCATED] ..." (~5 tokens)
+		// exceeds it, so ErrContextBudgetExceeded must always be returned.
+		snapshot := models.AIContextSnapshot{
+			ID:              uuid.New(),
+			WorkspaceID:     workspaceID,
+			ProjectID:       projectID,
+			CreatedByID:     userID,
+			ContextKind:     "drafting",
+			SourceContent:   strings.Repeat("中文内容", 100),
+			CompactionLevel: "none",
+		}
+
+		budgeter := NewAIContextBudgeter(1) // impossibly tight
+		_, err := budgeter.Budget(&snapshot)
+
+		assert.ErrorIs(t, err, ErrContextBudgetExceeded)
 	})
 }

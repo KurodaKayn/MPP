@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,6 +16,10 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/contracts"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 )
+
+// ErrContextBudgetExceeded is returned by Budget when the snapshot still exceeds
+// the token budget after all truncation passes have been applied.
+var ErrContextBudgetExceeded = errors.New("context snapshot exceeds token budget after truncation")
 
 type AIContextAssembler struct {
 	db *gorm.DB
@@ -156,14 +161,19 @@ func (a *AIContextAssembler) Assemble(ctx context.Context, projectID uuid.UUID, 
 		ctJSON = datatypes.JSON(ctBytes)
 	}
 
-	// Platform accounts serialization
+	// Platform accounts serialization (cap at 20 to prevent unbounded JSON size)
 	platformsMap := make(map[string]any)
+	platformsCount := 0
 	for _, acc := range accounts {
+		if platformsCount >= 20 {
+			break
+		}
 		scrubbedAcc, err := structToScrubbedMap(acc)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scrub platform account: %w", err)
 		}
 		platformsMap[acc.ID.String()] = scrubbedAcc
+		platformsCount++
 	}
 	platformsBytes, err := json.Marshal(platformsMap)
 	if err != nil {
@@ -171,14 +181,19 @@ func (a *AIContextAssembler) Assemble(ctx context.Context, projectID uuid.UUID, 
 	}
 	platformsJSON := datatypes.JSON(platformsBytes)
 
-	// Publications serialization
+	// Publications serialization (cap at 20 to prevent unbounded JSON size)
 	publicationsMap := make(map[string]any)
+	publicationsCount := 0
 	for _, pub := range project.Publications {
+		if publicationsCount >= 20 {
+			break
+		}
 		scrubbedPub, err := structToScrubbedMap(pub)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scrub publication: %w", err)
 		}
 		publicationsMap[pub.ID.String()] = scrubbedPub
+		publicationsCount++
 	}
 	publicationsBytes, err := json.Marshal(publicationsMap)
 	if err != nil {
@@ -210,9 +225,11 @@ func (a *AIContextAssembler) Assemble(ctx context.Context, projectID uuid.UUID, 
 		snapshot.CompactionLevel = "none"
 	}
 
-	// Budgeting
+	// Budgeting — gate if snapshot still exceeds budget after all truncation passes.
 	budgeter := NewAIContextBudgeter(options.ContextBudget)
-	budgeter.Budget(&snapshot)
+	if _, err := budgeter.Budget(&snapshot); err != nil {
+		return nil, err
+	}
 
 	return &snapshot, nil
 }
@@ -360,7 +377,10 @@ func (b *AIContextBudgeter) sumTokens(snapshot *models.AIContextSnapshot) int {
 	return totalTokens
 }
 
-func (b *AIContextBudgeter) Budget(snapshot *models.AIContextSnapshot) int {
+// Budget estimates the snapshot token count and truncates if needed.
+// It returns ErrContextBudgetExceeded if the snapshot still exceeds the
+// budget after all truncation passes, so callers can gate the AI request.
+func (b *AIContextBudgeter) Budget(snapshot *models.AIContextSnapshot) (int, error) {
 	totalTokens := b.sumTokens(snapshot)
 	snapshot.TokenEstimate = totalTokens
 	snapshot.ContextBudget = b.MaxBudget
@@ -369,51 +389,162 @@ func (b *AIContextBudgeter) Budget(snapshot *models.AIContextSnapshot) int {
 		b.TruncateIfNeeded(snapshot)
 	}
 
-	return snapshot.TokenEstimate
+	if snapshot.TokenEstimate > b.MaxBudget {
+		return snapshot.TokenEstimate, fmt.Errorf("%w: estimate=%d budget=%d",
+			ErrContextBudgetExceeded, snapshot.TokenEstimate, b.MaxBudget)
+	}
+	return snapshot.TokenEstimate, nil
 }
 
+// perFieldTokenBudget is the max tokens allowed per text summary field
+// before triggering truncation.
+const perFieldTokenBudget = 1250
+
+// TruncateIfNeeded compacts the snapshot fields in priority order until
+// the total token estimate fits within MaxBudget or all passes are exhausted.
+// Pass 1: text summary fields (token-aware rune limit)
+// Pass 2: JSON object fields (entry-level cap)
+// Pass 3: source content (last resort)
 func (b *AIContextBudgeter) TruncateIfNeeded(snapshot *models.AIContextSnapshot) {
-	if EstimateTokens(snapshot.CommentsSummary) > 1250 {
-		snapshot.CommentsSummary = truncateString(snapshot.CommentsSummary, 5000)
+	// Pass 1 — text summary fields: cap each to perFieldTokenBudget tokens.
+	// runeLimit is derived from the token target so Chinese text is not
+	// over-included (Chinese: ~2 tok/rune → limit = target/2 runes;
+	// ASCII: ~0.25 tok/rune → limit = target*4 runes).
+	// We use the conservative Chinese ratio as a safe upper bound.
+	const textFieldTokenTarget = perFieldTokenBudget
+	textFieldRuneLimit := tokenBudgetToRuneLimit(textFieldTokenTarget)
+
+	if EstimateTokens(snapshot.CommentsSummary) > textFieldTokenTarget {
+		snapshot.CommentsSummary = truncateString(snapshot.CommentsSummary, textFieldRuneLimit)
 		snapshot.CompactionLevel = "partial"
 	}
-	if EstimateTokens(snapshot.VersionsSummary) > 1250 {
-		snapshot.VersionsSummary = truncateString(snapshot.VersionsSummary, 5000)
+	if EstimateTokens(snapshot.VersionsSummary) > textFieldTokenTarget {
+		snapshot.VersionsSummary = truncateString(snapshot.VersionsSummary, textFieldRuneLimit)
 		snapshot.CompactionLevel = "partial"
 	}
-	if EstimateTokens(snapshot.MediaSummary) > 1250 {
-		snapshot.MediaSummary = truncateString(snapshot.MediaSummary, 5000)
+	if EstimateTokens(snapshot.MediaSummary) > textFieldTokenTarget {
+		snapshot.MediaSummary = truncateString(snapshot.MediaSummary, textFieldRuneLimit)
 		snapshot.CompactionLevel = "partial"
 	}
-	if EstimateTokens(snapshot.PerformanceSummary) > 1250 {
-		snapshot.PerformanceSummary = truncateString(snapshot.PerformanceSummary, 5000)
+	if EstimateTokens(snapshot.PerformanceSummary) > textFieldTokenTarget {
+		snapshot.PerformanceSummary = truncateString(snapshot.PerformanceSummary, textFieldRuneLimit)
 		snapshot.CompactionLevel = "partial"
 	}
 
-	// Recalculate
-	totalTokens := b.sumTokens(snapshot)
-	snapshot.TokenEstimate = totalTokens
-
-	if totalTokens > b.MaxBudget {
-		// Truncate source content if still over budget
-		runes := []rune(snapshot.SourceContent)
-		if len(runes) > 20000 {
-			snapshot.SourceContent = truncateString(snapshot.SourceContent, 20000)
-			snapshot.CompactionLevel = "partial"
-		}
-
-		// Recalculate once more
-		snapshot.TokenEstimate = b.sumTokens(snapshot)
+	// Recalculate after pass 1.
+	snapshot.TokenEstimate = b.sumTokens(snapshot)
+	if snapshot.TokenEstimate <= b.MaxBudget {
+		return
 	}
+
+	// Pass 2 — JSON fields: drop entries beyond a per-field cap.
+	// Each JSON field is allowed at most perFieldTokenBudget tokens.
+	const jsonFieldTokenTarget = perFieldTokenBudget
+	if estimateJSONTokens(snapshot.Platforms) > jsonFieldTokenTarget {
+		snapshot.Platforms = truncateJSONField(snapshot.Platforms, jsonFieldTokenTarget)
+		snapshot.CompactionLevel = "partial"
+	}
+	if estimateJSONTokens(snapshot.Publications) > jsonFieldTokenTarget {
+		snapshot.Publications = truncateJSONField(snapshot.Publications, jsonFieldTokenTarget)
+		snapshot.CompactionLevel = "partial"
+	}
+	if estimateJSONTokens(snapshot.BrandProfile) > jsonFieldTokenTarget {
+		snapshot.BrandProfile = truncateJSONField(snapshot.BrandProfile, jsonFieldTokenTarget)
+		snapshot.CompactionLevel = "partial"
+	}
+	if estimateJSONTokens(snapshot.ContentTemplate) > jsonFieldTokenTarget {
+		snapshot.ContentTemplate = truncateJSONField(snapshot.ContentTemplate, jsonFieldTokenTarget)
+		snapshot.CompactionLevel = "partial"
+	}
+	if estimateJSONTokens(snapshot.RawContextRefs) > jsonFieldTokenTarget {
+		snapshot.RawContextRefs = truncateJSONField(snapshot.RawContextRefs, jsonFieldTokenTarget)
+		snapshot.CompactionLevel = "partial"
+	}
+
+	// Recalculate after pass 2.
+	snapshot.TokenEstimate = b.sumTokens(snapshot)
+	if snapshot.TokenEstimate <= b.MaxBudget {
+		return
+	}
+
+	// Pass 3 — source content: last resort, cap to token-aware rune limit.
+	sourceRuneLimit := tokenBudgetToRuneLimit(b.MaxBudget / 2)
+	if len([]rune(snapshot.SourceContent)) > sourceRuneLimit {
+		snapshot.SourceContent = truncateString(snapshot.SourceContent, sourceRuneLimit)
+		snapshot.CompactionLevel = "partial"
+	}
+
+	snapshot.TokenEstimate = b.sumTokens(snapshot)
 }
 
-func truncateString(s string, maxChars int) string {
+func truncateString(s string, maxRunes int) string {
 	runes := []rune(s)
-	if len(runes) <= maxChars {
+	if len(runes) <= maxRunes {
 		return s
 	}
-	half := maxChars / 2
+	half := maxRunes / 2
 	return string(runes[:half]) + "\n... [TRUNCATED] ...\n" + string(runes[len(runes)-half:])
+}
+
+// tokenBudgetToRuneLimit converts a token budget to a conservative rune limit.
+// It uses the non-ASCII ratio (2 tokens/rune) as the worst case so that even
+// CJK-heavy text stays within the token target after truncation.
+func tokenBudgetToRuneLimit(tokenTarget int) int {
+	if tokenTarget <= 0 {
+		return 1
+	}
+	// 2 tokens per non-ASCII rune is the worst case in EstimateTokens.
+	return tokenTarget / 2
+}
+
+// truncateJSONField drops entries from a JSON object (map) or array until the
+// serialized form fits within tokenTarget. Removed count is appended as a
+// metadata key "_truncated" so callers know data was dropped.
+func truncateJSONField(j datatypes.JSON, tokenTarget int) datatypes.JSON {
+	if len(j) == 0 || estimateJSONTokens(j) <= tokenTarget {
+		return j
+	}
+
+	// Try to unmarshal as a map and drop entries one by one.
+	var m map[string]any
+	if err := json.Unmarshal(j, &m); err == nil {
+		removed := 0
+		for k := range m {
+			if k == "_truncated" {
+				continue
+			}
+			if estimateJSONTokens(j) <= tokenTarget {
+				break
+			}
+			delete(m, k)
+			removed++
+			if b, err2 := json.Marshal(m); err2 == nil {
+				j = datatypes.JSON(b)
+			}
+		}
+		if removed > 0 {
+			m["_truncated"] = removed
+			if b, err2 := json.Marshal(m); err2 == nil {
+				return datatypes.JSON(b)
+			}
+		}
+		return j
+	}
+
+	// Fallback: try array — drop tail elements.
+	var arr []any
+	if err := json.Unmarshal(j, &arr); err == nil {
+		for len(arr) > 0 && estimateJSONTokens(j) > tokenTarget {
+			arr = arr[:len(arr)-1]
+			if b, err2 := json.Marshal(arr); err2 == nil {
+				j = datatypes.JSON(b)
+			}
+		}
+		return j
+	}
+
+	// Cannot parse — return as-is.
+	return j
 }
 
 func estimateJSONTokens(j datatypes.JSON) int {
