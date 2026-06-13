@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"log"
@@ -24,6 +26,13 @@ const (
 	defaultWebSocketMaxLifetime   = 16 * time.Minute
 )
 
+var webSocketTLSConfig = func(target *url.URL) *tls.Config {
+	return &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ServerName: target.Hostname(),
+	}
+}
+
 // WebSocket hijacks the echo context connection and pipes it to the target URL
 func WebSocket(c echo.Context, target *url.URL) error {
 	return WebSocketWithHeaders(c, target, nil)
@@ -45,8 +54,7 @@ func WebSocketWithHeaders(c echo.Context, target *url.URL, headers http.Header) 
 		}
 	}
 
-	d := net.Dialer{Timeout: config.DialTimeout, KeepAlive: 30 * time.Second}
-	targetConn, err := d.DialContext(req.Context(), "tcp", targetAddr)
+	targetConn, err := dialWebSocketTarget(req.Context(), target, targetAddr, config.DialTimeout)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, "failed to connect to stream target")
 	}
@@ -116,6 +124,25 @@ func WebSocketWithHeaders(c echo.Context, target *url.URL, headers http.Header) 
 		}
 		return nil
 	}
+}
+
+func dialWebSocketTarget(ctx context.Context, target *url.URL, targetAddr string, timeout time.Duration) (net.Conn, error) {
+	d := net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}
+	conn, err := d.DialContext(ctx, "tcp", targetAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	if target.Scheme != "https" && target.Scheme != "wss" {
+		return conn, nil
+	}
+
+	tlsConn := tls.Client(conn, webSocketTLSConfig(target))
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return tlsConn, nil
 }
 
 type webSocketProxyConfig struct {
