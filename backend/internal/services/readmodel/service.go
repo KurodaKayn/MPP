@@ -17,16 +17,16 @@ import (
 )
 
 const (
-	asyncRefreshTimeout      = 15 * time.Second
-	rebuildProjectBatchSize  = 200
+	asyncRefreshTimeout       = 15 * time.Second
+	rebuildProjectBatchSize   = 200
 	rebuildWorkspaceBatchSize = 200
 )
 
 type RebuildDashboardResult struct {
-	ProjectsRefreshed              int64
-	WorkspacesRefreshed            int64
-	OrphanProjectSummariesDeleted  int64
-	OrphanWorkspaceStatsDeleted    int64
+	ProjectsRefreshed             int64
+	WorkspacesRefreshed           int64
+	OrphanProjectSummariesDeleted int64
+	OrphanWorkspaceStatsDeleted   int64
 }
 
 type Service struct {
