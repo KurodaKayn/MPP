@@ -1,28 +1,22 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::time::Duration;
+mod download;
+mod object_ref;
 
 use content_pipeline_core::{DEFAULT_MAX_BYTES, MediaConstraints, MediaProcessor};
 use content_pipeline_proto::mpp::contentpipeline::v1::{
     ProcessAssetRequest, ProcessAssetResponse, ProcessedAsset as ProtoProcessedAsset,
     media_asset_processor_server::MediaAssetProcessor, media_source,
 };
-use futures_util::StreamExt;
-use reqwest::header::{CONTENT_TYPE, LOCATION};
-use reqwest::redirect::Policy;
-use reqwest::{Client, Response as HttpResponse, Url};
-use serde::{Deserialize, Serialize};
-use tokio::time::timeout;
+use reqwest::{Client, Url};
 use tonic::{Request, Response, Status};
+
+use download::{fetch_media_url, read_limited_body, response_content_type};
+use object_ref::{ObjectRefResolverConfig, resolve_object_ref_url, resolver_http_client};
 
 use crate::media_store::ProcessedMediaObjectStore;
 use crate::metrics::{ContentPipelineMetrics, MediaSourceKind};
 
-const MEDIA_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(20);
-const MEDIA_REDIRECT_LIMIT: usize = 3;
-const OBJECT_REF_RESOLVER_TIMEOUT: Duration = Duration::from_secs(10);
-const OBJECT_REF_RESOLVER_URL_ENV: &str = "CONTENT_PIPELINE_MEDIA_RESOLVER_URL";
-const INTERNAL_TOKEN_ENV: &str = "CONTENT_PIPELINE_INTERNAL_TOKEN";
-
+// Keep this module focused on gRPC orchestration. Network security checks and
+// object-ref resolution live behind the two private modules above.
 #[derive(Debug, Clone)]
 pub(crate) struct MediaAssetProcessorService {
     processor: MediaProcessor,
@@ -64,9 +58,7 @@ impl MediaAssetProcessorService {
             processor: MediaProcessor::new(),
             metrics,
             object_ref_resolver,
-            object_ref_resolver_client: Client::builder()
-                .timeout(OBJECT_REF_RESOLVER_TIMEOUT)
-                .build()?,
+            object_ref_resolver_client: resolver_http_client()?,
             output_store,
         })
     }
@@ -121,6 +113,8 @@ impl MediaAssetProcessorService {
                 )
             }
             Some(media_source::Value::ObjectRef(object_ref)) => {
+                // Object refs are trusted internal handles, but the resolved URL still
+                // flows through the same download validation as user-provided URLs.
                 let resolver = self.object_ref_resolver.as_ref().ok_or_else(|| {
                     Status::failed_precondition("media object ref resolver is not configured")
                 })?;
@@ -194,80 +188,6 @@ impl MediaAssetProcessorService {
     }
 }
 
-#[derive(Debug, Clone)]
-struct ObjectRefResolverConfig {
-    url: String,
-    internal_token: String,
-}
-
-impl ObjectRefResolverConfig {
-    fn from_env() -> Option<Self> {
-        let url = std::env::var(OBJECT_REF_RESOLVER_URL_ENV)
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())?;
-        let internal_token = std::env::var(INTERNAL_TOKEN_ENV)
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())?;
-        Some(Self {
-            url,
-            internal_token,
-        })
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct ResolveObjectRefRequest<'a> {
-    object_ref: &'a str,
-}
-
-#[derive(Debug, Deserialize)]
-struct ResolveObjectRefResponse {
-    url: String,
-}
-
-async fn resolve_object_ref_url(
-    client: &Client,
-    config: &ObjectRefResolverConfig,
-    object_ref: &str,
-) -> Result<String, Status> {
-    if object_ref.trim().is_empty() {
-        return Err(Status::invalid_argument("media object ref is required"));
-    }
-
-    let response = client
-        .post(&config.url)
-        .header("X-MPP-Internal-Token", &config.internal_token)
-        .json(&ResolveObjectRefRequest { object_ref })
-        .send()
-        .await
-        .map_err(|_| Status::unavailable("failed to resolve media object ref"))?;
-    let status = response.status();
-    if !status.is_success() {
-        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-            return Err(Status::failed_precondition(
-                "media object ref resolver rejected internal token",
-            ));
-        }
-        return Err(Status::unavailable(format!(
-            "media object ref resolver returned HTTP {}",
-            status.as_u16()
-        )));
-    }
-
-    let resolved = response
-        .json::<ResolveObjectRefResponse>()
-        .await
-        .map_err(|_| Status::unavailable("invalid media object ref resolver response"))?;
-    if resolved.url.trim().is_empty() {
-        return Err(Status::unavailable(
-            "media object ref resolver returned an empty URL",
-        ));
-    }
-    Ok(resolved.url)
-}
-
 #[tonic::async_trait]
 impl MediaAssetProcessor for MediaAssetProcessorService {
     async fn process_asset(
@@ -326,225 +246,6 @@ fn media_constraints_from_request(request: &ProcessAssetRequest) -> MediaConstra
     )
 }
 
-fn media_http_client(resolved_host: Option<&ResolvedHost>) -> Result<Client, reqwest::Error> {
-    let builder = Client::builder()
-        .timeout(MEDIA_DOWNLOAD_TIMEOUT)
-        .redirect(Policy::none());
-
-    match resolved_host {
-        Some(resolved_host) => builder
-            .resolve_to_addrs(&resolved_host.host, &resolved_host.addrs)
-            .build(),
-        None => builder.build(),
-    }
-}
-
-async fn fetch_media_url(mut url: Url) -> Result<HttpResponse, Status> {
-    let mut redirects = 0;
-
-    loop {
-        let validated = validate_media_url(url).await?;
-        let client = media_http_client(validated.resolved_host.as_ref())
-            .map_err(|_| Status::internal("failed to build media HTTP client"))?;
-        let response = client
-            .get(validated.url)
-            .send()
-            .await
-            .map_err(media_download_error_to_status)?;
-
-        if !response.status().is_redirection() {
-            return Ok(response);
-        }
-
-        if redirects >= MEDIA_REDIRECT_LIMIT {
-            return Err(Status::invalid_argument("media redirect limit exceeded"));
-        }
-        redirects += 1;
-
-        let base_url = response.url().clone();
-        let location = response
-            .headers()
-            .get(LOCATION)
-            .and_then(|value| value.to_str().ok())
-            .ok_or_else(|| Status::invalid_argument("media redirect missing location"))?;
-        url = base_url
-            .join(location)
-            .map_err(|_| Status::invalid_argument("invalid media redirect URL"))?;
-    }
-}
-
-async fn read_limited_body(response: reqwest::Response, max_bytes: u64) -> Result<Vec<u8>, Status> {
-    if let Some(content_length) = response.content_length()
-        && content_length > max_bytes
-    {
-        return Err(Status::resource_exhausted(format!(
-            "media exceeds max bytes: {content_length} > {max_bytes}"
-        )));
-    }
-
-    let mut body = Vec::new();
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(media_download_error_to_status)?;
-        let next_len = body
-            .len()
-            .checked_add(chunk.len())
-            .ok_or_else(|| Status::resource_exhausted("media body is too large"))?;
-        let next_len = u64::try_from(next_len)
-            .map_err(|_| Status::resource_exhausted("media body is too large"))?;
-        if next_len > max_bytes {
-            return Err(Status::resource_exhausted(format!(
-                "media exceeds max bytes: {next_len} > {max_bytes}"
-            )));
-        }
-        body.extend_from_slice(&chunk);
-    }
-
-    Ok(body)
-}
-
-fn response_content_type(response: &reqwest::Response) -> Option<String> {
-    response
-        .headers()
-        .get(CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(';').next())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-}
-
-fn media_download_error_to_status(err: reqwest::Error) -> Status {
-    if err.is_timeout() {
-        Status::deadline_exceeded("media download timed out")
-    } else if err.is_redirect() {
-        Status::invalid_argument("unsafe media redirect")
-    } else {
-        Status::unavailable("failed to download media")
-    }
-}
-
-#[derive(Debug)]
-struct ValidatedMediaUrl {
-    url: Url,
-    resolved_host: Option<ResolvedHost>,
-}
-
-#[derive(Debug)]
-struct ResolvedHost {
-    host: String,
-    addrs: Vec<SocketAddr>,
-}
-
-async fn validate_media_url(mut url: Url) -> Result<ValidatedMediaUrl, Status> {
-    if url.scheme() != "https" {
-        return Err(Status::invalid_argument("unsafe media URL"));
-    }
-
-    let host = normalized_media_host(&url)?;
-    if is_blocked_hostname(&host) {
-        return Err(Status::invalid_argument("unsafe media URL"));
-    }
-
-    if let Ok(ip) = host.parse::<IpAddr>() {
-        if is_public_ip(ip) {
-            return Ok(ValidatedMediaUrl {
-                url,
-                resolved_host: None,
-            });
-        }
-        return Err(Status::invalid_argument("unsafe media URL"));
-    }
-
-    url.set_host(Some(&host))
-        .map_err(|_| Status::invalid_argument("invalid media URL"))?;
-    let port = url
-        .port_or_known_default()
-        .ok_or_else(|| Status::invalid_argument("invalid media URL port"))?;
-    let addrs = resolve_host_addrs(&host, port).await?;
-    validate_resolved_addrs(&host, &addrs)?;
-
-    Ok(ValidatedMediaUrl {
-        url,
-        resolved_host: Some(ResolvedHost { host, addrs }),
-    })
-}
-
-fn normalized_media_host(url: &Url) -> Result<String, Status> {
-    let Some(host) = url.host_str() else {
-        return Err(Status::invalid_argument("invalid media URL host"));
-    };
-
-    let host = host.trim_end_matches('.');
-    Ok(host
-        .strip_prefix('[')
-        .and_then(|value| value.strip_suffix(']'))
-        .unwrap_or(host)
-        .to_ascii_lowercase())
-}
-
-fn is_blocked_hostname(host: &str) -> bool {
-    host == "localhost" || host.ends_with(".localhost")
-}
-
-async fn resolve_host_addrs(host: &str, port: u16) -> Result<Vec<SocketAddr>, Status> {
-    let lookup = timeout(
-        MEDIA_DOWNLOAD_TIMEOUT,
-        tokio::net::lookup_host((host, port)),
-    )
-    .await
-    .map_err(|_| Status::deadline_exceeded("media DNS lookup timed out"))?
-    .map_err(|_| Status::unavailable("failed to resolve media host"))?;
-    let addrs = lookup.collect::<Vec<_>>();
-    if addrs.is_empty() {
-        return Err(Status::unavailable("media host did not resolve"));
-    }
-
-    Ok(addrs)
-}
-
-fn validate_resolved_addrs(host: &str, addrs: &[SocketAddr]) -> Result<(), Status> {
-    if addrs.iter().all(|addr| is_public_ip(addr.ip())) {
-        return Ok(());
-    }
-
-    Err(Status::invalid_argument(format!(
-        "media host {host} resolved to a private address"
-    )))
-}
-
-fn is_public_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ip) => is_public_ipv4(ip),
-        IpAddr::V6(ip) => is_public_ipv6(ip),
-    }
-}
-
-fn is_public_ipv4(ip: Ipv4Addr) -> bool {
-    let [first, second, _, _] = ip.octets();
-
-    !(first == 0
-        || first == 10
-        || first == 127
-        || (first == 100 && (64..=127).contains(&second))
-        || (first == 169 && second == 254)
-        || (first == 172 && (16..=31).contains(&second))
-        || (first == 192 && second == 168)
-        || ip == Ipv4Addr::BROADCAST)
-}
-
-fn is_public_ipv6(ip: Ipv6Addr) -> bool {
-    if let Some(ipv4) = ip.to_ipv4_mapped() {
-        return is_public_ipv4(ipv4);
-    }
-
-    let first_segment = ip.segments()[0];
-    let is_unique_local = (first_segment & 0xfe00) == 0xfc00;
-    let is_link_local = (first_segment & 0xffc0) == 0xfe80;
-
-    !(ip.is_loopback() || ip.is_unspecified() || is_unique_local || is_link_local)
-}
-
 fn media_error_to_status(err: content_pipeline_core::MediaError) -> Status {
     match err {
         content_pipeline_core::MediaError::EmptySource
@@ -567,70 +268,6 @@ fn media_error_to_status(err: content_pipeline_core::MediaError) -> Status {
 mod tests {
     use super::*;
 
-    fn url(value: &str) -> Url {
-        Url::parse(value).expect("test URL should parse")
-    }
-
-    #[test]
-    fn accepts_public_resolved_addresses() {
-        let addrs = vec!["93.184.216.34:443".parse().expect("address should parse")];
-
-        validate_resolved_addrs("example.com", &addrs)
-            .expect("public resolved address should be accepted");
-    }
-
-    #[test]
-    fn rejects_private_resolved_addresses() {
-        let addrs = vec![
-            "93.184.216.34:443".parse().expect("address should parse"),
-            "169.254.169.254:443".parse().expect("address should parse"),
-        ];
-
-        let err = validate_resolved_addrs("attacker.example", &addrs)
-            .expect_err("private resolved address should be rejected");
-
-        assert_eq!(err.code(), tonic::Code::InvalidArgument);
-    }
-
-    #[tokio::test]
-    async fn rejects_non_https_media_url() {
-        let err = validate_media_url(url("http://example.com/image.png"))
-            .await
-            .expect_err("non-https URL should be rejected");
-
-        assert_eq!(err.code(), tonic::Code::InvalidArgument);
-    }
-
-    #[tokio::test]
-    async fn rejects_localhost_media_url() {
-        let err = validate_media_url(url("https://localhost/image.png"))
-            .await
-            .expect_err("localhost URL should be rejected");
-        assert_eq!(err.code(), tonic::Code::InvalidArgument);
-
-        let err = validate_media_url(url("https://assets.localhost/image.png"))
-            .await
-            .expect_err("localhost subdomain URL should be rejected");
-        assert_eq!(err.code(), tonic::Code::InvalidArgument);
-    }
-
-    #[tokio::test]
-    async fn rejects_private_ip_media_url() {
-        for value in [
-            "https://127.0.0.1/image.png",
-            "https://10.0.0.1/image.png",
-            "https://192.168.1.10/image.png",
-            "https://[::1]/image.png",
-            "https://[fd00::1]/image.png",
-            "https://[::ffff:127.0.0.1]/image.png",
-        ] {
-            let err = validate_media_url(url(value))
-                .await
-                .expect_err("private IP URL should be rejected");
-            assert_eq!(err.code(), tonic::Code::InvalidArgument);
-        }
-    }
-
     #[test]
     fn treats_zero_max_bytes_as_unset() {
         let request = ProcessAssetRequest {
@@ -650,84 +287,6 @@ mod tests {
 
         assert_eq!(constraints.max_bytes, Some(DEFAULT_MAX_BYTES));
         assert_eq!(constraints.preferred_mime_types, vec!["image/png"]);
-    }
-
-    #[tokio::test]
-    async fn resolves_object_ref_with_internal_token() {
-        use std::sync::{Arc, Mutex};
-
-        use axum::Router;
-        use axum::body::Body;
-        use axum::extract::Request;
-        use axum::http::StatusCode;
-        use axum::routing::post;
-
-        let seen = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
-        let seen_request = Arc::clone(&seen);
-        let app = Router::new().route(
-            "/internal/media/resolve",
-            post(move |request: Request<Body>| {
-                let seen_request = Arc::clone(&seen_request);
-                async move {
-                    let token = request
-                        .headers()
-                        .get("X-MPP-Internal-Token")
-                        .and_then(|value| value.to_str().ok())
-                        .unwrap_or_default()
-                        .to_string();
-                    let bytes = axum::body::to_bytes(request.into_body(), 1024)
-                        .await
-                        .expect("request body should be readable");
-                    let body = String::from_utf8(bytes.to_vec())
-                        .expect("request body should be utf8");
-                    seen_request
-                        .lock()
-                        .expect("seen request mutex should not be poisoned")
-                        .push((token, body));
-
-                    (
-                        StatusCode::OK,
-                        [("content-type", "application/json")],
-                        r#"{"url":"https://example.com/media.png","expires_at":"2026-06-06T08:00:00Z"}"#,
-                    )
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("test resolver should bind");
-        let addr = listener
-            .local_addr()
-            .expect("test resolver address should be available");
-        tokio::spawn(async move {
-            axum::serve(listener, app)
-                .await
-                .expect("test resolver should serve");
-        });
-        let config = ObjectRefResolverConfig {
-            url: format!("http://{addr}/internal/media/resolve"),
-            internal_token: "test-internal-token".to_string(),
-        };
-
-        let resolved = resolve_object_ref_url(
-            &Client::new(),
-            &config,
-            "mpp://media/11111111-1111-4111-8111-111111111111",
-        )
-        .await
-        .expect("object ref should resolve");
-
-        assert_eq!(resolved, "https://example.com/media.png");
-        let seen = seen
-            .lock()
-            .expect("seen request mutex should not be poisoned");
-        assert_eq!(seen.len(), 1);
-        assert_eq!(seen[0].0, "test-internal-token");
-        assert!(
-            seen[0]
-                .1
-                .contains("mpp://media/11111111-1111-4111-8111-111111111111")
-        );
     }
 
     #[tokio::test]

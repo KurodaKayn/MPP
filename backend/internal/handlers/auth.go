@@ -274,10 +274,6 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "password must contain at least one uppercase and one lowercase letter")
 	}
 
-	if err := h.verifyCode(c, "register", req.Email, req.Code); err != nil {
-		return err
-	}
-
 	// Check if username or email already exists
 	var existingUser models.User
 	err := h.db.Where("username = ? OR email = ?", req.Username, req.Email).First(&existingUser).Error
@@ -288,6 +284,10 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		return sendError(c, http.StatusConflict, "email_exists", "email already exists")
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return sendError(c, http.StatusInternalServerError, "internal_error", "database error")
+	}
+
+	if err := h.verifyCode(c, "register", req.Email, req.Code); err != nil {
+		return err
 	}
 
 	// Hash password

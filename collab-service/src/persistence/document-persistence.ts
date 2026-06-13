@@ -334,16 +334,27 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
       error,
     });
 
-    if (attempt >= this.maxFlushRetryAttempts) {
-      this.logger.error("collab update batch retries exhausted", {
+    if (attempt === this.maxFlushRetryAttempts) {
+      this.logger.error(
+        "collab update batch retry threshold reached; continuing capped retries",
+        {
+          documentId,
+          attempts: attempt,
+        },
+      );
+    } else if (attempt > this.maxFlushRetryAttempts) {
+      this.logger.error("collab update batch retry still failing", {
         documentId,
         attempts: attempt,
       });
-      return;
     }
 
+    const backoffAttempt = Math.min(
+      attempt - 1,
+      this.maxFlushRetryAttempts - 1,
+    );
     const retryDelayMs = Math.min(
-      this.flushIntervalMs * 2 ** (attempt - 1),
+      this.flushIntervalMs * 2 ** backoffAttempt,
       this.maxFlushRetryDelayMs,
     );
     this.scheduleFlush(documentId, retryDelayMs);

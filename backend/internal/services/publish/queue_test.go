@@ -42,6 +42,23 @@ func (p failingQueueTestPublisher) Publish(_ context.Context, _ *models.ProjectP
 	return "", "", errors.New("platform unavailable")
 }
 
+type contextAwareQueueTestPublisher struct {
+	valueSeen atomic.Bool
+}
+
+func (p *contextAwareQueueTestPublisher) ValidateConfig(_ []byte) error {
+	return nil
+}
+
+func (p *contextAwareQueueTestPublisher) Publish(ctx context.Context, _ *models.ProjectPlatformPublication, _ *models.PlatformAccount) (string, string, error) {
+	if ctx.Value(publishContextTestKey{}) == "job-context" {
+		p.valueSeen.Store(true)
+	}
+	return "remote-id", "https://example.com/published", nil
+}
+
+type publishContextTestKey struct{}
+
 type testPublishQueue struct {
 	jobs            []PublishJob
 	locks           map[string]string
@@ -1267,6 +1284,52 @@ func TestProcessPublishJobMarksFailedWhenWorkerContextCanceled(t *testing.T) {
 	require.Equal(t, models.PublicationStatusFailed, saved.Status)
 	require.Equal(t, 1, saved.RetryCount)
 	require.NotEmpty(t, saved.ErrorMessage)
+}
+
+func TestProcessPublishJobPassesWorkerContextToPublisher(t *testing.T) {
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+
+	publisherSpy := &contextAwareQueueTestPublisher{}
+	publisher.Factory.Register("wechat", publisherSpy)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Canceled queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusPublishing,
+		Config:         datatypes.JSON(`{"title":"Canceled queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	job := PublishJob{
+		JobID:      uuid.New(),
+		ProjectID:  project.ID,
+		UserID:     user.ID,
+		Platform:   "wechat",
+		EnqueuedAt: time.Now().UTC(),
+	}
+	lockKey := publishLockKey(project.ID, "wechat")
+	queue.locks[lockKey] = job.JobID.String()
+	ctx := context.WithValue(context.Background(), publishContextTestKey{}, "job-context")
+
+	err := service.processPublishJob(ctx, job)
+
+	require.NoError(t, err)
+	require.True(t, publisherSpy.valueSeen.Load())
 }
 
 func TestRedisPublishQueueEnqueuesAsynqTask(t *testing.T) {

@@ -219,7 +219,7 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		if err != nil {
 			return nil, err
 		}
-		resp, err := s.PublishProject(projectID, platform, scopeUserID, schedule.ID)
+		resp, err := s.PublishProjectWithContext(ctx, projectID, platform, scopeUserID, schedule.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -424,7 +424,7 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 		log.Printf("failed to record publish job %s start event: %v", job.JobID, err)
 	}
 
-	resp, err := s.PublishProject(job.ProjectID, job.Platform, &job.UserID, job.ScheduleID)
+	resp, err := s.PublishProjectWithContext(ctx, job.ProjectID, job.Platform, &job.UserID, job.ScheduleID)
 	if err != nil {
 		log.Printf("publish job %s failed: %v", job.JobID, err)
 		observeJob(publishJobResultError)

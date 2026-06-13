@@ -181,9 +181,16 @@ func (s *Service) BatchPublishProject(projectID uuid.UUID, platforms []string, s
 }
 
 func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, scheduleID uuid.UUID) (map[string]any, error) {
+	return s.PublishProjectWithContext(context.Background(), projectID, platform, scopeUserID, scheduleID)
+}
+
+func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, scheduleID uuid.UUID) (map[string]any, error) {
 	// Remote browser sessions are only for account connection and cookie capture.
 	// Publish jobs must be durable across Redis workers, so they load saved credentials instead.
-	ctx := context.Background()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	s = s.WithContext(ctx)
 
 	if scopeUserID == nil {
 		return nil, ErrForbidden

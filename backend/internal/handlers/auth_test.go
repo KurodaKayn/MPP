@@ -252,6 +252,9 @@ func TestRegisterUsernameExists(t *testing.T) {
 
 	require.NoError(t, handler.Register(e.NewContext(req, rec)))
 	assert.Equal(t, http.StatusConflict, rec.Code)
+	exists, err := rdb.Exists(context.Background(), "auth:code:register:new@example.com").Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), exists)
 }
 
 func TestRegisterRequiresRedis(t *testing.T) {
