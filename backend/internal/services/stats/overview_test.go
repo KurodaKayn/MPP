@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,6 +54,32 @@ func TestGetStats(t *testing.T) {
 	assert.Equal(t, int64(1), statsScoped.TotalProjects)
 	assert.Equal(t, int64(1), statsScoped.TotalPublishedPublications)
 	assert.Equal(t, int64(0), statsScoped.TotalFailedPublications)
+}
+
+func TestGetStatsUsesCompleteWorkspaceReadModel(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	s := services.NewDashboardService(db)
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	now := time.Now().UTC()
+
+	require.NoError(t, db.Create(&models.User{ID: userID, Username: "stats-readmodel", Email: "stats-readmodel@example.com", PasswordHash: "hash"}).Error)
+	require.NoError(t, db.Create(&models.Workspace{ID: workspaceID, OwnerUserID: userID, Name: "Stats read model", Status: models.WorkspaceStatusActive, CreatedAt: now, UpdatedAt: now}).Error)
+	require.NoError(t, db.Create(&models.WorkspaceDashboardStats{
+		WorkspaceID:                workspaceID,
+		TotalProjects:              7,
+		TotalPublishedPublications: 5,
+		TotalFailedPublications:    2,
+		TotalMembers:               3,
+		RefreshedAt:                now,
+	}).Error)
+
+	stats, err := s.GetStats(nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalUsers)
+	assert.Equal(t, int64(7), stats.TotalProjects)
+	assert.Equal(t, int64(5), stats.TotalPublishedPublications)
+	assert.Equal(t, int64(2), stats.TotalFailedPublications)
 }
 
 func TestGetStatsCachesGlobalDashboardStats(t *testing.T) {
@@ -390,7 +417,7 @@ func TestGetStatsCollapsesConcurrentCacheMisses(t *testing.T) {
 		assert.Equal(t, int64(1), stats.TotalPublishedPublications)
 		assert.Equal(t, int64(0), stats.TotalFailedPublications)
 	}
-	assert.Equal(t, int64(4), queryCount.count.Load())
+	assert.Equal(t, int64(5), queryCount.count.Load())
 	requireSingleStatsCacheKey(t, redisClient)
 }
 
@@ -419,7 +446,7 @@ func TestGetStatsCollapsesConcurrentRedisReadErrors(t *testing.T) {
 		assert.Equal(t, int64(0), stats.TotalPublishedPublications)
 		assert.Equal(t, int64(1), stats.TotalFailedPublications)
 	}
-	assert.Equal(t, int64(4), queryCount.count.Load())
+	assert.Equal(t, int64(5), queryCount.count.Load())
 }
 
 func newStatsRedisClient(t *testing.T) *redis.Client {
