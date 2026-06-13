@@ -63,6 +63,7 @@ cargo test -p content-pipeline-core
 ### 2026-06-12
 
 - Added profile version documentation checks that keep the current draft and media profile tables aligned with the Rust registries.
+- Added lossy HTML warnings for unsupported elements, event handler attributes, and unsafe URL attributes.
 - Added compiler schema validation for adapted content emitted by Rust draft profiles.
 - Added image asset descriptors to WeChat, Zhihu, and Douyin draft outputs when source HTML contains images.
 
