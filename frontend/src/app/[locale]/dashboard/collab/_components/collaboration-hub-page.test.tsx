@@ -234,10 +234,50 @@ describe("CollaborationHubPage project deletion", () => {
       await waitForUpdates();
     });
 
-    expect(mocks.deleteDashboardProject).toHaveBeenCalledWith("owned-project");
+    expect(mocks.deleteDashboardProject).toHaveBeenCalledWith("owned-project", {
+      workspaceId: "workspace-1",
+    });
     expect(view.text()).not.toContain("Owned project");
     expect(view.text()).toContain("Shared project");
     expect(mocks.toastSuccess).toHaveBeenCalledWith("Project deleted");
+
+    view.unmount();
+  });
+
+  it("deletes personal owned projects without inheriting the selected workspace", async () => {
+    const personalProject = project({
+      id: "personal-project",
+      title: "Personal project",
+      workspace_id: null,
+    });
+    mocks.getDashboardProjects.mockResolvedValue({
+      items: [personalProject],
+    });
+    mocks.getProjectCollaborators.mockResolvedValue({
+      items: [collaborator({ project_id: personalProject.id })],
+    });
+    mocks.getWorkspaceProjects.mockResolvedValue({
+      items: [],
+    });
+    mocks.deleteDashboardProject.mockResolvedValue(undefined);
+
+    const view = renderPage();
+    await flushPageLoad();
+
+    await act(async () => {
+      deleteButtons(view.container)[0]?.click();
+      await waitForUpdates();
+    });
+    await act(async () => {
+      buttonByText("Delete").click();
+      await waitForUpdates();
+    });
+
+    expect(mocks.deleteDashboardProject).toHaveBeenCalledWith(
+      "personal-project",
+      { workspaceId: null },
+    );
+    expect(view.text()).not.toContain("Personal project");
 
     view.unmount();
   });

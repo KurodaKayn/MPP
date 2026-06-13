@@ -310,7 +310,9 @@ export function CollaborationHubPage() {
     async (project: ProjectListItem) => {
       setDeletingProjectId(project.id);
       try {
-        await deleteDashboardProject(project.id);
+        await deleteDashboardProject(project.id, {
+          workspaceId: project.workspace_id ?? null,
+        });
         setAllProjects((items) =>
           items.filter((item) => item.id !== project.id),
         );
