@@ -168,7 +168,7 @@ func (s *Service) RetryScheduledPublication(ctx context.Context, projectID uuid.
 	if schedule.Status != models.ScheduledPublicationStatusFailed && schedule.Status != models.ScheduledPublicationStatusNeedsManualAction {
 		return nil, ErrPublicationAlreadyPublishing
 	}
-	if _, err := s.PublishProject(projectID, schedule.Publication.Platform, &userID, scheduleID); err != nil {
+	if _, err := s.PublishProjectWithContext(ctx, projectID, schedule.Publication.Platform, &userID, scheduleID); err != nil {
 		return nil, err
 	}
 	return s.scheduledPublicationDetail(ctx, scheduleID)
