@@ -12,6 +12,11 @@ const appEnvEnv = "APP_ENV";
 const defaultBackendApiBaseUrl = "http://localhost:8080";
 const mockLoginFlagEnv = "ENABLE_MOCK_LOGIN";
 const nodeEnvFallbackEnv = "NODE_ENV";
+const noStoreHeaders = {
+  "Cache-Control": "no-store, private",
+  Expires: "0",
+  Pragma: "no-cache",
+};
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -69,8 +74,15 @@ function createSessionResponse(
   if (options.clearCookies) {
     expireAuthCookies(response);
   }
+  applyNoStoreHeaders(response);
 
   return response;
+}
+
+function applyNoStoreHeaders(response: NextResponse) {
+  for (const [name, value] of Object.entries(noStoreHeaders)) {
+    response.headers.set(name, value);
+  }
 }
 
 async function verifyAuthCookie(token: string) {
@@ -109,7 +121,7 @@ export async function POST(request: NextRequest) {
   const token = typeof body.token === "string" ? body.token.trim() : "";
 
   if (!token) {
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         error: {
           code: "missing_token",
@@ -118,6 +130,8 @@ export async function POST(request: NextRequest) {
       },
       { status: 400 },
     );
+    applyNoStoreHeaders(response);
+    return response;
   }
 
   const authenticated = await verifyAuthCookie(token).catch(() => false);
@@ -132,6 +146,7 @@ export async function POST(request: NextRequest) {
       { status: 401 },
     );
     expireAuthCookies(response);
+    applyNoStoreHeaders(response);
     return response;
   }
 
@@ -144,6 +159,7 @@ export function DELETE() {
   const response = NextResponse.json({ ok: true });
 
   expireAuthCookies(response);
+  applyNoStoreHeaders(response);
 
   return response;
 }

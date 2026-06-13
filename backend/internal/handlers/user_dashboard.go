@@ -1814,7 +1814,7 @@ func writeAIStream(c echo.Context, stream *services.AIServiceStream, lease *stre
 
 	resp := c.Response()
 	resp.Header().Set(echo.HeaderContentType, contentType)
-	resp.Header().Set(echo.HeaderCacheControl, "no-cache")
+	resp.Header().Set(echo.HeaderCacheControl, middleware.NoStoreCacheControl)
 	resp.Header().Set("X-Accel-Buffering", "no")
 	if lease != nil && lease.ID != "" {
 		resp.Header().Set("X-MPP-Stream-ID", lease.ID)
