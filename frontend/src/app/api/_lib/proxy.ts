@@ -5,6 +5,11 @@ import { authTokenNames, formatBearerToken } from "@/lib/auth/tokens";
 const defaultBackendApiBaseUrl = "http://localhost:8080";
 const requestIdHeader = "x-request-id";
 const traceIdHeader = "x-trace-id";
+const noStoreHeaders = {
+  "Cache-Control": "no-store, private",
+  Expires: "0",
+  Pragma: "no-cache",
+};
 const hopByHopHeaders = [
   "connection",
   "content-length",
@@ -123,6 +128,12 @@ function ensureTraceHeaders(headers: Headers) {
   return traceId;
 }
 
+function applyNoStoreHeaders(headers: Headers) {
+  for (const [name, value] of Object.entries(noStoreHeaders)) {
+    headers.set(name, value);
+  }
+}
+
 function createForwardedHeaders(request: NextRequest) {
   const headers = new Headers(request.headers);
   const forwardedHost =
@@ -149,7 +160,7 @@ function createCsrfFailureResponse() {
         message: "Request origin is not allowed",
       },
     },
-    { status: 403 },
+    { headers: noStoreHeaders, status: 403 },
   );
 }
 
@@ -190,6 +201,7 @@ export async function proxyApiRequest(
   if (!responseHeaders.has(traceIdHeader)) {
     responseHeaders.set(traceIdHeader, traceId);
   }
+  applyNoStoreHeaders(responseHeaders);
 
   return new Response(response.body, {
     headers: responseHeaders,

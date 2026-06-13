@@ -414,12 +414,11 @@ func (h *UserDashboardHandler) ensureProjectWorkspaceContext(c echo.Context, pro
 	return nil
 }
 
-func (h *UserDashboardHandler) ensureWorkspaceAccountManager(c echo.Context, userID uuid.UUID) error {
-	workspaceID, err := workspaceIDFromQuery(c)
-	if err != nil || workspaceID == uuid.Nil {
-		return err
+func (h *UserDashboardHandler) ensureWorkspaceAccountManagerFor(c echo.Context, userID uuid.UUID, workspaceID uuid.UUID) error {
+	if workspaceID == uuid.Nil {
+		return nil
 	}
-	_, err = h.serviceFor(c).RequirePermission(workspaceID, userID, services.PermissionAccountManage)
+	_, err := h.serviceFor(c).RequirePermission(workspaceID, userID, services.PermissionAccountManage)
 	return err
 }
 
@@ -1815,7 +1814,7 @@ func writeAIStream(c echo.Context, stream *services.AIServiceStream, lease *stre
 
 	resp := c.Response()
 	resp.Header().Set(echo.HeaderContentType, contentType)
-	resp.Header().Set(echo.HeaderCacheControl, "no-cache")
+	resp.Header().Set(echo.HeaderCacheControl, middleware.NoStoreCacheControl)
 	resp.Header().Set("X-Accel-Buffering", "no")
 	if lease != nil && lease.ID != "" {
 		resp.Header().Set("X-MPP-Stream-ID", lease.ID)
@@ -1984,6 +1983,9 @@ func (h *UserDashboardHandler) GetWechatAccount(c echo.Context) error {
 	if workspaceErr != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
 	}
+	if err := h.ensureWorkspaceAccountManagerFor(c, userID, workspaceID); err != nil {
+		return sendWorkspaceError(c, err)
+	}
 
 	resp, err := h.serviceFor(c).GetWorkspaceWechatAccount(userID, workspaceID)
 	if err != nil {
@@ -1998,12 +2000,12 @@ func (h *UserDashboardHandler) SaveWechatAccount(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
-	if err := h.ensureWorkspaceAccountManager(c, userID); err != nil {
-		return sendWorkspaceError(c, err)
-	}
 	workspaceID, workspaceErr := workspaceIDFromQuery(c)
 	if workspaceErr != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	if err := h.ensureWorkspaceAccountManagerFor(c, userID, workspaceID); err != nil {
+		return sendWorkspaceError(c, err)
 	}
 
 	req := new(dto.UpsertWechatAccountRequest)
@@ -2027,12 +2029,12 @@ func (h *UserDashboardHandler) TestWechatAccount(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
-	if err := h.ensureWorkspaceAccountManager(c, userID); err != nil {
-		return sendWorkspaceError(c, err)
-	}
 	workspaceID, workspaceErr := workspaceIDFromQuery(c)
 	if workspaceErr != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	if err := h.ensureWorkspaceAccountManagerFor(c, userID, workspaceID); err != nil {
+		return sendWorkspaceError(c, err)
 	}
 
 	req := new(dto.TestWechatAccountRequest)
@@ -2061,6 +2063,9 @@ func (h *UserDashboardHandler) GetDouyinAccount(c echo.Context) error {
 	if workspaceErr != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
 	}
+	if err := h.ensureWorkspaceAccountManagerFor(c, userID, workspaceID); err != nil {
+		return sendWorkspaceError(c, err)
+	}
 
 	resp, err := h.serviceFor(c).GetWorkspaceDouyinAccount(userID, workspaceID)
 	if err != nil {
@@ -2079,6 +2084,9 @@ func (h *UserDashboardHandler) GetZhihuAccount(c echo.Context) error {
 	workspaceID, workspaceErr := workspaceIDFromQuery(c)
 	if workspaceErr != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	if err := h.ensureWorkspaceAccountManagerFor(c, userID, workspaceID); err != nil {
+		return sendWorkspaceError(c, err)
 	}
 
 	resp, err := h.serviceFor(c).GetWorkspaceZhihuAccount(userID, workspaceID)
@@ -2099,6 +2107,9 @@ func (h *UserDashboardHandler) GetXAccount(c echo.Context) error {
 	if workspaceErr != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
 	}
+	if err := h.ensureWorkspaceAccountManagerFor(c, userID, workspaceID); err != nil {
+		return sendWorkspaceError(c, err)
+	}
 
 	resp, err := h.serviceFor(c).GetWorkspaceXAccount(userID, workspaceID)
 	if err != nil {
@@ -2113,12 +2124,12 @@ func (h *UserDashboardHandler) SaveXAccount(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
-	if err := h.ensureWorkspaceAccountManager(c, userID); err != nil {
-		return sendWorkspaceError(c, err)
-	}
 	workspaceID, workspaceErr := workspaceIDFromQuery(c)
 	if workspaceErr != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	if err := h.ensureWorkspaceAccountManagerFor(c, userID, workspaceID); err != nil {
+		return sendWorkspaceError(c, err)
 	}
 
 	req := new(dto.UpsertXAccountRequest)
@@ -2142,12 +2153,12 @@ func (h *UserDashboardHandler) TestXAccount(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
-	if err := h.ensureWorkspaceAccountManager(c, userID); err != nil {
-		return sendWorkspaceError(c, err)
-	}
 	workspaceID, workspaceErr := workspaceIDFromQuery(c)
 	if workspaceErr != nil {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	if err := h.ensureWorkspaceAccountManagerFor(c, userID, workspaceID); err != nil {
+		return sendWorkspaceError(c, err)
 	}
 
 	req := new(dto.TestXAccountRequest)
@@ -2171,8 +2182,15 @@ func (h *UserDashboardHandler) StartXOAuth2(c echo.Context) error {
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
+	workspaceID, workspaceErr := workspaceIDFromQuery(c)
+	if workspaceErr != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid workspace UUID")
+	}
+	if err := h.ensureWorkspaceAccountManagerFor(c, userID, workspaceID); err != nil {
+		return sendWorkspaceError(c, err)
+	}
 
-	authURL, err := h.serviceFor(c).StartXOAuth2(userID, xOAuth2RedirectURI(c))
+	authURL, err := h.serviceFor(c).StartWorkspaceXOAuth2(userID, workspaceID, xOAuth2RedirectURI(c))
 	if err != nil {
 		if errors.Is(err, services.ErrXOAuth2NotConfigured) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())

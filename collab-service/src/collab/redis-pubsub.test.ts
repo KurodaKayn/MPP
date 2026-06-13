@@ -1,5 +1,5 @@
 import { Document } from "@hocuspocus/server";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encodeStateAsUpdate } from "yjs";
 
 import { loadConfig } from "../config.js";
@@ -43,6 +43,10 @@ describe("RedisCollabPubSub", () => {
     bus = new InMemoryRedisBus();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("applies updates from another collab-service instance", async () => {
     const source = new Document("document-1");
     const target = new Document("document-1");
@@ -71,6 +75,36 @@ describe("RedisCollabPubSub", () => {
     );
     const remoteUpdate = encodeStateAsUpdate(target);
     expect(secondInstance.isRemoteUpdate(remoteUpdate)).toBe(true);
+    expect(secondInstance.isRemoteUpdate(remoteUpdate)).toBe(false);
+  });
+
+  it("expires unconsumed remote update markers", async () => {
+    vi.useFakeTimers();
+    const source = new Document("document-1");
+    const target = new Document("document-1");
+    const firstInstance = new RedisCollabPubSub(
+      new FakeRedisClient(bus) as never,
+      new FakeRedisClient(bus) as never,
+      "mpp:test:collab",
+    );
+    const secondInstance = new RedisCollabPubSub(
+      new FakeRedisClient(bus) as never,
+      new FakeRedisClient(bus) as never,
+      "mpp:test:collab",
+    );
+    await firstInstance.start(new Map([["document-1", source]]));
+    await secondInstance.start(new Map([["document-1", target]]));
+
+    source.getMap("content").set("title", "Remote update");
+    await firstInstance.publishUpdate(
+      "document-1",
+      encodeStateAsUpdate(source),
+      "user-1",
+    );
+
+    const remoteUpdate = encodeStateAsUpdate(target);
+    vi.advanceTimersByTime(60_001);
+
     expect(secondInstance.isRemoteUpdate(remoteUpdate)).toBe(false);
   });
 });

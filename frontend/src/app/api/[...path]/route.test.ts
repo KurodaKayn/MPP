@@ -111,6 +111,9 @@ describe("api proxy route", () => {
     expect(response.headers.get("x-backend")).toBe("ok");
     expect(response.headers.get("x-request-id")).toBe(traceId);
     expect(response.headers.get("x-trace-id")).toBe(traceId);
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    expect(response.headers.get("expires")).toBe("0");
     expect(response.headers.has("connection")).toBe(false);
     expect(response.headers.has("transfer-encoding")).toBe(false);
   });
@@ -171,6 +174,7 @@ describe("api proxy route", () => {
     const responseBody = await response.json();
 
     expect(response.status).toBe(403);
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
     expect(responseBody.error.code).toBe("csrf_failed");
     expect(fetchMock).not.toHaveBeenCalled();
     expect(request.arrayBuffer).not.toHaveBeenCalled();

@@ -57,6 +57,7 @@ describe("auth register route", () => {
 
     expect(body).toEqual({ authenticated: true });
     expect(JSON.stringify(body)).not.toContain("new-jwt-token");
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
     expect(setCookieHeader).toContain("sevenoxcloud.auth_token=new-jwt-token");
     expect(setCookieHeader).toContain("HttpOnly");
 

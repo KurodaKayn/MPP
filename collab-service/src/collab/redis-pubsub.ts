@@ -6,6 +6,9 @@ import type { Document } from "@hocuspocus/server";
 import type { RedisClientOptions } from "redis";
 import type { CollabConfig } from "../config.js";
 
+const remoteUpdateHashTTLMS = 60_000;
+const remoteUpdateHashMaxEntries = 4096;
+
 interface CollabUpdateEnvelope {
   actorUserId?: string;
   documentId: string;
@@ -44,7 +47,7 @@ interface RedisClient {
 
 export class RedisCollabPubSub implements CollabRedisPubSub {
   private documents?: Map<string, Document>;
-  private readonly remoteUpdateHashes = new Set<string>();
+  private readonly remoteUpdateHashes = new Map<string, number>();
   private readonly instanceId = randomUUID();
 
   constructor(
@@ -84,6 +87,8 @@ export class RedisCollabPubSub implements CollabRedisPubSub {
   }
 
   isRemoteUpdate(update: Uint8Array): boolean {
+    const now = Date.now();
+    this.pruneRemoteUpdateHashes(now);
     const updateHash = hashUpdate(update);
     if (!this.remoteUpdateHashes.has(updateHash)) {
       return false;
@@ -115,7 +120,7 @@ export class RedisCollabPubSub implements CollabRedisPubSub {
       return;
     }
 
-    this.remoteUpdateHashes.add(envelope.updateHash);
+    this.rememberRemoteUpdateHash(envelope.updateHash);
     try {
       applyUpdate(document, new Uint8Array(update), "redis-pubsub");
     } catch (error) {
@@ -129,6 +134,27 @@ export class RedisCollabPubSub implements CollabRedisPubSub {
 
   private channel(documentId: string): string {
     return `${this.channelPrefix}:${documentId}`;
+  }
+
+  private rememberRemoteUpdateHash(updateHash: string): void {
+    const now = Date.now();
+    this.pruneRemoteUpdateHashes(now);
+    this.remoteUpdateHashes.set(updateHash, now + remoteUpdateHashTTLMS);
+    while (this.remoteUpdateHashes.size > remoteUpdateHashMaxEntries) {
+      const oldest = this.remoteUpdateHashes.keys().next().value;
+      if (!oldest) {
+        return;
+      }
+      this.remoteUpdateHashes.delete(oldest);
+    }
+  }
+
+  private pruneRemoteUpdateHashes(now: number): void {
+    for (const [updateHash, expiresAt] of this.remoteUpdateHashes) {
+      if (expiresAt <= now) {
+        this.remoteUpdateHashes.delete(updateHash);
+      }
+    }
   }
 }
 

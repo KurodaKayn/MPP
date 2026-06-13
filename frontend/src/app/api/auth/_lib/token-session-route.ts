@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { setAuthTokenCookie } from "./session-cookie";
 
 const defaultBackendApiBaseUrl = "http://localhost:8080";
+const noStoreHeaders = {
+  "Cache-Control": "no-store, private",
+  Expires: "0",
+  Pragma: "no-cache",
+};
 const hopByHopHeaders = [
   "connection",
   "content-length",
@@ -41,7 +46,14 @@ function createResponseHeaders(source: Headers) {
     headers.delete(header);
   }
   headers.delete("set-cookie");
+  applyNoStoreHeaders(headers);
   return headers;
+}
+
+function applyNoStoreHeaders(headers: Headers) {
+  for (const [name, value] of Object.entries(noStoreHeaders)) {
+    headers.set(name, value);
+  }
 }
 
 export async function proxyTokenSessionRequest(
@@ -80,7 +92,7 @@ export async function proxyTokenSessionRequest(
           message: "Authentication service did not return a token",
         },
       },
-      { status: 502 },
+      { headers: noStoreHeaders, status: 502 },
     );
   }
 
