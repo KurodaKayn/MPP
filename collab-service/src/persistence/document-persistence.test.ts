@@ -81,6 +81,12 @@ async function waitForRetryTimer(): Promise<void> {
   });
 }
 
+async function waitForRetryTimers(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 50);
+  });
+}
+
 describe("PostgresDocumentPersistence", () => {
   it("loads a stored Yjs snapshot", async () => {
     const source = new Document("source");
@@ -440,6 +446,48 @@ describe("PostgresDocumentPersistence", () => {
     );
     expect(database.calls.map((call) => call.text.trim())).toContain("COMMIT");
     expect(logger.errors[0]?.[0]).toBe("failed to flush collab update batch");
+  });
+
+  it("continues capped retries after the configured retry attempt threshold", async () => {
+    const database = new FakeDatabase();
+    database.results = [
+      [{ current_seq: 3 }],
+      [{ current_seq: 3 }],
+      [{ current_seq: 3 }],
+    ];
+    database.failures = [
+      {
+        pattern: "INSERT INTO collab_document_update_batches",
+        error: new Error("database unavailable"),
+      },
+      {
+        pattern: "INSERT INTO collab_document_update_batches",
+        error: new Error("database unavailable again"),
+      },
+    ];
+    const logger = new FakeLogger();
+    const persistence = new PostgresDocumentPersistence(
+      database,
+      1,
+      1,
+      30,
+      2,
+      1,
+      logger,
+    );
+    const document = new Document("document");
+    document.getMap("content").set("title", "Eventually saved");
+
+    await persistence.appendUpdate(
+      "11111111-1111-4111-8111-111111111111",
+      encodeStateAsUpdate(document),
+    );
+    await waitForRetryTimers();
+
+    expect(database.calls.map((call) => call.text.trim())).toContain("COMMIT");
+    expect(logger.errors.map(([message]) => message)).toContain(
+      "collab update batch retry threshold reached; continuing capped retries",
+    );
   });
 
   it("upserts the current Yjs snapshot", async () => {
