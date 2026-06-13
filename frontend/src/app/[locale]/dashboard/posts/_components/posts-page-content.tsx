@@ -133,6 +133,12 @@ function PostProjectCard({
             </CardDescription>
           </div>
           <ProjectDeleteButton
+            confirmCancelLabel={t("project.delete.cancel")}
+            confirmDescription={t("project.delete.confirm", {
+              title: project.title,
+            })}
+            confirmSubmitLabel={t("project.delete.submit")}
+            confirmTitle={t("project.delete.title")}
             disabled={!canDelete}
             isDeleting={isDeleting}
             label={
@@ -226,14 +232,6 @@ export function PostsPageContent() {
 
   const handleDeleteProject = useCallback(
     async (project: ProjectListItem) => {
-      const confirmed =
-        globalThis.confirm?.(
-          t("project.delete.confirm", { title: project.title }),
-        ) ?? true;
-      if (!confirmed) {
-        return;
-      }
-
       setDeletingProjectId(project.id);
       try {
         await deleteDashboardProject(project.id);

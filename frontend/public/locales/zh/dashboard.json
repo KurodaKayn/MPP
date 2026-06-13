@@ -68,7 +68,10 @@
   "project": {
     "delete": {
       "label": "删除项目",
+      "title": "删除项目",
       "confirm": "删除「{{title}}」？此操作无法撤销。",
+      "cancel": "取消",
+      "submit": "删除",
       "success": "项目已删除",
       "failed": "无法删除项目",
       "retryLater": "请稍后重试。",

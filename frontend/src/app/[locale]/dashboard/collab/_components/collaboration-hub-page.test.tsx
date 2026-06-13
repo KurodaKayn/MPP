@@ -17,11 +17,14 @@ const mocks = vi.hoisted(() => {
     const translations: Record<string, string> = {
       "collab.hub.error.defaultMessage": "Unable to load projects",
       "project.delete.confirm": `Delete "${String(values?.title ?? "")}"?`,
+      "project.delete.cancel": "Cancel",
       "project.delete.failed": "Unable to delete project",
       "project.delete.label": "Delete project",
       "project.delete.noPermission": "No delete permission",
       "project.delete.retryLater": "Please try again later.",
+      "project.delete.submit": "Delete",
       "project.delete.success": "Project deleted",
+      "project.delete.title": "Delete project",
       "workspace.empty": "No workspace",
     };
     return translations[key] ?? key;
@@ -142,7 +145,7 @@ function renderPage() {
   return {
     container,
     text() {
-      return container.textContent ?? "";
+      return document.body.textContent ?? "";
     },
     unmount() {
       act(() => {
@@ -157,6 +160,16 @@ function deleteButtons(container: HTMLElement) {
   return Array.from(container.querySelectorAll("button")).filter((button) =>
     button.textContent?.includes("Delete project"),
   );
+}
+
+function buttonByText(text: string) {
+  const button = Array.from(document.body.querySelectorAll("button")).find(
+    (item) => item.textContent?.trim() === text,
+  );
+  if (!button) {
+    throw new Error(`button not found: ${text}`);
+  }
+  return button;
 }
 
 describe("CollaborationHubPage project deletion", () => {
@@ -210,6 +223,14 @@ describe("CollaborationHubPage project deletion", () => {
 
     await act(async () => {
       deleteButtons(view.container)[0]?.click();
+      await waitForUpdates();
+    });
+    expect(globalThis.confirm).not.toHaveBeenCalled();
+    expect(view.text()).toContain('Delete "Owned project"?');
+    expect(mocks.deleteDashboardProject).not.toHaveBeenCalled();
+
+    await act(async () => {
+      buttonByText("Delete").click();
       await waitForUpdates();
     });
 

@@ -28,7 +28,7 @@ function render(element: React.ReactElement) {
       return button;
     },
     text() {
-      return container.textContent ?? "";
+      return document.body.textContent ?? "";
     },
     unmount() {
       act(() => {
@@ -39,20 +39,50 @@ function render(element: React.ReactElement) {
   };
 }
 
+function waitForUpdates() {
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+
+function buttonByText(text: string) {
+  const button = Array.from(document.body.querySelectorAll("button")).find(
+    (item) => item.textContent?.trim() === text,
+  );
+  if (!button) {
+    throw new Error(`button not found: ${text}`);
+  }
+  return button;
+}
+
 describe("ProjectDeleteButton", () => {
-  it("renders an accessible trash icon button", () => {
+  it("opens a confirmation dialog before deleting", async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const onDelete = vi.fn();
     const view = render(
-      <ProjectDeleteButton label="Delete project" onDelete={onDelete} />,
+      <ProjectDeleteButton
+        confirmCancelLabel="Cancel"
+        confirmDescription="Delete First project?"
+        confirmSubmitLabel="Delete"
+        confirmTitle="Delete project"
+        label="Delete project"
+        onDelete={onDelete}
+      />,
     );
 
-    act(() => {
+    await act(async () => {
       view.button().click();
+      await waitForUpdates();
     });
 
     expect(view.button().type).toBe("button");
     expect(view.text()).toContain("Delete project");
+    expect(view.text()).toContain("Delete First project?");
+    expect(onDelete).not.toHaveBeenCalled();
+
+    await act(async () => {
+      buttonByText("Delete").click();
+      await waitForUpdates();
+    });
+
     expect(onDelete).toHaveBeenCalledOnce();
 
     view.unmount();
