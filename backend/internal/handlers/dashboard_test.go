@@ -1976,3 +1976,85 @@ func TestUserDashboardHandlerSavesWechatAccount(t *testing.T) {
 	require.True(t, resp.HasAppSecret)
 	require.Equal(t, models.PlatformAccountStatusUntested, resp.Status)
 }
+
+func TestUserDashboardHandlerRequiresAccountManageForWorkspaceAccountReads(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	owner := models.User{Username: "account-owner", Email: "account-owner@example.com"}
+	member := models.User{Username: "account-member", Email: "account-member@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&member).Error)
+
+	workspaceID := uuid.New()
+	now := time.Now().UTC()
+	require.NoError(t, db.Create(&models.Workspace{
+		ID:          workspaceID,
+		OwnerUserID: owner.ID,
+		Name:        "Account Workspace",
+		Status:      models.WorkspaceStatusActive,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}).Error)
+	require.NoError(t, db.Create(&models.WorkspaceMember{
+		WorkspaceID: workspaceID,
+		UserID:      member.ID,
+		Role:        models.WorkspaceRoleMember,
+		JoinedAt:    &now,
+		CreatedAt:   now,
+	}).Error)
+
+	accountReadHandlers := []struct {
+		name   string
+		path   string
+		handle func(echo.Context) error
+	}{
+		{
+			name:   "wechat",
+			path:   "/api/user/dashboard/settings/wechat/account",
+			handle: handler.GetWechatAccount,
+		},
+		{
+			name:   "douyin",
+			path:   "/api/user/dashboard/settings/douyin/account",
+			handle: handler.GetDouyinAccount,
+		},
+		{
+			name:   "zhihu",
+			path:   "/api/user/dashboard/settings/zhihu/account",
+			handle: handler.GetZhihuAccount,
+		},
+		{
+			name:   "x",
+			path:   "/api/user/dashboard/settings/x/account",
+			handle: handler.GetXAccount,
+		},
+	}
+
+	for _, tc := range accountReadHandlers {
+		t.Run(tc.name+" owner can read", func(t *testing.T) {
+			c, rec := newHandlerTestContext(e, http.MethodGet, tc.path+"?workspace_id="+workspaceID.String())
+			setContextUser(c, owner.ID)
+
+			require.NoError(t, tc.handle(c))
+			require.Equal(t, http.StatusOK, rec.Code)
+		})
+
+		t.Run(tc.name+" member cannot read", func(t *testing.T) {
+			c, rec := newHandlerTestContext(e, http.MethodGet, tc.path+"?workspace_id="+workspaceID.String())
+			setContextUser(c, member.ID)
+
+			require.NoError(t, tc.handle(c))
+			require.Equal(t, http.StatusForbidden, rec.Code)
+		})
+	}
+
+	t.Run("member cannot start x oauth2 for workspace", func(t *testing.T) {
+		c, rec := newHandlerTestContext(e, http.MethodGet, "/api/user/dashboard/settings/x/oauth2/start?workspace_id="+workspaceID.String())
+		setContextUser(c, member.ID)
+
+		require.NoError(t, handler.StartXOAuth2(c))
+		require.Equal(t, http.StatusForbidden, rec.Code)
+	})
+}
