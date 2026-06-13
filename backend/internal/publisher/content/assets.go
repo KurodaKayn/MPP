@@ -46,3 +46,20 @@ func ExtractFirstImageAssetSource(raw []byte) string {
 	}
 	return sources[0]
 }
+
+func ExtractCoverImageURL(raw []byte) string {
+	var config struct {
+		CoverImageURL string `json:"cover_image_url"`
+	}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(config.CoverImageURL)
+}
+
+func SelectCoverImageSource(rawConfig []byte, adaptedContent []byte) string {
+	if source := ExtractCoverImageURL(rawConfig); source != "" {
+		return source
+	}
+	return ExtractFirstImageAssetSource(adaptedContent)
+}

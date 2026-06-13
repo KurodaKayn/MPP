@@ -164,16 +164,7 @@ func extractDouyinWorkerText(raw []byte) string {
 }
 
 func douyinWorkerCoverImage(ctx context.Context, rawConfig []byte, adaptedContent []byte) ([]byte, string, error) {
-	if source := publishercontent.ExtractFirstImageAssetSource(adaptedContent); source != "" {
-		return readDouyinWorkerImageSource(ctx, source)
-	}
-
-	var config struct {
-		CoverImageURL string `json:"cover_image_url"`
-	}
-	_ = json.Unmarshal(rawConfig, &config)
-
-	if source := strings.TrimSpace(config.CoverImageURL); source != "" {
+	if source := publishercontent.SelectCoverImageSource(rawConfig, adaptedContent); source != "" {
 		return readDouyinWorkerImageSource(ctx, source)
 	}
 

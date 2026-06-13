@@ -197,16 +197,7 @@ func extractDouyinText(raw []byte) string {
 }
 
 func douyinUploadImagePath(ctx context.Context, rawConfig []byte, adaptedContent []byte) (string, func(), error) {
-	if source := content.ExtractFirstImageAssetSource(adaptedContent); source != "" {
-		return materializeDouyinImageSource(ctx, source)
-	}
-
-	var config struct {
-		CoverImageURL string `json:"cover_image_url"`
-	}
-	_ = json.Unmarshal(rawConfig, &config)
-
-	if source := strings.TrimSpace(config.CoverImageURL); source != "" {
+	if source := content.SelectCoverImageSource(rawConfig, adaptedContent); source != "" {
 		return materializeDouyinImageSource(ctx, source)
 	}
 
