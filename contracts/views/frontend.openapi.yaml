@@ -273,6 +273,24 @@ components:
     AIEditPrepublishResponse:
       $ref: "../openapi.yaml#/components/schemas/AIEditPrepublishResponse"
 
+    AIDraftingStartRequest:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingStartRequest"
+
+    AIDraftingContinueRequest:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingContinueRequest"
+
+    AIDraftingMessage:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingMessage"
+
+    AIDraftingEventType:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingEventType"
+
+    AIDraftingEvent:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingEvent"
+
+    AIDraftingReplay:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingReplay"
+
     RequirementStatus:
       $ref: "../openapi.yaml#/components/schemas/RequirementStatus"
 
