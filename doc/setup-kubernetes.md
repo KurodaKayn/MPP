@@ -335,8 +335,39 @@ Smoke test:
 ```
 
 The smoke harness checks Deployment rollout status, Service endpoints,
-application ConfigMap and Secret shape, internal readiness paths, publish-worker
-dependencies, browser runtime RBAC, and runtime Pod cleanup metadata.
+application ConfigMap and Secret shape, Ingress and NetworkPolicy contracts,
+internal readiness paths, publish-worker dependencies, browser runtime RBAC,
+runtime Pod cleanup metadata, and runtime Pod security/resource shape. When a
+required check fails, it automatically prints app/runtime Pods, recent events,
+and `browser-worker` Deployment diagnostics. Use `--diagnostic-lines` to tune
+the output length, or `--skip-diagnostics` when another collector owns failure
+artifacts.
+
+The full staging E2E profile requires public, authenticated, project-scoped,
+collaboration, and remote browser-session probes. It also writes JSON and JUnit
+reports for CI artifact collection:
+
+```bash
+export MPP_SMOKE_AUTH_TOKEN=<bearer-token>
+export MPP_SMOKE_PROJECT_ID=<existing-project-id>
+(
+  cd script/kubernetes/smoke-test
+  go run . \
+    --public-url https://mpp.example.com \
+    --full-e2e \
+    --report-json smoke-report.json \
+    --report-junit smoke-junit.xml
+)
+```
+
+GitHub Actions can run the same full E2E profile from
+`.github/workflows/kubernetes-smoke.yml`. Configure a protected GitHub
+environment with these secrets before dispatching the workflow:
+
+- `MPP_KUBECONFIG_B64`: base64-encoded kubeconfig for the target cluster
+- `MPP_SMOKE_AUTH_TOKEN`: disposable bearer token for authenticated probes
+- `MPP_SMOKE_PROJECT_ID`: existing project used for collaboration and
+  publishing read-path probes
 
 Add authenticated user-flow probes when a disposable smoke user token is
 available:
