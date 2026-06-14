@@ -11,12 +11,6 @@ import (
 	"time"
 )
 
-type Response struct {
-	Status  int
-	Body    string
-	Headers http.Header
-}
-
 type HTTPClient struct {
 	client *http.Client
 }

@@ -1,15 +1,10 @@
-package main
+package checks
 
 import (
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
 )
-
-func as[T error](err error, target *T) bool {
-	return errors.As(err, target)
-}
 
 func failure(format string, args ...any) error {
 	return CheckFailure(fmt.Sprintf(format, args...))
@@ -85,6 +80,10 @@ func asObjectSlice(value any) []Object {
 		result = append(result, asObject(value))
 	}
 	return result
+}
+
+func AsObjectSlice(value any) []Object {
+	return asObjectSlice(value)
 }
 
 func stringValue(value any) string {

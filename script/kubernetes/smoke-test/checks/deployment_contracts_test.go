@@ -1,13 +1,12 @@
-package main
+package checks
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 )
 
 func TestDeploymentContractsPassWithPinnedKubernetesResources(t *testing.T) {
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, contractFakeKubectl(), fakeHTTP{})
 
 	suite.deploymentContracts()
@@ -20,7 +19,7 @@ func TestDeploymentContractsPassWithPinnedKubernetesResources(t *testing.T) {
 func TestGatewayContractFailsWhenCollabRouteIsMissing(t *testing.T) {
 	kubectl := contractFakeKubectl()
 	kubectl.resources[fakeResourceKey("ingress", publicGatewayName, "mpp-system")] = ingressWithoutCollabRoute()
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, kubectl, fakeHTTP{})
 
 	suite.gatewayContract()
@@ -36,11 +35,11 @@ func TestGatewayContractFailsWhenCollabRouteIsMissing(t *testing.T) {
 
 func TestGatewayContractFailsWhenTLSHostDoesNotMatchPublicURL(t *testing.T) {
 	kubectl := contractFakeKubectl()
-	ingress := dryRunIngress(publicGatewayName)
+	ingress := DryRunIngress(publicGatewayName)
 	tls := asObjectSlice(dig(ingress, "spec", "tls"))
 	tls[0]["hosts"] = []any{"wrong.example.com"}
 	kubectl.resources[fakeResourceKey("ingress", publicGatewayName, "mpp-system")] = ingress
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, kubectl, fakeHTTP{})
 
 	suite.gatewayContract()
@@ -56,14 +55,14 @@ func TestGatewayContractFailsWhenTLSHostDoesNotMatchPublicURL(t *testing.T) {
 
 func TestAppNetworkPolicyContractFailsWhenPublishWorkerCallerIsMissing(t *testing.T) {
 	kubectl := contractFakeKubectl()
-	policies := dryRunNetworkPolicies("mpp-system")
+	policies := DryRunNetworkPolicies("mpp-system")
 	for index, policy := range policies {
 		if stringValue(dig(policy, "metadata", "name")) == "browser-worker-internal-access" {
 			policies[index] = internalNetworkPolicy("browser-worker-internal-access", "browser-worker", 8081, "backend")
 		}
 	}
 	kubectl.lists[fakeResourceKey("networkpolicy", "", "mpp-system")] = policies
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, kubectl, fakeHTTP{})
 
 	suite.appNetworkPolicyContract()
@@ -79,7 +78,7 @@ func TestAppNetworkPolicyContractFailsWhenPublishWorkerCallerIsMissing(t *testin
 
 func TestAppNetworkPolicyContractFailsWhenPublicIngressNamespaceIsMissing(t *testing.T) {
 	kubectl := contractFakeKubectl()
-	policies := dryRunNetworkPolicies("mpp-system")
+	policies := DryRunNetworkPolicies("mpp-system")
 	for index, policy := range policies {
 		if stringValue(dig(policy, "metadata", "name")) == "public-frontend-access" {
 			policies[index] = Object{
@@ -100,7 +99,7 @@ func TestAppNetworkPolicyContractFailsWhenPublicIngressNamespaceIsMissing(t *tes
 		}
 	}
 	kubectl.lists[fakeResourceKey("networkpolicy", "", "mpp-system")] = policies
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, kubectl, fakeHTTP{})
 
 	suite.appNetworkPolicyContract()
@@ -125,7 +124,7 @@ func TestBrowserWorkerRuntimeContractRejectsDockerSocketMount(t *testing.T) {
 		},
 	}
 	kubectl.resources[fakeResourceKey("deployment", browserWorkerDeploymentName, "mpp-system")] = deployment
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, kubectl, fakeHTTP{})
 
 	suite.browserWorkerRuntimeContract()
@@ -144,7 +143,7 @@ func TestBrowserWorkerRuntimeContractRequiresKubernetesDriver(t *testing.T) {
 	deployment := browserWorkerDeployment()
 	setContainerEnv(deployment, "browser-worker", "BROWSER_RUNTIME_DRIVER", "docker")
 	kubectl.resources[fakeResourceKey("deployment", browserWorkerDeploymentName, "mpp-system")] = deployment
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, kubectl, fakeHTTP{})
 
 	suite.browserWorkerRuntimeContract()
@@ -163,7 +162,7 @@ func TestBrowserWorkerRuntimeContractRequiresPinnedRuntimeImage(t *testing.T) {
 	deployment := browserWorkerDeployment()
 	setContainerEnv(deployment, "browser-worker", "BROWSER_RUNTIME_IMAGE", "registry.example.invalid/kurodakayn/mpp-browser-runtime:replace-me")
 	kubectl.resources[fakeResourceKey("deployment", browserWorkerDeploymentName, "mpp-system")] = deployment
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, kubectl, fakeHTTP{})
 
 	suite.browserWorkerRuntimeContract()
@@ -179,11 +178,11 @@ func TestBrowserWorkerRuntimeContractRequiresPinnedRuntimeImage(t *testing.T) {
 
 func TestRuntimeAdmissionPolicyContractFailsWhenBindingDoesNotDeny(t *testing.T) {
 	kubectl := contractFakeKubectl()
-	binding := dryRunAdmissionPolicyBinding(runtimeAdmissionPolicyName)
+	binding := DryRunAdmissionPolicyBinding(runtimeAdmissionPolicyName)
 	spec := asObject(binding["spec"])
 	spec["validationActions"] = []any{"Warn"}
 	kubectl.resources[fakeResourceKey("validatingadmissionpolicybinding", runtimeAdmissionPolicyName, "")] = binding
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, kubectl, fakeHTTP{})
 
 	suite.runtimeAdmissionPolicyContract()
@@ -199,14 +198,14 @@ func TestRuntimeAdmissionPolicyContractFailsWhenBindingDoesNotDeny(t *testing.T)
 
 func TestRuntimeAdmissionPolicyContractFailsWhenResourceValidationIsMissing(t *testing.T) {
 	kubectl := contractFakeKubectl()
-	policy := dryRunAdmissionPolicy(runtimeAdmissionPolicyName)
+	policy := DryRunAdmissionPolicy(runtimeAdmissionPolicyName)
 	spec := asObject(policy["spec"])
 	spec["validations"] = []Object{
 		{"expression": "object.metadata.name.startsWith('mpp-browser-')"},
 		{"expression": "object.spec.restartPolicy == 'Never'"},
 	}
 	kubectl.resources[fakeResourceKey("validatingadmissionpolicy", runtimeAdmissionPolicyName, "")] = policy
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, kubectl, fakeHTTP{})
 
 	suite.runtimeAdmissionPolicyContract()
@@ -223,7 +222,7 @@ func TestRuntimeAdmissionPolicyContractFailsWhenResourceValidationIsMissing(t *t
 func TestRuntimePodSecurityContractPassesWhenNoActiveRuntimePodsExist(t *testing.T) {
 	kubectl := contractFakeKubectl()
 	kubectl.lists[fakeResourceKey("pods", runtimePodSelector, "mpp-browser-runtime")] = nil
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, kubectl, fakeHTTP{})
 
 	suite.runtimePodSecurityContract()
@@ -243,7 +242,7 @@ func TestRuntimePodSecurityContractRejectsPrivilegedRuntimePod(t *testing.T) {
 	securityContext := asObject(container["securityContext"])
 	securityContext["allowPrivilegeEscalation"] = true
 	kubectl.lists[fakeResourceKey("pods", runtimePodSelector, "mpp-browser-runtime")] = []Object{pod}
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, kubectl, fakeHTTP{})
 
 	suite.runtimePodSecurityContract()
@@ -263,7 +262,7 @@ func TestRuntimePodSecurityContractRejectsMissingRuntimePorts(t *testing.T) {
 	container := asObjectSlice(dig(pod, "spec", "containers"))[0]
 	container["ports"] = []Object{{"name": "cdp", "containerPort": 9222}}
 	kubectl.lists[fakeResourceKey("pods", runtimePodSelector, "mpp-browser-runtime")] = []Object{pod}
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, kubectl, fakeHTTP{})
 
 	suite.runtimePodSecurityContract()
@@ -281,30 +280,30 @@ func contractFakeKubectl() fakeKubectl {
 	return fakeKubectl{
 		secretData: requiredSecretData(),
 		resources: map[string]Object{
-			fakeResourceKey("ingress", publicGatewayName, "mpp-system"):                         dryRunIngress(publicGatewayName),
+			fakeResourceKey("ingress", publicGatewayName, "mpp-system"):                         DryRunIngress(publicGatewayName),
 			fakeResourceKey("deployment", browserWorkerDeploymentName, "mpp-system"):            browserWorkerDeployment(),
-			fakeResourceKey("validatingadmissionpolicy", runtimeAdmissionPolicyName, ""):        dryRunAdmissionPolicy(runtimeAdmissionPolicyName),
-			fakeResourceKey("validatingadmissionpolicybinding", runtimeAdmissionPolicyName, ""): dryRunAdmissionPolicyBinding(runtimeAdmissionPolicyName),
+			fakeResourceKey("validatingadmissionpolicy", runtimeAdmissionPolicyName, ""):        DryRunAdmissionPolicy(runtimeAdmissionPolicyName),
+			fakeResourceKey("validatingadmissionpolicybinding", runtimeAdmissionPolicyName, ""): DryRunAdmissionPolicyBinding(runtimeAdmissionPolicyName),
 			fakeResourceKey("configmap", "mpp-app-config", "mpp-system"):                        Object{"data": requiredConfigData()},
 			fakeResourceKey("secret", "mpp-app-secrets", "mpp-system"):                          Object{"data": requiredSecretData()},
 			fakeResourceKey("serviceaccount", "browser-worker-runtime-manager", "mpp-system"):   Object{"metadata": Object{"name": "browser-worker-runtime-manager"}},
 		},
 		lists: map[string][]Object{
-			fakeResourceKey("networkpolicy", "", "mpp-system"):                 dryRunNetworkPolicies("mpp-system"),
-			fakeResourceKey("networkpolicy", "", "mpp-browser-runtime"):        dryRunNetworkPolicies("mpp-browser-runtime"),
+			fakeResourceKey("networkpolicy", "", "mpp-system"):                 DryRunNetworkPolicies("mpp-system"),
+			fakeResourceKey("networkpolicy", "", "mpp-browser-runtime"):        DryRunNetworkPolicies("mpp-browser-runtime"),
 			fakeResourceKey("pods", runtimePodSelector, "mpp-browser-runtime"): []Object{runtimePod()},
 			fakeResourceKey("pods", "", "mpp-system"):                          []Object{readyAppPod()},
-			fakeResourceKey("deployments", "", "mpp-system"):                   (&Kubectl{}).dryRunDeployments(),
+			fakeResourceKey("deployments", "", "mpp-system"):                   DryRunDeployments(),
 		},
 	}
 }
 
 func browserWorkerDeployment() Object {
-	return (&Kubectl{}).dryRunDeployment(browserWorkerDeploymentName)
+	return DryRunDeployment(browserWorkerDeploymentName)
 }
 
 func runtimePod() Object {
-	return (&Kubectl{}).dryRunPods(runtimePodSelector)[0]
+	return DryRunPods(runtimePodSelector)[0]
 }
 
 func readyAppPod() Object {
@@ -317,7 +316,7 @@ func readyAppPod() Object {
 }
 
 func ingressWithoutCollabRoute() Object {
-	ingress := dryRunIngress(publicGatewayName)
+	ingress := DryRunIngress(publicGatewayName)
 	rules := asObjectSlice(dig(ingress, "spec", "rules"))
 	httpRule := asObject(rules[0]["http"])
 	httpRule["paths"] = []Object{

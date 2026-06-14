@@ -1,13 +1,13 @@
-package main
+package checks
 
 import (
-	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
 
 func TestSecretCheckFailsWhenRequiredSecretKeysAreEmpty(t *testing.T) {
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, fakeKubectl{secretData: Object{}}, fakeHTTP{})
 
 	suite.configuration()
@@ -22,7 +22,7 @@ func TestSecretCheckFailsWhenRequiredSecretKeysAreEmpty(t *testing.T) {
 }
 
 func TestSecretCheckPassesWhenRequiredSecretKeysArePopulated(t *testing.T) {
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, fakeKubectl{secretData: requiredSecretData()}, fakeHTTP{})
 
 	suite.configuration()
@@ -33,7 +33,7 @@ func TestSecretCheckPassesWhenRequiredSecretKeysArePopulated(t *testing.T) {
 }
 
 func TestBrowserSessionProbeFailureIsRequired(t *testing.T) {
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, fakeKubectl{secretData: requiredSecretData()}, fakeHTTP{
 		postResponse: Response{Status: 500, Body: "failed to start"},
 	})
@@ -49,7 +49,7 @@ func TestBrowserSessionProbeFailureIsRequired(t *testing.T) {
 }
 
 func TestAuthenticatedProbeRejectsFrontendFallbackBody(t *testing.T) {
-	reporter := NewReporter(&bytes.Buffer{}, false)
+	reporter := newTestReporter()
 	suite := suiteWith(t, reporter, fakeKubectl{secretData: requiredSecretData()}, fakeHTTP{
 		getResponse: Response{Status: 200, Body: "<html>login</html>"},
 	})
@@ -66,35 +66,65 @@ func TestAuthenticatedProbeRejectsFrontendFallbackBody(t *testing.T) {
 	}
 }
 
-func TestDryRunExitsSuccessfullyAndPrintsKubectlIntent(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+func suiteWith(t *testing.T, reporter Reporter, kubectl KubernetesClient, http HTTPDoer) *Suite {
+	t.Helper()
+	return NewSuite(testSettings(), kubectl, reporter, http)
+}
 
-	status := run([]string{"--dry-run", "--skip-public"}, map[string]string{}, &stdout, &stderr)
-
-	if status != 0 {
-		t.Fatalf("expected success, got status %d\nstdout:\n%s\nstderr:\n%s", status, stdout.String(), stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "DRY-RUN kubectl config current-context") {
-		t.Fatalf("expected dry-run kubectl intent, got:\n%s", stdout.String())
+func testSettings() Settings {
+	return Settings{
+		AppNamespace:       "mpp-system",
+		RuntimeNamespace:   "mpp-browser-runtime",
+		RolloutTimeout:     300,
+		RequestTimeout:     10,
+		CurlImage:          "curlimages/curl:8.11.1",
+		PublicURL:          "https://mpp.example.com",
+		APIBaseURL:         "https://mpp.example.com",
+		AuthToken:          "smoke-token",
+		BrowserPlatform:    "douyin",
+		SkipPublic:         false,
+		SkipInternalHTTP:   false,
+		SkipRuntimeRBAC:    false,
+		SkipRuntimeCleanup: false,
 	}
 }
 
-func suiteWith(t *testing.T, reporter *Reporter, kubectl KubernetesClient, http HTTPDoer) *Suite {
-	t.Helper()
-	config, err := ParseConfig(
-		[]string{
-			"--public-url",
-			"https://mpp.example.com",
-			"--auth-token",
-			"smoke-token",
-		},
-		map[string]string{},
-	)
-	if err != nil {
-		t.Fatal(err)
+type testReporter struct {
+	Passes   []CheckResult
+	Failures []CheckResult
+	Warnings []CheckResult
+	Skips    []CheckResult
+}
+
+func newTestReporter() *testReporter {
+	return &testReporter{}
+}
+
+func (reporter *testReporter) Section(title string) {}
+
+func (reporter *testReporter) Check(name string, required bool, fn func() (string, error)) {
+	detail, err := fn()
+	if err == nil {
+		reporter.Passes = append(reporter.Passes, CheckResult{Name: name, Detail: detail})
+		return
 	}
-	return NewSuite(config, kubectl, reporter, http)
+
+	var checkSkip CheckSkip
+	if errors.As(err, &checkSkip) {
+		reporter.Skips = append(reporter.Skips, CheckResult{Name: name, Detail: checkSkip.Error()})
+		return
+	}
+
+	result := CheckResult{Name: name, Detail: err.Error()}
+	if required {
+		reporter.Failures = append(reporter.Failures, result)
+		return
+	}
+	reporter.Warnings = append(reporter.Warnings, result)
+}
+
+func (reporter *testReporter) Skip(name string, detail string) {
+	reporter.Skips = append(reporter.Skips, CheckResult{Name: name, Detail: detail})
 }
 
 type fakeKubectl struct {

@@ -8,53 +8,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/kurodakayn/mpp-kubernetes-smoke/checks"
 )
 
 var ErrHelp = errors.New("help requested")
-
-var defaultDeployments = []string{
-	"frontend",
-	"backend",
-	"publish-worker",
-	"browser-worker",
-	"ai-service",
-	"content-pipeline-service",
-	"collab-service",
-}
-
-var defaultServices = []string{
-	"frontend",
-	"backend",
-	"browser-worker",
-	"ai-service",
-	"content-pipeline-service",
-	"collab-service",
-}
-
-var requiredConfigKeys = []string{
-	"BACKEND_API_BASE_URL",
-	"BROWSER_WORKER_URL",
-	"AI_SERVICE_URL",
-	"CONTENT_PIPELINE_HOST",
-	"CONTENT_PIPELINE_PORT",
-	"COLLAB_INTERNAL_URL",
-	"COLLAB_WEBSOCKET_URL_BASE",
-	"DB_HOST",
-	"DB_SSLMODE",
-	"REDIS_ADDR",
-	"REDIS_TLS",
-}
-
-var requiredSecretKeys = []string{
-	"JWT_SECRET",
-	"DB_PASSWORD",
-	"COLLAB_TOKEN_SECRET",
-	"COOKIE_ENCRYPTION_KEY",
-	"LLM_PROVIDER_KEY",
-	"AI_SERVICE_INTERNAL_TOKEN",
-	"BROWSER_WORKER_INTERNAL_TOKEN",
-	"CONTENT_PIPELINE_INTERNAL_TOKEN",
-}
 
 type Config struct {
 	AppNamespace           string
@@ -198,6 +156,31 @@ func (config *Config) ProjectConfigured() bool {
 
 func (config *Config) UserFlowInputsConfigured() bool {
 	return config.APIBaseURLConfigured() && config.AuthConfigured()
+}
+
+func (config *Config) CheckSettings() checks.Settings {
+	return checks.Settings{
+		AppNamespace:           config.AppNamespace,
+		RuntimeNamespace:       config.RuntimeNamespace,
+		ObservabilityNamespace: config.ObservabilityNamespace,
+		RolloutTimeout:         config.RolloutTimeout,
+		RequestTimeout:         config.RequestTimeout,
+		CurlImage:              config.CurlImage,
+		PublicURL:              config.PublicURL,
+		APIBaseURL:             config.APIBaseURL,
+		AuthToken:              config.AuthToken,
+		ProjectID:              config.ProjectID,
+		BrowserPlatform:        config.BrowserPlatform,
+		RunUserFlowProbes:      config.RunUserFlowProbes,
+		RunBrowserSessionProbe: config.RunBrowserSessionProbe,
+		RequireUserFlows:       config.RequireUserFlows,
+		SkipPublic:             config.SkipPublic,
+		SkipInternalHTTP:       config.SkipInternalHTTP,
+		SkipRuntimeRBAC:        config.SkipRuntimeRBAC,
+		SkipRuntimeCleanup:     config.SkipRuntimeCleanup,
+		DryRun:                 config.DryRun,
+		Verbose:                config.Verbose,
+	}
 }
 
 func envString(env map[string]string, key string, fallback string) string {
