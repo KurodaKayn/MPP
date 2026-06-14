@@ -13,6 +13,7 @@ import {
   useDashboardWorkspaceSelection,
 } from "../../_hooks/use-dashboard-workspace-selection";
 import { cn } from "@/lib/utils";
+import { AIGrowthOptimizationPanel } from "./ai-growth-optimization-panel";
 import { ContentPageHeader } from "./content-page-header";
 import { ContentPrepublishPanel } from "./content-prepublish-panel";
 import { ContentPublishBar } from "./content-publish-bar";
@@ -140,10 +141,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
       {!projectId && workspaceCanCreate ? (
         <div className="grid gap-3 rounded-lg border bg-background p-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <label
-              className="text-sm font-medium"
-              htmlFor="content-template"
-            >
+            <label className="text-sm font-medium" htmlFor="content-template">
               {tDashboard("content.setup.template")}
             </label>
             <select
@@ -167,10 +165,7 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           </div>
 
           <div className="space-y-2">
-            <label
-              className="text-sm font-medium"
-              htmlFor="brand-profile"
-            >
+            <label className="text-sm font-medium" htmlFor="brand-profile">
               {tDashboard("content.setup.brandProfile")}
             </label>
             <select
@@ -248,6 +243,14 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
           />
         </div>
       )}
+
+      <AIGrowthOptimizationPanel
+        canEdit={editor.canEdit}
+        content={editor.content}
+        projectId={projectId}
+        selectedPlatforms={publishing.selectedPlatforms}
+        title={editor.title}
+      />
 
       <ContentPrepublishPanel
         canEdit={prepublish.canEdit}
