@@ -3,20 +3,46 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AIDraftingSessionPanel } from "./ai-drafting-session-panel";
+import zhDashboard from "../../../../../../public/locales/zh/dashboard.json";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
 }
 
+const i18nTestState = vi.hoisted(() => ({
+  calls: [] as Array<{ key: string; options?: Record<string, unknown> }>,
+  dashboard: undefined as Record<string, unknown> | undefined,
+}));
+
 vi.mock("@/lib/i18n/client", () => ({
-  useAppLocale: () => "en",
+  useAppLocale: () => "zh",
   useTranslation: () => ({
-    t: (_key: string, options?: { defaultValue?: string }) =>
-      options?.defaultValue ?? _key,
+    t: (key: string, options?: Record<string, unknown>) => {
+      i18nTestState.calls.push({ key, options });
+
+      let value: unknown = i18nTestState.dashboard;
+      for (const segment of key.split(".")) {
+        value =
+          value && typeof value === "object"
+            ? (value as Record<string, unknown>)[segment]
+            : undefined;
+      }
+
+      if (typeof value !== "string") {
+        return key;
+      }
+
+      return value.replace(/\{\{(\w+)\}\}/g, (_, token: string) =>
+        String(options?.[token] ?? ""),
+      );
+    },
   }),
 }));
+
+i18nTestState.dashboard = zhDashboard;
+const draftingCopy = zhDashboard.content.draftingSession;
 
 function render(element: ReactElement) {
   const container = document.createElement("div");
@@ -84,6 +110,10 @@ function findButton(container: Element, name: string) {
 }
 
 describe("AI drafting session panel", () => {
+  beforeEach(() => {
+    i18nTestState.calls = [];
+  });
+
   it("creates a mock session, appends assistant events, and archives it", async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const view = render(
@@ -105,11 +135,12 @@ describe("AI drafting session panel", () => {
       await Promise.resolve();
     });
 
-    expect(view.text()).toContain("Drafting sessions");
-    expect(view.text()).toContain("No session selected");
+    expect(view.text()).toContain(draftingCopy.title);
+    expect(view.text()).toContain(draftingCopy.description);
+    expect(view.text()).toContain(draftingCopy.empty.noSession);
 
     view.typeMessage("Improve the opening for WeChat");
-    view.click(view.button("Send"));
+    view.click(view.button(draftingCopy.actions.send));
 
     await act(async () => {
       await Promise.resolve();
@@ -118,20 +149,48 @@ describe("AI drafting session panel", () => {
     expect(view.text()).toContain("Improve the opening for WeChat");
     expect(view.text()).toContain("I read the current project context");
 
-    view.click(view.button("Events"));
+    view.click(view.button(draftingCopy.tabs.events));
     expect(view.text()).toContain("Read-only context");
 
-    view.click(view.button("Artifacts"));
+    view.click(view.button(draftingCopy.tabs.artifacts));
     expect(view.text()).toContain("Opening rewrite proposal");
 
-    view.click(view.button("Archive"));
+    view.click(view.button(draftingCopy.actions.archive));
 
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(view.text()).toContain("Archived");
-    expect(view.button("Resume").disabled).toBe(false);
+    expect(view.text()).toContain(draftingCopy.state.archived);
+    expect(view.button(draftingCopy.actions.resume).disabled).toBe(false);
+    view.unmount();
+  });
+
+  it("reads drafting copy from dashboard locale resources without default values", () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const view = render(
+      <AIDraftingSessionPanel
+        canEdit
+        content={{
+          firstImageSrc: "",
+          html: "",
+          text: "Draft body",
+        }}
+        selectedPlatforms={["wechat"]}
+        title="Draft title"
+      />,
+    );
+
+    expect(view.text()).toContain(draftingCopy.title);
+    expect(view.text()).toContain(draftingCopy.unsavedProject);
+    expect(i18nTestState.calls).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          options: expect.objectContaining({ defaultValue: expect.anything() }),
+        }),
+      ]),
+    );
+
     view.unmount();
   });
 
@@ -156,13 +215,13 @@ describe("AI drafting session panel", () => {
       await Promise.resolve();
     });
 
-    view.click(view.button("New Session"));
+    view.click(view.button(draftingCopy.actions.newSession));
 
     await act(async () => {
       await Promise.resolve();
     });
 
-    view.click(view.button("Events"));
+    view.click(view.button(draftingCopy.tabs.events));
     expect(view.text()).toContain("Assistant text");
     expect(view.text()).toContain("Read-only context");
     expect(view.text()).toContain("Status update");
@@ -186,8 +245,8 @@ describe("AI drafting session panel", () => {
       />,
     );
 
-    expect(view.text()).toContain("Save the project before opening a session");
-    expect(view.button("Send").disabled).toBe(true);
+    expect(view.text()).toContain(draftingCopy.unsavedProject);
+    expect(view.button(draftingCopy.actions.send).disabled).toBe(true);
 
     view.unmount();
   });

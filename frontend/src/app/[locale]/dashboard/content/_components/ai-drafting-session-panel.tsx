@@ -14,7 +14,7 @@ import {
   Plus,
   Send,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -44,6 +44,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAppLocale, useTranslation } from "@/lib/i18n/client";
 import type { ContentValue } from "@/lib/content/types";
 
 type AIDraftingSessionPanelProps = {
@@ -55,6 +56,10 @@ type AIDraftingSessionPanelProps = {
 };
 
 type PanelState = "loading" | "ready" | "sending" | "archived";
+type DraftingTranslator = (
+  key: string,
+  options?: Record<string, unknown>,
+) => string;
 
 export function AIDraftingSessionPanel({
   canEdit = true,
@@ -63,6 +68,13 @@ export function AIDraftingSessionPanel({
   selectedPlatforms,
   title,
 }: AIDraftingSessionPanelProps) {
+  const locale = useAppLocale();
+  const { t } = useTranslation(locale, "dashboard");
+  const tDrafting = useCallback(
+    (key: string, options?: Record<string, unknown>) =>
+      t(`content.draftingSession.${key}`, options),
+    [t],
+  );
   const [state, setState] = useState<PanelState>("loading");
   const [sessions, setSessions] = useState<AIDraftingSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState("");
@@ -101,6 +113,7 @@ export function AIDraftingSessionPanel({
               content,
               title,
               readablePlatforms,
+              tDrafting,
             )
           : null,
       );
@@ -110,7 +123,7 @@ export function AIDraftingSessionPanel({
     return () => {
       mounted = false;
     };
-  }, [content, projectId, readablePlatforms, title]);
+  }, [content, locale, projectId, readablePlatforms, title]);
 
   useEffect(() => {
     if (!detail && activeSession) {
@@ -120,17 +133,18 @@ export function AIDraftingSessionPanel({
           content,
           title,
           readablePlatforms,
+          tDrafting,
         ),
       );
     }
-  }, [activeSession, content, detail, readablePlatforms, title]);
+  }, [activeSession, content, detail, locale, readablePlatforms, title]);
 
   const createSession = async () => {
     if (!projectId) {
       return;
     }
     const input: StartAIDraftingSessionInput = {
-      message: "Start a drafting workspace for this project.",
+      message: tDrafting("session.startMessage"),
       title,
     };
     const nextDetail = await createMockAIDraftingSession(projectId, input);
@@ -139,7 +153,7 @@ export function AIDraftingSessionPanel({
     setDetail(nextDetail);
     setMessage("");
     setSelectedTab("messages");
-    toast.success("Drafting session created");
+    toast.success(tDrafting("toast.sessionCreated"));
   };
 
   const sendMessage = async () => {
@@ -164,7 +178,7 @@ export function AIDraftingSessionPanel({
       setMessage("");
       setSelectedTab("messages");
       setState("ready");
-      toast.success("Drafting session created");
+      toast.success(tDrafting("toast.sessionCreated"));
       return;
     }
 
@@ -184,7 +198,7 @@ export function AIDraftingSessionPanel({
     );
     setMessage("");
     setState(currentSession.status === "archived" ? "archived" : "ready");
-    toast.success("Message added");
+    toast.success(tDrafting("toast.messageAdded"));
   };
 
   const archiveSession = async () => {
@@ -203,7 +217,7 @@ export function AIDraftingSessionPanel({
       current ? { ...current, session: archived } : current,
     );
     setState("archived");
-    toast.success("Session archived");
+    toast.success(tDrafting("toast.sessionArchived"));
   };
 
   const resumeSession = async () => {
@@ -220,17 +234,17 @@ export function AIDraftingSessionPanel({
       current ? { ...current, session: resumed } : current,
     );
     setState("ready");
-    toast.success("Session resumed");
+    toast.success(tDrafting("toast.sessionResumed"));
   };
 
   const statusLabel =
     state === "loading"
-      ? "Loading sessions"
+      ? tDrafting("state.loading")
       : state === "sending"
-        ? "Thinking"
+        ? tDrafting("state.sending")
         : state === "archived"
-          ? "Archived"
-          : "Ready";
+          ? tDrafting("state.archived")
+          : tDrafting("state.ready");
 
   return (
     <Card className="border-muted/60 shadow-sm">
@@ -239,12 +253,9 @@ export function AIDraftingSessionPanel({
           <div className="space-y-1">
             <CardTitle className="flex items-center gap-2 text-base">
               <PanelRightOpen className="size-4" />
-              Drafting sessions
+              {tDrafting("title")}
             </CardTitle>
-            <CardDescription>
-              Persistent drafting room for multi-turn context and reviewable
-              artifacts.
-            </CardDescription>
+            <CardDescription>{tDrafting("description")}</CardDescription>
           </div>
           <Badge variant="secondary">{statusLabel}</Badge>
         </div>
@@ -257,7 +268,7 @@ export function AIDraftingSessionPanel({
             size="sm"
           >
             <Plus className="size-4" />
-            New Session
+            {tDrafting("actions.newSession")}
           </Button>
           <Button
             className="gap-2"
@@ -267,7 +278,7 @@ export function AIDraftingSessionPanel({
             variant="outline"
           >
             <Archive className="size-4" />
-            Archive
+            {tDrafting("actions.archive")}
           </Button>
           <Button
             className="gap-2"
@@ -277,7 +288,7 @@ export function AIDraftingSessionPanel({
             variant="outline"
           >
             <Play className="size-4" />
-            Resume
+            {tDrafting("actions.resume")}
           </Button>
         </div>
       </CardHeader>
@@ -285,7 +296,7 @@ export function AIDraftingSessionPanel({
       <CardContent className="space-y-4">
         {!projectId ? (
           <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            Save the project before opening a session.
+            {tDrafting("unsavedProject")}
           </div>
         ) : null}
 
@@ -293,7 +304,7 @@ export function AIDraftingSessionPanel({
           <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
             <div className="flex items-center gap-2 text-sm font-medium">
               <History className="size-4" />
-              Session list
+              {tDrafting("sessionList")}
             </div>
             <ScrollArea className="h-[260px] pr-2">
               <div className="space-y-2">
@@ -314,6 +325,7 @@ export function AIDraftingSessionPanel({
                           content,
                           title,
                           readablePlatforms,
+                          tDrafting,
                         ),
                       );
                     }}
@@ -324,13 +336,15 @@ export function AIDraftingSessionPanel({
                       <Badge variant="outline">{session.status}</Badge>
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      Updated {session.last_message_at}
+                      {tDrafting("updatedAt", {
+                        date: session.last_message_at,
+                      })}
                     </span>
                   </button>
                 ))}
                 {sessions.length === 0 ? (
                   <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-                    No session selected
+                    {tDrafting("empty.noSession")}
                   </div>
                 ) : null}
               </div>
@@ -342,15 +356,15 @@ export function AIDraftingSessionPanel({
               <TabsList className="w-full justify-start">
                 <TabsTrigger className="gap-2" value="messages">
                   <MessageSquareText className="size-4" />
-                  Messages
+                  {tDrafting("tabs.messages")}
                 </TabsTrigger>
                 <TabsTrigger className="gap-2" value="events">
                   <Clock3 className="size-4" />
-                  Events
+                  {tDrafting("tabs.events")}
                 </TabsTrigger>
                 <TabsTrigger className="gap-2" value="artifacts">
                   <FileText className="size-4" />
-                  Artifacts
+                  {tDrafting("tabs.artifacts")}
                 </TabsTrigger>
               </TabsList>
 
@@ -360,7 +374,7 @@ export function AIDraftingSessionPanel({
                     <div className="flex items-center justify-between border-b px-3 py-2 text-sm">
                       <span className="flex items-center gap-2 font-medium">
                         <Bot className="size-4" />
-                        Message history
+                        {tDrafting("messages.title")}
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {readablePlatforms}
@@ -388,8 +402,7 @@ export function AIDraftingSessionPanel({
                         ))}
                         {detail?.messages.length ? null : (
                           <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                            No messages yet. Send the first prompt to open a
-                            drafting thread.
+                            {tDrafting("empty.noMessages")}
                           </div>
                         )}
                       </div>
@@ -397,18 +410,19 @@ export function AIDraftingSessionPanel({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="drafting-message">Message</Label>
+                    <Label htmlFor="drafting-message">
+                      {tDrafting("messages.inputLabel")}
+                    </Label>
                     <Textarea
                       id="drafting-message"
                       disabled={!canInteract || state === "loading"}
                       onInput={(event) => setMessage(event.currentTarget.value)}
-                      placeholder="Describe what the drafting room should do next"
+                      placeholder={tDrafting("messages.placeholder")}
                       value={message}
                     />
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-xs text-muted-foreground">
-                        The shell keeps history locally until the backend
-                        harness is ready.
+                        {tDrafting("messages.localHistoryHint")}
                       </p>
                       <Button
                         className="gap-2"
@@ -423,7 +437,7 @@ export function AIDraftingSessionPanel({
                         ) : (
                           <Send className="size-4" />
                         )}
-                        Send
+                        {tDrafting("actions.send")}
                       </Button>
                     </div>
                   </div>
@@ -433,7 +447,7 @@ export function AIDraftingSessionPanel({
               <TabsContent className="mt-4" value="events">
                 <div className="rounded-lg border bg-background">
                   <div className="border-b px-3 py-2 text-sm font-medium">
-                    Timeline
+                    {tDrafting("events.title")}
                   </div>
                   <ScrollArea className="h-[290px]">
                     <div className="space-y-3 p-3">
@@ -466,7 +480,7 @@ export function AIDraftingSessionPanel({
               <TabsContent className="mt-4" value="artifacts">
                 <div className="rounded-lg border bg-background">
                   <div className="border-b px-3 py-2 text-sm font-medium">
-                    Reviewable artifacts
+                    {tDrafting("artifacts.title")}
                   </div>
                   <div className="space-y-3 p-3">
                     {(detail?.artifacts ?? []).map((artifact) => (
@@ -474,7 +488,7 @@ export function AIDraftingSessionPanel({
                     ))}
                     {detail?.artifacts.length ? null : (
                       <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                        No artifacts yet.
+                        {tDrafting("empty.noArtifacts")}
                       </div>
                     )}
                   </div>
@@ -493,15 +507,19 @@ function buildDetailFromSession(
   content: ContentValue,
   title: string,
   platforms: string,
+  tDrafting: DraftingTranslator,
 ): AIDraftingSessionDetail {
   const createdAt = session.created_at;
-  const prompt = content.text || content.html || "Original body";
+  const prompt = content.text || content.html || tDrafting("mock.originalBody");
 
   return {
     session,
     messages: [
       {
-        content: `Drafting session opened for ${title}. Target platforms: ${platforms}.`,
+        content: tDrafting("mock.sessionOpened", {
+          platforms,
+          title,
+        }),
         created_at: createdAt,
         id: `${session.id}-message-system`,
         role: "system",
@@ -518,22 +536,21 @@ function buildDetailFromSession(
     events: [
       {
         created_at: createdAt,
-        detail: "Current project content is ready for review.",
+        detail: tDrafting("events.contextLoadedDetail"),
         event_type: "context",
         id: `${session.id}-event-context`,
         session_id: session.id,
         status: "completed",
-        title: "Context loaded",
+        title: tDrafting("events.contextLoaded"),
       },
       {
         created_at: createdAt,
-        detail:
-          "A future backend harness can stream tool calls and compact boundaries here.",
+        detail: tDrafting("events.streamEndpointDetail"),
         event_type: "status",
         id: `${session.id}-event-stream`,
         session_id: session.id,
         status: "queued",
-        title: "Stream endpoint",
+        title: tDrafting("events.streamEndpoint"),
       },
     ],
     artifacts: [
@@ -543,9 +560,9 @@ function buildDetailFromSession(
         kind: "source_patch",
         session_id: session.id,
         status: "proposed",
-        summary: "Keep the argument but tighten the opening and transition.",
+        summary: tDrafting("artifacts.sourceRewriteSummary"),
         target_platform: "wechat",
-        title: "Source rewrite proposal",
+        title: tDrafting("artifacts.sourceRewrite"),
       },
     ],
   };

@@ -443,6 +443,66 @@
     "userFallback": "Collaborator"
   },
   "content": {
+    "draftingSession": {
+      "title": "Drafting sessions",
+      "description": "Persistent drafting room for multi-turn context and reviewable artifacts.",
+      "unsavedProject": "Save the project before opening a session.",
+      "sessionList": "Session list",
+      "updatedAt": "Updated {{date}}",
+      "actions": {
+        "newSession": "New Session",
+        "archive": "Archive",
+        "resume": "Resume",
+        "send": "Send"
+      },
+      "state": {
+        "loading": "Loading sessions",
+        "sending": "Thinking",
+        "archived": "Archived",
+        "ready": "Ready"
+      },
+      "tabs": {
+        "messages": "Messages",
+        "events": "Events",
+        "artifacts": "Artifacts"
+      },
+      "empty": {
+        "noSession": "No session selected",
+        "noMessages": "No messages yet. Send the first prompt to open a drafting thread.",
+        "noArtifacts": "No artifacts yet."
+      },
+      "messages": {
+        "title": "Message history",
+        "inputLabel": "Message",
+        "placeholder": "Describe what the drafting room should do next",
+        "localHistoryHint": "The shell keeps history locally until the backend harness is ready."
+      },
+      "events": {
+        "title": "Timeline",
+        "contextLoaded": "Context loaded",
+        "contextLoadedDetail": "Current project content is ready for review.",
+        "streamEndpoint": "Stream endpoint",
+        "streamEndpointDetail": "A future backend harness can stream tool calls and compact boundaries here."
+      },
+      "artifacts": {
+        "title": "Reviewable artifacts",
+        "sourceRewrite": "Source rewrite proposal",
+        "sourceRewriteSummary": "Keep the argument but tighten the opening and transition."
+      },
+      "session": {
+        "startMessage": "Start a drafting workspace for this project."
+      },
+      "mock": {
+        "originalBody": "Original body",
+        "sessionOpened": "Drafting session opened for {{title}}. Target platforms: {{platforms}}."
+      },
+      "toast": {
+        "sessionCreated": "Drafting session created",
+        "messageAdded": "Message added",
+        "sessionArchived": "Session archived",
+        "sessionResumed": "Session resumed"
+      }
+    },
     "header": {
       "titleCreate": "Content Creation",
       "titleEdit": "Edit Content",

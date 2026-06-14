@@ -443,6 +443,66 @@
     "userFallback": "协作者"
   },
   "content": {
+    "draftingSession": {
+      "title": "草稿会话",
+      "description": "用于多轮上下文和可审阅产物的持久化草稿工作区。",
+      "unsavedProject": "请先保存项目，再开启会话。",
+      "sessionList": "会话列表",
+      "updatedAt": "更新于 {{date}}",
+      "actions": {
+        "newSession": "新建会话",
+        "archive": "归档",
+        "resume": "恢复",
+        "send": "发送"
+      },
+      "state": {
+        "loading": "正在加载会话",
+        "sending": "思考中",
+        "archived": "已归档",
+        "ready": "就绪"
+      },
+      "tabs": {
+        "messages": "消息",
+        "events": "事件",
+        "artifacts": "产物"
+      },
+      "empty": {
+        "noSession": "未选择会话",
+        "noMessages": "暂无消息。发送第一条提示来开启草稿线程。",
+        "noArtifacts": "暂无产物。"
+      },
+      "messages": {
+        "title": "消息历史",
+        "inputLabel": "消息",
+        "placeholder": "描述草稿工作区下一步要做什么",
+        "localHistoryHint": "后端 harness 就绪前，此 shell 会在本地保留历史。"
+      },
+      "events": {
+        "title": "时间线",
+        "contextLoaded": "上下文已加载",
+        "contextLoadedDetail": "当前项目内容已准备好供审阅。",
+        "streamEndpoint": "流式端点",
+        "streamEndpointDetail": "未来后端 harness 可以在这里流式展示工具调用和上下文压缩边界。"
+      },
+      "artifacts": {
+        "title": "可审阅产物",
+        "sourceRewrite": "正文改写提案",
+        "sourceRewriteSummary": "保留论点，同时收紧开头和过渡。"
+      },
+      "session": {
+        "startMessage": "为此项目开启一个草稿工作区。"
+      },
+      "mock": {
+        "originalBody": "原始正文",
+        "sessionOpened": "已为 {{title}} 开启草稿会话。目标平台：{{platforms}}。"
+      },
+      "toast": {
+        "sessionCreated": "草稿会话已创建",
+        "messageAdded": "消息已添加",
+        "sessionArchived": "会话已归档",
+        "sessionResumed": "会话已恢复"
+      }
+    },
     "header": {
       "titleCreate": "内容创作",
       "titleEdit": "编辑内容",
