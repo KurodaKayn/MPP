@@ -1,97 +1,38 @@
 import type { ScriptPublicPath } from "#imports";
 import type { AdapterKey, PlatformCapability } from "../types/platform";
+import {
+  ADAPTER_SCRIPT_FILES,
+  PLATFORM_CAPABILITIES,
+} from "./capabilities.generated";
 
-export const PLATFORM_CAPABILITIES = [
-  {
-    platform: "zhihu",
-    supported_modes: ["extension", "remote"],
-    preferred_mode: "extension",
-    adapter_key: "ARTICLE_ZHIHU",
-    inject_url: "https://zhuanlan.zhihu.com/write",
-    content_kinds: ["article"],
-    target_formats: ["markdown", "html"],
-    requires_review: true,
-    auto_publish_allowed: false,
-  },
-  {
-    platform: "xiaohongshu",
-    supported_modes: ["extension"],
-    preferred_mode: "extension",
-    adapter_key: "NOTE_XIAOHONGSHU",
-    inject_url: "https://creator.xiaohongshu.com/publish/publish",
-    content_kinds: ["image_note"],
-    target_formats: ["text"],
-    requires_review: true,
-    auto_publish_allowed: false,
-  },
-  {
-    platform: "douyin",
-    supported_modes: ["extension"],
-    preferred_mode: "extension",
-    adapter_key: "DYNAMIC_DOUYIN",
-    inject_url:
-      "https://creator.douyin.com/creator-micro/content/upload?default-tab=5",
-    inject_urls: [
-      "https://creator.douyin.com/creator-micro/content/upload",
-      "https://creator.douyin.com/creator-micro/content/post/article",
-    ],
-    content_kinds: ["article", "image_video"],
-    target_formats: ["text"],
-    requires_review: true,
-    auto_publish_allowed: false,
-  },
-  {
-    platform: "bilibili",
-    supported_modes: ["extension"],
-    preferred_mode: "extension",
-    adapter_key: "DYNAMIC_BILIBILI",
-    inject_url: "https://t.bilibili.com",
-    content_kinds: ["dynamic_post"],
-    target_formats: ["text"],
-    requires_review: true,
-    auto_publish_allowed: false,
-  },
-  {
-    platform: "x",
-    supported_modes: ["extension"],
-    preferred_mode: "extension",
-    adapter_key: "POST_X",
-    inject_url: "https://x.com/compose/post",
-    content_kinds: ["dynamic_post"],
-    target_formats: ["text"],
-    requires_review: true,
-    auto_publish_allowed: false,
-  },
-] satisfies PlatformCapability[];
+const platformCapabilities =
+  PLATFORM_CAPABILITIES satisfies readonly PlatformCapability[];
 
-export const ADAPTER_SCRIPT_FILES: Partial<
+const adapterScriptFiles = ADAPTER_SCRIPT_FILES satisfies Partial<
   Record<AdapterKey, ScriptPublicPath>
-> = {
-  ARTICLE_ZHIHU: "/content-scripts/zhihu-article.js",
-  NOTE_XIAOHONGSHU: "/content-scripts/xiaohongshu-note.js",
-  DYNAMIC_DOUYIN: "/content-scripts/douyin-dynamic.js",
-  DYNAMIC_BILIBILI: "/content-scripts/bilibili-dynamic.js",
-  POST_X: "/content-scripts/x-post.js",
-} satisfies Partial<Record<AdapterKey, ScriptPublicPath>>;
+>;
+
+export { adapterScriptFiles as ADAPTER_SCRIPT_FILES };
+export { platformCapabilities as PLATFORM_CAPABILITIES };
 
 export function isSupportedAdapterKey(value: string): value is AdapterKey {
-  return PLATFORM_CAPABILITIES.some((item) => item.adapter_key === value);
+  return platformCapabilities.some((item) => item.adapter_key === value);
 }
 
 export function getAdapterScriptFile(adapterKey: AdapterKey): ScriptPublicPath {
-  const scriptFile = ADAPTER_SCRIPT_FILES[adapterKey];
+  const scriptFile = adapterScriptFiles[adapterKey];
 
   if (!scriptFile) {
     throw new Error(`Adapter script is not available for ${adapterKey}.`);
   }
 
-  return scriptFile;
+  return scriptFile as ScriptPublicPath;
 }
 
 export function getCapabilityByAdapterKey(
   adapterKey: AdapterKey,
 ): PlatformCapability {
-  const capability = PLATFORM_CAPABILITIES.find(
+  const capability = platformCapabilities.find(
     (item) => item.adapter_key === adapterKey,
   );
 

@@ -10,10 +10,10 @@ components:
     PublishPlatform:
       type: string
       enum:
-        - douyin
         - wechat
-        - x
         - zhihu
+        - x
+        - douyin
 
     GeneratedByType:
       type: string

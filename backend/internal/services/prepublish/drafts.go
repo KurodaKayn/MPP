@@ -59,10 +59,7 @@ func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, r
 		return nil, err
 	}
 	mutated = true
-	if prepublishHasActivePublish(publications) {
-		return nil, publishsvc.ErrPublicationAlreadyPublishing
-	}
-	if err := s.markPrepublishSyncing(project.ID, platforms); err != nil {
+	if err := publishsvc.NewPublicationLifecycle(s.db).MarkPrepublishSyncing(project.ID, platforms); err != nil {
 		return nil, err
 	}
 
@@ -85,66 +82,6 @@ func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, r
 		return nil, err
 	}
 	return s.projects.GetProjectPublications(projectID, &userID, true)
-}
-
-func prepublishHasActivePublish(publications []models.ProjectPlatformPublication) bool {
-	for _, publication := range publications {
-		if prepublishPublishStatusActive(publication.Status) {
-			return true
-		}
-	}
-	return false
-}
-
-func prepublishPublishStatusActive(status string) bool {
-	return status == models.PublicationStatusQueued || status == models.PublicationStatusPublishing
-}
-
-func (s *Service) markPrepublishSyncing(projectID uuid.UUID, platforms []string) error {
-	if len(platforms) == 0 {
-		return nil
-	}
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		var activeCount int64
-		if err := tx.Model(&models.ProjectPlatformPublication{}).
-			Where("project_id = ? AND platform IN ? AND status IN ?", projectID, platforms, []string{
-				models.PublicationStatusQueued,
-				models.PublicationStatusPublishing,
-			}).
-			Count(&activeCount).Error; err != nil {
-			return err
-		}
-		if activeCount > 0 {
-			return publishsvc.ErrPublicationAlreadyPublishing
-		}
-
-		if err := tx.Model(&models.ProjectPlatformPublication{}).
-			Where("project_id = ? AND platform IN ? AND status NOT IN ?", projectID, platforms, []string{
-				models.PublicationStatusQueued,
-				models.PublicationStatusPublishing,
-			}).
-			Updates(map[string]any{
-				"draft_status":  models.PublicationDraftStatusSyncing,
-				"error_message": "",
-				"status":        models.PublicationStatusSyncing,
-			}).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Model(&models.ProjectPlatformPublication{}).
-			Where("project_id = ? AND platform IN ? AND status IN ?", projectID, platforms, []string{
-				models.PublicationStatusQueued,
-				models.PublicationStatusPublishing,
-			}).
-			Count(&activeCount).Error; err != nil {
-			return err
-		}
-		if activeCount > 0 {
-			return publishsvc.ErrPublicationAlreadyPublishing
-		}
-
-		return nil
-	})
 }
 
 func (s *Service) ensurePrepublishPublications(project *models.Project, platforms []string) ([]models.ProjectPlatformPublication, error) {
