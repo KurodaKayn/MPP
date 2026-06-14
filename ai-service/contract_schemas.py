@@ -9,10 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field, conint, constr
 
 
 class PublishPlatform(StrEnum):
-    douyin = "douyin"
     wechat = "wechat"
-    x = "x"
     zhihu = "zhihu"
+    x = "x"
+    douyin = "douyin"
 
 
 class DraftFormat(StrEnum):
