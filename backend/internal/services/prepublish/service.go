@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services/compiler"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
@@ -30,6 +31,7 @@ type DashboardReadModelUpdater interface {
 
 type Service struct {
 	db         *gorm.DB
+	router     *dbrouter.Router
 	projects   *projectsvc.Service
 	statsCache DashboardStatsCacheInvalidator
 	readModels DashboardReadModelUpdater
@@ -38,7 +40,17 @@ type Service struct {
 }
 
 func NewService(db *gorm.DB, projects *projectsvc.Service, draftCompiler ProjectDraftCompiler) *Service {
-	return &Service{db: db, projects: projects, draftCompiler: draftCompiler}
+	return NewServiceWithRouter(db, projects, draftCompiler, nil)
+}
+
+func NewServiceWithRouter(db *gorm.DB, projects *projectsvc.Service, draftCompiler ProjectDraftCompiler, router *dbrouter.Router) *Service {
+	if router == nil {
+		router = dbrouter.NewRouter(db)
+	}
+	if projects == nil {
+		projects = projectsvc.NewServiceWithRouter(db, router)
+	}
+	return &Service{db: db, router: router, projects: projects, draftCompiler: draftCompiler}
 }
 
 func (s *Service) SetDraftCompiler(draftCompiler ProjectDraftCompiler) {
@@ -65,6 +77,20 @@ func (s *Service) requestContext() context.Context {
 		return s.db.Statement.Context
 	}
 	return context.Background()
+}
+
+func (s *Service) writerDB() *gorm.DB {
+	if s.router == nil {
+		return s.db
+	}
+	return s.router.Writer(s.requestContext())
+}
+
+func (s *Service) strongReadDB() *gorm.DB {
+	if s.router == nil {
+		return s.db
+	}
+	return s.router.Reader(s.requestContext(), dbrouter.StrongRead)
 }
 
 func (s *Service) invalidateDashboardCaches() {

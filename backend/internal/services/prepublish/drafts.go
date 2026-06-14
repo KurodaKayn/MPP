@@ -28,7 +28,7 @@ func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, r
 	}()
 
 	var project models.Project
-	if err := s.db.Preload("Publications").First(&project, "id = ?", projectID).Error; err != nil {
+	if err := s.strongReadDB().Preload("Publications").First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
 	}
 	role, err := s.projects.ProjectAccessRole(project, userID)
@@ -59,7 +59,7 @@ func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, r
 		return nil, err
 	}
 	mutated = true
-	if err := publishsvc.NewPublicationLifecycle(s.db).MarkPrepublishSyncing(project.ID, platforms); err != nil {
+	if err := publishsvc.NewPublicationLifecycle(s.writerDB()).MarkPrepublishSyncing(project.ID, platforms); err != nil {
 		return nil, err
 	}
 
@@ -86,7 +86,7 @@ func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, r
 
 func (s *Service) ensurePrepublishPublications(project *models.Project, platforms []string) ([]models.ProjectPlatformPublication, error) {
 	publications := make([]models.ProjectPlatformPublication, 0, len(platforms))
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.writerDB().Transaction(func(tx *gorm.DB) error {
 		for _, platform := range platforms {
 			var publication models.ProjectPlatformPublication
 			err := tx.Where("project_id = ? AND platform = ?", project.ID, platform).First(&publication).Error
@@ -136,7 +136,7 @@ func (s *Service) ensurePrepublishPublications(project *models.Project, platform
 }
 
 func (s *Service) applyCompiledPrepublishDrafts(projectID uuid.UUID, platforms []string, drafts map[string][]byte) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	return s.writerDB().Transaction(func(tx *gorm.DB) error {
 		for _, platform := range platforms {
 			adaptedContent, ok := drafts[platform]
 			if !ok {
@@ -179,7 +179,7 @@ func (s *Service) markPrepublishCompileFailure(projectID uuid.UUID, platforms []
 	if len(platforms) == 0 {
 		return nil
 	}
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	return s.writerDB().Transaction(func(tx *gorm.DB) error {
 		for _, platform := range platforms {
 			if err := updateSyncingPrepublishPublication(tx, projectID, platform, map[string]any{
 				"draft_status":  models.PublicationDraftStatusStale,
@@ -209,7 +209,7 @@ func updateSyncingPrepublishPublication(tx *gorm.DB, projectID uuid.UUID, platfo
 
 func (s *Service) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.UUID, platform string, req dto.UpdatePrepublishDraftRequest) (*dto.ProjectPublicationsResponse, error) {
 	var project models.Project
-	if err := s.db.Select("id", "user_id", "workspace_id").First(&project, "id = ?", projectID).Error; err != nil {
+	if err := s.strongReadDB().Select("id", "user_id", "workspace_id").First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
 	}
 	role, err := s.projects.ProjectAccessRole(project, userID)
@@ -234,11 +234,11 @@ func (s *Service) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.
 	}
 
 	var publication models.ProjectPlatformPublication
-	if err := s.db.Where("project_id = ? AND platform = ?", projectID, platforms[0]).First(&publication).Error; err != nil {
+	if err := s.strongReadDB().Where("project_id = ? AND platform = ?", projectID, platforms[0]).First(&publication).Error; err != nil {
 		return nil, err
 	}
 
-	if err := s.db.Model(&publication).Updates(map[string]any{
+	if err := s.writerDB().Model(&publication).Updates(map[string]any{
 		"adapted_content": datatypes.JSON(adaptedContent),
 		"draft_status":    models.PublicationDraftStatusReady,
 		"enabled":         true,
