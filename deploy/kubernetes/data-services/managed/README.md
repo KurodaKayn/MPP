@@ -9,6 +9,9 @@ Required overlay inputs:
 
 - Patch the `postgres` ExternalName to the managed PostgreSQL host if you want a
   stable in-cluster alias for tooling or non-verifying TLS modes.
+- Patch the `postgres-reader` ExternalName to the managed PostgreSQL read
+  replica host and set `DB_READER_HOST` to the same provider hostname when using
+  `DB_READER_SSLMODE=verify-full` or inherited `DB_SSLMODE=verify-full`.
 - Patch the `redis` ExternalName to the managed Redis host.
 - Set `DB_HOST` to the managed PostgreSQL provider hostname when
   `DB_SSLMODE=verify-full`, because hostname verification must match the

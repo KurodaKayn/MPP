@@ -31,6 +31,7 @@ configMapGenerator:
     literals:
       - APP_ENV=staging
       - DB_HOST=pgbouncer
+      - DB_READER_HOST=pgbouncer-reader
       - DB_SSLMODE=disable
       - REDIS_ADDR=redis:6379
       - REDIS_TLS=false

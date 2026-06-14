@@ -14,6 +14,8 @@ The checked-in values are intentionally non-production:
 - The public host is `mpp-managed-staging.example.invalid`.
 - Managed PostgreSQL and Redis ExternalName targets use `.example.invalid`
   provider hosts.
+- `DB_READER_HOST` and the `postgres-reader` ExternalName point at a placeholder
+  managed read replica.
 - `mpp-app-secrets` is generated from example literals so the overlay can
   render and validate without committing real credentials.
 
@@ -28,6 +30,8 @@ Before applying this overlay to a shared staging cluster:
 - Keep `DB_HOST` equal to the managed PostgreSQL provider hostname when
   `DB_SSLMODE=verify-full` so PostgreSQL certificate hostname verification
   succeeds.
+- Keep `DB_READER_HOST` equal to the managed read replica provider hostname
+  when reader connections inherit `DB_SSLMODE=verify-full`.
 - Keep `REDIS_ADDR` equal to the managed Redis provider hostname and port when
   `REDIS_TLS=true` so Redis certificate hostname verification succeeds.
 - Replace every generated Secret literal through your staging secret workflow;

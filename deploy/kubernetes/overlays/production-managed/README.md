@@ -16,6 +16,8 @@ The checked-in values are renderable placeholders only:
 - The public host is `mpp.example.invalid`.
 - Managed PostgreSQL and Redis ExternalName targets use `.example.invalid`
   provider hosts.
+- `DB_READER_HOST` and the `postgres-reader` ExternalName are placeholders for
+  the managed PostgreSQL read replica endpoint.
 - `mpp-app-secrets` is generated only at runtime by External Secrets Operator.
   The checked-in `ExternalSecret` references a placeholder
   `mpp-production-secrets` `ClusterSecretStore` and placeholder remote keys.
@@ -32,6 +34,8 @@ Before applying this overlay to production:
 - Keep `DB_HOST` equal to the managed PostgreSQL provider hostname when
   `DB_SSLMODE=verify-full` so PostgreSQL certificate hostname verification
   succeeds.
+- Keep `DB_READER_HOST` equal to the managed read replica provider hostname
+  when reader connections inherit `DB_SSLMODE=verify-full`.
 - Keep `REDIS_ADDR` equal to the managed Redis provider hostname and port when
   `REDIS_TLS=true` so Redis certificate hostname verification succeeds.
 - Replace `LLM_MODEL=replace-with-production-model` with the provider model
