@@ -376,6 +376,8 @@ func migrate(database *gorm.DB) error {
 			&models.AIToolCall{},
 			&models.AIDraftingSessionSummary{},
 			&models.AISessionEvent{},
+			&models.AIUsageRecord{},
+			&models.WorkspaceQuotaAggregate{},
 			&models.OutboxEvent{},
 			&models.CollabDocument{},
 			&models.CollabDocumentCollaborator{},

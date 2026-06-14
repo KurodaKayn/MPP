@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
@@ -42,14 +44,16 @@ type Runner struct {
 	db        *gorm.DB
 	eventMgr  *EventLogManager
 	assembler *AIContextAssembler
+	quotaSvc  *QuotaService
 	tools     map[string]Tool
 }
 
-func NewRunner(db *gorm.DB, eventMgr *EventLogManager, assembler *AIContextAssembler) *Runner {
+func NewRunner(db *gorm.DB, eventMgr *EventLogManager, assembler *AIContextAssembler, quotaSvc *QuotaService) *Runner {
 	return &Runner{
 		db:        db,
 		eventMgr:  eventMgr,
 		assembler: assembler,
+		quotaSvc:  quotaSvc,
 		tools:     make(map[string]Tool),
 	}
 }
@@ -67,6 +71,7 @@ type LLMResponse struct {
 	Message   string              `json:"message,omitempty"`
 	ToolCalls []models.AIToolCall `json:"tool_calls,omitempty"`
 	Proposals []models.AIProposal `json:"proposals,omitempty"`
+	Usage     *dto.AIUsage        `json:"usage,omitempty"`
 }
 
 func (m *MockLLMAdapter) Query(ctx context.Context, sessionID uuid.UUID, messages []models.AIDraftingMessage, snapshot *models.AIContextSnapshot) (*LLMResponse, error) {
@@ -136,7 +141,14 @@ func (r *Runner) RunSession(ctx context.Context, sessionID uuid.UUID, createdByI
 	adapter := &MockLLMAdapter{}
 
 	for {
-		// 3. Assemble and budget context snapshot
+		// 3a. Quota gate — reject before touching the LLM if workspace is over limit.
+		if err := r.quotaSvc.CheckQuota(ctx, session.WorkspaceID); err != nil {
+			_, _ = r.eventMgr.LogEvent(ctx, sessionID, "status", map[string]any{"status": "error", "error": err.Error()})
+			r.sendSSE(sseChan, "error", map[string]any{"code": "quota_exceeded", "message": err.Error()})
+			return err
+		}
+
+		// 3b. Assemble and budget context snapshot
 		snapshot, err := r.assembler.CreateSnapshot(ctx, session.ProjectID, createdByID, "drafting", AssembleOptions{
 			ContextBudget: 50000,
 		})
@@ -164,6 +176,13 @@ func (r *Runner) RunSession(ctx context.Context, sessionID uuid.UUID, createdByI
 		if err != nil {
 			_, _ = r.eventMgr.LogEvent(ctx, sessionID, "status", map[string]any{"status": "error", "error": err.Error()})
 			return err
+		}
+
+		// 4a. Record real provider usage — best-effort, never aborts the loop.
+		if resp.Usage != nil {
+			if err := r.quotaSvc.RecordUsage(ctx, session.WorkspaceID, createdByID, &sessionID, "drafting", resp.Usage); err != nil {
+				log.Printf("[quota] RecordUsage failed workspace=%s session=%s kind=drafting: %v", session.WorkspaceID, sessionID, err)
+			}
 		}
 
 		// Handle assistant message
