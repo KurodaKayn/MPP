@@ -50,3 +50,45 @@ class EditPrepublishResponse(BaseModel):
 class CalibrateRequest(BaseModel):
     content: str
     platform: PublishPlatform
+
+
+class GrowthPlatformDraft(BaseModel):
+    platform: PublishPlatform
+    adapted_content: AdaptedContent | None = None
+
+
+class GrowthAudienceProfile(BaseModel):
+    profile_id: str
+    platform: PublishPlatform
+    audience_summary: str
+    ranking_signals: list[str] = Field(default_factory=list)
+    content_guidance: list[str] = Field(default_factory=list)
+    risk_warnings: list[str] = Field(default_factory=list)
+
+
+class GrowthOptimizationRequest(BaseModel):
+    title: str = ""
+    source_content: str
+    goal: str
+    intensity: Literal["conservative", "balanced", "aggressive"] = "balanced"
+    target_platforms: list[PublishPlatform]
+    platform_drafts: list[GrowthPlatformDraft] = Field(default_factory=list)
+    brand_profile: dict | None = None
+    audience_profiles: list[GrowthAudienceProfile] = Field(default_factory=list)
+
+
+class GrowthProposal(BaseModel):
+    proposal_type: Literal["title_candidates", "source_rewrite", "prepublish_patch"]
+    target_platform: str
+    summary: str
+    patch: str = ""
+    full_content: str
+    quality_checks: dict = Field(default_factory=dict)
+
+
+class GrowthOptimizationResponse(BaseModel):
+    model: str = "growth-optimizer"
+    prompt_version: str = "growth-v1"
+    quality_summary: str = ""
+    proposals: list[GrowthProposal]
+    usage: AIUsage = Field(default_factory=AIUsage)

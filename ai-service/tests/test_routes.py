@@ -1,3 +1,4 @@
+import json
 import logging
 from types import SimpleNamespace
 
@@ -224,3 +225,88 @@ def test_edit_content_returns_generic_detail_for_runtime_errors(monkeypatch, cap
     assert "sk-test-secret" not in response.text
     assert "internal.host" not in response.text
     assert "provider key sk-test-secret" in caplog.text
+
+
+def test_stream_growth_optimization_emits_reviewable_proposals(monkeypatch):
+    fake_llm = FakeLLM(invoke_content="not json")
+    monkeypatch.setattr(routes, "build_llm", lambda: fake_llm)
+
+    response = client.post(
+        "/growth/optimize/stream",
+        headers=auth_headers(),
+        json={
+            "title": "Launch note",
+            "source_content": "Original long-form article",
+            "goal": "improve platform fit",
+            "intensity": "balanced",
+            "target_platforms": ["wechat", "zhihu", "x", "douyin"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: status" in response.text
+    assert "event: proposal" in response.text
+    assert "wechat@growth-v1" in response.text
+    assert "zhihu@growth-v1" in response.text
+    assert "x@growth-v1" in response.text
+    assert "douyin@growth-v1" in response.text
+    assert "Dramatic but fact-bound WeChat title" in response.text
+    assert "Specific technical title" in response.text
+    assert "Indirect metaphor or double-meaning title" in response.text
+    assert "Plain title that directly states" in response.text
+    assert '"status": "ready"' in response.text
+    assert fake_llm.messages is not None
+    assert "wechat@growth-v1" in fake_llm.messages[-1].content
+    assert "title_strategy" in fake_llm.messages[-1].content
+    assert "verification warning instead of inventing data" in fake_llm.messages[-1].content
+
+
+def test_stream_growth_optimization_streams_valid_json_proposals(monkeypatch):
+    fake_llm = FakeLLM(
+        invoke_content=json.dumps(
+            {
+                "model": "test-growth-model",
+                "prompt_version": "growth-v1",
+                "quality_summary": "Ready for review",
+                "proposals": [
+                    {
+                        "proposal_type": "prepublish_patch",
+                        "target_platform": "zhihu",
+                        "summary": "zhihu@growth-v1 technical proposal",
+                        "patch": "",
+                        "full_content": "A rigorous Zhihu rewrite",
+                        "quality_checks": {
+                            "audience_profile": "zhihu@growth-v1",
+                            "title_strategy": "specific technical title",
+                        },
+                    }
+                ],
+                "usage": {
+                    "input_tokens": 1,
+                    "output_tokens": 2,
+                    "total_tokens": 3,
+                    "cost": 0,
+                    "currency": "USD",
+                },
+            }
+        ),
+        usage_metadata={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+    )
+    monkeypatch.setattr(routes, "build_llm", lambda: fake_llm)
+
+    response = client.post(
+        "/growth/optimize/stream",
+        headers=auth_headers(),
+        json={
+            "title": "Domestic model report",
+            "source_content": "DeepSeek article source",
+            "goal": "make it rigorous",
+            "target_platforms": ["zhihu"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "A rigorous Zhihu rewrite" in response.text
+    assert "test-growth-model" in response.text
+    assert '"total_tokens": 15' in response.text

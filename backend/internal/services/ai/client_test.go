@@ -223,3 +223,24 @@ func TestAIServiceClientRejectsInvalidContentEditMessage(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrInvalidAIEditRequest)
 }
+
+func TestAIServiceClientMapsGrowthOptimizationBadRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/growth/optimize/stream", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"detail":"source_content and goal are required"}`))
+	}))
+	defer server.Close()
+
+	client := NewAIServiceClient(server.URL, server.Client())
+	_, err := client.StreamGrowthOptimization(t.Context(), dto.CreateAIGrowthOptimizationRunRequest{
+		Goal:            "improve platform fit",
+		SourceContent:   "draft",
+		TargetPlatforms: []string{"wechat"},
+	})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidGrowthOptimizationRequest)
+	require.Contains(t, err.Error(), "source_content and goal are required")
+}

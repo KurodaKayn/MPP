@@ -639,11 +639,11 @@ Acceptance:
 
 Goal: users can create a growth optimization run that produces reviewable proposals.
 
-- [ ] Add platform audience profile registry: `wechat@growth-v1`, `zhihu@growth-v1`, `x@growth-v1`, `douyin@growth-v1`.
-- [ ] Add backend `/projects/{id}/ai/optimize` entry point.
-- [ ] Add `AIGrowthOptimizationRun` lifecycle: `running`, `ready`, `failed`, `cancelled`.
-- [ ] Add AI service `/growth/optimize/stream`, outputting title, source content, and platform draft proposal events.
-- [ ] Reuse the harness event envelope for optimization events.
+- [x] Add platform audience profile registry: `wechat@growth-v1`, `zhihu@growth-v1`, `x@growth-v1`, `douyin@growth-v1`.
+- [x] Add backend `/projects/{id}/ai/optimize` entry point.
+- [x] Add `AIGrowthOptimizationRun` lifecycle: `running`, `ready`, `failed`, `cancelled`.
+- [x] Add AI service `/growth/optimize/stream`, outputting title, source content, and platform draft proposal events.
+- [x] Reuse the harness event envelope for optimization events.
 
 Acceptance:
 

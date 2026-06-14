@@ -327,6 +327,60 @@ type AIEditPrepublishResponse struct {
 	Usage          *AIUsage       `json:"usage,omitempty"`
 }
 
+type CreateAIGrowthOptimizationRunRequest struct {
+	Goal            string          `json:"goal"`
+	Intensity       string          `json:"intensity,omitempty"`
+	TargetPlatforms []string        `json:"target_platforms"`
+	Title           string          `json:"title,omitempty"`
+	SourceContent   string          `json:"source_content,omitempty"`
+	PlatformDrafts  []AIGrowthDraft `json:"platform_drafts,omitempty"`
+	BrandProfile    map[string]any  `json:"brand_profile,omitempty"`
+}
+
+type AIGrowthDraft struct {
+	Platform       string         `json:"platform"`
+	AdaptedContent map[string]any `json:"adapted_content,omitempty"`
+}
+
+type AIGrowthOptimizationRun struct {
+	ID                uuid.UUID      `json:"id"`
+	WorkspaceID       uuid.UUID      `json:"workspace_id"`
+	ProjectID         uuid.UUID      `json:"project_id"`
+	ContextSnapshotID uuid.UUID      `json:"context_snapshot_id"`
+	Goal              string         `json:"goal"`
+	Intensity         string         `json:"intensity"`
+	TargetPlatforms   []string       `json:"target_platforms"`
+	Status            string         `json:"status"`
+	Model             string         `json:"model"`
+	PromptVersion     string         `json:"prompt_version"`
+	Usage             map[string]any `json:"usage,omitempty"`
+	QualitySummary    string         `json:"quality_summary,omitempty"`
+	CreatedBy         uuid.UUID      `json:"created_by"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+}
+
+type AIProposal struct {
+	ID                uuid.UUID      `json:"id"`
+	WorkspaceID       uuid.UUID      `json:"workspace_id"`
+	ProjectID         uuid.UUID      `json:"project_id"`
+	RunID             *uuid.UUID     `json:"run_id,omitempty"`
+	ContextSnapshotID uuid.UUID      `json:"context_snapshot_id"`
+	ProposalType      string         `json:"proposal_type"`
+	TargetPlatform    string         `json:"target_platform"`
+	Status            string         `json:"status"`
+	Summary           string         `json:"summary"`
+	Patch             string         `json:"patch"`
+	FullContent       string         `json:"full_content"`
+	QualityChecks     map[string]any `json:"quality_checks,omitempty"`
+	CreatedAt         time.Time      `json:"created_at"`
+}
+
+type AIGrowthOptimizationRunResponse struct {
+	Run       AIGrowthOptimizationRun `json:"run"`
+	Proposals []AIProposal            `json:"proposals"`
+}
+
 type PublicationSummary struct {
 	ID           uuid.UUID `json:"id"`
 	Platform     string    `json:"platform"`

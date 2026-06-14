@@ -37,6 +37,10 @@ type AIContentEditor interface {
 	StreamEditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*AIServiceStream, error)
 }
 
+type GrowthOptimizer interface {
+	StreamGrowthOptimization(ctx context.Context, req dto.CreateAIGrowthOptimizationRunRequest) (*AIServiceStream, error)
+}
+
 type AIServiceStream struct {
 	Body        io.ReadCloser
 	ContentType string
@@ -88,7 +92,7 @@ func (c *AIServiceClient) StreamEditContent(ctx context.Context, req dto.AIEditC
 	if strings.TrimSpace(req.Message) == "" {
 		return nil, ErrInvalidAIEditRequest
 	}
-	return c.postStream(ctx, "/content/edit/stream", req)
+	return c.postStream(ctx, "/content/edit/stream", req, ErrInvalidAIEditRequest)
 }
 
 func (c *AIServiceClient) EditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*dto.AIEditPrepublishResponse, error) {
@@ -107,7 +111,11 @@ func (c *AIServiceClient) StreamEditPrepublish(ctx context.Context, req dto.AIEd
 	if strings.TrimSpace(req.Platform) == "" || strings.TrimSpace(req.Message) == "" || len(req.AdaptedContent) == 0 {
 		return nil, ErrInvalidAIEditRequest
 	}
-	return c.postStream(ctx, "/prepublish/edit/stream", req)
+	return c.postStream(ctx, "/prepublish/edit/stream", req, ErrInvalidAIEditRequest)
+}
+
+func (c *AIServiceClient) StreamGrowthOptimization(ctx context.Context, req dto.CreateAIGrowthOptimizationRunRequest) (*AIServiceStream, error) {
+	return c.postStream(ctx, "/growth/optimize/stream", req, ErrInvalidGrowthOptimizationRequest)
 }
 
 func (c *AIServiceClient) postJSON(ctx context.Context, path string, payload any, out any) error {
@@ -143,7 +151,7 @@ func (c *AIServiceClient) postJSON(ctx context.Context, path string, payload any
 	return nil
 }
 
-func (c *AIServiceClient) postStream(ctx context.Context, path string, payload any) (*AIServiceStream, error) {
+func (c *AIServiceClient) postStream(ctx context.Context, path string, payload any, badRequestErr error) (*AIServiceStream, error) {
 	if c == nil || c.baseURL == "" {
 		return nil, ErrAIServiceUnavailable
 	}
@@ -157,7 +165,7 @@ func (c *AIServiceClient) postStream(ctx context.Context, path string, payload a
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "text/markdown, text/plain, application/octet-stream")
+	req.Header.Set("Accept", "text/event-stream, text/markdown, text/plain, application/octet-stream")
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -167,7 +175,7 @@ func (c *AIServiceClient) postStream(ctx context.Context, path string, payload a
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		defer func() { _ = resp.Body.Close() }()
-		return nil, aiServiceStatusError(resp)
+		return nil, aiServiceStatusErrorWithBadRequest(resp, badRequestErr)
 	}
 
 	return &AIServiceStream{
@@ -188,12 +196,19 @@ func (c *AIServiceClient) newRequest(ctx context.Context, path string, body io.R
 }
 
 func aiServiceStatusError(resp *http.Response) error {
+	return aiServiceStatusErrorWithBadRequest(resp, ErrInvalidAIEditRequest)
+}
+
+func aiServiceStatusErrorWithBadRequest(resp *http.Response, badRequestErr error) error {
 	message := strings.TrimSpace(readAIServiceErrorMessage(resp.Body))
 	if message == "" {
 		message = fmt.Sprintf("returned status %d", resp.StatusCode)
 	}
 	if resp.StatusCode == http.StatusBadRequest {
-		return fmt.Errorf("%w: %s", ErrInvalidAIEditRequest, message)
+		if badRequestErr == nil {
+			badRequestErr = ErrInvalidAIEditRequest
+		}
+		return fmt.Errorf("%w: %s", badRequestErr, message)
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		return fmt.Errorf("%w: %s", ErrAIServiceUnavailable, aiServiceAuthenticationError)

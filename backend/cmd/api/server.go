@@ -218,6 +218,7 @@ func registerUserDashboardRoutes(e *echo.Echo, config serverConfig, h serverHand
 	userGroup.PUT("/projects/:id/prepublish/:platform", h.userDashboard.UpdateProjectPrepublishDraft)
 	userGroup.POST("/projects/:id/publish", h.userDashboard.PublishProject)
 	userGroup.POST("/projects/:id/publish-sessions/douyin", h.userDashboard.StartDouyinPublishSession)
+	userGroup.POST("/projects/:id/ai/optimize", h.userDashboard.CreateAIGrowthOptimizationRun)
 	userGroup.POST("/projects/:id/ai/drafting-sessions", h.userDashboard.StartAIDraftingSession)
 	userGroup.POST("/ai/drafting-sessions/:sessionId/messages", h.userDashboard.ContinueAIDraftingSession)
 	userGroup.GET("/ai/drafting-sessions/:sessionId/events", h.userDashboard.ReplayAIDraftingSession)
