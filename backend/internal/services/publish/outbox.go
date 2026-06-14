@@ -34,7 +34,7 @@ func (s *Service) recordPublishJobOutbox(job PublishJob) (models.OutboxEvent, er
 		Payload:       datatypes.JSON(payload),
 		Status:        models.OutboxStatusPending,
 	}
-	return event, s.db.Create(&event).Error
+	return event, s.writerDB(s.requestContext()).Create(&event).Error
 }
 
 func (s *Service) StartPublishOutboxDispatcher(ctx context.Context) {
@@ -73,7 +73,7 @@ func (s *Service) FlushPublishOutbox(ctx context.Context, limit int) error {
 	now := time.Now().UTC()
 	staleProcessingCutoff := now.Add(-publishOutboxClaimTimeout)
 	var events []models.OutboxEvent
-	if err := s.db.WithContext(ctx).
+	if err := s.writerDB(ctx).
 		Where("event_type = ? AND ((status IN ? AND (next_attempt_at IS NULL OR next_attempt_at <= ?)) OR (status = ? AND updated_at <= ?))",
 			models.OutboxEventPublishJobRequested,
 			[]string{models.OutboxStatusPending, models.OutboxStatusFailed},
@@ -116,7 +116,7 @@ func (s *Service) dispatchOutboxEvent(ctx context.Context, eventID uuid.UUID) er
 func (s *Service) claimOutboxEvent(ctx context.Context, eventID uuid.UUID) (models.OutboxEvent, bool, error) {
 	now := time.Now().UTC()
 	staleProcessingCutoff := now.Add(-publishOutboxClaimTimeout)
-	result := s.db.WithContext(ctx).Model(&models.OutboxEvent{}).
+	result := s.writerDB(ctx).Model(&models.OutboxEvent{}).
 		Where("id = ? AND event_type = ? AND ((status IN ? AND (next_attempt_at IS NULL OR next_attempt_at <= ?)) OR (status = ? AND updated_at <= ?))",
 			eventID,
 			models.OutboxEventPublishJobRequested,
@@ -137,7 +137,7 @@ func (s *Service) claimOutboxEvent(ctx context.Context, eventID uuid.UUID) (mode
 		return models.OutboxEvent{}, false, nil
 	}
 	var event models.OutboxEvent
-	if err := s.db.WithContext(ctx).First(&event, "id = ?", eventID).Error; err != nil {
+	if err := s.writerDB(ctx).First(&event, "id = ?", eventID).Error; err != nil {
 		return models.OutboxEvent{}, false, err
 	}
 	return event, true, nil
@@ -159,7 +159,7 @@ func (s *Service) dispatchClaimedOutboxEvent(ctx context.Context, event models.O
 
 func (s *Service) markOutboxEventDispatched(ctx context.Context, event models.OutboxEvent) error {
 	now := time.Now().UTC()
-	return s.db.WithContext(ctx).Model(&models.OutboxEvent{}).
+	return s.writerDB(ctx).Model(&models.OutboxEvent{}).
 		Where("id = ? AND status = ? AND attempts = ?", event.ID, models.OutboxStatusProcessing, event.Attempts).
 		Updates(map[string]any{
 			"status":          models.OutboxStatusDispatched,
@@ -171,7 +171,7 @@ func (s *Service) markOutboxEventDispatched(ctx context.Context, event models.Ou
 
 func (s *Service) markOutboxEventFailed(ctx context.Context, event models.OutboxEvent, dispatchErr error) error {
 	nextAttemptAt := time.Now().UTC().Add(outboxRetryBackoff(event.Attempts))
-	return s.db.WithContext(ctx).Model(&models.OutboxEvent{}).
+	return s.writerDB(ctx).Model(&models.OutboxEvent{}).
 		Where("id = ? AND status = ? AND attempts = ?", event.ID, models.OutboxStatusProcessing, event.Attempts).
 		Updates(map[string]any{
 			"status":          models.OutboxStatusFailed,

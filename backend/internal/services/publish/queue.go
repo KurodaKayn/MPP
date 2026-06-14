@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
@@ -257,9 +258,10 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 
 	var schedule models.ScheduledPublication
 	outboxEventID := uuid.Nil
-	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	if err := s.writerDB(ctx).Transaction(func(tx *gorm.DB) error {
 		txService := *s
 		txService.db = tx
+		txService.router = dbrouter.NewRouter(tx)
 		createdSchedule, err := txService.createScheduledPublication(ctx, project, pub, *scopeUserID, req.IdempotencyKey, scheduledAt, models.ScheduledPublicationStatusScheduled)
 		if err != nil {
 			return err
@@ -553,7 +555,7 @@ func (s *Service) preparePublishJob(ctx context.Context, projectID uuid.UUID, pl
 	}
 
 	var pub models.ProjectPlatformPublication
-	if err := s.db.Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
+	if err := s.strongReadDB(ctx).Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
 		return models.Project{}, models.ProjectPlatformPublication{}, fmt.Errorf("publication record not found for platform: %s", platform)
 	}
 	if !pub.Enabled || pub.Status == models.PublicationStatusCancelled {
@@ -582,7 +584,7 @@ func (s *Service) preparePublishJob(ctx context.Context, projectID uuid.UUID, pl
 
 func (s *Service) publicationRetriableForJob(projectID uuid.UUID, platform string) (bool, error) {
 	var pub models.ProjectPlatformPublication
-	if err := s.db.Select("enabled", "status").Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
+	if err := s.writerDB(s.requestContext()).Select("enabled", "status").Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
 		return false, err
 	}
 	if !pub.Enabled || pub.Status == models.PublicationStatusCancelled {

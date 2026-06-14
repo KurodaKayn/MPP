@@ -92,13 +92,8 @@ func (s *Service) publishMediaAssetForProject(ctx context.Context, project model
 		return nil, ErrPublishMediaStorageUnavailable
 	}
 
-	db := s.db
-	if ctx != nil {
-		db = db.WithContext(ctx)
-	}
-
 	var asset models.MediaAsset
-	if err := db.First(&asset, "id = ?", assetID).Error; err != nil {
+	if err := s.strongReadDB(ctx).First(&asset, "id = ?", assetID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("publish media asset not found: %s", assetID)
 		}

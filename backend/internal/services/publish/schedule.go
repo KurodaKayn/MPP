@@ -26,7 +26,7 @@ var (
 )
 
 func (s *Service) createScheduledPublication(ctx context.Context, project models.Project, pub models.ProjectPlatformPublication, userID uuid.UUID, idempotencyKey string, scheduledAt time.Time, status string) (models.ScheduledPublication, error) {
-	if !s.db.Migrator().HasTable(&models.ScheduledPublication{}) {
+	if !s.writerDB(ctx).Migrator().HasTable(&models.ScheduledPublication{}) {
 		return models.ScheduledPublication{}, nil
 	}
 	workspaceID := models.PersonalWorkspaceID(project.UserID)
@@ -53,11 +53,7 @@ func (s *Service) createScheduledPublication(ctx context.Context, project models
 	} else if latestVersionID != uuid.Nil {
 		schedule.ProjectVersionID = &latestVersionID
 	}
-	db := s.db
-	if ctx != nil {
-		db = db.WithContext(ctx)
-	}
-	if err := db.Create(&schedule).Error; err != nil {
+	if err := s.writerDB(ctx).Create(&schedule).Error; err != nil {
 		return models.ScheduledPublication{}, err
 	}
 	return schedule, nil
@@ -92,7 +88,7 @@ func (s *Service) ScheduleProjectPublication(ctx context.Context, projectID uuid
 		return nil, ErrPublicationRequiresSync
 	}
 	if timezone != schedule.Timezone {
-		if err := s.db.WithContext(ctx).Model(&schedule).Update("timezone", timezone).Error; err != nil {
+		if err := s.writerDB(ctx).Model(&schedule).Update("timezone", timezone).Error; err != nil {
 			return nil, err
 		}
 		schedule.Timezone = timezone
@@ -105,12 +101,8 @@ func (s *Service) findIdempotentScheduledPublication(ctx context.Context, projec
 	if strings.TrimSpace(key) == "" {
 		return models.ScheduledPublication{}, false, nil
 	}
-	db := s.db
-	if ctx != nil {
-		db = db.WithContext(ctx)
-	}
 	var schedule models.ScheduledPublication
-	err := db.
+	err := s.writerDB(ctx).
 		Where("project_id = ? AND publication_id = ? AND created_by = ? AND idempotency_key = ?", projectID, publicationID, userID, key).
 		Order("created_at DESC").
 		First(&schedule).Error
@@ -128,7 +120,7 @@ func (s *Service) CancelScheduledPublication(ctx context.Context, projectID uuid
 		return nil, ErrForbidden
 	}
 	var schedule models.ScheduledPublication
-	if err := s.db.WithContext(ctx).
+	if err := s.strongReadDB(ctx).
 		Preload("Project").
 		Preload("Publication").
 		First(&schedule, "id = ? AND project_id = ?", scheduleID, projectID).Error; err != nil {
@@ -141,7 +133,7 @@ func (s *Service) CancelScheduledPublication(ctx context.Context, projectID uuid
 		return nil, ErrPublicationAlreadyPublishing
 	}
 	now := time.Now().UTC()
-	if err := s.db.WithContext(ctx).Model(&schedule).Updates(map[string]any{
+	if err := s.writerDB(ctx).Model(&schedule).Updates(map[string]any{
 		"status":       models.ScheduledPublicationStatusCancelled,
 		"cancelled_by": userID,
 		"updated_at":   now,
@@ -159,7 +151,7 @@ func (s *Service) RetryScheduledPublication(ctx context.Context, projectID uuid.
 		return nil, ErrForbidden
 	}
 	var schedule models.ScheduledPublication
-	if err := s.db.WithContext(ctx).
+	if err := s.strongReadDB(ctx).
 		Preload("Project").
 		Preload("Publication").
 		First(&schedule, "id = ? AND project_id = ?", scheduleID, projectID).Error; err != nil {
@@ -182,7 +174,7 @@ func (s *Service) ListWorkspaceScheduledPublications(ctx context.Context, worksp
 		return nil, err
 	}
 	var schedules []models.ScheduledPublication
-	if err := s.db.WithContext(ctx).
+	if err := s.strongReadDB(ctx).
 		Preload("Project").
 		Preload("Publication").
 		Where("workspace_id = ? AND scheduled_at >= ? AND scheduled_at < ?", workspaceID, from, to).
@@ -197,7 +189,7 @@ func (s *Service) ListWorkspaceScheduledPublications(ctx context.Context, worksp
 	attemptsBySchedule := map[uuid.UUID][]models.PublishAttempt{}
 	if len(ids) > 0 {
 		var attempts []models.PublishAttempt
-		if err := s.db.WithContext(ctx).
+		if err := s.strongReadDB(ctx).
 			Where("scheduled_publication_id IN ?", ids).
 			Order("attempt_no ASC").
 			Find(&attempts).Error; err != nil {
@@ -216,14 +208,14 @@ func (s *Service) ListWorkspaceScheduledPublications(ctx context.Context, worksp
 
 func (s *Service) scheduledPublicationDetail(ctx context.Context, scheduleID uuid.UUID) (*dto.ScheduledPublication, error) {
 	var schedule models.ScheduledPublication
-	if err := s.db.WithContext(ctx).
+	if err := s.strongReadDB(ctx).
 		Preload("Project").
 		Preload("Publication").
 		First(&schedule, "id = ?", scheduleID).Error; err != nil {
 		return nil, err
 	}
 	var attempts []models.PublishAttempt
-	if err := s.db.WithContext(ctx).
+	if err := s.strongReadDB(ctx).
 		Where("scheduled_publication_id = ?", scheduleID).
 		Order("attempt_no ASC").
 		Find(&attempts).Error; err != nil {
@@ -234,11 +226,7 @@ func (s *Service) scheduledPublicationDetail(ctx context.Context, scheduleID uui
 }
 
 func (s *Service) requireWorkspaceCalendarAccess(ctx context.Context, workspaceID uuid.UUID, userID uuid.UUID) error {
-	db := s.db
-	if ctx != nil {
-		db = db.WithContext(ctx)
-	}
-	return accesspolicy.RequireWorkspaceMemberWithDB(db, workspaceID, userID)
+	return accesspolicy.RequireWorkspaceMemberWithDB(s.strongReadDB(ctx), workspaceID, userID)
 }
 
 func (s *Service) StartScheduledPublicationDispatcher(ctx context.Context) {
@@ -273,7 +261,7 @@ func (s *Service) FlushScheduledPublications(ctx context.Context, limit int) err
 
 	now := time.Now().UTC()
 	var schedules []models.ScheduledPublication
-	if err := s.db.WithContext(ctx).
+	if err := s.writerDB(ctx).
 		Preload("Publication").
 		Where("status = ? AND scheduled_at <= ?", models.ScheduledPublicationStatusScheduled, now).
 		Order("scheduled_at ASC").
@@ -301,7 +289,7 @@ func (s *Service) dispatchScheduledPublication(ctx context.Context, schedule mod
 	platform := strings.TrimSpace(schedule.Publication.Platform)
 	if platform == "" {
 		var publication models.ProjectPlatformPublication
-		if err := s.db.WithContext(ctx).Select("platform").First(&publication, "id = ?", schedule.PublicationID).Error; err != nil {
+		if err := s.writerDB(ctx).Select("platform").First(&publication, "id = ?", schedule.PublicationID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil
 			}
@@ -335,15 +323,11 @@ func (s *Service) dispatchScheduledPublication(ctx context.Context, schedule mod
 }
 
 func (s *Service) latestProjectVersionID(ctx context.Context, projectID uuid.UUID) (uuid.UUID, error) {
-	if !s.db.Migrator().HasTable(&models.ProjectVersion{}) {
+	if !s.writerDB(ctx).Migrator().HasTable(&models.ProjectVersion{}) {
 		return uuid.Nil, nil
 	}
-	db := s.db
-	if ctx != nil {
-		db = db.WithContext(ctx)
-	}
 	var version models.ProjectVersion
-	err := db.Select("id").
+	err := s.writerDB(ctx).Select("id").
 		Where("project_id = ?", projectID).
 		Order("version_number DESC, created_at DESC").
 		First(&version).Error
