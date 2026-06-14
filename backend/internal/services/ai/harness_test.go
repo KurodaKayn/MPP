@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
@@ -42,6 +43,9 @@ func TestEventLogManagerAndReplay(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, timeline, 3)
+	assert.Equal(t, uint64(1), timeline[0].Sequence)
+	assert.Equal(t, uint64(2), timeline[1].Sequence)
+	assert.Equal(t, uint64(3), timeline[2].Sequence)
 	assert.Equal(t, "status", timeline[0].EventType)
 	assert.Equal(t, "started", timeline[0].Payload["state"])
 
@@ -295,11 +299,46 @@ func TestReplaySessionIncludesModelVisibleMessageSequence(t *testing.T) {
 	replay, err := eventMgr.ReplaySession(context.Background(), sessionID)
 	require.NoError(t, err)
 	require.NotEmpty(t, replay.Events)
-	require.Len(t, replay.ModelMessages, 3)
+	require.Len(t, replay.ModelMessages, 4)
 	assert.Equal(t, "user", replay.ModelMessages[0].Role)
-	assert.Equal(t, "Please optimize my drafting content", replay.ModelMessages[0].Content)
+	require.Len(t, replay.ModelMessages[0].Content, 1)
+	assert.Equal(t, "text", replay.ModelMessages[0].Content[0].Type)
+	assert.Equal(t, "Please optimize my drafting content", replay.ModelMessages[0].Content[0].Text)
 	assert.Equal(t, "assistant", replay.ModelMessages[1].Role)
-	assert.Equal(t, "assistant", replay.ModelMessages[2].Role)
+	require.Len(t, replay.ModelMessages[1].Content, 2)
+	assert.Equal(t, "text", replay.ModelMessages[1].Content[0].Type)
+	assert.Equal(t, "tool_use", replay.ModelMessages[1].Content[1].Type)
+	toolUseID := replay.ModelMessages[1].Content[1].ID
+	assert.NotEmpty(t, toolUseID)
+	assert.Equal(t, "read_project_context", replay.ModelMessages[1].Content[1].Name)
+	assert.Equal(t, "user", replay.ModelMessages[2].Role)
+	require.Len(t, replay.ModelMessages[2].Content, 1)
+	assert.Equal(t, "tool_result", replay.ModelMessages[2].Content[0].Type)
+	assert.Equal(t, toolUseID, replay.ModelMessages[2].Content[0].ToolUseID)
+	assert.False(t, replay.ModelMessages[2].Content[0].IsError)
+	assert.Equal(t, "assistant", replay.ModelMessages[3].Role)
+}
+
+func TestRunnerFeedsToolResultsIntoNextModelTurn(t *testing.T) {
+	db, userID, sessionID := setupHarnessRun(t)
+	assembler := NewAIContextAssembler(db)
+	eventMgr := NewEventLogManager(db)
+	adapter := &capturingAdapter{}
+	runner := NewRunnerWithAdapter(db, eventMgr, assembler, NewQuotaService(db), adapter)
+
+	err := runner.RunSession(context.Background(), sessionID, userID, "Please optimize my drafting content", nil)
+	require.NoError(t, err)
+	require.Len(t, adapter.messagesByTurn, 2)
+
+	secondTurn := adapter.messagesByTurn[1]
+	require.Len(t, secondTurn, 3)
+	assert.Equal(t, "assistant", secondTurn[1].Role)
+	require.Len(t, secondTurn[1].Content, 2)
+	assert.Equal(t, "tool_use", secondTurn[1].Content[1].Type)
+	assert.Equal(t, "user", secondTurn[2].Role)
+	require.Len(t, secondTurn[2].Content, 1)
+	assert.Equal(t, "tool_result", secondTurn[2].Content[0].Type)
+	assert.Equal(t, secondTurn[1].Content[1].ID, secondTurn[2].Content[0].ToolUseID)
 }
 
 func setupHarnessRun(t *testing.T) (*gorm.DB, uuid.UUID, uuid.UUID) {
@@ -349,7 +388,7 @@ func setupHarnessRun(t *testing.T) (*gorm.DB, uuid.UUID, uuid.UUID) {
 
 type unknownToolAdapter struct{}
 
-func (unknownToolAdapter) Query(_ context.Context, sessionID uuid.UUID, _ []models.AIDraftingMessage, _ *models.AIContextSnapshot, _ []models.AIToolCall) (*LLMResponse, error) {
+func (unknownToolAdapter) Query(_ context.Context, sessionID uuid.UUID, _ []ModelVisibleMessage, _ *models.AIContextSnapshot, _ []models.AIToolCall) (*LLMResponse, error) {
 	return &LLMResponse{
 		ToolCalls: []models.AIToolCall{
 			{
@@ -368,7 +407,7 @@ type toolCallAdapter struct {
 	arguments []byte
 }
 
-func (a toolCallAdapter) Query(_ context.Context, sessionID uuid.UUID, _ []models.AIDraftingMessage, _ *models.AIContextSnapshot, _ []models.AIToolCall) (*LLMResponse, error) {
+func (a toolCallAdapter) Query(_ context.Context, sessionID uuid.UUID, _ []ModelVisibleMessage, _ *models.AIContextSnapshot, _ []models.AIToolCall) (*LLMResponse, error) {
 	return &LLMResponse{
 		ToolCalls: []models.AIToolCall{
 			{
@@ -386,6 +425,18 @@ type failingAdapter struct {
 	err error
 }
 
-func (a failingAdapter) Query(_ context.Context, _ uuid.UUID, _ []models.AIDraftingMessage, _ *models.AIContextSnapshot, _ []models.AIToolCall) (*LLMResponse, error) {
+func (a failingAdapter) Query(_ context.Context, _ uuid.UUID, _ []ModelVisibleMessage, _ *models.AIContextSnapshot, _ []models.AIToolCall) (*LLMResponse, error) {
 	return nil, a.err
+}
+
+type capturingAdapter struct {
+	messagesByTurn [][]ModelVisibleMessage
+}
+
+func (a *capturingAdapter) Query(_ context.Context, sessionID uuid.UUID, messages []ModelVisibleMessage, snapshot *models.AIContextSnapshot, toolResults []models.AIToolCall) (*LLMResponse, error) {
+	a.messagesByTurn = append(a.messagesByTurn, slices.Clone(messages))
+	if len(toolResults) == 0 {
+		return (&MockLLMAdapter{}).Query(context.Background(), sessionID, messages, snapshot, toolResults)
+	}
+	return (&MockLLMAdapter{}).Query(context.Background(), sessionID, messages, snapshot, toolResults)
 }
