@@ -15,7 +15,11 @@ Generated outputs:
 
 - `frontend/src/lib/dashboard/api/generated.ts`
 - `backend/internal/contracts/openapi.gen.go`
+- `browser-worker/internal/contracts/openapi.gen.go`
 - `ai-service/contract_schemas.py`
+
+CI runs `script/ci/contracts.sh` to regenerate these files and fail when any
+generated output is stale.
 
 Current component/view layout:
 

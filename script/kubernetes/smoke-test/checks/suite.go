@@ -23,8 +23,8 @@ func (err CheckSkip) Error() string {
 }
 
 type CheckResult struct {
-	Name   string
-	Detail string
+	Name   string `json:"name"`
+	Detail string `json:"detail"`
 }
 
 type Settings struct {

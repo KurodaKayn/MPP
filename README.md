@@ -92,4 +92,5 @@ Choose the setup path that matches how you want to run MPP:
 
 For detailed design notes for each module, see [module-design.md](doc/module-design.md).
 For a module-by-module technology stack breakdown, see [tech-stack.md](doc/tech-stack.md).
-For module external interfaces and runtime parameters, see [module-interface.md](doc/module-interface.md)
+For module external interfaces and runtime parameters, see [module-interface.md](doc/module-interface.md).
+For new publishing platform onboarding, see [new-platform-development-guide.md](doc/new-platform-development-guide.md).

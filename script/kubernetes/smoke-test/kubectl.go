@@ -230,6 +230,8 @@ func (kubectl *Kubectl) dryRunStdout(command []string) string {
 		return "yes\n"
 	case "exec", "run":
 		return `{"status":"ready"}`
+	case "describe":
+		return "Name: browser-worker\nNamespace: mpp-system\nEvents: dry-run\n"
 	default:
 		return ""
 	}
@@ -259,6 +261,8 @@ func (kubectl *Kubectl) dryRunGet(args []string) string {
 		return jsonResponse(Object{"items": checks.DryRunDeployments()})
 	case "pods", "pod":
 		return jsonResponse(Object{"items": checks.DryRunPods(selector)})
+	case "events", "event":
+		return "LAST SEEN   TYPE     REASON    OBJECT                  MESSAGE\n1s          Normal   DryRun    pod/mpp-app-dry-run     dry-run event\n"
 	case "endpoints", "endpoint":
 		return jsonResponse(Object{
 			"metadata": Object{"name": name},

@@ -19,3 +19,12 @@ ruby script/kubernetes/test_validate_rendered_schema.rb
 
 cd script/kubernetes/smoke-test
 go test ./...
+smoke_report_dir="$(mktemp -d)"
+go run . \
+  --dry-run \
+  --skip-public \
+  --report-json "$smoke_report_dir/smoke-report.json" \
+  --report-junit "$smoke_report_dir/smoke-junit.xml" \
+  > "$smoke_report_dir/smoke.log"
+test -s "$smoke_report_dir/smoke-report.json"
+test -s "$smoke_report_dir/smoke-junit.xml"
