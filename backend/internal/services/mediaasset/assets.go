@@ -48,7 +48,7 @@ func (s *Service) CreateProjectMediaUpload(projectID uuid.UUID, userID uuid.UUID
 	}
 
 	var project models.Project
-	if err := s.db.First(&project, "id = ?", projectID).Error; err != nil {
+	if err := s.strongReadDB().First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
 	}
 	role, err := s.projects.ProjectAccessRole(project, userID)
@@ -78,7 +78,7 @@ func (s *Service) CreateProjectMediaUpload(projectID uuid.UUID, userID uuid.UUID
 		Status:           models.MediaAssetStatusPending,
 	}
 	asset.ObjectKey = mediaAssetStagingObjectKey(workspaceID, project.ID, asset.ID, filename)
-	if err := s.db.Create(&asset).Error; err != nil {
+	if err := s.writerDB().Create(&asset).Error; err != nil {
 		return nil, err
 	}
 
@@ -142,7 +142,7 @@ func (s *Service) CompleteMediaUpload(assetID uuid.UUID, userID uuid.UUID) (*dto
 		return nil, fmt.Errorf("delete staged media upload: %w", err)
 	}
 
-	if err := s.db.Model(asset).Updates(map[string]any{
+	if err := s.writerDB().Model(asset).Updates(map[string]any{
 		"e_tag":         finalInfo.ETag,
 		"error_message": "",
 		"object_key":    finalKey,
@@ -204,7 +204,7 @@ func (s *Service) ResolveMediaObjectRef(req dto.ResolveMediaObjectRefRequest) (*
 	}
 
 	var asset models.MediaAsset
-	if err := s.db.First(&asset, "id = ?", assetID).Error; err != nil {
+	if err := s.eventualReadDB().First(&asset, "id = ?", assetID).Error; err != nil {
 		return nil, err
 	}
 	if asset.Status != models.MediaAssetStatusReady {
@@ -239,10 +239,10 @@ func (s *Service) DeleteMediaAsset(assetID uuid.UUID, userID uuid.UUID) error {
 	if err := s.objectStorage.DeleteObject(s.requestContext(), asset.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrObjectNotFound) {
 		return err
 	}
-	if err := s.db.Model(asset).Update("status", models.MediaAssetStatusDeleted).Error; err != nil {
+	if err := s.writerDB().Model(asset).Update("status", models.MediaAssetStatusDeleted).Error; err != nil {
 		return err
 	}
-	return s.db.Delete(asset).Error
+	return s.writerDB().Delete(asset).Error
 }
 
 func (s *Service) ensureMediaStorage() error {
@@ -320,12 +320,12 @@ func (s *Service) mediaAssetForRead(assetID uuid.UUID, userID uuid.UUID) (*model
 		return nil, ErrInvalidMediaAsset
 	}
 	var asset models.MediaAsset
-	if err := s.db.First(&asset, "id = ?", assetID).Error; err != nil {
+	if err := s.eventualReadDB().First(&asset, "id = ?", assetID).Error; err != nil {
 		return nil, err
 	}
 	if asset.ProjectID != nil && *asset.ProjectID != uuid.Nil {
 		var project models.Project
-		if err := s.db.First(&project, "id = ?", *asset.ProjectID).Error; err != nil {
+		if err := s.eventualReadDB().First(&project, "id = ?", *asset.ProjectID).Error; err != nil {
 			return nil, err
 		}
 		if _, err := s.projects.ProjectAccessRole(project, userID); err != nil {
@@ -347,21 +347,21 @@ func (s *Service) mediaAssetWithProject(assetID uuid.UUID) (*models.MediaAsset, 
 		return nil, nil, ErrInvalidMediaAsset
 	}
 	var asset models.MediaAsset
-	if err := s.db.First(&asset, "id = ?", assetID).Error; err != nil {
+	if err := s.strongReadDB().First(&asset, "id = ?", assetID).Error; err != nil {
 		return nil, nil, err
 	}
 	if asset.ProjectID == nil || *asset.ProjectID == uuid.Nil {
 		return nil, nil, ErrInvalidMediaAsset
 	}
 	var project models.Project
-	if err := s.db.First(&project, "id = ?", *asset.ProjectID).Error; err != nil {
+	if err := s.strongReadDB().First(&project, "id = ?", *asset.ProjectID).Error; err != nil {
 		return nil, nil, err
 	}
 	return &asset, &project, nil
 }
 
 func (s *Service) markMediaAssetFailed(asset *models.MediaAsset, message string) error {
-	return s.db.Model(asset).Updates(map[string]any{
+	return s.writerDB().Model(asset).Updates(map[string]any{
 		"error_message": message,
 		"status":        models.MediaAssetStatusFailed,
 	}).Error
