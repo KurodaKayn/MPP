@@ -39,22 +39,26 @@ has_changes() {
 }
 
 shared_pattern='(\.github/workflows/ci\.yml|script/ci/)'
+contract_pattern='(contracts/|frontend/src/lib/dashboard/api/generated\.ts|backend/internal/contracts/openapi\.gen\.go|browser-worker/internal/contracts/openapi\.gen\.go|ai-service/contract_schemas\.py)'
 
 case "$area" in
+  contracts)
+    pattern="^(${contract_pattern}|frontend/package\.json|frontend/pnpm-lock\.yaml|backend/go\.mod|backend/go\.sum|browser-worker/go\.mod|browser-worker/go\.sum|ai-service/pyproject\.toml|ai-service/uv\.lock|${shared_pattern})"
+    ;;
   frontend)
-    pattern="^(frontend/|${shared_pattern})"
+    pattern="^(frontend/|contracts/|${shared_pattern})"
     ;;
   extension)
     pattern="^(extension/|${shared_pattern})"
     ;;
   backend)
-    pattern="^(backend/|${shared_pattern})"
+    pattern="^(backend/|contracts/|${shared_pattern})"
     ;;
   browser_worker)
-    pattern="^(browser-worker/|${shared_pattern})"
+    pattern="^(browser-worker/|contracts/|${shared_pattern})"
     ;;
   ai_service)
-    pattern="^(ai-service/|${shared_pattern})"
+    pattern="^(ai-service/|contracts/|${shared_pattern})"
     ;;
   collab_service)
     pattern="^(collab-service/|${shared_pattern})"

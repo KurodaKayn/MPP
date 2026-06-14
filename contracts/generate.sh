@@ -3,7 +3,7 @@ set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
-(cd "$ROOT/frontend" && pnpm generate:contracts)
+(cd "$ROOT/frontend" && pnpm generate:contracts && pnpm format src/lib/dashboard/api/generated.ts)
 (cd "$ROOT/backend" && go generate ./internal/contracts)
 (cd "$ROOT/browser-worker" && go generate ./internal/contracts)
 (cd "$ROOT/ai-service" && uv run datamodel-codegen \
@@ -14,4 +14,6 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
   --target-python-version 3.12 \
   --use-standard-collections \
   --use-union-operator \
-  --disable-timestamp)
+  --formatters black isort \
+  --disable-timestamp && \
+  uv run ruff format contract_schemas.py)
