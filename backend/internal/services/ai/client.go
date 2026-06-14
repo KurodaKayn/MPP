@@ -37,6 +37,10 @@ type AIContentEditor interface {
 	StreamEditPrepublish(ctx context.Context, req dto.AIEditPrepublishRequest) (*AIServiceStream, error)
 }
 
+type GrowthOptimizer interface {
+	StreamGrowthOptimization(ctx context.Context, req dto.CreateAIGrowthOptimizationRunRequest) (*AIServiceStream, error)
+}
+
 type AIServiceStream struct {
 	Body        io.ReadCloser
 	ContentType string
@@ -110,6 +114,16 @@ func (c *AIServiceClient) StreamEditPrepublish(ctx context.Context, req dto.AIEd
 	return c.postStream(ctx, "/prepublish/edit/stream", req)
 }
 
+func (c *AIServiceClient) StreamGrowthOptimization(ctx context.Context, req dto.CreateAIGrowthOptimizationRunRequest) (*AIServiceStream, error) {
+	if strings.TrimSpace(req.Goal) == "" || len(req.TargetPlatforms) == 0 {
+		return nil, ErrInvalidAIEditRequest
+	}
+	if strings.TrimSpace(req.SourceContent) == "" {
+		return nil, ErrInvalidAIEditRequest
+	}
+	return c.postStream(ctx, "/growth/optimize/stream", req)
+}
+
 func (c *AIServiceClient) postJSON(ctx context.Context, path string, payload any, out any) error {
 	if c == nil || c.baseURL == "" {
 		return ErrAIServiceUnavailable
@@ -157,7 +171,7 @@ func (c *AIServiceClient) postStream(ctx context.Context, path string, payload a
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "text/markdown, text/plain, application/octet-stream")
+	req.Header.Set("Accept", "text/event-stream, text/markdown, text/plain, application/octet-stream")
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
