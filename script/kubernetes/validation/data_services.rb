@@ -49,7 +49,7 @@ module KubernetesValidation
 
       validate_self_hosted_read_replica(context)
       validate_self_hosted_backups(context)
-      validate_self_hosted_network_policy(context, "postgres", 5432, ["backend", "publish-worker", "collab-service", "pgbouncer", "postgres-backup"])
+      validate_self_hosted_network_policy(context, "postgres", 5432, ["backend", "publish-worker", "collab-service", "pgbouncer", "postgres-reader", "postgres-backup"])
       validate_self_hosted_network_policy(context, "postgres-reader", 5432, ["pgbouncer-reader"])
       validate_self_hosted_network_policy(context, "pgbouncer", 5432, ["backend", "publish-worker", "collab-service"])
       validate_self_hosted_network_policy(context, "pgbouncer-reader", 5432, ["backend", "publish-worker", "collab-service"])

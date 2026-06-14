@@ -35,6 +35,10 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: postgres-reader
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
               app.kubernetes.io/component: postgres-backup
       ports:
         - protocol: TCP
