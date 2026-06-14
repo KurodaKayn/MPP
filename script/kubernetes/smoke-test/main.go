@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/kurodakayn/mpp-kubernetes-smoke/checks"
 )
 
 func main() {
@@ -26,7 +28,7 @@ func run(args []string, env map[string]string, stdout io.Writer, stderr io.Write
 	reporter := NewReporter(stdout, config.Verbose)
 	kubectl := NewKubectl(reporter, config.DryRun)
 	http := NewHTTPClient(config.RequestTimeout)
-	suite := NewSuite(config, kubectl, reporter, http)
+	suite := checks.NewSuite(config.CheckSettings(), kubectl, reporter, http)
 	suite.Run()
 	return reporter.ExitCode()
 }

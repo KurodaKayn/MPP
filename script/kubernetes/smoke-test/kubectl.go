@@ -5,12 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
-)
 
-type Object map[string]any
+	"github.com/kurodakayn/mpp-kubernetes-smoke/checks"
+)
 
 type CommandError struct {
 	Command  []string
@@ -106,7 +107,7 @@ func (kubectl *Kubectl) ClientVersion() (any, error) {
 		return version, nil
 	}
 	var commandError *CommandError
-	if !as(err, &commandError) {
+	if !errors.As(err, &commandError) {
 		return nil, err
 	}
 	output, fallbackErr := kubectl.Run([]string{"version", "--client"}, RunOptions{})
@@ -137,7 +138,7 @@ func (kubectl *Kubectl) ResourceList(kind string, namespace string, selector str
 	if err != nil {
 		return nil, err
 	}
-	return asObjectSlice(object["items"]), nil
+	return checks.AsObjectSlice(object["items"]), nil
 }
 
 func (kubectl *Kubectl) RolloutStatus(resource string, namespace string, timeout int) (string, error) {
@@ -243,102 +244,41 @@ func (kubectl *Kubectl) dryRunGet(args []string) string {
 	if len(args) > 2 && !strings.HasPrefix(args[2], "-") {
 		name = args[2]
 	}
+	namespace := optionValue(args, "-n")
 	selector := optionValue(args, "-l")
 
 	switch kind {
 	case "namespace", "namespaces":
-		return jsonResponse(Object{"metadata": Object{"name": name, "labels": Object{}}})
+		return jsonResponse(checks.DryRunNamespace(name))
 	case "serviceaccount", "serviceaccounts":
 		return jsonResponse(Object{"metadata": Object{"name": name, "labels": Object{}}})
 	case "deployments", "deployment":
-		return jsonResponse(Object{"items": kubectl.dryRunDeployments()})
+		if name != "" {
+			return jsonResponse(checks.DryRunDeployment(name))
+		}
+		return jsonResponse(Object{"items": checks.DryRunDeployments()})
 	case "pods", "pod":
-		return jsonResponse(Object{"items": kubectl.dryRunPods(selector)})
+		return jsonResponse(Object{"items": checks.DryRunPods(selector)})
 	case "endpoints", "endpoint":
 		return jsonResponse(Object{
 			"metadata": Object{"name": name},
 			"subsets":  []Object{{"addresses": []Object{{"ip": "10.0.0.10"}}}},
 		})
 	case "configmap", "configmaps":
-		return jsonResponse(Object{"metadata": Object{"name": name}, "data": dryRunConfigMap()})
+		return jsonResponse(Object{"metadata": Object{"name": name}, "data": checks.DryRunConfigMap()})
 	case "secret", "secrets":
-		return jsonResponse(Object{"metadata": Object{"name": name}, "data": dryRunSecret()})
+		return jsonResponse(Object{"metadata": Object{"name": name}, "data": checks.DryRunSecret()})
 	case "networkpolicy", "networkpolicies":
-		return jsonResponse(Object{"items": []Object{
-			{"metadata": Object{"name": "browser-runtime-default-deny"}},
-			{"metadata": Object{"name": "browser-runtime-private-access"}},
-		}})
+		return jsonResponse(Object{"items": checks.DryRunNetworkPolicies(namespace)})
+	case "ingress", "ingresses":
+		return jsonResponse(checks.DryRunIngress(name))
+	case "validatingadmissionpolicy", "validatingadmissionpolicies":
+		return jsonResponse(checks.DryRunAdmissionPolicy(name))
+	case "validatingadmissionpolicybinding", "validatingadmissionpolicybindings":
+		return jsonResponse(checks.DryRunAdmissionPolicyBinding(name))
 	default:
 		return jsonResponse(Object{})
 	}
-}
-
-func (kubectl *Kubectl) dryRunDeployments() []Object {
-	deployments := make([]Object, 0, len(defaultDeployments))
-	for _, deployment := range defaultDeployments {
-		deployments = append(deployments, Object{
-			"metadata": Object{"name": deployment},
-			"spec": Object{"template": Object{"spec": Object{"containers": []Object{
-				{
-					"name":  deployment,
-					"image": "ghcr.io/kurodakayn/mpp-" + deployment + ":sha-dryrun",
-				},
-			}}}},
-		})
-	}
-	return deployments
-}
-
-func (kubectl *Kubectl) dryRunPods(selector string) []Object {
-	if strings.Contains(selector, "app.kubernetes.io/component=browser-runtime") {
-		return []Object{
-			{
-				"metadata": Object{
-					"name": "mpp-browser-session-dry-run",
-					"labels": Object{
-						"mpp.kurodakayn.dev/runtime-driver": "kubernetes",
-						"mpp.kurodakayn.dev/session-id":     "dry-run-session",
-						"mpp.kurodakayn.dev/owner-hash":     "dry-run-owner",
-					},
-					"annotations": Object{"mpp.kurodakayn.dev/expires-at": "2099-01-01T00:00:00Z"},
-				},
-				"status": Object{"phase": "Running"},
-			},
-		}
-	}
-	return []Object{
-		{
-			"metadata": Object{"name": "mpp-app-dry-run"},
-			"status": Object{
-				"phase":      "Running",
-				"conditions": []Object{{"type": "Ready", "status": "True"}},
-			},
-		},
-	}
-}
-
-func dryRunConfigMap() Object {
-	return Object{
-		"BACKEND_API_BASE_URL":      "http://backend:8080",
-		"BROWSER_WORKER_URL":        "http://browser-worker:8081",
-		"AI_SERVICE_URL":            "http://ai-service:8000",
-		"CONTENT_PIPELINE_HOST":     "content-pipeline-service",
-		"CONTENT_PIPELINE_PORT":     "50051",
-		"COLLAB_INTERNAL_URL":       "http://collab-service:8090",
-		"COLLAB_WEBSOCKET_URL_BASE": "wss://mpp.example.com",
-		"DB_HOST":                   "postgres.example.com",
-		"DB_SSLMODE":                "verify-full",
-		"REDIS_ADDR":                "redis.example.com:6379",
-		"REDIS_TLS":                 "true",
-	}
-}
-
-func dryRunSecret() Object {
-	secret := make(Object, len(requiredSecretKeys))
-	for _, key := range requiredSecretKeys {
-		secret[key] = "encoded-value"
-	}
-	return secret
 }
 
 func optionValue(args []string, option string) string {

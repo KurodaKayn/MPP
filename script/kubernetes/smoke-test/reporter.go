@@ -7,23 +7,6 @@ import (
 	"strings"
 )
 
-type CheckFailure string
-
-func (err CheckFailure) Error() string {
-	return string(err)
-}
-
-type CheckSkip string
-
-func (err CheckSkip) Error() string {
-	return string(err)
-}
-
-type CheckResult struct {
-	Name   string
-	Detail string
-}
-
 type Reporter struct {
 	io       io.Writer
 	verbose  bool
