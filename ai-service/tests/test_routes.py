@@ -224,3 +224,32 @@ def test_edit_content_returns_generic_detail_for_runtime_errors(monkeypatch, cap
     assert "sk-test-secret" not in response.text
     assert "internal.host" not in response.text
     assert "provider key sk-test-secret" in caplog.text
+
+
+def test_stream_growth_optimization_emits_reviewable_proposals(monkeypatch):
+    fake_llm = FakeLLM(invoke_content="not json")
+    monkeypatch.setattr(routes, "build_llm", lambda: fake_llm)
+
+    response = client.post(
+        "/growth/optimize/stream",
+        headers=auth_headers(),
+        json={
+            "title": "Launch note",
+            "source_content": "Original long-form article",
+            "goal": "improve platform fit",
+            "intensity": "balanced",
+            "target_platforms": ["wechat", "zhihu", "x", "douyin"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: status" in response.text
+    assert "event: proposal" in response.text
+    assert "wechat@growth-v1" in response.text
+    assert "zhihu@growth-v1" in response.text
+    assert "x@growth-v1" in response.text
+    assert "douyin@growth-v1" in response.text
+    assert '"status": "ready"' in response.text
+    assert fake_llm.messages is not None
+    assert "wechat@growth-v1" in fake_llm.messages[-1].content
