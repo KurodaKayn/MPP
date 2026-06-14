@@ -10,10 +10,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 	aisvc "github.com/kurodakayn/mpp-backend/internal/services/ai"
 )
 
@@ -167,6 +169,198 @@ func (h *Handler) StreamEditPrepublishWithAI(c echo.Context) error {
 		return sendAIEditError(c, err)
 	}
 	return writeAIStream(c, stream, lease)
+}
+
+func (h *Handler) StartAIDraftingSession(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	if h.aiDrafting == nil {
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", aisvc.ErrAIServiceUnavailable.Error())
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		return sendWorkspaceError(c, err)
+	}
+	if _, err := h.serviceFor(c).GetProject(projectID, &userID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		if errors.Is(err, accesspolicy.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	var req struct {
+		Message string `json:"message"`
+		Title   string `json:"title"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+	if strings.TrimSpace(req.Message) == "" {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "message is required")
+	}
+
+	lease, err := h.acquireAILease(c, userID, "drafting")
+	if err != nil {
+		if handled := streamgate.SendLimitError(c, err); handled != nil {
+			return handled
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	defer func() { _ = lease.Release(context.Background()) }()
+
+	stream := make(chan string, 32)
+	errCh := make(chan error, 1)
+	go func() {
+		defer close(stream)
+		_, runErr := h.aiDrafting.Start(c.Request().Context(), aisvc.StartDraftingSessionRequest{
+			ProjectID: projectID,
+			UserID:    userID,
+			Message:   req.Message,
+			Title:     req.Title,
+		}, stream)
+		errCh <- runErr
+	}()
+
+	if err := writeAIDraftingEventStream(c, stream, lease); err != nil {
+		return err
+	}
+	if runErr := <-errCh; runErr != nil {
+		return nil
+	}
+	return nil
+}
+
+func (h *Handler) ContinueAIDraftingSession(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	if h.aiDrafting == nil {
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", aisvc.ErrAIServiceUnavailable.Error())
+	}
+	sessionID, err := uuid.Parse(c.Param("sessionId"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid session UUID")
+	}
+	session, err := h.aiDrafting.GetSession(c.Request().Context(), sessionID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "session not found")
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	if _, err := h.serviceFor(c).GetProject(session.ProjectID, &userID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		if errors.Is(err, accesspolicy.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	var req struct {
+		Message string `json:"message"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+	if strings.TrimSpace(req.Message) == "" {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "message is required")
+	}
+
+	lease, err := h.acquireAILease(c, userID, "drafting")
+	if err != nil {
+		if handled := streamgate.SendLimitError(c, err); handled != nil {
+			return handled
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	defer func() { _ = lease.Release(context.Background()) }()
+
+	stream := make(chan string, 32)
+	errCh := make(chan error, 1)
+	go func() {
+		defer close(stream)
+		_, runErr := h.aiDrafting.Continue(c.Request().Context(), aisvc.ContinueDraftingSessionRequest{
+			SessionID: sessionID,
+			UserID:    userID,
+			Message:   req.Message,
+		}, stream)
+		errCh <- runErr
+	}()
+	if err := writeAIDraftingEventStream(c, stream, lease); err != nil {
+		return err
+	}
+	if runErr := <-errCh; runErr != nil {
+		return nil
+	}
+	return nil
+}
+
+func (h *Handler) ReplayAIDraftingSession(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	if h.aiDrafting == nil {
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", aisvc.ErrAIServiceUnavailable.Error())
+	}
+	sessionID, err := uuid.Parse(c.Param("sessionId"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid session UUID")
+	}
+	session, err := h.aiDrafting.GetSession(c.Request().Context(), sessionID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "session not found")
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	if _, err := h.serviceFor(c).GetProject(session.ProjectID, &userID); err != nil {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	replay, err := h.aiDrafting.Replay(c.Request().Context(), sessionID)
+	if err != nil {
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	return c.JSON(http.StatusOK, replay)
+}
+
+func writeAIDraftingEventStream(c echo.Context, stream <-chan string, lease *streamgate.Lease) error {
+	resp := c.Response()
+	resp.Header().Set(echo.HeaderContentType, "text/event-stream; charset=utf-8")
+	resp.Header().Set(echo.HeaderCacheControl, middleware.NoStoreCacheControl)
+	resp.Header().Set("X-Accel-Buffering", "no")
+	if lease != nil && lease.ID != "" {
+		resp.Header().Set("X-MPP-Stream-ID", lease.ID)
+	}
+	resp.WriteHeader(http.StatusOK)
+	for chunk := range stream {
+		if _, err := resp.Write([]byte(chunk)); err != nil {
+			return err
+		}
+		resp.Flush()
+	}
+	return nil
 }
 
 func (h *Handler) acquireAILease(c echo.Context, userID uuid.UUID, resource string) (*streamgate.Lease, error) {
