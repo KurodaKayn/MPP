@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"strings"
 	"time"
 
@@ -298,9 +299,7 @@ func (r *Runner) RunSession(ctx context.Context, sessionID uuid.UUID, createdByI
 
 func (r *Runner) toolsForRun(projectID uuid.UUID, createdByID uuid.UUID) map[string]Tool {
 	tools := make(map[string]Tool, len(r.tools)+1)
-	for name, tool := range r.tools {
-		tools[name] = tool
-	}
+	maps.Copy(tools, r.tools)
 	if _, exists := tools["read_project_context"]; !exists && r.assembler != nil {
 		tools["read_project_context"] = NewReadProjectContextToolForProject(r.assembler, projectID, createdByID)
 	}
