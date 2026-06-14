@@ -3,21 +3,53 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createAIGrowthOptimizationRun } from "@/lib/dashboard/api";
 import { AIGrowthOptimizationPanel } from "./ai-growth-optimization-panel";
+import zhCommon from "../../../../../../public/locales/zh/common.json";
+import zhDashboard from "../../../../../../public/locales/zh/dashboard.json";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
 }
 
+const i18nTestState = vi.hoisted(() => ({
+  calls: [] as Array<{ key: string; options?: Record<string, unknown> }>,
+  resources: undefined as Record<string, Record<string, unknown>> | undefined,
+}));
+
 vi.mock("@/lib/i18n/client", () => ({
-  useAppLocale: () => "en",
-  useTranslation: () => ({
-    t: (_key: string, options?: { defaultValue?: string }) =>
-      options?.defaultValue ?? _key,
+  useAppLocale: () => "zh",
+  useTranslation: (_locale: string, namespace: string) => ({
+    t: (key: string, options?: Record<string, unknown>) => {
+      i18nTestState.calls.push({ key, options });
+
+      let value: unknown = i18nTestState.resources?.[namespace];
+      for (const segment of key.split(".")) {
+        value =
+          value && typeof value === "object"
+            ? (value as Record<string, unknown>)[segment]
+            : undefined;
+      }
+
+      if (typeof value !== "string") {
+        return key;
+      }
+
+      return value.replace(/\{\{(\w+)\}\}/g, (_, token: string) =>
+        String(options?.[token] ?? ""),
+      );
+    },
   }),
 }));
+
+i18nTestState.resources = {
+  common: zhCommon,
+  dashboard: zhDashboard,
+};
+
+const growthCopy = zhDashboard.content.aiGrowth;
+const platformCopy = zhCommon.platforms;
 
 vi.mock("sonner", () => ({
   toast: {
@@ -57,25 +89,30 @@ function render(element: ReactElement) {
         target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       });
     },
-    select(labelText: string, value: string) {
-      const labels = Array.from(container.querySelectorAll("label"));
-      const label = labels.find((item) =>
-        item.textContent?.toLowerCase().includes(labelText.toLowerCase()),
-      );
-      const controlId = label?.getAttribute("for");
-      if (!controlId) {
-        throw new Error(`Select label not found: ${labelText}`);
-      }
-      const select = container.querySelector<HTMLSelectElement>(
-        `#${controlId}`,
-      );
-      if (!select) {
-        throw new Error(`Select control not found: ${labelText}`);
+    chooseSelect(labelText: string, value: string) {
+      const trigger = findSelectTrigger(container, labelText);
+      if (!trigger) {
+        throw new Error(`Select trigger not found: ${labelText}`);
       }
       act(() => {
-        select.value = value;
-        select.dispatchEvent(new Event("change", { bubbles: true }));
+        trigger.click();
       });
+
+      const option = Array.from(
+        document.body.querySelectorAll<HTMLElement>("[role='option']"),
+      ).find((item) => item.dataset.value === value);
+      if (!option) {
+        throw new Error(`Select option not found: ${value}`);
+      }
+      act(() => {
+        option.click();
+      });
+    },
+    nativeSelects() {
+      return container.querySelectorAll("select");
+    },
+    selectTrigger(labelText: string) {
+      return findSelectTrigger(container, labelText);
     },
     text() {
       return container.textContent ?? "";
@@ -101,7 +138,56 @@ function findButton(container: Element, name: string) {
   );
 }
 
+function findSelectTrigger(container: Element, labelText: string) {
+  const labels = Array.from(container.querySelectorAll("label"));
+  const label = labels.find((item) =>
+    item.textContent?.toLowerCase().includes(labelText.toLowerCase()),
+  );
+  const controlId = label?.getAttribute("for");
+  if (!controlId) {
+    return null;
+  }
+  return container.querySelector<HTMLButtonElement>(`#${controlId}`);
+}
+
 describe("AI growth optimization panel", () => {
+  beforeEach(() => {
+    i18nTestState.calls = [];
+  });
+
+  it("reads panel copy from locale resources without English fallbacks", () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const view = render(
+      <AIGrowthOptimizationPanel
+        canEdit
+        content={{
+          firstImageSrc: "",
+          html: "",
+          text: "Original body",
+        }}
+        projectId="project-1"
+        selectedPlatforms={["wechat"]}
+        title="Original title"
+      />,
+    );
+
+    expect(view.text()).toContain(growthCopy.title);
+    expect(view.text()).toContain(growthCopy.description);
+    expect(view.text()).toContain(growthCopy.goal);
+    expect(view.nativeSelects()).toHaveLength(0);
+    expect(view.selectTrigger(growthCopy.goal)).not.toBeNull();
+    expect(view.selectTrigger(growthCopy.intensity)).not.toBeNull();
+    expect(i18nTestState.calls).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          options: expect.objectContaining({ defaultValue: expect.anything() }),
+        }),
+      ]),
+    );
+
+    view.unmount();
+  });
+
   it("runs a mock optimization and supports per-platform decisions", async () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const view = render(
@@ -118,29 +204,37 @@ describe("AI growth optimization panel", () => {
       />,
     );
 
-    view.select("Goal", "views");
-    view.select("Intensity", "aggressive");
-    view.click(view.button("AI Optimize"));
+    view.chooseSelect(growthCopy.goal, "views");
+    view.chooseSelect(growthCopy.intensity, "aggressive");
+    view.click(view.button(growthCopy.optimize));
 
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(view.text()).toContain("Optimization ready");
+    expect(view.text()).toContain(growthCopy.optimizationReady);
     expect(view.text()).toContain("Original body");
     expect(view.text()).toContain("Optimized body");
 
-    view.click(view.button("Apply WeChat"));
+    view.click(
+      view.button(
+        growthCopy.applyLabel.replace("{{label}}", platformCopy.wechat),
+      ),
+    );
     await act(async () => {
       await Promise.resolve();
     });
-    expect(view.text()).toContain("Applied");
+    expect(view.text()).toContain(growthCopy.status.accepted);
 
-    view.click(view.button("Reject Zhihu"));
+    view.click(
+      view.button(
+        growthCopy.rejectLabel.replace("{{label}}", platformCopy.zhihu),
+      ),
+    );
     await act(async () => {
       await Promise.resolve();
     });
-    expect(view.text()).toContain("Rejected");
+    expect(view.text()).toContain(growthCopy.status.rejected);
 
     view.unmount();
   });
@@ -178,16 +272,20 @@ describe("AI growth optimization panel", () => {
       />,
     );
 
-    view.click(view.button("AI Optimize"));
+    view.click(view.button(growthCopy.optimize));
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(view.button("Apply WeChat").disabled).toBe(false);
+    const applyWechat = growthCopy.applyLabel.replace(
+      "{{label}}",
+      platformCopy.wechat,
+    );
+    expect(view.button(applyWechat).disabled).toBe(false);
 
-    view.click(view.button("AI Optimize"));
+    view.click(view.button(growthCopy.optimize));
 
-    const staleApplyButton = view.maybeButton("Apply WeChat");
+    const staleApplyButton = view.maybeButton(applyWechat);
     expect(staleApplyButton?.disabled ?? true).toBe(true);
 
     await act(async () => {

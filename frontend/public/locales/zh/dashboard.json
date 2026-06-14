@@ -503,6 +503,54 @@
         "sessionResumed": "会话已恢复"
       }
     },
+    "aiGrowth": {
+      "title": "AI 优化",
+      "description": "在后端优化能力接入前，先预览面向增长目标的正文和平台提案。",
+      "goal": "目标",
+      "intensity": "强度",
+      "optimize": "AI 优化",
+      "optimizeFailed": "无法创建优化预览。",
+      "applySuccess": "优化提案已采纳。",
+      "rejectSuccess": "优化提案已放弃。",
+      "applyFailed": "无法更新优化提案。",
+      "saveFirst": "请先保存项目，再运行 AI 优化。",
+      "emptyContent": "请先添加正文内容，再运行 AI 优化。",
+      "emptyState": "选择目标和强度后，生成本地优化预览。",
+      "optimizationReady": "优化已就绪",
+      "runSummary": "本地优化预览已准备好供审阅。",
+      "sourceProposal": "正文提案",
+      "source": "正文",
+      "platformProposals": "平台提案",
+      "platformProposalsDesc": "可分别采纳或放弃每个平台的提案。",
+      "preview": "预览",
+      "applyLabel": "采纳 {{label}}",
+      "rejectLabel": "放弃 {{label}}",
+      "goals": {
+        "recommendation": "推荐",
+        "views": "阅读 / 浏览",
+        "ctr": "点击率",
+        "completion": "完读率",
+        "engagement": "互动",
+        "conversion": "转化"
+      },
+      "intensities": {
+        "conservative": "保守",
+        "balanced": "均衡",
+        "aggressive": "积极"
+      },
+      "status": {
+        "accepted": "已采纳",
+        "applying": "正在应用",
+        "cancelled": "已取消",
+        "failed": "失败",
+        "idle": "空闲",
+        "proposed": "待决策",
+        "ready": "就绪",
+        "rejected": "已放弃",
+        "running": "运行中",
+        "superseded": "已被替换"
+      }
+    },
     "header": {
       "titleCreate": "内容创作",
       "titleEdit": "编辑内容",

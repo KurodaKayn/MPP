@@ -503,6 +503,54 @@
         "sessionResumed": "Session resumed"
       }
     },
+    "aiGrowth": {
+      "title": "AI Optimize",
+      "description": "Preview growth-focused source and platform proposals before backend optimization is connected.",
+      "goal": "Goal",
+      "intensity": "Intensity",
+      "optimize": "AI Optimize",
+      "optimizeFailed": "Could not create optimization preview.",
+      "applySuccess": "Optimization proposal applied.",
+      "rejectSuccess": "Optimization proposal rejected.",
+      "applyFailed": "Could not update optimization proposal.",
+      "saveFirst": "Save the project before running AI optimization.",
+      "emptyContent": "Add source content before running AI optimization.",
+      "emptyState": "Choose a goal and intensity, then generate a local optimization preview.",
+      "optimizationReady": "Optimization ready",
+      "runSummary": "Local optimization preview is ready for review.",
+      "sourceProposal": "Source proposal",
+      "source": "Source",
+      "platformProposals": "Platform proposals",
+      "platformProposalsDesc": "Apply or reject each platform independently.",
+      "preview": "Preview",
+      "applyLabel": "Apply {{label}}",
+      "rejectLabel": "Reject {{label}}",
+      "goals": {
+        "recommendation": "Recommendations",
+        "views": "Reads / views",
+        "ctr": "CTR",
+        "completion": "Completion",
+        "engagement": "Engagement",
+        "conversion": "Conversion"
+      },
+      "intensities": {
+        "conservative": "Conservative",
+        "balanced": "Balanced",
+        "aggressive": "Aggressive"
+      },
+      "status": {
+        "accepted": "Applied",
+        "applying": "Applying",
+        "cancelled": "Cancelled",
+        "failed": "Failed",
+        "idle": "Idle",
+        "proposed": "Proposed",
+        "ready": "Ready",
+        "rejected": "Rejected",
+        "running": "Running",
+        "superseded": "Superseded"
+      }
+    },
     "header": {
       "titleCreate": "Content Creation",
       "titleEdit": "Edit Content",
