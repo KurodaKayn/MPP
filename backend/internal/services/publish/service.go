@@ -16,6 +16,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
@@ -35,6 +36,7 @@ var sensitiveErrorQueryParamPattern = regexp.MustCompile(`(?i)(secret|access_tok
 
 type Service struct {
 	db                    *gorm.DB
+	router                *dbrouter.Router
 	accounts              *platformaccount.Service
 	queue                 PublishQueue
 	publishJobObserver    PublishJobObserver
@@ -66,11 +68,19 @@ const (
 )
 
 func NewService(db *gorm.DB, accounts *platformaccount.Service) *Service {
+	return NewServiceWithRouter(db, accounts, nil)
+}
+
+func NewServiceWithRouter(db *gorm.DB, accounts *platformaccount.Service, router *dbrouter.Router) *Service {
+	if router == nil {
+		router = dbrouter.NewRouter(db)
+	}
 	if accounts == nil {
-		accounts = platformaccount.NewService(db)
+		accounts = platformaccount.NewServiceWithRouter(db, router)
 	}
 	return &Service{
 		db:       db,
+		router:   router,
 		accounts: accounts,
 	}
 }
@@ -88,6 +98,40 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 		scoped.browserSessionService = s.browserSessionService.WithContext(ctx)
 	}
 	return &scoped
+}
+
+func (s *Service) requestContext() context.Context {
+	if s.db != nil && s.db.Statement != nil && s.db.Statement.Context != nil {
+		return s.db.Statement.Context
+	}
+	return context.Background()
+}
+
+func (s *Service) writerDB(ctx context.Context) *gorm.DB {
+	if ctx == nil {
+		ctx = s.requestContext()
+	}
+	if s.router == nil {
+		return publishDBWithContext(s.db, ctx)
+	}
+	return s.router.Writer(ctx)
+}
+
+func (s *Service) strongReadDB(ctx context.Context) *gorm.DB {
+	if ctx == nil {
+		ctx = s.requestContext()
+	}
+	if s.router == nil {
+		return publishDBWithContext(s.db, ctx)
+	}
+	return s.router.Reader(ctx, dbrouter.StrongRead)
+}
+
+func publishDBWithContext(database *gorm.DB, ctx context.Context) *gorm.DB {
+	if database == nil || ctx == nil {
+		return database
+	}
+	return database.WithContext(ctx)
 }
 
 func (s *Service) SetQueue(queue PublishQueue) {
@@ -203,7 +247,7 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 	}
 
 	var pub models.ProjectPlatformPublication
-	if err := s.db.Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
+	if err := s.strongReadDB(ctx).Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
 		return PublishResponse{}, fmt.Errorf("publication record not found for platform: %s", platform)
 	}
 	if !pub.Enabled || pub.Status == models.PublicationStatusCancelled {
@@ -247,7 +291,7 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 
 	var account models.PlatformAccount
 	if pub.PlatformAccountID != nil && *pub.PlatformAccountID != uuid.Nil {
-		if err := s.db.Where("id = ?", *pub.PlatformAccountID).First(&account).Error; err != nil {
+		if err := s.strongReadDB(ctx).Where("id = ?", *pub.PlatformAccountID).First(&account).Error; err != nil {
 			return PublishResponse{}, err
 		}
 	}
@@ -330,15 +374,16 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 }
 
 func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID) (PublishResponse, error) {
+	ctx := context.Background()
 	if scopeUserID == nil {
 		return PublishResponse{}, ErrForbidden
 	}
-	if _, err := s.projectForPublish(context.Background(), projectID, *scopeUserID); err != nil {
+	if _, err := s.projectForPublish(ctx, projectID, *scopeUserID); err != nil {
 		return PublishResponse{}, err
 	}
 
 	var pub models.ProjectPlatformPublication
-	if err := s.db.Where("project_id = ? AND platform = ?", projectID, "x").First(&pub).Error; err != nil {
+	if err := s.strongReadDB(ctx).Where("project_id = ? AND platform = ?", projectID, "x").First(&pub).Error; err != nil {
 		return PublishResponse{}, fmt.Errorf("publication record not found for platform: x")
 	}
 	if !pub.Enabled || pub.Status == models.PublicationStatusCancelled {
@@ -353,14 +398,14 @@ func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID)
 		return PublishResponse{}, err
 	}
 
-	if err := s.db.Model(&pub).Updates(map[string]any{
+	if err := s.writerDB(ctx).Model(&pub).Updates(map[string]any{
 		"publish_url":   publishURL,
 		"error_message": "",
 	}).Error; err != nil {
 		return PublishResponse{}, err
 	}
-	s.invalidateDashboardProjectListCache(context.Background())
-	s.refreshProjectReadModel(context.Background(), projectID)
+	s.invalidateDashboardProjectListCache(ctx)
+	s.refreshProjectReadModel(ctx, projectID)
 
 	return PublishResponse{
 		Status:     "manual_required",
@@ -388,7 +433,7 @@ func (s *Service) recordPublishEvent(event models.PublishEvent) error {
 	if event.Status == "" {
 		event.Status = models.PublicationStatusDraft
 	}
-	return s.db.Create(&event).Error
+	return s.writerDB(s.requestContext()).Create(&event).Error
 }
 
 func (s *Service) recordProjectPublishActivity(projectID uuid.UUID, userID uuid.UUID, eventType string, metadata map[string]any) error {
@@ -403,7 +448,7 @@ func (s *Service) recordProjectPublishActivity(projectID uuid.UUID, userID uuid.
 		}
 		payload = datatypes.JSON(encoded)
 	}
-	return s.db.Create(&models.ProjectActivity{
+	return s.writerDB(s.requestContext()).Create(&models.ProjectActivity{
 		ProjectID:   projectID,
 		ActorUserID: userID,
 		EventType:   eventType,
@@ -415,12 +460,13 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 	if strings.TrimSpace(key) == "" {
 		return PublishResponse{}, false, nil
 	}
-	if !s.db.Migrator().HasTable(&models.PublishEvent{}) {
+	db := s.writerDB(s.requestContext())
+	if !db.Migrator().HasTable(&models.PublishEvent{}) {
 		return PublishResponse{}, false, nil
 	}
 
 	var queued models.PublishEvent
-	err := s.db.
+	err := db.
 		Where("project_id = ? AND platform = ? AND user_id = ? AND idempotency_key = ? AND event_type = ?", projectID, platform, userID, key, "queued").
 		Order("created_at DESC").
 		First(&queued).Error
@@ -433,7 +479,7 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 
 	event := queued
 	var events []models.PublishEvent
-	err = s.db.
+	err = db.
 		Where("project_id = ? AND platform = ? AND user_id = ? AND job_id = ?", projectID, platform, userID, queued.JobID).
 		Order("created_at ASC").
 		Find(&events).Error
@@ -512,7 +558,7 @@ func (s *Service) applySavedBrowserCookies(ctx context.Context, userID uuid.UUID
 		return nil
 	}
 
-	cookies, err := publisher.NewCookieStore(s.db).LoadForAccount(ctx, userID, account.ID, platform)
+	cookies, err := publisher.NewCookieStore(s.strongReadDB(ctx)).LoadForAccount(ctx, userID, account.ID, platform)
 	if err != nil {
 		return fmt.Errorf("%w: %s cookies are unavailable: %w", platformaccount.ErrInvalidPlatformAccount, platform, err)
 	}

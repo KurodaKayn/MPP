@@ -5,7 +5,7 @@ module KubernetesValidation
     module_function
 
     def validate_managed(context)
-      [["postgres", 5432], ["redis", 6379]].each do |name, port|
+      [["postgres", 5432], ["postgres-reader", 5432], ["redis", 6379]].each do |name, port|
         service = context.require_document("Service", name, "mpp-system")
         next unless service
 
@@ -19,12 +19,14 @@ module KubernetesValidation
     end
 
     def validate_self_hosted(context)
-      [["postgres", 5432], ["redis", 6379]].each do |name, port|
+      [["postgres", 5432], ["postgres-reader", 5432], ["redis", 6379]].each do |name, port|
         service = context.require_document("Service", name, "mpp-system")
         if service
           service_port = Array(service.spec["ports"]).find { |entry| entry["port"] == port }
           context.add_error("self-hosted #{name} Service must expose port #{port}") unless service_port
         end
+
+        next if name == "postgres-reader"
 
         stateful_set = context.require_document("StatefulSet", name, "mpp-system")
         next unless stateful_set
@@ -45,8 +47,12 @@ module KubernetesValidation
         end
       end
 
+      validate_self_hosted_read_replica(context)
       validate_self_hosted_backups(context)
-      validate_self_hosted_network_policy(context, "postgres", 5432, ["backend", "publish-worker", "collab-service", "pgbouncer", "postgres-backup"])
+      validate_self_hosted_network_policy(context, "postgres", 5432, ["backend", "publish-worker", "collab-service", "pgbouncer", "postgres-reader", "postgres-backup"])
+      validate_self_hosted_network_policy(context, "postgres-reader", 5432, ["pgbouncer-reader"])
+      validate_self_hosted_network_policy(context, "pgbouncer", 5432, ["backend", "publish-worker", "collab-service"])
+      validate_self_hosted_network_policy(context, "pgbouncer-reader", 5432, ["backend", "publish-worker", "collab-service"])
       validate_self_hosted_network_policy(context, "redis", 6379, ["backend", "publish-worker", "browser-worker", "collab-service", "redis-backup"])
     end
 
@@ -63,6 +69,48 @@ module KubernetesValidation
       ["cpu", "memory"].each do |resource|
         context.add_error("#{label} must define #{resource} requests") unless requests.key?(resource)
         context.add_error("#{label} must define #{resource} limits") unless limits.key?(resource)
+      end
+    end
+
+    def validate_self_hosted_read_replica(context)
+      stateful_set = context.require_document("StatefulSet", "postgres-read-replica", "mpp-system")
+      return unless stateful_set
+
+      unless stateful_set.spec["serviceName"] == "postgres-reader"
+        context.add_error("self-hosted postgres-read-replica StatefulSet must use postgres-reader service")
+      end
+
+      selector_component = stateful_set.spec.dig("selector", "matchLabels", "app.kubernetes.io/component")
+      pod_component = stateful_set.spec.dig("template", "metadata", "labels", "app.kubernetes.io/component")
+      unless selector_component == "postgres-reader" && pod_component == "postgres-reader"
+        context.add_error("self-hosted postgres-read-replica StatefulSet must select postgres-reader Pods")
+      end
+
+      pod_spec = stateful_set.pod_spec
+      pod_security = pod_spec["securityContext"] || {}
+      context.add_error("self-hosted postgres-read-replica StatefulSet must not mount service account tokens") unless pod_spec["automountServiceAccountToken"] == false
+      context.add_error("self-hosted postgres-read-replica StatefulSet must run as non-root") unless pod_security["runAsNonRoot"] == true
+      unless pod_security["fsGroupChangePolicy"] == "OnRootMismatch"
+        context.add_error("self-hosted postgres-read-replica StatefulSet must use OnRootMismatch fsGroup changes")
+      end
+      unless Array(stateful_set.spec["volumeClaimTemplates"]).any?
+        context.add_error("self-hosted postgres-read-replica StatefulSet must define persistent storage")
+      end
+
+      stateful_set.containers.each do |container|
+        validate_container(context, container, "self-hosted postgres-read-replica container #{container['name']}")
+      end
+
+      init_container = Array(pod_spec["initContainers"]).find { |container| container["name"] == "clone-primary" }
+      unless init_container
+        context.add_error("self-hosted postgres-read-replica StatefulSet must clone primary before startup")
+        return
+      end
+
+      validate_resources(context, init_container, "self-hosted postgres-read-replica init container clone-primary")
+      command_text = Array(init_container["command"]).join("\n")
+      unless command_text.include?("pg_basebackup")
+        context.add_error("self-hosted postgres-read-replica init container must use pg_basebackup")
       end
     end
 

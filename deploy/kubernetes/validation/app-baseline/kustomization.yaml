@@ -31,6 +31,7 @@ configMapGenerator:
     literals:
       - DB_HOST=postgres.example.invalid
       - DB_SSLMODE=verify-full
+      - DB_READER_HOST=postgres-reader.example.invalid
       - REDIS_ADDR=redis:6379
       - COLLAB_WEBSOCKET_URL_BASE=wss://mpp.example.invalid
       - LLM_PROVIDER_URL=https://llm.example.invalid/v1

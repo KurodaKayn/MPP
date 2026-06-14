@@ -35,7 +35,7 @@ func NewPublicationLifecycle(db *gorm.DB) PublicationLifecycle {
 }
 
 func (s *Service) lifecycle() PublicationLifecycle {
-	return NewPublicationLifecycle(s.db)
+	return NewPublicationLifecycle(s.writerDB(s.requestContext()))
 }
 
 func (l PublicationLifecycle) MarkQueued(pub *models.ProjectPlatformPublication, queuedAt time.Time) error {

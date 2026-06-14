@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
@@ -144,6 +145,51 @@ func TestResolveMediaObjectRefPresignsReadyAsset(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "fake://get/mpp-media/"+finalKey, resp.URL)
 	require.WithinDuration(t, time.Now().Add(5*time.Minute), resp.ExpiresAt, 2*time.Second)
+}
+
+func TestResolveMediaObjectRefUsesReader(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	require.NoError(t, writer.AutoMigrate(&models.MediaAsset{}))
+	require.NoError(t, reader.AutoMigrate(&models.MediaAsset{}))
+
+	router := dbrouter.NewRouter(writer, dbrouter.WithReader(reader))
+	storage := fake.NewClient()
+	service := mediaasset.NewServiceWithRouter(writer, projectsvc.NewServiceWithRouter(writer, router), router)
+	service.UseObjectStorage(storage, objectstorage.Config{
+		Enabled:        true,
+		Provider:       objectstorage.ProviderR2,
+		Bucket:         "mpp-media",
+		UploadURLTTL:   10 * time.Minute,
+		DownloadURLTTL: 5 * time.Minute,
+	})
+
+	assetID := uuid.New()
+	asset := models.MediaAsset{
+		ID:               assetID,
+		UserID:           uuid.New(),
+		Bucket:           "mpp-media",
+		ObjectKey:        "assets/reader-only.png",
+		OriginalFilename: "reader-only.png",
+		MimeType:         "image/png",
+		SizeBytes:        11,
+		Usage:            models.MediaAssetUsageEditorImage,
+		Status:           models.MediaAssetStatusReady,
+	}
+	require.NoError(t, reader.Create(&asset).Error)
+	storage.StoreObject(asset.ObjectKey, []byte("image-bytes"), objectstorage.ObjectInfo{
+		Key:         asset.ObjectKey,
+		ContentType: "image/png",
+		Size:        11,
+		ETag:        "reader-etag",
+	})
+
+	resp, err := service.ResolveMediaObjectRef(dto.ResolveMediaObjectRefRequest{
+		ObjectRef: "mpp://media/" + assetID.String(),
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "fake://get/mpp-media/"+asset.ObjectKey, resp.URL)
 }
 
 func TestCompleteMediaUploadPromotesStagingObjectToFinalKey(t *testing.T) {

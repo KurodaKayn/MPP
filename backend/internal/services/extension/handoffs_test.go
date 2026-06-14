@@ -11,6 +11,7 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services"
@@ -164,6 +165,37 @@ func TestListExtensionPrepublishReturnsXDrafts(t *testing.T) {
 	assert.Equal(t, "POST_X", platform.AdapterKey)
 	assert.Equal(t, "dynamic_post", platform.ContentKind)
 	assert.Equal(t, "x draft", platform.Preview)
+}
+
+func TestListExtensionPrepublishUsesReader(t *testing.T) {
+	writer := testsupport.SetupTestDB()
+	reader := testsupport.SetupTestDB()
+	s := services.NewDashboardServiceWithRouter(writer, dbrouter.NewRouter(writer, dbrouter.WithReader(reader)))
+	user := models.User{Username: "reader-owner", Email: "reader-owner@example.com"}
+	require.NoError(t, reader.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Reader draft",
+		SourceContent: "source",
+		Status:        models.ProjectStatusReady,
+		UpdatedAt:     time.Date(2026, 6, 5, 10, 0, 0, 0, time.UTC),
+	}
+	require.NoError(t, reader.Create(&project).Error)
+	require.NoError(t, reader.Model(&project).UpdateColumn("updated_at", project.UpdatedAt).Error)
+	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "douyin",
+		Enabled:        true,
+		Status:         models.PublicationStatusAdapted,
+		AdaptedContent: datatypes.JSON(`{"format":"text","text":"reader draft"}`),
+	}).Error)
+
+	resp, err := s.ListExtensionPrepublish(user.ID)
+
+	require.NoError(t, err)
+	require.Len(t, resp.Items, 1)
+	assert.Equal(t, project.ID, resp.Items[0].ProjectID)
+	assert.Equal(t, "reader draft", resp.Items[0].Platforms[0].Preview)
 }
 
 func TestCreateExtensionHandoffReturnsDouyinArticleHandoff(t *testing.T) {

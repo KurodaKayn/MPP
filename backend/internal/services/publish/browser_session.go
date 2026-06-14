@@ -31,7 +31,7 @@ func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.
 		return nil, err
 	}
 	var pub models.ProjectPlatformPublication
-	if err := s.db.WithContext(ctx).Where("project_id = ? AND platform = ?", projectID, "douyin").First(&pub).Error; err != nil {
+	if err := s.strongReadDB(ctx).Where("project_id = ? AND platform = ?", projectID, "douyin").First(&pub).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrPublicationRequiresSync
 		}
@@ -81,7 +81,7 @@ func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.
 	}
 
 	var browserSession models.RemoteBrowserSession
-	if err := s.db.WithContext(ctx).Where("id = ? AND user_id = ?", resp.SessionID, userID).First(&browserSession).Error; err != nil {
+	if err := s.strongReadDB(ctx).Where("id = ? AND user_id = ?", resp.SessionID, userID).First(&browserSession).Error; err != nil {
 		return nil, err
 	}
 
@@ -94,7 +94,7 @@ func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.
 
 func (s *Service) cancelActiveDouyinBrowserSessions(ctx context.Context, userID uuid.UUID) error {
 	var sessions []models.RemoteBrowserSession
-	if err := s.db.WithContext(ctx).
+	if err := s.writerDB(ctx).
 		Where("user_id = ? AND platform = ? AND status IN ?", userID, "douyin", []string{
 			models.BrowserSessionStatusPending,
 			models.BrowserSessionStatusReady,

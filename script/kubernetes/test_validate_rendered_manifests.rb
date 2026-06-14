@@ -29,6 +29,17 @@ class ValidateRenderedManifestsTest < Minitest::Test
     end
   end
 
+  def test_staging_self_hosted_overlay_validates_for_local_render
+    overlay = "deploy/kubernetes/overlays/staging-self-hosted"
+    rendered = render_overlay(overlay)
+
+    _stdout, stderr, status = run_validator(overlay, rendered.path)
+
+    assert status.success?, "staging self-hosted validation failed: #{stderr}"
+  ensure
+    rendered&.unlink
+  end
+
   def test_production_managed_overlay_uses_external_secret_contract
     rendered = render_overlay(PRODUCTION_MANAGED_OVERLAY)
     documents = parse_documents(File.read(rendered.path))

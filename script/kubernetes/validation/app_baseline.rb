@@ -38,6 +38,9 @@ module KubernetesValidation
       "COLLAB_WEBSOCKET_URL_BASE",
       "DB_HOST",
       "DB_SSLMODE",
+      "DB_READER_HOST",
+      "DB_READER_MAX_REPLICA_LAG",
+      "DB_READER_LAG_CHECK_INTERVAL",
       "REDIS_ADDR",
       "REDIS_TLS",
       "OBJECT_STORAGE_PROVIDER",
@@ -90,7 +93,9 @@ module KubernetesValidation
 
     SELF_HOSTED_DATA_NETWORK_POLICIES = [
       "postgres-app-access",
+      "postgres-reader-app-access",
       "pgbouncer-app-access",
+      "pgbouncer-reader-app-access",
       "redis-app-access",
     ].freeze
 
@@ -120,6 +125,7 @@ module KubernetesValidation
         {
           "DB_HOST" => "postgres.example.invalid",
           "DB_SSLMODE" => "verify-full",
+          "DB_READER_HOST" => "postgres-reader.example.invalid",
           "REDIS_ADDR" => "redis:6379",
           "COLLAB_WEBSOCKET_URL_BASE" => "wss://mpp.example.invalid",
           "LLM_PROVIDER_URL" => "https://llm.example.invalid/v1",

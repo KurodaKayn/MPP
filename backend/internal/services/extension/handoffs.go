@@ -28,7 +28,7 @@ var extensionPlatformKeys = platformcapabilities.ExtensionHandoffPlatformKeys
 
 func (s *Service) GetExtensionSession(userID uuid.UUID) (*dto.ExtensionSessionResponse, error) {
 	var user models.User
-	if err := s.db.Select("id", "username").First(&user, "id = ?", userID).Error; err != nil {
+	if err := s.strongReadDB().Select("id", "username").First(&user, "id = ?", userID).Error; err != nil {
 		return nil, err
 	}
 
@@ -43,7 +43,7 @@ func (s *Service) GetExtensionSession(userID uuid.UUID) (*dto.ExtensionSessionRe
 
 func (s *Service) ListExtensionPrepublish(userID uuid.UUID) (*dto.ExtensionPrepublishResponse, error) {
 	var projects []models.Project
-	if err := s.db.
+	if err := s.eventualReadDB().
 		Distinct("projects.*").
 		Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id AND ppp.platform IN ?", extensionPlatformKeys).
 		Where("projects.user_id = ?", userID).
@@ -118,7 +118,7 @@ func (s *Service) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensi
 	}
 
 	var project models.Project
-	if err := s.db.Select("id", "user_id", "title").First(&project, "id = ?", req.ProjectID).Error; err != nil {
+	if err := s.strongReadDB().Select("id", "user_id", "title").First(&project, "id = ?", req.ProjectID).Error; err != nil {
 		return nil, err
 	}
 	if project.UserID != userID {
@@ -128,7 +128,7 @@ func (s *Service) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensi
 	executionID := uuid.NewString()
 	expiresAt := time.Now().UTC().Add(extensionHandoffTTL)
 	handoffPlatforms := make([]dto.ExtensionHandoffPlatform, 0, len(platforms))
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.writerDB().Transaction(func(tx *gorm.DB) error {
 		for _, platform := range platforms {
 			config, _ := platformcapabilities.ExtensionHandoffConfigFor(platform)
 			var publication models.ProjectPlatformPublication
@@ -199,7 +199,7 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 	}
 
 	var token models.ExtensionCallbackToken
-	if err := s.db.First(&token, "token = ?", tokenValue).Error; err != nil {
+	if err := s.writerDB().First(&token, "token = ?", tokenValue).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrExtensionCallbackTokenInvalid
 		}
@@ -213,7 +213,7 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 	}
 
 	var existing models.ExtensionExecutionEvent
-	if err := s.db.First(&existing, "event_id = ?", eventID).Error; err == nil {
+	if err := s.writerDB().First(&existing, "event_id = ?", eventID).Error; err == nil {
 		return &dto.ExtensionEventCallbackResponse{Accepted: true, Duplicate: true}, nil
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -242,7 +242,7 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 		ErrorMessage:    strings.TrimSpace(req.ErrorMessage),
 		Metadata:        metadata,
 	}
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.writerDB().Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&event).Error; err != nil {
 			return err
 		}

@@ -33,6 +33,15 @@ patches:
   - target:
       version: v1
       kind: Service
+      name: postgres-reader
+      namespace: mpp-system
+    patch: |-
+      - op: replace
+        path: /spec/externalName
+        value: postgres-reader.production.db.example.invalid
+  - target:
+      version: v1
+      kind: Service
       name: redis
       namespace: mpp-system
     patch: |-
@@ -64,6 +73,7 @@ configMapGenerator:
       - APP_ENV=production
       - DB_HOST=postgres.production.db.example.invalid
       - DB_SSLMODE=verify-full
+      - DB_READER_HOST=postgres-reader.production.db.example.invalid
       - REDIS_ADDR=redis.production.cache.example.invalid:6379
       - REDIS_TLS=true
       - COLLAB_WEBSOCKET_URL_BASE=wss://mpp.example.invalid

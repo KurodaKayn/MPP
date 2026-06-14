@@ -10,9 +10,5 @@ import (
 )
 
 func (s *Service) projectForPublish(ctx context.Context, projectID uuid.UUID, userID uuid.UUID) (models.Project, error) {
-	db := s.db
-	if ctx != nil {
-		db = db.WithContext(ctx)
-	}
-	return accesspolicy.ProjectForPublishWithDB(db, projectID, userID)
+	return accesspolicy.ProjectForPublishWithDB(s.strongReadDB(ctx), projectID, userID)
 }

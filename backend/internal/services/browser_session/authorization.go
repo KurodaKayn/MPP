@@ -26,7 +26,7 @@ func (s *BrowserSessionService) authorizeSessionTarget(ctx context.Context, user
 }
 
 func (s *BrowserSessionService) authorizeSessionAccount(ctx context.Context, userID uuid.UUID, workspaceID uuid.UUID, accountID uuid.UUID, platform string) (uuid.UUID, error) {
-	db := s.dbWithContext(ctx)
+	db := s.strongReadDB(ctx)
 	var account models.PlatformAccount
 	err := db.
 		Where("id = ? AND workspace_id = ? AND platform = ?", accountID, workspaceID, platform).
@@ -51,7 +51,7 @@ func (s *BrowserSessionService) authorizeSessionAccount(ctx context.Context, use
 }
 
 func (s *BrowserSessionService) requireWorkspaceAccountConnect(ctx context.Context, userID uuid.UUID, workspaceID uuid.UUID) error {
-	if err := accesspolicy.RequireWorkspaceAccountConnectWithDB(s.dbWithContext(ctx), workspaceID, userID); err != nil {
+	if err := accesspolicy.RequireWorkspaceAccountConnectWithDB(s.strongReadDB(ctx), workspaceID, userID); err != nil {
 		if errors.Is(err, accesspolicy.ErrForbidden) || errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrPlatformAccountForbidden
 		}

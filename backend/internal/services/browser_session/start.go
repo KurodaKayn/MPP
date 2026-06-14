@@ -113,7 +113,7 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 		session.PlatformAccountID = &accountID
 	}
 
-	if err := s.db.Create(session).Error; err != nil {
+	if err := s.writerDB(ctx).Create(session).Error; err != nil {
 		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, "")
 		if isActiveSessionUniquenessError(err) {
 			return nil, ErrActiveSessionExists
@@ -130,7 +130,7 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 		ExpiresAt: expiresAt,
 	}); err != nil {
 		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, "")
-		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
+		_ = s.writerDB(ctx).Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}
 
@@ -147,7 +147,7 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 	if s.cookieStore != nil {
 		cookies, err := s.cookieStore.LoadForAccount(ctx, userID, accountID, platform)
 		if err != nil && !errors.Is(err, publisher.ErrCookieNotFound) && !errors.Is(err, publisher.ErrCookieValidationFailed) {
-			_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed)
+			_ = s.writerDB(ctx).Model(session).Update("status", models.BrowserSessionStatusFailed)
 			_ = s.cleanupRedisSession(ctx, userID, platform, sessionID, "")
 			return nil, err
 		}
@@ -159,7 +159,7 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 	resp, err := s.workerClient.CreateSession(ctx, req)
 	if err != nil {
 		// Update status to failed
-		s.db.Model(session).Update("status", models.BrowserSessionStatusFailed)
+		s.writerDB(ctx).Model(session).Update("status", models.BrowserSessionStatusFailed)
 		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, "")
 		if errors.Is(err, publisher.ErrBrowserWorkerPoolExhausted) {
 			return nil, ErrWorkerPoolExhausted
@@ -168,7 +168,7 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 	}
 
 	// 5. Update session with worker info
-	err = s.db.Model(session).Updates(map[string]any{
+	err = s.writerDB(ctx).Model(session).Updates(map[string]any{
 		"status":              models.BrowserSessionStatusReady,
 		"worker_session_ref":  resp.WorkerSessionRef,
 		"container_id":        resp.ContainerID,
@@ -201,7 +201,7 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 	}); err != nil {
 		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
 		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, resp.WorkerSessionRef)
-		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
+		_ = s.writerDB(ctx).Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}
 
@@ -209,13 +209,13 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 	if err != nil {
 		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
 		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, resp.WorkerSessionRef)
-		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
+		_ = s.writerDB(ctx).Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}
-	if err := s.db.Model(session).Update("connect_token_expires_at", tokenExpiresAt).Error; err != nil {
+	if err := s.writerDB(ctx).Model(session).Update("connect_token_expires_at", tokenExpiresAt).Error; err != nil {
 		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
 		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, resp.WorkerSessionRef)
-		_ = s.db.Model(session).Update("status", models.BrowserSessionStatusFailed).Error
+		_ = s.writerDB(ctx).Model(session).Update("status", models.BrowserSessionStatusFailed).Error
 		return nil, err
 	}
 	session.ConnectTokenExpiresAt = tokenExpiresAt

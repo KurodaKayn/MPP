@@ -32,6 +32,9 @@ data:
   DB_NAME: poster_db
   DB_SSLMODE: verify-full
   DB_SSLROOTCERT: ""
+  DB_READER_HOST: replace-with-postgres-reader-host.example.invalid
+  DB_READER_MAX_REPLICA_LAG: 2s
+  DB_READER_LAG_CHECK_INTERVAL: 5s
   DB_MAX_OPEN_CONNS: "10"
   DB_MAX_IDLE_CONNS: "5"
   DB_CONN_MAX_LIFETIME: 30m

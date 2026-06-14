@@ -10,6 +10,10 @@ metadata:
 data:
   001_enable_pg_stat_statements.sql: |
     CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+  pg_hba.conf: |
+    local all all trust
+    host all all all scram-sha-256
+    host replication all all scram-sha-256
 ---
 apiVersion: v1
 kind: Service
@@ -70,6 +74,14 @@ spec:
             - shared_preload_libraries=pg_stat_statements
             - -c
             - pg_stat_statements.track=all
+            - -c
+            - wal_level=replica
+            - -c
+            - max_wal_senders=10
+            - -c
+            - max_replication_slots=10
+            - -c
+            - hba_file=/etc/postgresql/pg_hba.conf
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -121,6 +133,10 @@ spec:
             - name: postgres-initdb
               mountPath: /docker-entrypoint-initdb.d
               readOnly: true
+            - name: postgres-initdb
+              mountPath: /etc/postgresql/pg_hba.conf
+              subPath: pg_hba.conf
+              readOnly: true
       volumes:
         - name: postgres-initdb
           configMap:
@@ -131,6 +147,189 @@ spec:
         labels:
           app.kubernetes.io/name: mpp
           app.kubernetes.io/component: postgres
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-reader
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: postgres-reader
+    app.kubernetes.io/part-of: mpp
+spec:
+  selector:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: postgres-reader
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-read-replica
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: postgres-reader
+    app.kubernetes.io/part-of: mpp
+spec:
+  serviceName: postgres-reader
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: postgres-reader
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: postgres-reader
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: clone-primary
+          image: docker.io/library/postgres:18.4
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -ec
+            - |
+              if [ -s "$PGDATA/PG_VERSION" ]; then
+                exit 0
+              fi
+              rm -rf "$PGDATA"/*
+              until pg_isready -h postgres -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do
+                sleep 2
+              done
+              pg_basebackup \
+                -d "host=postgres port=5432 user=$POSTGRES_USER password=$POSTGRES_PASSWORD dbname=$POSTGRES_DB" \
+                -D "$PGDATA" \
+                -Fp \
+                -Xs \
+                -P \
+                -R
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data
+            - name: POSTGRES_DB
+              value: poster_db
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: DB_PASSWORD
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: postgres-reader-data
+              mountPath: /var/lib/postgresql
+      containers:
+        - name: postgres
+          image: docker.io/library/postgres:18.4
+          imagePullPolicy: IfNotPresent
+          args:
+            - -c
+            - shared_preload_libraries=pg_stat_statements
+            - -c
+            - pg_stat_statements.track=all
+            - -c
+            - hot_standby=on
+            - -c
+            - hba_file=/etc/postgresql/pg_hba.conf
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data
+            - name: POSTGRES_DB
+              value: poster_db
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: DB_PASSWORD
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: postgres-reader-data
+              mountPath: /var/lib/postgresql
+            - name: postgres-initdb
+              mountPath: /etc/postgresql/pg_hba.conf
+              subPath: pg_hba.conf
+              readOnly: true
+      volumes:
+        - name: postgres-initdb
+          configMap:
+            name: postgres-initdb
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-reader-data
+        labels:
+          app.kubernetes.io/name: mpp
+          app.kubernetes.io/component: postgres-reader
       spec:
         accessModes:
           - ReadWriteOnce
