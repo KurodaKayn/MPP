@@ -15,7 +15,7 @@ import (
 
 func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid.UUID, id uuid.UUID) (*dto.CompleteBrowserSessionResponse, error) {
 	var session models.RemoteBrowserSession
-	if err := s.db.Where("id = ? AND user_id = ?", id, userID).First(&session).Error; err != nil {
+	if err := s.strongReadDB(ctx).Where("id = ? AND user_id = ?", id, userID).First(&session).Error; err != nil {
 		return nil, ErrSessionNotFound
 	}
 
@@ -27,7 +27,7 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 	}
 
 	// 1. Transition to capturing
-	s.db.Model(&session).Update("status", models.BrowserSessionStatusCapturing)
+	s.writerDB(ctx).Model(&session).Update("status", models.BrowserSessionStatusCapturing)
 	_ = s.saveRedisLiveSession(ctx, browserSessionLiveState{
 		SessionID:         session.ID,
 		UserID:            session.UserID,
@@ -44,7 +44,7 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 	// 2. Ask worker to capture
 	captureResp, err := s.workerClient.CaptureSession(ctx, session.WorkerSessionRef)
 	if err != nil {
-		s.db.Model(&session).Updates(map[string]any{
+		s.writerDB(ctx).Model(&session).Updates(map[string]any{
 			"status":        models.BrowserSessionStatusReady,
 			"error_message": err.Error(),
 		})
@@ -69,7 +69,7 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 		if len(captureResp.MissingCookies) > 0 {
 			message = "missing required cookies: " + strings.Join(captureResp.MissingCookies, ", ")
 		}
-		s.db.Model(&session).Update("status", models.BrowserSessionStatusReady)
+		s.writerDB(ctx).Model(&session).Update("status", models.BrowserSessionStatusReady)
 		_ = s.saveRedisLiveSession(ctx, browserSessionLiveState{
 			SessionID:         session.ID,
 			UserID:            session.UserID,
@@ -102,7 +102,7 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 	}
 	authorizedWorkspaceID, err := s.authorizeSessionTarget(ctx, userID, workspaceID, accountID, session.Platform)
 	if err != nil {
-		s.db.Model(&session).Update("status", models.BrowserSessionStatusReady)
+		s.writerDB(ctx).Model(&session).Update("status", models.BrowserSessionStatusReady)
 		_ = s.saveRedisLiveSession(ctx, browserSessionLiveState{
 			SessionID:         session.ID,
 			UserID:            session.UserID,
@@ -121,7 +121,7 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 	workspaceID = authorizedWorkspaceID
 	err = s.cookieStore.SaveForAccount(ctx, userID, workspaceID, accountID, session.Platform, captureResp.Cookies, profile)
 	if err != nil {
-		s.db.Model(&session).Update("status", models.BrowserSessionStatusReady)
+		s.writerDB(ctx).Model(&session).Update("status", models.BrowserSessionStatusReady)
 		_ = s.saveRedisLiveSession(ctx, browserSessionLiveState{
 			SessionID:         session.ID,
 			UserID:            session.UserID,
@@ -141,7 +141,7 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 
 	// 4. Finalize session
 	now := time.Now()
-	s.db.Model(&session).Updates(map[string]any{
+	s.writerDB(ctx).Model(&session).Updates(map[string]any{
 		"status":       models.BrowserSessionStatusConnected,
 		"completed_at": &now,
 	})
@@ -167,7 +167,7 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 
 func (s *BrowserSessionService) CancelSession(ctx context.Context, userID uuid.UUID, id uuid.UUID) error {
 	var session models.RemoteBrowserSession
-	if err := s.db.Where("id = ? AND user_id = ?", id, userID).First(&session).Error; err != nil {
+	if err := s.strongReadDB(ctx).Where("id = ? AND user_id = ?", id, userID).First(&session).Error; err != nil {
 		return ErrSessionNotFound
 	}
 
@@ -176,7 +176,7 @@ func (s *BrowserSessionService) CancelSession(ctx context.Context, userID uuid.U
 	}
 	_ = s.cleanupRedisSession(ctx, session.UserID, session.Platform, session.ID, session.WorkerSessionRef)
 
-	return s.db.Model(&session).Updates(map[string]any{
+	return s.writerDB(ctx).Model(&session).Updates(map[string]any{
 		"status":             models.BrowserSessionStatusExpired,
 		"connect_token_hash": "",
 	}).Error

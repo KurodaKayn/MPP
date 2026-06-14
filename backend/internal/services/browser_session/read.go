@@ -15,7 +15,7 @@ import (
 
 func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID, id uuid.UUID) (*dto.BrowserSessionResponse, error) {
 	var session models.RemoteBrowserSession
-	if err := s.db.Where("id = ? AND user_id = ?", id, userID).First(&session).Error; err != nil {
+	if err := s.strongReadDB(ctx).Where("id = ? AND user_id = ?", id, userID).First(&session).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSessionNotFound
 		}
@@ -53,7 +53,7 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 					}
 					session.Status = nextStatus
 					session.ErrorMessage = message
-					_ = s.db.Model(&session).Updates(map[string]any{
+					_ = s.writerDB(ctx).Model(&session).Updates(map[string]any{
 						"status":             nextStatus,
 						"error_message":      message,
 						"connect_token_hash": "",
@@ -72,7 +72,7 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 				state.Message = workerState.Message
 				_ = s.saveRedisLiveSession(ctx, state)
 				if nextStatus != session.Status {
-					_ = s.db.Model(&session).Update("status", nextStatus).Error
+					_ = s.writerDB(ctx).Model(&session).Update("status", nextStatus).Error
 				}
 				session.Status = nextStatus
 				session.ErrorMessage = workerState.Message
@@ -113,7 +113,7 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 			return nil, err
 		}
 		if s.redisClient == nil {
-			if err := s.db.Model(&session).Updates(map[string]any{
+			if err := s.writerDB(ctx).Model(&session).Updates(map[string]any{
 				"connect_token_hash":       tokenHash,
 				"connect_token_expires_at": tokenExpiresAt,
 			}).Error; err != nil {
@@ -138,7 +138,7 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 	}
 
 	var session models.RemoteBrowserSession
-	if err := s.db.WithContext(ctx).Where("id = ?", id).First(&session).Error; err != nil {
+	if err := s.strongReadDB(ctx).Where("id = ?", id).First(&session).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", ErrSessionNotFound
 		}
@@ -185,7 +185,7 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 		return "", ErrInvalidStreamToken
 	}
 	if consume {
-		if err := s.db.Model(&session).Update("connect_token_hash", "").Error; err != nil {
+		if err := s.writerDB(ctx).Model(&session).Update("connect_token_hash", "").Error; err != nil {
 			return "", err
 		}
 	}

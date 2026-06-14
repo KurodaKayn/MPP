@@ -62,7 +62,7 @@ func (s *BrowserSessionService) CleanupExpiredSessions(ctx context.Context, now 
 
 func (s *BrowserSessionService) cleanupExpiredSession(ctx context.Context, sessionID uuid.UUID) error {
 	var session models.RemoteBrowserSession
-	if err := s.db.WithContext(ctx).First(&session, sessionID).Error; err != nil {
+	if err := s.writerDB(ctx).First(&session, sessionID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return s.removeRedisCleanupMember(ctx, sessionID)
 		}
@@ -74,7 +74,7 @@ func (s *BrowserSessionService) cleanupExpiredSession(ctx context.Context, sessi
 	if session.WorkerSessionRef != "" {
 		_ = s.workerClient.StopSession(ctx, session.WorkerSessionRef)
 	}
-	if err := s.db.WithContext(ctx).Model(&session).Updates(map[string]any{
+	if err := s.writerDB(ctx).Model(&session).Updates(map[string]any{
 		"status":             models.BrowserSessionStatusExpired,
 		"error_message":      "session expired",
 		"connect_token_hash": "",

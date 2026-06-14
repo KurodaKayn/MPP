@@ -355,7 +355,7 @@ func (s *BrowserSessionService) cleanupRecoveredRedisActiveSession(ctx context.C
 }
 
 func (s *BrowserSessionService) expireRedisActiveSessionRow(ctx context.Context, sessionID uuid.UUID, message string) error {
-	return s.db.WithContext(ctx).Model(&models.RemoteBrowserSession{}).
+	return s.writerDB(ctx).Model(&models.RemoteBrowserSession{}).
 		Where("id = ? AND status IN ?", sessionID, activeBrowserSessionStatuses()).
 		Updates(map[string]any{
 			"status":             models.BrowserSessionStatusExpired,

@@ -12,7 +12,7 @@ import (
 func (s *BrowserSessionService) activeSessionExists(ctx context.Context, userID uuid.UUID, platform string, now time.Time) (bool, error) {
 	var sessions []models.RemoteBrowserSession
 	// Search for ALL sessions with active statuses (ignore expires_at for now to handle stale index rows)
-	err := s.db.WithContext(ctx).
+	err := s.writerDB(ctx).
 		Where("user_id = ? AND platform = ? AND status IN ?", userID, platform, activeBrowserSessionStatuses()).
 		Find(&sessions).Error
 	if err != nil {
@@ -55,14 +55,14 @@ func (s *BrowserSessionService) activeSessionExists(ctx context.Context, userID 
 }
 
 func (s *BrowserSessionService) expireStaleSession(ctx context.Context, session *models.RemoteBrowserSession, message string) error {
-	return s.db.WithContext(ctx).Model(session).Updates(map[string]any{
+	return s.writerDB(ctx).Model(session).Updates(map[string]any{
 		"status":        models.BrowserSessionStatusExpired,
 		"error_message": message,
 	}).Error
 }
 
 func (s *BrowserSessionService) expireSupersededActiveRows(ctx context.Context, userID uuid.UUID, platform string) error {
-	return s.db.WithContext(ctx).Model(&models.RemoteBrowserSession{}).
+	return s.writerDB(ctx).Model(&models.RemoteBrowserSession{}).
 		Where("user_id = ? AND platform = ? AND status IN ?", userID, platform, activeBrowserSessionStatuses()).
 		Updates(map[string]any{
 			"status":        models.BrowserSessionStatusExpired,

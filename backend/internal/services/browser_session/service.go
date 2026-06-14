@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 )
@@ -67,6 +68,7 @@ type DashboardAccountCacheInvalidator interface {
 
 type BrowserSessionService struct {
 	db                               *gorm.DB
+	router                           *dbrouter.Router
 	workerClient                     publisher.BrowserWorkerClient
 	cookieStore                      *publisher.CookieStore
 	adapters                         map[string]publisher.RemoteBrowserPlatformAdapter
@@ -76,8 +78,16 @@ type BrowserSessionService struct {
 }
 
 func NewBrowserSessionService(db *gorm.DB, worker publisher.BrowserWorkerClient, store *publisher.CookieStore) *BrowserSessionService {
+	return NewBrowserSessionServiceWithRouter(db, worker, store, nil)
+}
+
+func NewBrowserSessionServiceWithRouter(db *gorm.DB, worker publisher.BrowserWorkerClient, store *publisher.CookieStore, router *dbrouter.Router) *BrowserSessionService {
+	if router == nil {
+		router = dbrouter.NewRouter(db)
+	}
 	s := &BrowserSessionService{
 		db:           db,
+		router:       router,
 		workerClient: worker,
 		cookieStore:  store,
 		adapters:     make(map[string]publisher.RemoteBrowserPlatformAdapter),
@@ -105,8 +115,22 @@ func (s *BrowserSessionService) RegisterAdapter(a publisher.RemoteBrowserPlatfor
 	s.adapters[a.Platform()] = a
 }
 
+func (s *BrowserSessionService) writerDB(ctx context.Context) *gorm.DB {
+	if s.router == nil {
+		return s.dbWithContext(ctx)
+	}
+	return s.router.Writer(ctx)
+}
+
+func (s *BrowserSessionService) strongReadDB(ctx context.Context) *gorm.DB {
+	if s.router == nil {
+		return s.dbWithContext(ctx)
+	}
+	return s.router.Reader(ctx, dbrouter.StrongRead)
+}
+
 func (s *BrowserSessionService) RegisterSession(ctx context.Context, session *models.RemoteBrowserSession, tokenHash string) error {
-	if err := s.db.WithContext(ctx).Create(session).Error; err != nil {
+	if err := s.writerDB(ctx).Create(session).Error; err != nil {
 		return err
 	}
 
