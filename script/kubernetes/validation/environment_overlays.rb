@@ -70,6 +70,7 @@ module KubernetesValidation
       {
         "APP_ENV" => "staging",
         "DB_HOST" => "pgbouncer",
+        "DB_READER_HOST" => "pgbouncer-reader",
         "DB_SSLMODE" => "disable",
         "REDIS_ADDR" => "redis:6379",
         "REDIS_TLS" => "false",
@@ -98,13 +99,23 @@ module KubernetesValidation
 
       postgres = context.document("Service", "postgres", "mpp-system")
       postgres_host = postgres&.spec&.fetch("externalName", nil).to_s
+      postgres_reader = context.document("Service", "postgres-reader", "mpp-system")
+      postgres_reader_host = postgres_reader&.spec&.fetch("externalName", nil).to_s
       db_host = config.data["DB_HOST"].to_s
+      db_reader_host = config.data["DB_READER_HOST"].to_s
       context.add_error("#{overlay} mpp-app-config DB_HOST must be set") if db_host.empty?
+      context.add_error("#{overlay} mpp-app-config DB_READER_HOST must be set") if db_reader_host.empty?
       unless postgres_host.empty? || db_host == postgres_host
         context.add_error("#{overlay} mpp-app-config DB_HOST must match the managed postgres ExternalName")
       end
+      unless postgres_reader_host.empty? || db_reader_host == postgres_reader_host
+        context.add_error("#{overlay} mpp-app-config DB_READER_HOST must match the managed postgres-reader ExternalName")
+      end
       if deployable_validation? && example_host?(db_host)
         context.add_error("#{overlay} mpp-app-config DB_HOST must not use example.invalid in deployable validation")
+      end
+      if deployable_validation? && example_host?(db_reader_host)
+        context.add_error("#{overlay} mpp-app-config DB_READER_HOST must not use example.invalid in deployable validation")
       end
 
       redis = context.document("Service", "redis", "mpp-system")
