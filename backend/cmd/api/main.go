@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -17,16 +16,8 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/app"
 	"github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/handlers"
-	"github.com/kurodakayn/mpp-backend/internal/observability"
-	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
-	objectstorager2 "github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage/r2"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
-	"github.com/kurodakayn/mpp-backend/internal/publisher"
-	"github.com/kurodakayn/mpp-backend/internal/redisclient"
-	"github.com/kurodakayn/mpp-backend/internal/services"
-	"github.com/kurodakayn/mpp-backend/internal/services/archive"
-	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
-	"github.com/kurodakayn/mpp-backend/internal/services/email"
+	aisvc "github.com/kurodakayn/mpp-backend/internal/services/ai"
 )
 
 const shutdownTimeout = 15 * time.Second
@@ -47,113 +38,34 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	jwtSigningKey := []byte(jwtSecret)
 
 	// Initialize Database
 	db.InitDB()
 
-	// Initialize Services and Handlers
-	observabilitySuite := observability.New(runtimeConfig.ServiceName())
-	dashboardService := services.NewDashboardServiceWithRouter(db.DB, db.DefaultRouter)
-	dashboardService.SetPublishJobObserver(observabilitySuite.PublishJobObserver())
-	objectStorageConfig, err := objectstorage.ConfigFromEnv()
-	if err != nil {
-		log.Fatal(err)
-	}
-	var objectStorageClient objectstorage.Client
-	if objectStorageConfig.Enabled {
-		objectStorageClient, err = objectstorager2.NewClient(objectStorageConfig)
-		if err != nil {
-			log.Fatal(err)
-		}
-		dashboardService.UseObjectStorage(objectStorageClient, objectStorageConfig)
-	}
-	archiveConfig, err := archive.ConfigFromEnv()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if archiveConfig.Enabled && objectStorageClient == nil {
-		log.Fatal("EVENT_ARCHIVE_ENABLED requires OBJECT_STORAGE_PROVIDER=r2")
-	}
-	collabDocumentService := services.NewCollabDocumentService(db.DB)
-	collabSecret := []byte(app.CollabTokenSecret(jwtSecret))
-	collabDocumentService.UseSessionConfig(services.CollabDocumentSessionConfig{
-		TokenSecret:      collabSecret,
-		WebsocketURLBase: app.CollabWebsocketURLBase(),
+	runtime, err := app.NewRuntime(rootCtx, app.RuntimeWiringConfig{
+		Mode:          app.RuntimeModeAPI,
+		RuntimeConfig: runtimeConfig,
+		JWTSecret:     jwtSecret,
+		SQLDB:         db.DB,
+		DBRouter:      db.DefaultRouter,
 	})
-	collabDocumentService.UseProjectDocumentInitializer(
-		services.NewHTTPProjectDocumentInitializer(app.CollabInternalURL(), collabSecret, nil),
-	)
-	dashboardService.SetCollabDocumentService(collabDocumentService)
-	redisClient, err := redisclient.NewFromEnv(context.Background())
-	if errors.Is(err, redisclient.ErrNotConfigured) {
-		redisClient = nil
-	} else if err != nil {
-		log.Fatal(err)
-	}
-	if runtimeConfig.RequireRedis && redisClient == nil {
-		log.Fatal("REDIS_ADDR must be set when BACKEND_REQUIRE_REDIS is enabled")
-	}
-
-	workerClient := app.NewBrowserWorkerClientFromEnv()
-	browserSessionService := browsersession.NewBrowserSessionService(db.DB, workerClient, publisher.NewCookieStore(db.DB))
-	browserSessionService.UseDashboardAccountCacheInvalidator(dashboardService.AccountSettings)
-	dashboardService.SetBrowserWorkerClient(workerClient)
-	dashboardService.SetBrowserSessionService(browserSessionService)
-
-	if redisClient != nil {
-		dashboardService.UseRedis(redisClient)
-		if runtimeConfig.RunsWorkers() {
-			dashboardService.StartPublishWorker(rootCtx)
-		}
-	}
-	if runtimeConfig.RunsWorkers() && archiveConfig.Enabled {
-		archive.NewWorker(db.DB, objectStorageClient, archiveConfig).Start(rootCtx)
-	}
-
-	baseEmailService, err := app.NewBaseEmailServiceFromEnv()
 	if err != nil {
 		log.Fatal(err)
 	}
+	jwtSigningKey := runtime.JWTSigningKey
 
-	emailService := baseEmailService
-	workerErrors := make(chan error, 1)
-	var workerWG sync.WaitGroup
-	var readModelWorkerErrors <-chan error
-	if redisClient != nil {
-		asyncEmailService := email.NewAsyncEmailService(redisClient)
-		emailService = asyncEmailService
-		if runtimeConfig.RunsWorkers() {
-			workerWG.Go(func() {
-				if err := asyncEmailService.StartWorker(rootCtx, baseEmailService); err != nil {
-					select {
-					case workerErrors <- err:
-					default:
-						log.Printf("email worker stopped with error: %v", err)
-					}
-				}
-			})
-			readModelWorkerErrors = dashboardService.StartDashboardReadModelRebuildWorkerWithErrors(rootCtx)
-		}
-	}
+	workerErrors := runtime.StartAPIWorkers(rootCtx)
 
-	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
-	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
-	collabDocumentHandler := handlers.NewCollabDocumentHandler(collabDocumentService)
-	userDashboardHandler.UseAIContentEditor(services.NewAIServiceClientFromEnv())
-	streamLimiter := streamgate.New(redisClient, streamgate.ConfigFromEnv())
+	adminDashboardHandler := handlers.NewDashboardHandler(runtime.DashboardService)
+	userDashboardHandler := handlers.NewUserDashboardHandler(runtime.DashboardService)
+	collabDocumentHandler := handlers.NewCollabDocumentHandler(runtime.CollabDocumentService)
+	userDashboardHandler.UseAIContentEditor(aisvc.NewAIServiceClientFromEnv())
+	streamLimiter := streamgate.New(runtime.RedisClient, streamgate.ConfigFromEnv())
 	userDashboardHandler.UseStreamLimiter(streamLimiter)
-	mockLogin := app.MockLoginEnabled()
-	authHandler := handlers.NewAuthHandler(db.DB, redisClient, emailService, jwtSigningKey)
-	authHandler.SetUsernameLoginEnabled(mockLogin)
+	authHandler := handlers.NewAuthHandler(db.DB, runtime.RedisClient, runtime.EmailService, jwtSigningKey)
+	authHandler.SetUsernameLoginEnabled(runtime.MockLogin)
 
-	if redisClient != nil {
-		browserSessionService.UseRedis(redisClient)
-		if runtimeConfig.RunsWorkers() {
-			browserSessionService.StartCleanupWorker(rootCtx)
-		}
-	}
-	browserSessionHandler := handlers.NewBrowserSessionHandler(browserSessionService)
+	browserSessionHandler := handlers.NewBrowserSessionHandler(runtime.BrowserSessionService)
 	browserSessionHandler.UseStreamLimiter(streamLimiter)
 
 	ready := atomic.Bool{}
@@ -162,12 +74,12 @@ func main() {
 	server, err := newServer(serverConfig{
 		runtimeConfig:      runtimeConfig,
 		jwtSigningKey:      jwtSigningKey,
-		redisClient:        redisClient,
-		mockLogin:          mockLogin,
+		redisClient:        runtime.RedisClient,
+		mockLogin:          runtime.MockLogin,
 		ready:              &ready,
 		sqlDB:              db.DB,
 		dbRouter:           db.DefaultRouter,
-		observabilitySuite: observabilitySuite,
+		observabilitySuite: runtime.ObservabilitySuite,
 	}, serverHandlers{
 		adminDashboard: adminDashboardHandler,
 		userDashboard:  userDashboardHandler,
@@ -179,14 +91,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
 	serverErrors := make(chan error, 1)
 	go func() {
-		serverErrors <- server.Start(":" + port)
+		serverErrors <- server.Start(":" + app.PortFromEnv())
 	}()
 
 	select {
@@ -194,9 +101,9 @@ func main() {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal(err)
 		}
-	case err := <-workerErrors:
+	case err := <-workerErrors.Email:
 		log.Fatalf("email worker stopped: %v", err)
-	case err := <-readModelWorkerErrors:
+	case err := <-workerErrors.ReadModel:
 		ready.Store(false)
 		if err != nil {
 			log.Fatalf("dashboard read model rebuild worker stopped: %v", err)
@@ -208,9 +115,7 @@ func main() {
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			log.Fatal(err)
 		}
-		workerWG.Wait()
-		if redisClient != nil {
-			_ = redisClient.Close()
-		}
+		runtime.WaitWorkers()
+		_ = runtime.Close()
 	}
 }

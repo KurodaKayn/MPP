@@ -7,27 +7,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/labstack/echo/v4"
-	echoMiddleware "github.com/labstack/echo/v4/middleware"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/kurodakayn/mpp-backend/internal/app"
 	"github.com/kurodakayn/mpp-backend/internal/db"
-	"github.com/kurodakayn/mpp-backend/internal/observability"
-	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
-	objectstorager2 "github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage/r2"
-	"github.com/kurodakayn/mpp-backend/internal/publisher"
-	"github.com/kurodakayn/mpp-backend/internal/redisclient"
-	"github.com/kurodakayn/mpp-backend/internal/services"
-	"github.com/kurodakayn/mpp-backend/internal/services/archive"
-	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
-	"github.com/kurodakayn/mpp-backend/internal/services/email"
 )
 
 const shutdownTimeout = 15 * time.Second
@@ -40,89 +27,54 @@ func main() {
 
 	db.InitDB()
 
-	redisClient, err := redisclient.NewFromEnv(context.Background())
-	if errors.Is(err, redisclient.ErrNotConfigured) {
-		log.Fatal("REDIS_ADDR must be set for publish-worker")
-	} else if err != nil {
-		log.Fatal(err)
-	}
-
-	workerClient := app.NewBrowserWorkerClientFromEnv()
-	browserSessionService := browsersession.NewBrowserSessionService(db.DB, workerClient, publisher.NewCookieStore(db.DB))
-	browserSessionService.UseRedis(redisClient)
-
-	observabilitySuite := observability.New(app.PublishWorkerServiceName)
-	dashboardService := services.NewDashboardServiceWithRouter(db.DB, db.DefaultRouter)
-	dashboardService.SetPublishJobObserver(observabilitySuite.PublishJobObserver())
-	dashboardService.SetBrowserWorkerClient(workerClient)
-	dashboardService.SetBrowserSessionService(browserSessionService)
-	dashboardService.UseRedis(redisClient)
-
-	objectStorageConfig, objectStorageClient, err := objectStorageClientFromEnv()
+	runtime, err := app.NewRuntime(rootCtx, app.RuntimeWiringConfig{
+		Mode: app.RuntimeModePublishWorker,
+		RuntimeConfig: app.RuntimeConfig{
+			ProcessRole:  app.ProcessRoleWorker,
+			RequireRedis: true,
+		},
+		SQLDB:    db.DB,
+		DBRouter: db.DefaultRouter,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	if objectStorageClient != nil {
-		dashboardService.UseObjectStorage(objectStorageClient, objectStorageConfig)
-	}
-	archiveConfig, err := archive.ConfigFromEnv()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if archiveConfig.Enabled && objectStorageClient == nil {
-		log.Fatal("EVENT_ARCHIVE_ENABLED requires OBJECT_STORAGE_PROVIDER=r2")
-	}
-
-	baseEmailService, err := app.NewBaseEmailServiceFromEnv()
-	if err != nil {
-		log.Fatal(err)
-	}
-	asyncEmailService := email.NewAsyncEmailService(redisClient)
 
 	ready := atomic.Bool{}
 	ready.Store(true)
-	server, err := newHealthServer(&ready, redisClient, observabilitySuite, db.DefaultRouter)
+	server, err := app.NewHealthServer(app.HealthServerConfig{
+		Ready:              &ready,
+		RedisClient:        runtime.RedisClient,
+		ObservabilitySuite: runtime.ObservabilitySuite,
+		DBRouter:           db.DefaultRouter,
+		SQLDB:              db.DB,
+		ServiceName:        app.PublishWorkerServiceName,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	serverErrors := make(chan error, 1)
 	go func() {
-		serverErrors <- server.Start(":" + portFromEnv())
+		serverErrors <- server.Start(":" + app.PortFromEnv())
 	}()
 
-	workerErrors := make(chan error, 1)
-	var workerWG sync.WaitGroup
-	publishWorkerErrors := dashboardService.StartPublishWorkerWithErrors(rootCtx)
-	readModelWorkerErrors := dashboardService.StartDashboardReadModelRebuildWorkerWithErrors(rootCtx)
-	browserSessionService.StartCleanupWorker(rootCtx)
-	if archiveConfig.Enabled {
-		archive.NewWorker(db.DB, objectStorageClient, archiveConfig).Start(rootCtx)
-	}
-	workerWG.Go(func() {
-		if err := asyncEmailService.StartWorker(rootCtx, baseEmailService); err != nil && rootCtx.Err() == nil {
-			select {
-			case workerErrors <- err:
-			default:
-				log.Printf("email worker stopped with error: %v", err)
-			}
-		}
-	})
+	workerErrors := runtime.StartPublishWorkerMode(rootCtx)
 
 	select {
 	case err := <-serverErrors:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal(err)
 		}
-	case err := <-workerErrors:
+	case err := <-workerErrors.Email:
 		ready.Store(false)
 		log.Fatalf("email worker stopped: %v", err)
-	case err := <-publishWorkerErrors:
+	case err := <-workerErrors.Publish:
 		ready.Store(false)
 		if err != nil {
 			log.Fatalf("publish worker stopped: %v", err)
 		}
-	case err := <-readModelWorkerErrors:
+	case err := <-workerErrors.ReadModel:
 		ready.Store(false)
 		if err != nil {
 			log.Fatalf("dashboard read model rebuild worker stopped: %v", err)
@@ -134,48 +86,7 @@ func main() {
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			log.Fatal(err)
 		}
-		workerWG.Wait()
-		if redisClient != nil {
-			_ = redisClient.Close()
-		}
+		runtime.WaitWorkers()
+		_ = runtime.Close()
 	}
-}
-
-func newHealthServer(ready *atomic.Bool, redisClient *redis.Client, observabilitySuite *observability.Suite, router *db.Router) (*echo.Echo, error) {
-	e := echo.New()
-	if observabilitySuite == nil {
-		observabilitySuite = observability.New(app.PublishWorkerServiceName)
-	}
-	observabilitySuite.RegisterRoutes(e)
-	if router != nil {
-		if err := router.InstallQueryObserver(observabilitySuite.DatabaseQueryObserver()); err != nil {
-			return nil, err
-		}
-		router.InstallReplicaLagObserver(observabilitySuite.ReplicaLagObserver())
-	} else {
-		if err := db.InstallQueryObserver(db.DB, observabilitySuite.DatabaseQueryObserver()); err != nil {
-			return nil, err
-		}
-	}
-	e.Use(observabilitySuite.Middleware())
-	e.Use(echoMiddleware.Recover())
-	app.RegisterHealthRoutes(e, ready, db.DB, redisClient)
-	return e, nil
-}
-
-func portFromEnv() string {
-	port := os.Getenv("PORT")
-	if port == "" {
-		return "8080"
-	}
-	return port
-}
-
-func objectStorageClientFromEnv() (objectstorage.Config, objectstorage.Client, error) {
-	config, err := objectstorage.ConfigFromEnv()
-	if err != nil || !config.Enabled {
-		return config, nil, err
-	}
-	client, err := objectstorager2.NewClient(config)
-	return config, client, err
 }

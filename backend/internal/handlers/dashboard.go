@@ -8,27 +8,22 @@ import (
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 
-	"github.com/kurodakayn/mpp-backend/internal/dto"
-	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
+	dashboardsvc "github.com/kurodakayn/mpp-backend/internal/services/dashboard"
+	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
+	readmodelsvc "github.com/kurodakayn/mpp-backend/internal/services/readmodel"
 )
 
 type DashboardHandler struct {
-	dashboardService *services.DashboardService
+	dashboardService *dashboardsvc.DashboardService
 }
 
-func NewDashboardHandler(s *services.DashboardService) *DashboardHandler {
+func NewDashboardHandler(s *dashboardsvc.DashboardService) *DashboardHandler {
 	return &DashboardHandler{dashboardService: s}
 }
 
-func (h *DashboardHandler) serviceFor(c echo.Context) *services.DashboardService {
+func (h *DashboardHandler) serviceFor(c echo.Context) *dashboardsvc.DashboardService {
 	return h.dashboardService.WithContext(c.Request().Context())
-}
-
-func sendError(c echo.Context, code int, errCode, message string) error {
-	resp := dto.ErrorResponse{}
-	resp.Error.Code = errCode
-	resp.Error.Message = message
-	return c.JSON(code, resp)
 }
 
 func (h *DashboardHandler) GetStats(c echo.Context) error {
@@ -50,7 +45,7 @@ func (h *DashboardHandler) ListProjects(c echo.Context) error {
 	// Admin view: no scope, filterUserID allowed
 	resp, err := h.serviceFor(c).ListProjectsCursor(cursor, page, limit, status, userID, platform, nil)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidProject) {
+		if errors.Is(err, projectsvc.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -73,7 +68,7 @@ func (h *DashboardHandler) GetProjectPublications(c echo.Context) error {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
 		}
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -85,7 +80,7 @@ func (h *DashboardHandler) GetProjectPublications(c echo.Context) error {
 func (h *DashboardHandler) RebuildReadModels(c echo.Context) error {
 	info, err := h.serviceFor(c).EnqueueDashboardReadModelRebuild(c.Request().Context())
 	if err != nil {
-		if errors.Is(err, services.ErrDashboardRebuildQueueUnavailable) {
+		if errors.Is(err, readmodelsvc.ErrDashboardRebuildQueueUnavailable) {
 			return sendError(c, http.StatusServiceUnavailable, "queue_unavailable", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())

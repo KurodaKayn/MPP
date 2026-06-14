@@ -23,32 +23,7 @@ import (
 	workspacesvc "github.com/kurodakayn/mpp-backend/internal/services/workspace"
 )
 
-var ErrForbidden = publishsvc.ErrForbidden
-var ErrInvalidProject = projectsvc.ErrInvalidProject
-var ErrInvalidProjectCollaborator = projectsvc.ErrInvalidProjectCollaborator
-var ErrInvalidProjectComment = projectsvc.ErrInvalidProjectComment
-var ErrInvalidProjectShareLink = projectsvc.ErrInvalidProjectShareLink
-var ErrInvalidProjectVersion = projectsvc.ErrInvalidProjectVersion
-var ErrInvalidWorkspace = workspacesvc.ErrInvalidWorkspace
-var ErrInvalidWorkspaceInvite = workspacesvc.ErrInvalidWorkspaceInvite
-var ErrInvalidWorkspaceMember = workspacesvc.ErrInvalidWorkspaceMember
-var ErrProjectDeletionBlocked = projectsvc.ErrProjectDeletionBlocked
-var ErrProjectCollabUnavailable = projectsvc.ErrProjectCollabUnavailable
-var ErrPublicationDisabled = publishsvc.ErrPublicationDisabled
-var ErrPublicationRequiresSync = publishsvc.ErrPublicationRequiresSync
-var ErrPublishMediaAssetNotReady = publishsvc.ErrPublishMediaAssetNotReady
-var ErrManualPublishUnsupported = publishsvc.ErrManualPublishUnsupported
-var ErrExtensionCallbackTokenInvalid = extensionsvc.ErrExtensionCallbackTokenInvalid
-var ErrExtensionCallbackTokenExpired = extensionsvc.ErrExtensionCallbackTokenExpired
-var ErrMediaStorageUnavailable = mediaassetsvc.ErrMediaStorageUnavailable
-var ErrInvalidMediaAsset = mediaassetsvc.ErrInvalidMediaAsset
-var ErrMediaAssetUploadIncomplete = mediaassetsvc.ErrMediaAssetUploadIncomplete
-var ErrMediaAssetNotReady = mediaassetsvc.ErrMediaAssetNotReady
-
 type ProjectDraftCompiler = compiler.ProjectDraftCompiler
-type WorkspacePermission = workspacesvc.Permission
-
-const PermissionAccountManage = workspacesvc.PermissionAccountManage
 
 type DashboardService struct {
 	*Project

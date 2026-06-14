@@ -13,18 +13,18 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/contracts"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/models"
-	"github.com/kurodakayn/mpp-backend/internal/services"
+	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
 )
 
 type CollabDocumentHandler struct {
-	service *services.CollabDocumentService
+	service *collabdoc.Service
 }
 
-func NewCollabDocumentHandler(service *services.CollabDocumentService) *CollabDocumentHandler {
+func NewCollabDocumentHandler(service *collabdoc.Service) *CollabDocumentHandler {
 	return &CollabDocumentHandler{service: service}
 }
 
-func (h *CollabDocumentHandler) serviceFor(c echo.Context) *services.CollabDocumentService {
+func (h *CollabDocumentHandler) serviceFor(c echo.Context) *collabdoc.Service {
 	return h.service.WithContext(c.Request().Context())
 }
 
@@ -41,7 +41,7 @@ func (h *CollabDocumentHandler) CreateDocument(c echo.Context) error {
 
 	document, err := h.serviceFor(c).CreateDocument(c.Request().Context(), userID, req.Title)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidCollabDocument) {
+		if errors.Is(err, collabdoc.ErrInvalidDocument) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "title is required")
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -63,7 +63,7 @@ func (h *CollabDocumentHandler) ListDocuments(c echo.Context) error {
 		intQueryParam(c, "limit"),
 	)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidCollabDocument) {
+		if errors.Is(err, collabdoc.ErrInvalidDocument) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "invalid user")
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -91,13 +91,13 @@ func (h *CollabDocumentHandler) GetDocument(c echo.Context) error {
 
 	document, err := h.serviceFor(c).GetDocument(c.Request().Context(), userID, documentID)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidCollabDocument) {
+		if errors.Is(err, collabdoc.ErrInvalidDocument) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "invalid document")
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "document not found")
 		}
-		if errors.Is(err, services.ErrCollabDocumentForbidden) {
+		if errors.Is(err, collabdoc.ErrDocumentForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -124,13 +124,13 @@ func (h *CollabDocumentHandler) UpdateDocument(c echo.Context) error {
 
 	document, err := h.serviceFor(c).UpdateDocumentTitle(c.Request().Context(), userID, documentID, req.Title)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidCollabDocument) {
+		if errors.Is(err, collabdoc.ErrInvalidDocument) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "title is required")
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "document not found")
 		}
-		if errors.Is(err, services.ErrCollabDocumentForbidden) {
+		if errors.Is(err, collabdoc.ErrDocumentForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -152,13 +152,13 @@ func (h *CollabDocumentHandler) CreateSession(c echo.Context) error {
 
 	session, err := h.serviceFor(c).CreateSession(c.Request().Context(), userID, documentID)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidCollabDocument) {
+		if errors.Is(err, collabdoc.ErrInvalidDocument) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "invalid session request")
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "document not found")
 		}
-		if errors.Is(err, services.ErrCollabDocumentForbidden) {
+		if errors.Is(err, collabdoc.ErrDocumentForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -167,7 +167,7 @@ func (h *CollabDocumentHandler) CreateSession(c echo.Context) error {
 	return c.JSON(http.StatusOK, collabDocumentSessionResponse(session))
 }
 
-func collabDocumentSessionResponse(session *services.CollabDocumentSession) contracts.CollabDocumentSession {
+func collabDocumentSessionResponse(session *collabdoc.Session) contracts.CollabDocumentSession {
 	return contracts.CollabDocumentSession{
 		DocumentId:   openapi_types.UUID(session.DocumentID),
 		Role:         contracts.CollabDocumentRole(session.Role),
