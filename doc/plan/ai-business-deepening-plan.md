@@ -684,15 +684,15 @@ Acceptance:
 Goal: create persistent sessions before adding write behavior.
 
 - [ ] Persist `AIDraftingSession`, messages, tool calls, and artifacts.
-- [ ] Add a right-side drafting panel on the project page, supporting message history, streaming events, artifacts, and proposal lists.
+- [x] Add a right-side drafting panel on the project page, supporting message history, streaming events, artifacts, and proposal lists.
 - [ ] Add session list, create, archive, resume, and message history APIs.
 - [ ] Connect the panel to the harness stream endpoint.
-- [ ] Support assistant text, status events, compact boundary events, and read-only context events.
+- [x] Support assistant text, status events, compact boundary events, and read-only context events in the frontend mock timeline.
 
 Acceptance:
 
-- A user can open, resume, and archive a session in one project.
-- The session can answer using project context and preserve message history.
+- Frontend-only progress: a user can open, resume, and archive a local mock session in one project while backend integration is pending.
+- Backend acceptance remains pending: the session can answer using project context and preserve message history through durable APIs.
 
 ### Phase 2B: Tool Runtime MVP
 

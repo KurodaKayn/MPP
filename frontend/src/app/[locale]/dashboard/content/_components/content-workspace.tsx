@@ -14,6 +14,7 @@ import {
 } from "../../_hooks/use-dashboard-workspace-selection";
 import { cn } from "@/lib/utils";
 import { AIGrowthOptimizationPanel } from "./ai-growth-optimization-panel";
+import { AIDraftingSessionPanel } from "./ai-drafting-session-panel";
 import { ContentPageHeader } from "./content-page-header";
 import { ContentPrepublishPanel } from "./content-prepublish-panel";
 import { ContentPublishBar } from "./content-publish-bar";
@@ -245,6 +246,14 @@ export function ContentWorkspace({ projectId }: ContentWorkspaceProps) {
       )}
 
       <AIGrowthOptimizationPanel
+        canEdit={editor.canEdit}
+        content={editor.content}
+        projectId={projectId}
+        selectedPlatforms={publishing.selectedPlatforms}
+        title={editor.title}
+      />
+
+      <AIDraftingSessionPanel
         canEdit={editor.canEdit}
         content={editor.content}
         projectId={projectId}

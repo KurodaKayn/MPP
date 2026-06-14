@@ -16,6 +16,14 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { PLATFORM_TABS } from "@/lib/content/platforms";
 import type { ContentValue } from "@/lib/content/types";
@@ -42,20 +50,24 @@ type AIGrowthOptimizationPanelProps = {
 };
 
 type PanelStatus = "idle" | "running" | "ready" | "applying" | "failed";
+type GrowthTranslator = (
+  key: string,
+  options?: Record<string, unknown>,
+) => string;
 
-const goals: { label: string; value: AIGrowthOptimizationGoal }[] = [
-  { label: "Recommendations", value: "recommendation" },
-  { label: "Reads / views", value: "views" },
-  { label: "CTR", value: "ctr" },
-  { label: "Completion", value: "completion" },
-  { label: "Engagement", value: "engagement" },
-  { label: "Conversion", value: "conversion" },
+const goals: { key: string; value: AIGrowthOptimizationGoal }[] = [
+  { key: "recommendation", value: "recommendation" },
+  { key: "views", value: "views" },
+  { key: "ctr", value: "ctr" },
+  { key: "completion", value: "completion" },
+  { key: "engagement", value: "engagement" },
+  { key: "conversion", value: "conversion" },
 ];
 
-const intensities: { label: string; value: AIGrowthOptimizationIntensity }[] = [
-  { label: "Conservative", value: "conservative" },
-  { label: "Balanced", value: "balanced" },
-  { label: "Aggressive", value: "aggressive" },
+const intensities: { key: string; value: AIGrowthOptimizationIntensity }[] = [
+  { key: "conservative", value: "conservative" },
+  { key: "balanced", value: "balanced" },
+  { key: "aggressive", value: "aggressive" },
 ];
 
 export function AIGrowthOptimizationPanel({
@@ -68,6 +80,8 @@ export function AIGrowthOptimizationPanel({
   const locale = useAppLocale();
   const { t } = useTranslation(locale, "dashboard");
   const { t: tCommon } = useTranslation(locale, "common");
+  const tGrowth = (key: string, options?: Record<string, unknown>) =>
+    t(`content.aiGrowth.${key}`, options);
   const [goal, setGoal] = useState<AIGrowthOptimizationGoal>("views");
   const [intensity, setIntensity] =
     useState<AIGrowthOptimizationIntensity>("balanced");
@@ -112,19 +126,10 @@ export function AIGrowthOptimizationPanel({
       setStatus("ready");
     } catch (error) {
       setStatus("failed");
-      toast.error(
-        t("content.aiGrowth.optimizeFailed", {
-          defaultValue: "Could not create optimization preview.",
-        }),
-        {
-          description:
-            error instanceof Error
-              ? error.message
-              : tCommon("common.retryLater", {
-                  defaultValue: "Please try again later.",
-                }),
-        },
-      );
+      toast.error(tGrowth("optimizeFailed"), {
+        description:
+          error instanceof Error ? error.message : tCommon("common.retryLater"),
+      });
     }
   };
 
@@ -148,29 +153,16 @@ export function AIGrowthOptimizationPanel({
       }));
       toast.success(
         result.status === "accepted"
-          ? t("content.aiGrowth.applySuccess", {
-              defaultValue: "Optimization proposal applied.",
-            })
-          : t("content.aiGrowth.rejectSuccess", {
-              defaultValue: "Optimization proposal rejected.",
-            }),
+          ? tGrowth("applySuccess")
+          : tGrowth("rejectSuccess"),
       );
       setStatus("ready");
     } catch (error) {
       setStatus("failed");
-      toast.error(
-        t("content.aiGrowth.applyFailed", {
-          defaultValue: "Could not update optimization proposal.",
-        }),
-        {
-          description:
-            error instanceof Error
-              ? error.message
-              : tCommon("common.retryLater", {
-                  defaultValue: "Please try again later.",
-                }),
-        },
-      );
+      toast.error(tGrowth("applyFailed"), {
+        description:
+          error instanceof Error ? error.message : tCommon("common.retryLater"),
+      });
     }
   };
 
@@ -181,61 +173,72 @@ export function AIGrowthOptimizationPanel({
           <div>
             <CardTitle className="flex items-center gap-2">
               <Sparkles />
-              {t("content.aiGrowth.title", { defaultValue: "AI Optimize" })}
+              {tGrowth("title")}
             </CardTitle>
-            <CardDescription>
-              {t("content.aiGrowth.description", {
-                defaultValue:
-                  "Preview growth-focused source and platform proposals before backend optimization is connected.",
-              })}
-            </CardDescription>
+            <CardDescription>{tGrowth("description")}</CardDescription>
           </div>
-          <StatusBadge status={displayStatus} />
+          <StatusBadge status={displayStatus} tGrowth={tGrowth} />
         </div>
 
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="ai-growth-goal">
-              {t("content.aiGrowth.goal", { defaultValue: "Goal" })}
-            </Label>
-            <select
-              id="ai-growth-goal"
+            <Label htmlFor="ai-growth-goal">{tGrowth("goal")}</Label>
+            <Select<AIGrowthOptimizationGoal>
+              items={goals.map((item) => ({
+                label: tGrowth(`goals.${item.key}`),
+                value: item.value,
+              }))}
               value={goal}
               disabled={!canEdit || status === "running"}
-              onChange={(event) =>
-                setGoal(event.target.value as AIGrowthOptimizationGoal)
-              }
-              className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              onValueChange={(value) => {
+                if (value) {
+                  setGoal(value);
+                }
+              }}
             >
-              {goals.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="ai-growth-goal">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {goals.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {tGrowth(`goals.${item.key}`)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="ai-growth-intensity">
-              {t("content.aiGrowth.intensity", { defaultValue: "Intensity" })}
-            </Label>
-            <select
-              id="ai-growth-intensity"
+            <Label htmlFor="ai-growth-intensity">{tGrowth("intensity")}</Label>
+            <Select<AIGrowthOptimizationIntensity>
+              items={intensities.map((item) => ({
+                label: tGrowth(`intensities.${item.key}`),
+                value: item.value,
+              }))}
               value={intensity}
               disabled={!canEdit || status === "running"}
-              onChange={(event) =>
-                setIntensity(
-                  event.target.value as AIGrowthOptimizationIntensity,
-                )
-              }
-              className="h-8 rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              onValueChange={(value) => {
+                if (value) {
+                  setIntensity(value);
+                }
+              }}
             >
-              {intensities.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="ai-growth-intensity">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {intensities.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {tGrowth(`intensities.${item.key}`)}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
 
           <Button
@@ -249,7 +252,7 @@ export function AIGrowthOptimizationPanel({
             ) : (
               <Bot data-icon="inline-start" />
             )}
-            {t("content.aiGrowth.optimize", { defaultValue: "AI Optimize" })}
+            {tGrowth("optimize")}
           </Button>
         </div>
 
@@ -265,16 +268,11 @@ export function AIGrowthOptimizationPanel({
       <CardContent className="flex flex-col gap-4">
         {!projectId ? (
           <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            {t("content.aiGrowth.saveFirst", {
-              defaultValue: "Save the project before running AI optimization.",
-            })}
+            {tGrowth("saveFirst")}
           </div>
         ) : !hasSourceContent ? (
           <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            {t("content.aiGrowth.emptyContent", {
-              defaultValue:
-                "Add source content before running AI optimization.",
-            })}
+            {tGrowth("emptyContent")}
           </div>
         ) : run ? (
           <>
@@ -286,7 +284,9 @@ export function AIGrowthOptimizationPanel({
                     {run.model} / {run.prompt_version}
                   </p>
                 </div>
-                <Badge variant="secondary">Optimization ready</Badge>
+                <Badge variant="secondary">
+                  {tGrowth("optimizationReady")}
+                </Badge>
               </div>
               <WarningList warnings={run.quality_warnings} />
             </div>
@@ -296,9 +296,7 @@ export function AIGrowthOptimizationPanel({
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="text-sm font-medium">
-                      {t("content.aiGrowth.sourceProposal", {
-                        defaultValue: "Source proposal",
-                      })}
+                      {tGrowth("sourceProposal")}
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {run.source_proposal.summary}
@@ -306,10 +304,9 @@ export function AIGrowthOptimizationPanel({
                   </div>
                   <ProposalDecisionActions
                     disabled={!canDecideProposals}
-                    label={t("content.aiGrowth.source", {
-                      defaultValue: "Source",
-                    })}
+                    label={tGrowth("source")}
                     status={sourceProposalStatus}
+                    tGrowth={tGrowth}
                     onAccept={() =>
                       void decideProposal(run.source_proposal.id, "accepted")
                     }
@@ -330,15 +327,10 @@ export function AIGrowthOptimizationPanel({
               <section className="flex flex-col gap-3 rounded-lg border p-3">
                 <div>
                   <h3 className="text-sm font-medium">
-                    {t("content.aiGrowth.platformProposals", {
-                      defaultValue: "Platform proposals",
-                    })}
+                    {tGrowth("platformProposals")}
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {t("content.aiGrowth.platformProposalsDesc", {
-                      defaultValue:
-                        "Apply or reject each platform independently.",
-                    })}
+                    {tGrowth("platformProposalsDesc")}
                   </p>
                 </div>
                 <Separator />
@@ -349,6 +341,7 @@ export function AIGrowthOptimizationPanel({
                       disabled={!canDecideProposals}
                       proposal={proposal}
                       status={proposalStatuses[proposal.id] ?? proposal.status}
+                      tGrowth={tGrowth}
                       onAccept={() =>
                         void decideProposal(proposal.id, "accepted")
                       }
@@ -363,10 +356,7 @@ export function AIGrowthOptimizationPanel({
           </>
         ) : (
           <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            {t("content.aiGrowth.emptyState", {
-              defaultValue:
-                "Choose a goal and intensity, then generate a local optimization preview.",
-            })}
+            {tGrowth("emptyState")}
           </div>
         )}
       </CardContent>
@@ -380,15 +370,16 @@ function PlatformProposalCard({
   onReject,
   proposal,
   status,
+  tGrowth,
 }: {
   disabled: boolean;
   onAccept: () => void;
   onReject: () => void;
   proposal: AIPlatformProposal;
   status: AIProposalStatus;
+  tGrowth: GrowthTranslator;
 }) {
   const locale = useAppLocale();
-  const { t } = useTranslation(locale, "dashboard");
   const { t: tCommon } = useTranslation(locale, "common");
   const label = platformLabel(proposal.target_platform, tCommon);
 
@@ -398,7 +389,7 @@ function PlatformProposalCard({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h4 className="text-sm font-medium">{label}</h4>
-            <ProposalStatusBadge status={status} />
+            <ProposalStatusBadge status={status} tGrowth={tGrowth} />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             {proposal.summary}
@@ -408,15 +399,14 @@ function PlatformProposalCard({
           disabled={disabled}
           label={label}
           status={status}
+          tGrowth={tGrowth}
           onAccept={onAccept}
           onReject={onReject}
         />
       </div>
       <WarningList warnings={proposal.quality_warnings} />
       <div className="rounded-md bg-muted/30 p-3 text-xs leading-5">
-        <p className="font-medium">
-          {t("content.aiGrowth.preview", { defaultValue: "Preview" })}
-        </p>
+        <p className="font-medium">{tGrowth("preview")}</p>
         <p className="mt-2 whitespace-pre-wrap">{proposal.proposed_content}</p>
       </div>
     </div>
@@ -429,20 +419,22 @@ function ProposalDecisionActions({
   onAccept,
   onReject,
   status,
+  tGrowth,
 }: {
   disabled: boolean;
   label: string;
   onAccept: () => void;
   onReject: () => void;
   status: AIProposalStatus;
+  tGrowth: GrowthTranslator;
 }) {
-  const locale = useAppLocale();
-  const { t } = useTranslation(locale, "dashboard");
   const isDecided = status === "accepted" || status === "rejected";
 
   return (
     <div className="flex shrink-0 flex-wrap gap-2">
-      {isDecided ? <ProposalStatusBadge status={status} /> : null}
+      {isDecided ? (
+        <ProposalStatusBadge status={status} tGrowth={tGrowth} />
+      ) : null}
       <Button
         type="button"
         size="sm"
@@ -450,9 +442,7 @@ function ProposalDecisionActions({
         onClick={onAccept}
       >
         <Check data-icon="inline-start" />
-        {t("content.aiGrowth.applyLabel", {
-          defaultValue: `Apply ${label}`,
-        })}
+        {tGrowth("applyLabel", { label })}
       </Button>
       <Button
         type="button"
@@ -462,9 +452,7 @@ function ProposalDecisionActions({
         onClick={onReject}
       >
         <X data-icon="inline-start" />
-        {t("content.aiGrowth.rejectLabel", {
-          defaultValue: `Reject ${label}`,
-        })}
+        {tGrowth("rejectLabel", { label })}
       </Button>
     </div>
   );
@@ -496,8 +484,14 @@ function WarningList({
   );
 }
 
-function ProposalStatusBadge({ status }: { status: AIProposalStatus }) {
-  const label = status === "accepted" ? "Applied" : statusLabel(status);
+function ProposalStatusBadge({
+  status,
+  tGrowth,
+}: {
+  status: AIProposalStatus;
+  tGrowth: GrowthTranslator;
+}) {
+  const label = statusLabel(status, tGrowth);
 
   return (
     <Badge variant={status === "rejected" ? "outline" : "secondary"}>
@@ -508,10 +502,12 @@ function ProposalStatusBadge({ status }: { status: AIProposalStatus }) {
 
 function StatusBadge({
   status,
+  tGrowth,
 }: {
   status: PanelStatus | AIGrowthOptimizationRun["status"];
+  tGrowth: GrowthTranslator;
 }) {
-  const label = statusLabel(status);
+  const label = statusLabel(status, tGrowth);
 
   return (
     <Badge variant={status === "failed" ? "destructive" : "secondary"}>
@@ -520,41 +516,18 @@ function StatusBadge({
   );
 }
 
-function statusLabel(status: string) {
-  switch (status) {
-    case "applying":
-      return "Applying";
-    case "accepted":
-      return "Applied";
-    case "cancelled":
-      return "Cancelled";
-    case "failed":
-      return "Failed";
-    case "idle":
-      return "Idle";
-    case "proposed":
-      return "Proposed";
-    case "ready":
-      return "Ready";
-    case "rejected":
-      return "Rejected";
-    case "running":
-      return "Running";
-    case "superseded":
-      return "Superseded";
-    default:
-      return status;
-  }
+function statusLabel(status: string, tGrowth: GrowthTranslator) {
+  return tGrowth(`status.${status}`);
 }
 
 function platformLabel(
   platform: PublishPlatform,
-  t: (key: string, options?: { defaultValue?: string }) => string,
+  t: (key: string, options?: Record<string, unknown>) => string,
 ) {
   const platformTab = PLATFORM_TABS.find((item) => item.value === platform);
   if (!platformTab) {
     return platform;
   }
 
-  return t(platformTab.label, { defaultValue: platformTab.defaultLabel });
+  return t(platformTab.label);
 }

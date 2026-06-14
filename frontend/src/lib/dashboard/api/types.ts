@@ -304,6 +304,79 @@ export type ContinueAIDraftingSessionInput =
   ContractSchema<"AIDraftingContinueRequest">;
 export type AIDraftingReplay = ContractSchema<"AIDraftingReplay">;
 
+export type AIDraftingSessionStatus = "active" | "archived";
+
+export type AIDraftingSession = {
+  id: string;
+  workspace_id: string;
+  project_id: string;
+  created_by: string;
+  title: string;
+  status: AIDraftingSessionStatus;
+  active_context_snapshot_id?: string;
+  last_message_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AIDraftingSessionMessageRole = "user" | "assistant" | "system";
+
+export type AIDraftingSessionMessage = {
+  id: string;
+  session_id: string;
+  role: AIDraftingSessionMessageRole;
+  content: string;
+  created_at: string;
+};
+
+export type AIDraftingTimelineEventType =
+  | "status"
+  | "message"
+  | "tool_call"
+  | "tool_result"
+  | "proposal"
+  | "compact_boundary"
+  | "context"
+  | "error";
+
+export type AIDraftingTimelineEvent = {
+  id: string;
+  session_id: string;
+  event_type: AIDraftingTimelineEventType;
+  title: string;
+  detail?: string;
+  status?: "queued" | "running" | "completed" | "failed" | "cancelled";
+  created_at: string;
+};
+
+export type AIDraftingArtifactStatus =
+  | "proposed"
+  | "accepted"
+  | "rejected"
+  | "superseded";
+
+export type AIDraftingArtifact = {
+  id: string;
+  session_id: string;
+  title: string;
+  kind: "source_patch" | "platform_variant" | "checklist" | "title_candidates";
+  summary: string;
+  target_platform?: PublishPlatform;
+  status: AIDraftingArtifactStatus;
+  created_at: string;
+};
+
+export type AIDraftingSessionDetail = {
+  session: AIDraftingSession;
+  messages: AIDraftingSessionMessage[];
+  events: AIDraftingTimelineEvent[];
+  artifacts: AIDraftingArtifact[];
+};
+
+export type AIDraftingSessionsResponse = {
+  items: AIDraftingSession[];
+};
+
 export type RequirementStatus = ContractSchema<"RequirementStatus">;
 export type WechatAccount = ContractSchema<"WechatAccount">;
 export type SaveWechatAccountInput = ContractSchema<"SaveWechatAccountInput">;

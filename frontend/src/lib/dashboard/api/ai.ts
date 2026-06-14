@@ -6,6 +6,11 @@ import {
 import type {
   AIGrowthOptimizationRun,
   AIPlatformProposal,
+  AIDraftingArtifact,
+  AIDraftingSession,
+  AIDraftingSessionDetail,
+  AIDraftingSessionsResponse,
+  AIDraftingTimelineEvent,
   AIDraftingReplay,
   AIDraftingStreamOptions,
   AIEditContentStreamInput,
@@ -120,6 +125,207 @@ export async function rejectAIGrowthOptimizationProposal(
     proposal_id: proposalId,
     status: "rejected",
   };
+}
+
+export async function listMockAIDraftingSessions(
+  projectId: string,
+): Promise<AIDraftingSessionsResponse> {
+  await Promise.resolve();
+  void projectId;
+
+  return {
+    items: [],
+  };
+}
+
+export async function createMockAIDraftingSession(
+  projectId: string,
+  input: StartAIDraftingSessionInput,
+): Promise<AIDraftingSessionDetail> {
+  await Promise.resolve();
+
+  const createdAt = new Date().toISOString();
+  const session = buildMockDraftingSession(projectId, {
+    createdAt,
+    title: input.title || "Drafting session",
+  });
+
+  return buildMockDraftingDetail(session, input.message);
+}
+
+export async function sendMockAIDraftingMessage(
+  session: AIDraftingSession,
+  input: ContinueAIDraftingSessionInput,
+): Promise<AIDraftingSessionDetail> {
+  await Promise.resolve();
+
+  return buildMockDraftingDetail(
+    {
+      ...session,
+      last_message_at: new Date().toISOString(),
+      status: "active",
+      updated_at: new Date().toISOString(),
+    },
+    input.message,
+  );
+}
+
+export async function archiveMockAIDraftingSession(
+  session: AIDraftingSession,
+): Promise<AIDraftingSession> {
+  await Promise.resolve();
+
+  return {
+    ...session,
+    status: "archived",
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function resumeMockAIDraftingSession(
+  session: AIDraftingSession,
+): Promise<AIDraftingSession> {
+  await Promise.resolve();
+
+  return {
+    ...session,
+    status: "active",
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function buildMockDraftingSession(
+  projectId: string,
+  options: { createdAt?: string; title?: string } = {},
+): AIDraftingSession {
+  const createdAt = options.createdAt ?? new Date().toISOString();
+  const stableIdSuffix = createdAt.replace(/[^0-9A-Za-z]/g, "");
+
+  return {
+    active_context_snapshot_id: `mock-context-${projectId}`,
+    created_at: createdAt,
+    created_by: "mock-user",
+    id: `mock-drafting-session-${projectId}-${stableIdSuffix}`,
+    last_message_at: createdAt,
+    project_id: projectId,
+    status: "active",
+    title: options.title ?? "Project drafting room",
+    updated_at: createdAt,
+    workspace_id: "mock-workspace",
+  };
+}
+
+function buildMockDraftingDetail(
+  session: AIDraftingSession,
+  userMessage: string,
+): AIDraftingSessionDetail {
+  const createdAt = new Date().toISOString();
+  const stableIdSuffix = createdAt.replace(/[^0-9A-Za-z]/g, "");
+  const assistantMessage =
+    "I read the current project context and prepared a reviewable drafting path.";
+
+  return {
+    artifacts: buildMockDraftingArtifacts(session, createdAt),
+    events: buildMockDraftingEvents(session, createdAt),
+    messages: [
+      {
+        content: userMessage,
+        created_at: createdAt,
+        id: `${session.id}-message-user-${stableIdSuffix}`,
+        role: "user",
+        session_id: session.id,
+      },
+      {
+        content: assistantMessage,
+        created_at: createdAt,
+        id: `${session.id}-message-assistant-${stableIdSuffix}`,
+        role: "assistant",
+        session_id: session.id,
+      },
+    ],
+    session,
+  };
+}
+
+function buildMockDraftingEvents(
+  session: AIDraftingSession,
+  createdAt: string,
+): AIDraftingTimelineEvent[] {
+  const stableIdSuffix = createdAt.replace(/[^0-9A-Za-z]/g, "");
+
+  return [
+    {
+      created_at: createdAt,
+      detail:
+        "Assistant text is rendered from a future harness stream event; writes are still blocked until proposal confirmation exists.",
+      event_type: "message",
+      id: `${session.id}-event-assistant-${stableIdSuffix}`,
+      session_id: session.id,
+      status: "completed",
+      title: "Assistant text",
+    },
+    {
+      created_at: createdAt,
+      detail:
+        "Project title, source body, selected platforms, and current draft state are available to the drafting shell.",
+      event_type: "context",
+      id: `${session.id}-event-context-${stableIdSuffix}`,
+      session_id: session.id,
+      status: "completed",
+      title: "Read-only context",
+    },
+    {
+      created_at: createdAt,
+      detail:
+        "Waiting on backend harness integration before executing write tools.",
+      event_type: "status",
+      id: `${session.id}-event-status-${stableIdSuffix}`,
+      session_id: session.id,
+      status: "completed",
+      title: "Status update",
+    },
+    {
+      created_at: createdAt,
+      detail:
+        "Older context can be summarized here after the backend compactor is connected.",
+      event_type: "compact_boundary",
+      id: `${session.id}-event-compact-${stableIdSuffix}`,
+      session_id: session.id,
+      status: "queued",
+      title: "Compact boundary",
+    },
+  ];
+}
+
+function buildMockDraftingArtifacts(
+  session: AIDraftingSession,
+  createdAt: string,
+): AIDraftingArtifact[] {
+  const stableIdSuffix = createdAt.replace(/[^0-9A-Za-z]/g, "");
+
+  return [
+    {
+      created_at: createdAt,
+      id: `${session.id}-artifact-opening-${stableIdSuffix}`,
+      kind: "source_patch",
+      session_id: session.id,
+      status: "proposed",
+      summary:
+        "Tighten the opening paragraph while preserving the original argument.",
+      target_platform: "wechat",
+      title: "Opening rewrite proposal",
+    },
+    {
+      created_at: createdAt,
+      id: `${session.id}-artifact-checklist-${stableIdSuffix}`,
+      kind: "checklist",
+      session_id: session.id,
+      status: "proposed",
+      summary:
+        "Check title clarity, opening retention, platform fit, and unsupported claims before publishing.",
+      title: "Pre-publish checklist",
+    },
+  ];
 }
 
 function buildOptimizedSource(sourceContent: string) {
