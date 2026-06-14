@@ -242,7 +242,7 @@ func normalizeGrowthPlatforms(values []string) []string {
 }
 
 func titleFromProjectSummary(summary string) string {
-	for _, line := range strings.Split(summary, "\n") {
+	for line := range strings.SplitSeq(summary, "\n") {
 		if title, ok := strings.CutPrefix(line, "Project Title: "); ok {
 			return strings.TrimSpace(title)
 		}
