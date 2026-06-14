@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import secrets
@@ -18,9 +19,11 @@ from llm_client import (
 )
 from observability import record_ai_usage
 from prompts import (
+    audience_profiles_for,
     build_calibrate_messages,
     build_edit_content_messages,
     build_edit_prepublish_messages,
+    build_growth_optimization_messages,
 )
 from schemas import (
     AdaptedContent,
@@ -29,6 +32,9 @@ from schemas import (
     EditContentResponse,
     EditPrepublishRequest,
     EditPrepublishResponse,
+    GrowthOptimizationRequest,
+    GrowthOptimizationResponse,
+    GrowthProposal,
 )
 
 router = APIRouter()
@@ -225,3 +231,135 @@ async def calibrate(request: CalibrateRequest):
     except Exception as e:
         logger.exception("AI calibration failed")
         raise HTTPException(status_code=502, detail=GENERIC_AI_FAILURE_DETAIL) from e
+
+
+@router.post("/growth/optimize/stream", dependencies=internal_auth)
+async def stream_growth_optimization(request: GrowthOptimizationRequest):
+    if not request.source_content.strip() or not request.goal.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="source_content and goal are required",
+        )
+    if not request.target_platforms:
+        raise HTTPException(status_code=400, detail="target_platforms is required")
+
+    if not request.audience_profiles:
+        request.audience_profiles = audience_profiles_for(
+            [str(platform) for platform in request.target_platforms]
+        )
+
+    try:
+        response = await build_llm().ainvoke(build_growth_optimization_messages(request))
+        usage = response_usage(response)
+        result = parse_growth_response(response_text(response.content), request, usage)
+        record_ai_usage("/growth/optimize/stream", usage)
+        return StreamingResponse(
+            growth_event_stream(result),
+            media_type="text/event-stream; charset=utf-8",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("AI growth optimization stream failed")
+        raise HTTPException(status_code=502, detail=GENERIC_AI_FAILURE_DETAIL) from e
+
+
+def parse_growth_response(
+    raw_content: str,
+    request: GrowthOptimizationRequest,
+    usage: dict,
+) -> GrowthOptimizationResponse:
+    try:
+        parsed = json.loads(raw_content)
+        response = GrowthOptimizationResponse.model_validate(parsed)
+        response.usage = usage
+        return response
+    except Exception:
+        return GrowthOptimizationResponse(
+            quality_summary=(
+                "Generated fallback growth proposals. Review claims and platform fit "
+                "before applying."
+            ),
+            proposals=fallback_growth_proposals(request),
+            usage=usage,
+        )
+
+
+def fallback_growth_proposals(
+    request: GrowthOptimizationRequest,
+) -> list[GrowthProposal]:
+    warnings = {
+        "risk_warnings": [
+            "Review quantitative claims before publishing.",
+            "Growth optimization should not promise guaranteed platform traffic.",
+        ]
+    }
+    title = request.title.strip() or "Untitled"
+    proposals = [
+        GrowthProposal(
+            proposal_type="title_candidates",
+            target_platform="source",
+            summary="Growth-oriented title candidates",
+            full_content="\n".join(
+                [
+                    f"{title}: practical takeaways",
+                    f"Why {title} matters now",
+                    f"{title} without the common mistakes",
+                ]
+            ),
+            quality_checks=warnings,
+        ),
+        GrowthProposal(
+            proposal_type="source_rewrite",
+            target_platform="source",
+            summary="Source rewrite optimized for clearer opening retention",
+            patch="",
+            full_content=(
+                f"{title}\n\n"
+                f"Goal: {request.goal}\n\n"
+                f"{request.source_content.strip()}"
+            ),
+            quality_checks=warnings,
+        ),
+    ]
+    for platform in request.target_platforms:
+        profile_id = f"{platform}@growth-v1"
+        proposals.append(
+            GrowthProposal(
+                proposal_type="prepublish_patch",
+                target_platform=str(platform),
+                summary=f"{profile_id} platform draft proposal",
+                patch="",
+                full_content=(
+                    f"{title}\n\n"
+                    f"Optimized for {platform} with {request.intensity} intensity.\n\n"
+                    f"{request.source_content.strip()}"
+                ),
+                quality_checks=warnings | {"audience_profile": profile_id},
+            )
+        )
+    return proposals
+
+
+async def growth_event_stream(
+    result: GrowthOptimizationResponse,
+) -> AsyncIterator[str]:
+    yield sse("status", {"status": "running", "prompt_version": result.prompt_version})
+    for proposal in result.proposals:
+        yield sse("proposal", proposal.model_dump(mode="json"))
+    yield sse(
+        "status",
+        {
+            "status": "ready",
+            "model": result.model,
+            "prompt_version": result.prompt_version,
+            "quality_summary": result.quality_summary,
+            "usage": result.usage.model_dump(mode="json")
+            if hasattr(result.usage, "model_dump")
+            else result.usage,
+        },
+    )
+
+
+def sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
