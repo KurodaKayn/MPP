@@ -17,12 +17,7 @@ pre-commit:
     backend-format:
       root: "backend/"
       glob: "*.go"
-      run: |
-        for file in {staged_files}; do
-          tmp="$(mktemp)"
-          golangci-lint fmt --stdin < "$file" > "$tmp"
-          mv "$tmp" "$file"
-        done
+      run: golangci-lint fmt {staged_files}
       stage_fixed: true
 
     backend-lint:
@@ -33,12 +28,7 @@ pre-commit:
     browser-worker-format:
       root: "browser-worker/"
       glob: "*.go"
-      run: |
-        for file in {staged_files}; do
-          tmp="$(mktemp)"
-          golangci-lint fmt --stdin < "$file" > "$tmp"
-          mv "$tmp" "$file"
-        done
+      run: golangci-lint fmt {staged_files}
       stage_fixed: true
 
     browser-worker-lint:
