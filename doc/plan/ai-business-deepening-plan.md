@@ -687,7 +687,7 @@ Goal: create persistent sessions before adding write behavior.
 - [x] Add a right-side drafting panel on the project page, supporting message history, streaming events, artifacts, and proposal lists.
 - [ ] Add session list, create, archive, resume, and message history APIs.
 - [ ] Connect the panel to the harness stream endpoint.
-- [ ] Support assistant text, status events, compact boundary events, and read-only context events.
+- [x] Support assistant text, status events, compact boundary events, and read-only context events in the frontend mock timeline.
 
 Acceptance:
 

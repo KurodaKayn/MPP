@@ -119,7 +119,7 @@ describe("AI drafting session panel", () => {
     expect(view.text()).toContain("I read the current project context");
 
     view.click(view.button("Events"));
-    expect(view.text()).toContain("Context read");
+    expect(view.text()).toContain("Read-only context");
 
     view.click(view.button("Artifacts"));
     expect(view.text()).toContain("Opening rewrite proposal");
@@ -132,6 +132,42 @@ describe("AI drafting session panel", () => {
 
     expect(view.text()).toContain("Archived");
     expect(view.button("Resume").disabled).toBe(false);
+    view.unmount();
+  });
+
+  it("renders assistant, status, read-only context, and compact boundary events", async () => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const view = render(
+      <AIDraftingSessionPanel
+        canEdit
+        content={{
+          firstImageSrc: "",
+          html: "<p>Original body</p>",
+          text: "Original body",
+        }}
+        projectId="project-compact"
+        selectedPlatforms={["wechat"]}
+        title="Compact title"
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    view.click(view.button("New Session"));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    view.click(view.button("Events"));
+    expect(view.text()).toContain("Assistant text");
+    expect(view.text()).toContain("Read-only context");
+    expect(view.text()).toContain("Status update");
+    expect(view.text()).toContain("Compact boundary");
+
     view.unmount();
   });
 

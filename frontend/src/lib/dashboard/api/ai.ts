@@ -257,12 +257,22 @@ function buildMockDraftingEvents(
     {
       created_at: createdAt,
       detail:
+        "Assistant text is rendered from a future harness stream event; writes are still blocked until proposal confirmation exists.",
+      event_type: "message",
+      id: `${session.id}-event-assistant-${stableIdSuffix}`,
+      session_id: session.id,
+      status: "completed",
+      title: "Assistant text",
+    },
+    {
+      created_at: createdAt,
+      detail:
         "Project title, source body, selected platforms, and current draft state are available to the drafting shell.",
       event_type: "context",
       id: `${session.id}-event-context-${stableIdSuffix}`,
       session_id: session.id,
       status: "completed",
-      title: "Context read",
+      title: "Read-only context",
     },
     {
       created_at: createdAt,
@@ -272,7 +282,17 @@ function buildMockDraftingEvents(
       id: `${session.id}-event-status-${stableIdSuffix}`,
       session_id: session.id,
       status: "completed",
-      title: "Read-only shell",
+      title: "Status update",
+    },
+    {
+      created_at: createdAt,
+      detail:
+        "Older context can be summarized here after the backend compactor is connected.",
+      event_type: "compact_boundary",
+      id: `${session.id}-event-compact-${stableIdSuffix}`,
+      session_id: session.id,
+      status: "queued",
+      title: "Compact boundary",
     },
   ];
 }
