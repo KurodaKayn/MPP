@@ -30,6 +30,7 @@ func run(args []string, env map[string]string, stdout io.Writer, stderr io.Write
 	http := NewHTTPClient(config.RequestTimeout)
 	suite := checks.NewSuite(config.CheckSettings(), kubectl, reporter, http)
 	suite.Run()
+	maybeCollectDiagnostics(config, reporter, kubectl)
 	return reporter.ExitCode()
 }
 

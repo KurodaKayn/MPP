@@ -33,6 +33,8 @@ type Config struct {
 	SkipInternalHTTP       bool
 	SkipRuntimeRBAC        bool
 	SkipRuntimeCleanup     bool
+	SkipDiagnostics        bool
+	DiagnosticLines        int
 	DryRun                 bool
 	Verbose                bool
 }
@@ -57,6 +59,8 @@ func ParseConfig(args []string, env map[string]string) (*Config, error) {
 		SkipInternalHTTP:       truthy(env["MPP_SMOKE_SKIP_INTERNAL_HTTP"]),
 		SkipRuntimeRBAC:        truthy(env["MPP_SMOKE_SKIP_RUNTIME_RBAC"]),
 		SkipRuntimeCleanup:     truthy(env["MPP_SMOKE_SKIP_RUNTIME_CLEANUP"]),
+		SkipDiagnostics:        truthy(env["MPP_SMOKE_SKIP_DIAGNOSTICS"]),
+		DiagnosticLines:        envInt(env, "MPP_SMOKE_DIAGNOSTIC_LINES", 60),
 		Verbose:                truthy(env["MPP_SMOKE_VERBOSE"]),
 	}
 
@@ -82,6 +86,8 @@ func ParseConfig(args []string, env map[string]string) (*Config, error) {
 	flags.BoolVar(&config.SkipInternalHTTP, "skip-internal-http", config.SkipInternalHTTP, "")
 	flags.BoolVar(&config.SkipRuntimeRBAC, "skip-runtime-rbac", config.SkipRuntimeRBAC, "")
 	flags.BoolVar(&config.SkipRuntimeCleanup, "skip-runtime-cleanup", config.SkipRuntimeCleanup, "")
+	flags.BoolVar(&config.SkipDiagnostics, "skip-diagnostics", config.SkipDiagnostics, "")
+	flags.IntVar(&config.DiagnosticLines, "diagnostic-lines", config.DiagnosticLines, "")
 	flags.BoolVar(&config.DryRun, "dry-run", false, "")
 	flags.BoolVar(&config.Verbose, "verbose", config.Verbose, "")
 	flags.BoolVar(&config.Verbose, "v", config.Verbose, "")
@@ -119,6 +125,9 @@ func (config *Config) Normalize() error {
 		return err
 	}
 	if err := positiveInteger(config.RequestTimeout, "request timeout"); err != nil {
+		return err
+	}
+	if err := positiveInteger(config.DiagnosticLines, "diagnostic lines"); err != nil {
 		return err
 	}
 	if config.PublicURL, err = normalizeURL(config.PublicURL, "public URL"); err != nil {
@@ -271,6 +280,8 @@ Skips:
   --skip-internal-http             Skip in-cluster HTTP probes.
   --skip-runtime-rbac              Skip browser runtime RBAC can-i probes.
   --skip-runtime-cleanup           Skip runtime Pod cleanup-state probes.
+  --skip-diagnostics               Skip failure diagnostics collection.
+  --diagnostic-lines LINES         Tail lines to print per diagnostic command. Default: 60
 
 Execution:
   --dry-run                        Print command intent without calling kubectl.
