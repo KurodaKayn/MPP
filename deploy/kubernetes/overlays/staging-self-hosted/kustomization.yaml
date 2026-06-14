@@ -37,6 +37,8 @@ configMapGenerator:
       - COLLAB_WEBSOCKET_URL_BASE=wss://mpp-staging.example.invalid
       - LLM_PROVIDER_URL=https://llm.staging.example.invalid/v1
       - LLM_MODEL=staging-validation-model
+      - X_OAUTH2_CLIENT_ID=staging-example-x-oauth2-client-id
+      - X_OAUTH2_REDIRECT_URL=https://mpp-staging.example.invalid/api/user/dashboard/settings/x/oauth2/callback
 
 secretGenerator:
   - name: mpp-app-secrets
@@ -53,6 +55,7 @@ secretGenerator:
       - CONTENT_PIPELINE_INTERNAL_TOKEN=staging-example-content-pipeline-token
       - R2_ACCESS_KEY_ID=staging-example-r2-access-key
       - R2_SECRET_ACCESS_KEY=staging-example-r2-secret-key
+      - X_OAUTH2_CLIENT_SECRET=staging-example-x-oauth2-client-secret
 
 images:
   - name: registry.example.invalid/kurodakayn/mpp-frontend

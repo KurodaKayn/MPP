@@ -168,6 +168,11 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: R2_SECRET_ACCESS_KEY
+            - name: X_OAUTH2_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: X_OAUTH2_CLIENT_SECRET
           readinessProbe:
             httpGet:
               path: /ready
@@ -293,6 +298,11 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: R2_SECRET_ACCESS_KEY
+            - name: X_OAUTH2_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: X_OAUTH2_CLIENT_SECRET
           readinessProbe:
             httpGet:
               path: /ready

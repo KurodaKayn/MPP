@@ -38,6 +38,8 @@ configMapGenerator:
       - R2_ACCOUNT_ID=validation-r2-account
       - R2_BUCKET=validation-r2-bucket
       - R2_ENDPOINT=https://validation-r2-account.r2.cloudflarestorage.com
+      - X_OAUTH2_CLIENT_ID=validation-x-oauth2-client-id
+      - X_OAUTH2_REDIRECT_URL=https://mpp.example.invalid/api/user/dashboard/settings/x/oauth2/callback
 
 secretGenerator:
   - name: mpp-app-secrets
@@ -54,6 +56,7 @@ secretGenerator:
       - CONTENT_PIPELINE_INTERNAL_TOKEN=validation-content-pipeline-token
       - R2_ACCESS_KEY_ID=validation-r2-access-key
       - R2_SECRET_ACCESS_KEY=validation-r2-secret-key
+      - X_OAUTH2_CLIENT_SECRET=validation-x-oauth2-client-secret
 
 images:
   - name: registry.example.invalid/kurodakayn/mpp-frontend

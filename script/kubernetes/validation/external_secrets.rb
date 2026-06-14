@@ -17,6 +17,7 @@ module KubernetesValidation
       "CONTENT_PIPELINE_INTERNAL_TOKEN",
       "R2_ACCESS_KEY_ID",
       "R2_SECRET_ACCESS_KEY",
+      "X_OAUTH2_CLIENT_SECRET",
     ].freeze
     OPTIONAL_APP_SECRET_KEYS = ["REDIS_PASSWORD"].freeze
 
