@@ -194,6 +194,7 @@ module KubernetesAppSecret
         "CONTENT_PIPELINE_INTERNAL_TOKEN" => "content-pipeline-token",
         "R2_ACCESS_KEY_ID" => "r2-access-key",
         "R2_SECRET_ACCESS_KEY" => "r2-secret-key",
+        "X_OAUTH2_CLIENT_SECRET" => "x-oauth2-client-secret",
       }
     end
 

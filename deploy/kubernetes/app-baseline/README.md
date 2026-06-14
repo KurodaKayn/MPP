@@ -26,6 +26,9 @@ Required overlay inputs:
   to allow public traffic only to frontend and collaboration Pods.
 - LLM provider configuration through `LLM_PROVIDER_URL`, `LLM_MODEL`, and
   `LLM_PROVIDER_KEY`.
+- X OAuth2 configuration through `X_OAUTH2_CLIENT_ID`,
+  `X_OAUTH2_REDIRECT_URL`, optional endpoint override URLs, and
+  `X_OAUTH2_CLIENT_SECRET`.
 - Browser runtime control resources from
   `deploy/kubernetes/browser-runtime-control`, including the runtime namespace,
   browser-worker ServiceAccount, RoleBinding, admission policy, and
@@ -33,7 +36,9 @@ Required overlay inputs:
 - A `mpp-app-secrets` Secret in `mpp-system` with at least `JWT_SECRET`,
   `DB_PASSWORD`, `COLLAB_TOKEN_SECRET`, `COOKIE_ENCRYPTION_KEY`,
   `LLM_PROVIDER_KEY`, `AI_SERVICE_INTERNAL_TOKEN`,
-  `BROWSER_WORKER_INTERNAL_TOKEN`, and `CONTENT_PIPELINE_INTERNAL_TOKEN`.
+  `BROWSER_WORKER_INTERNAL_TOKEN`, `CONTENT_PIPELINE_INTERNAL_TOKEN`,
+  `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and
+  `X_OAUTH2_CLIENT_SECRET`.
 
 The CI validation overlay under `deploy/kubernetes/validation/app-baseline`
 uses fake values to verify manifest shape without committing real secrets or
