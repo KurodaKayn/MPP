@@ -19,6 +19,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
+	platformcapabilities "github.com/kurodakayn/mpp-backend/internal/platformcapabilities"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
@@ -525,10 +526,5 @@ func (s *Service) applySavedBrowserCookies(ctx context.Context, userID uuid.UUID
 }
 
 func usesStoredBrowserCookies(platform string) bool {
-	switch platform {
-	case "douyin", "zhihu":
-		return true
-	default:
-		return false
-	}
+	return platformcapabilities.UsesStoredBrowserCookies(platform)
 }

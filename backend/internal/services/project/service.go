@@ -13,6 +13,7 @@ import (
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	platformcapabilities "github.com/kurodakayn/mpp-backend/internal/platformcapabilities"
 	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
 )
@@ -34,12 +35,7 @@ type DashboardReadModelUpdater interface {
 	RefreshWorkspaceAsync(ctx context.Context, workspaceID uuid.UUID)
 }
 
-var allowedProjectPlatforms = map[string]struct{}{
-	"douyin": {},
-	"wechat": {},
-	"x":      {},
-	"zhihu":  {},
-}
+var allowedProjectPlatforms = platformcapabilities.ProjectPlatformSet()
 
 type Service struct {
 	db              *gorm.DB
