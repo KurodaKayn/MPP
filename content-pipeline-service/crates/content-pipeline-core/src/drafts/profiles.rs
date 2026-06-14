@@ -23,32 +23,10 @@ pub struct DraftProfile {
     pub format: DraftFormat,
 }
 
-const SUPPORTED_DRAFT_PROFILES: &[DraftProfile] = &[
-    DraftProfile {
-        platform: "wechat",
-        profile: "wechat@v1",
-        schema_version: 1,
-        format: DraftFormat::Html,
-    },
-    DraftProfile {
-        platform: "zhihu",
-        profile: "zhihu@v1",
-        schema_version: 1,
-        format: DraftFormat::Markdown,
-    },
-    DraftProfile {
-        platform: "x",
-        profile: "x@v1",
-        schema_version: 1,
-        format: DraftFormat::Text,
-    },
-    DraftProfile {
-        platform: "douyin",
-        profile: "douyin@v1",
-        schema_version: 1,
-        format: DraftFormat::Text,
-    },
-];
+#[path = "profiles_generated.rs"]
+mod profiles_generated;
+
+use profiles_generated::SUPPORTED_DRAFT_PROFILES;
 
 pub fn supported_draft_profiles() -> &'static [DraftProfile] {
     SUPPORTED_DRAFT_PROFILES
