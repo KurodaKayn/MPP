@@ -1,34 +1,15 @@
 package project
 
 import (
-	"errors"
-
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 )
 
 func (s *Service) ScopeAccessibleProjects(query *gorm.DB, userID uuid.UUID) *gorm.DB {
-	collaboratorProjectIDs := s.db.
-		Model(&models.ProjectCollaborator{}).
-		Select("project_id").
-		Where("user_id = ?", userID)
-	memberWorkspaceIDs := s.db.
-		Model(&models.WorkspaceMember{}).
-		Select("workspace_id").
-		Where("user_id = ?", userID)
-	ownedWorkspaceIDs := s.db.
-		Model(&models.Workspace{}).
-		Select("id").
-		Where("owner_user_id = ?", userID)
-	return query.Where(
-		"projects.user_id = ? OR projects.id IN (?) OR projects.workspace_id IN (?) OR projects.workspace_id IN (?)",
-		userID,
-		collaboratorProjectIDs,
-		memberWorkspaceIDs,
-		ownedWorkspaceIDs,
-	)
+	return accesspolicy.ScopeAccessibleProjectsWithDB(s.db, query, userID)
 }
 
 func (s *Service) ProjectAccessRole(project models.Project, userID uuid.UUID) (string, error) {
@@ -41,76 +22,33 @@ func (s *Service) ProjectAccessRoleAndSource(project models.Project, userID uuid
 }
 
 func (s *Service) WorkspaceProjectRole(workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
-	return workspaceProjectAccessRoleWithDB(s.db, workspaceID, userID)
+	return accesspolicy.WorkspaceProjectRoleWithDB(s.db, workspaceID, userID)
 }
 
 func ProjectAccessRoleWithDB(db *gorm.DB, project models.Project, userID uuid.UUID) (string, error) {
-	role, _, err := ProjectAccessRoleAndSourceWithDB(db, project, userID)
-	return role, err
+	if userID == uuid.Nil {
+		return "", ErrInvalidProject
+	}
+	return accesspolicy.ProjectAccessRoleWithDB(db, project, userID)
 }
 
 func ProjectAccessRoleAndSourceWithDB(db *gorm.DB, project models.Project, userID uuid.UUID) (string, string, error) {
 	if userID == uuid.Nil {
 		return "", "", ErrInvalidProject
 	}
-	if project.UserID == userID {
-		return models.ProjectRoleOwner, models.ProjectAccessSourceOwner, nil
-	}
-
-	var collaborator models.ProjectCollaborator
-	if err := db.
-		Select("project_id", "user_id", "role").
-		Where("project_id = ? AND user_id = ?", project.ID, userID).
-		First(&collaborator).Error; err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", "", err
-		}
-	} else {
-		return collaborator.Role, models.ProjectAccessSourceDirectShare, nil
-	}
-
-	if project.WorkspaceID != nil && *project.WorkspaceID != uuid.Nil {
-		role, err := workspaceProjectAccessRoleWithDB(db, *project.WorkspaceID, userID)
-		return role, models.ProjectAccessSourceWorkspace, err
-	}
-	return "", "", ErrForbidden
+	return accesspolicy.ProjectAccessRoleAndSourceWithDB(db, project, userID)
 }
 
 func CanEditProjectRole(role string) bool {
-	return role == models.ProjectRoleOwner || role == models.ProjectRoleEditor
+	return accesspolicy.CanEditProjectRole(role)
 }
 
 func projectRoleForWorkspaceRole(role string) (string, error) {
-	switch role {
-	case models.WorkspaceRoleOwner, models.WorkspaceRoleAdmin, models.WorkspaceRoleMember:
-		return models.ProjectRoleEditor, nil
-	case models.WorkspaceRoleViewer:
-		return models.ProjectRoleViewer, nil
-	default:
-		return "", ErrForbidden
-	}
+	return accesspolicy.ProjectRoleForWorkspaceRole(role)
 }
 
 func workspaceProjectAccessRoleWithDB(db *gorm.DB, workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
-	var workspace models.Workspace
-	if err := db.Select("id", "owner_user_id").First(&workspace, "id = ?", workspaceID).Error; err != nil {
-		return "", err
-	}
-	if workspace.OwnerUserID == userID {
-		return projectRoleForWorkspaceRole(models.WorkspaceRoleOwner)
-	}
-
-	var member models.WorkspaceMember
-	if err := db.
-		Select("workspace_id", "user_id", "role").
-		Where("workspace_id = ? AND user_id = ?", workspaceID, userID).
-		First(&member).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", ErrForbidden
-		}
-		return "", err
-	}
-	return projectRoleForWorkspaceRole(member.Role)
+	return accesspolicy.WorkspaceProjectRoleWithDB(db, workspaceID, userID)
 }
 
 func (s *Service) requireProjectOwner(projectID uuid.UUID, actorUserID uuid.UUID) (*models.Project, error) {
