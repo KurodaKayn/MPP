@@ -40,6 +40,7 @@ func (suite *Suite) Run() {
 	suite.workloadRollouts()
 	suite.serviceEndpoints()
 	suite.configuration()
+	suite.deploymentContracts()
 	if !suite.config.SkipInternalHTTP {
 		suite.internalReadiness()
 	}
