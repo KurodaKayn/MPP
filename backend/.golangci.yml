@@ -37,10 +37,18 @@ linters:
       rules:
         - name: exported
           disabled: true
+        - name: file-length-limit
+          arguments:
+            - max: 1000
         - name: package-comments
           disabled: true
   exclusions:
     generated: strict
+    rules:
+      - path: _test\.go
+        linters:
+          - revive
+        text: "file-length-limit:"
 
 formatters:
   enable:
