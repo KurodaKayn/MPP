@@ -122,7 +122,7 @@ func NewRuntime(ctx context.Context, config RuntimeWiringConfig) (*Runtime, erro
 	}
 
 	workerClient := NewBrowserWorkerClientFromEnv()
-	browserSessionService := browsersession.NewBrowserSessionService(config.SQLDB, workerClient, publisher.NewCookieStore(config.SQLDB))
+	browserSessionService := browsersession.NewBrowserSessionServiceWithRouter(config.SQLDB, workerClient, publisher.NewCookieStore(config.SQLDB), config.DBRouter)
 	browserSessionService.UseDashboardAccountCacheInvalidator(dashboardService.AccountSettings)
 	if redisClient != nil {
 		browserSessionService.UseRedis(redisClient)
