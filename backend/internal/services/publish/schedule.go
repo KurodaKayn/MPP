@@ -3,7 +3,6 @@ package publish
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -355,99 +354,6 @@ func (s *Service) latestProjectVersionID(ctx context.Context, projectID uuid.UUI
 		return uuid.Nil, nil
 	}
 	return uuid.Nil, err
-}
-
-func (s *Service) startPublishAttempt(scheduleID uuid.UUID, startedAt time.Time) (models.PublishAttempt, bool, error) {
-	if scheduleID == uuid.Nil {
-		return models.PublishAttempt{}, false, nil
-	}
-	if !s.db.Migrator().HasTable(&models.ScheduledPublication{}) || !s.db.Migrator().HasTable(&models.PublishAttempt{}) {
-		return models.PublishAttempt{}, false, nil
-	}
-	var attempt models.PublishAttempt
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&models.ScheduledPublication{}).
-			Where("id = ? AND status IN ?", scheduleID, []string{
-				models.ScheduledPublicationStatusScheduled,
-				models.ScheduledPublicationStatusFailed,
-				models.ScheduledPublicationStatusNeedsManualAction,
-			}).
-			Updates(map[string]any{
-				"status":     models.ScheduledPublicationStatusRunning,
-				"last_error": "",
-			})
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			var schedule models.ScheduledPublication
-			if err := tx.Select("status").First(&schedule, "id = ?", scheduleID).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return errScheduledPublicationMissing
-				}
-				return err
-			}
-			return fmt.Errorf("%w: %s", errScheduledPublicationNotStartable, schedule.Status)
-		}
-
-		var attemptNo int
-		if err := tx.Model(&models.PublishAttempt{}).
-			Where("scheduled_publication_id = ?", scheduleID).
-			Select("COALESCE(MAX(attempt_no), 0)").
-			Scan(&attemptNo).Error; err != nil {
-			return err
-		}
-
-		attempt = models.PublishAttempt{
-			ScheduledPublicationID: scheduleID,
-			AttemptNo:              attemptNo + 1,
-			StartedAt:              startedAt,
-			Status:                 models.PublishAttemptStatusRunning,
-		}
-		return tx.Create(&attempt).Error
-	}); err != nil {
-		if errors.Is(err, errScheduledPublicationMissing) {
-			return models.PublishAttempt{}, false, nil
-		}
-		if errors.Is(err, errScheduledPublicationNotStartable) {
-			return models.PublishAttempt{}, false, ErrPublicationAlreadyPublishing
-		}
-		return models.PublishAttempt{}, false, err
-	}
-	return attempt, true, nil
-}
-
-func (s *Service) finishPublishAttempt(attempt *models.PublishAttempt, status string, remoteID string, publishURL string, errorMessage string) error {
-	if attempt == nil {
-		return nil
-	}
-	finishedAt := time.Now().UTC()
-	scheduleStatus := models.ScheduledPublicationStatusPublished
-	errorCode := ""
-	if status != models.PublishAttemptStatusSucceeded {
-		scheduleStatus = models.ScheduledPublicationStatusFailed
-		errorCode = status
-	}
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&models.PublishAttempt{}).
-			Where("id = ?", attempt.ID).
-			Updates(map[string]any{
-				"finished_at":   &finishedAt,
-				"status":        status,
-				"remote_id":     remoteID,
-				"publish_url":   publishURL,
-				"error_code":    errorCode,
-				"error_message": errorMessage,
-			}).Error; err != nil {
-			return err
-		}
-		return tx.Model(&models.ScheduledPublication{}).
-			Where("id = ?", attempt.ScheduledPublicationID).
-			Updates(map[string]any{
-				"status":     scheduleStatus,
-				"last_error": errorMessage,
-			}).Error
-	})
 }
 
 func scheduledPublicationFromModel(schedule models.ScheduledPublication, project models.Project, pub models.ProjectPlatformPublication, attempts []models.PublishAttempt) dto.ScheduledPublication {
