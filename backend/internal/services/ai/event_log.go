@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,7 +16,9 @@ import (
 
 // EventLogManager manages serialization and replay of events in an AI session
 type EventLogManager struct {
-	db *gorm.DB
+	db   *gorm.DB
+	mu   sync.Mutex
+	last time.Time
 }
 
 func NewEventLogManager(db *gorm.DB) *EventLogManager {
@@ -29,12 +32,20 @@ func (m *EventLogManager) LogEvent(ctx context.Context, sessionID uuid.UUID, eve
 		return nil, fmt.Errorf("failed to marshal event payload: %w", err)
 	}
 
+	m.mu.Lock()
+	createdAt := time.Now().UTC()
+	if !m.last.IsZero() && !createdAt.After(m.last) {
+		createdAt = m.last.Add(time.Microsecond)
+	}
+	m.last = createdAt
+	m.mu.Unlock()
+
 	event := models.AISessionEvent{
 		ID:        uuid.New(),
 		SessionID: sessionID,
 		EventType: eventType,
 		Payload:   datatypes.JSON(payloadBytes),
-		CreatedAt: time.Now(),
+		CreatedAt: createdAt,
 	}
 
 	if err := m.db.WithContext(ctx).Create(&event).Error; err != nil {
@@ -49,7 +60,7 @@ func (m *EventLogManager) GetEvents(ctx context.Context, sessionID uuid.UUID) ([
 	var events []models.AISessionEvent
 	err := m.db.WithContext(ctx).
 		Where("session_id = ?", sessionID).
-		Order("created_at asc").
+		Order("created_at asc, id asc").
 		Find(&events).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch session events: %w", err)
@@ -66,6 +77,12 @@ type TimelineItem struct {
 	CreatedAt time.Time      `json:"created_at"`
 }
 
+type ReplayResult struct {
+	SessionID     uuid.UUID                  `json:"session_id"`
+	Events        []TimelineItem             `json:"events"`
+	ModelMessages []models.AIDraftingMessage `json:"model_messages"`
+}
+
 // Replay reconstructs the session timeline as a list of structured JSON timeline items
 func (m *EventLogManager) Replay(ctx context.Context, sessionID uuid.UUID) ([]TimelineItem, error) {
 	events, err := m.GetEvents(ctx, sessionID)
@@ -77,7 +94,12 @@ func (m *EventLogManager) Replay(ctx context.Context, sessionID uuid.UUID) ([]Ti
 	for i, e := range events {
 		var payloadMap map[string]any
 		if len(e.Payload) > 0 {
-			_ = json.Unmarshal(e.Payload, &payloadMap)
+			if err := json.Unmarshal(e.Payload, &payloadMap); err != nil {
+				payloadMap = map[string]any{"raw": string(e.Payload)}
+			}
+		}
+		if payloadMap == nil {
+			payloadMap = map[string]any{}
 		}
 		timeline[i] = TimelineItem{
 			ID:        e.ID,
@@ -88,4 +110,25 @@ func (m *EventLogManager) Replay(ctx context.Context, sessionID uuid.UUID) ([]Ti
 		}
 	}
 	return timeline, nil
+}
+
+func (m *EventLogManager) ReplaySession(ctx context.Context, sessionID uuid.UUID) (*ReplayResult, error) {
+	timeline, err := m.Replay(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	var messages []models.AIDraftingMessage
+	if err := m.db.WithContext(ctx).
+		Where("session_id = ?", sessionID).
+		Order("created_at asc, id asc").
+		Find(&messages).Error; err != nil {
+		return nil, fmt.Errorf("failed to fetch session messages: %w", err)
+	}
+
+	return &ReplayResult{
+		SessionID:     sessionID,
+		Events:        timeline,
+		ModelMessages: messages,
+	}, nil
 }
