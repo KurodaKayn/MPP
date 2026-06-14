@@ -6,784 +6,835 @@
 export type paths = Record<string, never>;
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        /** @enum {string} */
-        DraftFormat: "html" | "markdown" | "text";
-        /** @enum {string} */
-        PublishPlatform: "douyin" | "wechat" | "x" | "zhihu";
-        /** @enum {string} */
-        GeneratedByType: "agent" | "system" | "user";
-        /** @enum {string} */
-        AdaptedAssetType: "image";
-        /** @enum {string} */
-        ProjectStatus: "draft" | "ready" | "publishing" | "published" | "failed";
-        /** @enum {string} */
-        ProjectRole: "owner" | "editor" | "viewer";
-        /** @enum {string} */
-        ProjectAccessSource: "owner" | "direct_share" | "workspace";
-        /** @enum {string} */
-        ProjectCollaboratorRole: "editor" | "viewer";
-        /** @enum {string} */
-        ProjectActivityType: "content_saved" | "comment_created" | "comment_resolved" | "collaborator_added" | "collaborator_role_changed" | "collaborator_removed" | "publish_requested" | "publish_queued" | "publish_completed" | "share_link_accepted" | "share_link_created" | "share_link_revoked" | "version_restored";
-        /** @enum {string} */
-        ProjectCommentStatus: "open" | "resolved";
-        /** @enum {string} */
-        ProjectShareLinkStatus: "active" | "revoked";
-        /** @enum {string} */
-        WorkspaceRole: "owner" | "admin" | "member" | "viewer";
-        /** @enum {string} */
-        WorkspaceMemberRequestRole: "admin" | "member" | "viewer";
-        /** @enum {string} */
-        WorkspaceStatus: "active" | "archived";
-        /** @enum {string} */
-        WorkspaceActivityType: "workspace_created" | "workspace_updated" | "member_added" | "member_role_changed" | "member_removed" | "invite_created" | "invite_accepted" | "invite_revoked";
-        /** @enum {string} */
-        PublicationStatus: "draft" | "syncing" | "queued" | "publishing" | "succeeded" | "failed" | "cancelled";
-        /** @enum {string} */
-        PublicationDraftStatus: "unsynced" | "syncing" | "ready" | "stale";
-        /** @enum {string} */
-        PublicationReviewStatus: "draft" | "reviewing" | "approved" | "changes_requested";
-        /** @enum {string} */
-        ContentTemplateScope: "system" | "workspace" | "personal";
-        /** @enum {string} */
-        MediaAssetLibraryScope: "project" | "workspace" | "personal";
-        /** @enum {string} */
-        PublishResultStatus: "error" | "failed" | "manual_required" | "queued" | "succeeded" | "publishing";
-        /** @enum {string} */
-        PlatformAccountStatus: "unconfigured" | "untested" | "connected" | "failed";
-        /** @enum {string} */
-        ConnectionTestStatus: "connected" | "failed";
-        /** @enum {string} */
-        RequirementStatusValue: "passed" | "warning" | "failed" | "unknown";
-        /** @enum {string} */
-        BrowserSessionStatus: "pending" | "ready" | "login_detected" | "capturing" | "connected" | "expired" | "failed";
-        /** @enum {string} */
-        CollabDocumentStatus: "active";
-        /** @enum {string} */
-        CollabDocumentRole: "editor" | "viewer";
-        GeneratedBy: {
-            type: components["schemas"]["GeneratedByType"];
-            id: string;
-            version?: string;
-            agent_run_id?: string;
-            instructions?: string;
-        };
-        AdaptedAsset: {
-            type: components["schemas"]["AdaptedAssetType"];
-            source_url: string;
-            alt?: string;
-        };
-        AdaptedContent: {
-            schema_version?: number;
-            format: components["schemas"]["DraftFormat"];
-            summary?: string;
-            /** @description RFC3339 timestamp or a future revision identifier. */
-            source_revision?: string;
-            generated_by?: components["schemas"]["GeneratedBy"];
-            html?: string;
-            markdown?: string;
-            text?: string;
-            assets?: components["schemas"]["AdaptedAsset"][];
-        };
-        DashboardStats: {
-            total_users: number;
-            total_projects: number;
-            total_published_publications: number;
-            total_failed_publications: number;
-        };
-        PublicationSummary: {
-            /** Format: uuid */
-            id: string;
-            platform: components["schemas"]["PublishPlatform"];
-            enabled: boolean;
-            status: components["schemas"]["PublicationStatus"];
-            draft_status: components["schemas"]["PublicationDraftStatus"];
-            review_status: components["schemas"]["PublicationReviewStatus"];
-            sync_required: boolean;
-            publish_url?: string;
-        };
-        PublicationDetail: components["schemas"]["PublicationSummary"] & {
-            error_message?: string;
-            config: {
-                [key: string]: unknown;
-            };
-            adapted_content: components["schemas"]["AdaptedContent"];
-            remote_id?: string;
-            retry_count: number;
-            /** Format: date-time */
-            last_attempt_at?: string;
-            /** Format: date-time */
-            published_at?: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        ProjectPublications: {
-            /** Format: uuid */
-            project_id: string;
-            items: components["schemas"]["PublicationDetail"][];
-        };
-        CreateCollabDocumentRequest: {
-            title: string;
-        };
-        UpdateCollabDocumentRequest: {
-            title: string;
-        };
-        CollabSessionLimits: {
-            max_message_bytes: number;
-            heartbeat_seconds: number;
-        };
-        CollabDocumentSession: {
-            /** Format: uuid */
-            document_id: string;
-            role: components["schemas"]["CollabDocumentRole"];
-            websocket_url: string;
-            token: string;
-            /** Format: date-time */
-            expires_at: string;
-            limits: components["schemas"]["CollabSessionLimits"];
-        };
-        CollabDocument: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            owner_user_id: string;
-            title: string;
-            status: components["schemas"]["CollabDocumentStatus"];
-            schema_version: number;
-            /** Format: int64 */
-            current_seq: number;
-            /** Format: uuid */
-            last_edited_by?: string | null;
-            /** Format: date-time */
-            last_edited_at?: string | null;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        PaginationCollabDocuments: {
-            items: components["schemas"]["CollabDocument"][];
-            page: number;
-            limit: number;
-            total: number;
-            total_pages: number;
-        };
-        PublishResult: {
-            status: components["schemas"]["PublishResultStatus"];
-            /** Format: uuid */
-            job_id?: string;
-            idempotency_key?: string;
-            platform?: components["schemas"]["PublishPlatform"];
-            /** Format: date-time */
-            queued_at?: string;
-            remote_id?: string;
-            publish_url?: string;
-            error_message?: string;
-            /** Format: uuid */
-            browser_session_id?: string;
-            stream_url?: string;
-        };
-        ProjectListItem: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            user_id: string;
-            /** Format: uuid */
-            workspace_id?: string | null;
-            /** Format: uuid */
-            collab_document_id?: string | null;
-            /** Format: uuid */
-            template_id?: string | null;
-            /** Format: uuid */
-            brand_profile_id?: string | null;
-            title: string;
-            status: components["schemas"]["ProjectStatus"];
-            role: components["schemas"]["ProjectRole"];
-            access_source?: components["schemas"]["ProjectAccessSource"];
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-            publications: components["schemas"]["PublicationSummary"][];
-        };
-        ProjectDetail: components["schemas"]["ProjectListItem"] & {
-            source_content: string;
-            publication_details?: components["schemas"]["PublicationDetail"][];
-            comments?: components["schemas"]["ProjectComment"][];
-            versions?: components["schemas"]["ProjectVersion"][];
-            activities?: components["schemas"]["ProjectActivity"][];
-            collaborators?: components["schemas"]["ProjectCollaborator"][];
-            share_links?: components["schemas"]["ProjectShareLink"][];
-            permission_sources?: components["schemas"]["ProjectPermissionSource"][];
-        };
-        ProjectPermissionSource: {
-            source: string;
-            role: string;
-        };
-        ContentTemplate: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            workspace_id?: string | null;
-            /** Format: uuid */
-            owner_user_id?: string | null;
-            scope: components["schemas"]["ContentTemplateScope"];
-            name: string;
-            description: string;
-            title_template: string;
-            source_template: string;
-            default_platforms: components["schemas"]["PublishPlatform"][];
-            platform_config: {
-                [key: string]: unknown;
-            };
-            tags: string[];
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        ContentTemplatesResponse: {
-            items: components["schemas"]["ContentTemplate"][];
-        };
-        CreateContentTemplateRequest: {
-            scope?: components["schemas"]["ContentTemplateScope"];
-            name: string;
-            description?: string;
-            title_template: string;
-            source_template: string;
-            default_platforms: components["schemas"]["PublishPlatform"][];
-            platform_config?: {
-                [key: string]: unknown;
-            };
-            tags?: string[];
-        };
-        BrandProfile: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            workspace_id: string;
-            /** Format: uuid */
-            created_by: string;
-            name: string;
-            voice: string;
-            audience: string;
-            banned_words: string[];
-            cta: string;
-            link_strategy: string;
-            default_tags: string[];
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        BrandProfilesResponse: {
-            items: components["schemas"]["BrandProfile"][];
-        };
-        CreateBrandProfileRequest: {
-            name: string;
-            voice?: string;
-            audience?: string;
-            banned_words?: string[];
-            cta?: string;
-            link_strategy?: string;
-            default_tags?: string[];
-        };
-        AddProjectCollaboratorRequest: {
-            /** Format: uuid */
-            user_id?: string;
-            /** Format: email */
-            email?: string;
-            role: components["schemas"]["ProjectCollaboratorRole"];
-        };
-        UpdateProjectCollaboratorRequest: {
-            role: components["schemas"]["ProjectCollaboratorRole"];
-        };
-        ProjectCollaborator: {
-            /** Format: uuid */
-            project_id: string;
-            /** Format: uuid */
-            user_id: string;
-            username: string;
-            /** Format: email */
-            email: string;
-            role: components["schemas"]["ProjectCollaboratorRole"];
-            /** Format: uuid */
-            created_by: string;
-            /** Format: date-time */
-            created_at: string;
-        };
-        ProjectCollaboratorsResponse: {
-            items: components["schemas"]["ProjectCollaborator"][];
-        };
-        ProjectActivity: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            project_id: string;
-            /** Format: uuid */
-            actor_user_id: string;
-            actor_username: string;
-            /** Format: email */
-            actor_email: string;
-            /** Format: uuid */
-            target_user_id?: string;
-            target_username?: string;
-            /** Format: email */
-            target_email?: string;
-            event_type: components["schemas"]["ProjectActivityType"];
-            metadata: {
-                [key: string]: unknown;
-            };
-            /** Format: date-time */
-            created_at: string;
-        };
-        ProjectActivitiesResponse: {
-            items: components["schemas"]["ProjectActivity"][];
-        };
-        CreateProjectCommentRequest: {
-            body: string;
-            anchor_text?: string;
-            metadata?: {
-                [key: string]: unknown;
-            };
-        };
-        UpdateProjectCommentRequest: {
-            /** @enum {string} */
-            status: "resolved";
-        };
-        ProjectComment: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            project_id: string;
-            /** Format: uuid */
-            author_id: string;
-            author_username: string;
-            /** Format: email */
-            author_email: string;
-            body: string;
-            anchor_text?: string;
-            status: components["schemas"]["ProjectCommentStatus"];
-            metadata: {
-                [key: string]: unknown;
-            };
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            resolved_at?: string;
-        };
-        ProjectCommentsResponse: {
-            items: components["schemas"]["ProjectComment"][];
-        };
-        ProjectVersion: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            project_id: string;
-            /** Format: uuid */
-            created_by: string;
-            creator_username: string;
-            /** Format: email */
-            creator_email: string;
-            version_number: number;
-            title: string;
-            source: string;
-            /** Format: uuid */
-            collab_document_id?: string;
-            /** Format: int64 */
-            collab_seq: number;
-            /** Format: date-time */
-            created_at: string;
-        };
-        ProjectVersionsResponse: {
-            items: components["schemas"]["ProjectVersion"][];
-        };
-        RestoreProjectVersionResponse: {
-            project: components["schemas"]["ProjectDetail"];
-            version: components["schemas"]["ProjectVersion"];
-        };
-        CreateProjectShareLinkRequest: {
-            role: components["schemas"]["ProjectCollaboratorRole"];
-            /** Format: date-time */
-            expires_at?: string;
-        };
-        ProjectShareLink: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            project_id: string;
-            /** Format: uuid */
-            created_by: string;
-            role: components["schemas"]["ProjectCollaboratorRole"];
-            status: components["schemas"]["ProjectShareLinkStatus"];
-            /** Format: date-time */
-            expires_at?: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            revoked_at?: string;
-        };
-        ProjectShareLinkWithToken: components["schemas"]["ProjectShareLink"] & {
-            token: string;
-            url: string;
-        };
-        ProjectShareLinksResponse: {
-            items: components["schemas"]["ProjectShareLink"][];
-        };
-        AcceptProjectShareLinkResponse: {
-            project: components["schemas"]["ProjectDetail"];
-            role: components["schemas"]["ProjectRole"];
-        };
-        CreateWorkspaceRequest: {
-            name: string;
-            slug?: string;
-        };
-        UpdateWorkspaceRequest: {
-            name: string;
-            slug?: string;
-        };
-        AddWorkspaceMemberRequest: {
-            /** Format: uuid */
-            user_id?: string;
-            /** Format: email */
-            email?: string;
-            role: components["schemas"]["WorkspaceMemberRequestRole"];
-        };
-        CreateWorkspaceInviteRequest: {
-            /** Format: email */
-            email: string;
-            role: components["schemas"]["WorkspaceMemberRequestRole"];
-            /** Format: date-time */
-            expires_at?: string;
-        };
-        AcceptWorkspaceInviteRequest: {
-            token: string;
-        };
-        UpdateWorkspaceMemberRequest: {
-            role: components["schemas"]["WorkspaceMemberRequestRole"];
-        };
-        Workspace: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            owner_user_id: string;
-            name: string;
-            slug?: string;
-            status: components["schemas"]["WorkspaceStatus"];
-            role: components["schemas"]["WorkspaceRole"];
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        WorkspacesResponse: {
-            items: components["schemas"]["Workspace"][];
-        };
-        WorkspaceMember: {
-            /** Format: uuid */
-            workspace_id: string;
-            /** Format: uuid */
-            user_id: string;
-            username: string;
-            /** Format: email */
-            email: string;
-            role: components["schemas"]["WorkspaceRole"];
-            /** Format: uuid */
-            invited_by?: string;
-            /** Format: date-time */
-            joined_at?: string;
-            /** Format: date-time */
-            created_at: string;
-        };
-        WorkspaceMembersResponse: {
-            items: components["schemas"]["WorkspaceMember"][];
-        };
-        WorkspaceInvite: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            workspace_id: string;
-            /** Format: email */
-            email: string;
-            role: components["schemas"]["WorkspaceRole"];
-            /** Format: uuid */
-            invited_by: string;
-            /** Format: uuid */
-            accepted_by?: string;
-            /** @enum {string} */
-            status: "pending" | "accepted" | "expired" | "revoked";
-            /** Format: date-time */
-            expires_at: string;
-            /** Format: date-time */
-            accepted_at?: string;
-            /** Format: date-time */
-            revoked_at?: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
-        };
-        WorkspaceInviteWithToken: components["schemas"]["WorkspaceInvite"] & {
-            token: string;
-        };
-        WorkspaceInvitesResponse: {
-            items: components["schemas"]["WorkspaceInvite"][];
-        };
-        WorkspaceActivity: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            workspace_id: string;
-            /** Format: uuid */
-            actor_user_id: string;
-            actor_username: string;
-            /** Format: email */
-            actor_email: string;
-            /** Format: uuid */
-            target_user_id?: string;
-            target_username?: string;
-            /** Format: email */
-            target_email?: string;
-            event_type: components["schemas"]["WorkspaceActivityType"];
-            metadata: {
-                [key: string]: unknown;
-            };
-            /** Format: date-time */
-            created_at: string;
-        };
-        WorkspaceActivitiesResponse: {
-            items: components["schemas"]["WorkspaceActivity"][];
-        };
-        PaginationProjects: {
-            items: components["schemas"]["ProjectListItem"][];
-            /** @description Opaque keyset cursor used for this page. */
-            cursor?: string;
-            /** @description Opaque keyset cursor for the next page. */
-            next_cursor?: string;
-            has_more: boolean;
-            page: number;
-            limit: number;
-            total: number;
-            total_pages: number;
-        };
-        AIChatMessage: {
-            /** @enum {string} */
-            role: "user" | "assistant";
-            content: string;
-        };
-        AIEditContentRequest: {
-            title?: string;
-            content: string;
-            message: string;
-            conversation?: components["schemas"]["AIChatMessage"][];
-        };
-        AIEditContentResponse: {
-            /** @enum {string} */
-            channel: "content";
-            content: string;
-        };
-        AIEditPrepublishRequest: {
-            title?: string;
-            platform: components["schemas"]["PublishPlatform"];
-            adapted_content: components["schemas"]["AdaptedContent"];
-            message: string;
-            conversation?: components["schemas"]["AIChatMessage"][];
-        };
-        AIEditPrepublishResponse: {
-            /** @enum {string} */
-            channel: "prepublish";
-            platform: components["schemas"]["PublishPlatform"];
-            adapted_content: components["schemas"]["AdaptedContent"];
-            content: string;
-        };
-        AIDraftingStartRequest: {
-            message: string;
-            title?: string;
-        };
-        AIDraftingContinueRequest: {
-            message: string;
-        };
-        AIDraftingMessage: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            session_id: string;
-            /** @enum {string} */
-            role: "user" | "assistant" | "system";
-            content: string;
-            /** Format: date-time */
-            created_at: string;
-        };
-        /** @enum {string} */
-        AIDraftingEventType: "status" | "message" | "tool_call" | "tool_result" | "proposal" | "error";
-        AIDraftingEvent: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            session_id: string;
-            event_type: components["schemas"]["AIDraftingEventType"];
-            payload: {
-                [key: string]: unknown;
-            };
-            /** Format: date-time */
-            created_at: string;
-        };
-        AIDraftingReplay: {
-            /** Format: uuid */
-            session_id: string;
-            events: components["schemas"]["AIDraftingEvent"][];
-            model_messages: components["schemas"]["AIDraftingMessage"][];
-        };
-        RequirementStatus: {
-            status: components["schemas"]["RequirementStatusValue"];
-            title: string;
-            message: string;
-        };
-        WechatAccount: {
-            /** @enum {string} */
-            platform: "wechat";
-            app_id: string;
-            has_app_secret: boolean;
-            status: components["schemas"]["PlatformAccountStatus"];
-            /** Format: date-time */
-            last_tested_at?: string;
-            last_test_error?: string;
-            /** Format: date-time */
-            updated_at?: string;
-            ip_whitelist: components["schemas"]["RequirementStatus"];
-            account_auth: components["schemas"]["RequirementStatus"];
-        };
-        SaveWechatAccountInput: {
-            app_id: string;
-            app_secret?: string;
-        };
-        WechatConnectionTestResult: {
-            connected: boolean;
-            status: components["schemas"]["ConnectionTestStatus"];
-            message: string;
-            err_code?: number;
-            err_msg?: string;
-            /** Format: date-time */
-            tested_at: string;
-            ip_whitelist: components["schemas"]["RequirementStatus"];
-            account_auth: components["schemas"]["RequirementStatus"];
-        };
-        XAccount: {
-            /** @enum {string} */
-            platform: "x";
-            /** @enum {string} */
-            auth_type: "oauth1" | "oauth2";
-            api_key?: string;
-            /** Format: date-time */
-            expires_at?: string;
-            username?: string;
-            has_api_secret: boolean;
-            has_access_token: boolean;
-            has_access_token_secret: boolean;
-            has_oauth2_refresh: boolean;
-            status: components["schemas"]["PlatformAccountStatus"];
-            /** Format: date-time */
-            last_tested_at?: string;
-            last_test_error?: string;
-            /** Format: date-time */
-            updated_at?: string;
-            account_auth: components["schemas"]["RequirementStatus"];
-            publish_access: components["schemas"]["RequirementStatus"];
-        };
-        SaveXAccountInput: {
-            api_key?: string;
-            api_secret?: string;
-            access_token?: string;
-            access_token_secret?: string;
-            username?: string;
-        };
-        XConnectionTestResult: {
-            connected: boolean;
-            status: components["schemas"]["ConnectionTestStatus"];
-            message: string;
-            /** Format: date-time */
-            tested_at: string;
-            user_id?: string;
-            username?: string;
-            name?: string;
-            account_auth: components["schemas"]["RequirementStatus"];
-            publish_access: components["schemas"]["RequirementStatus"];
-        };
-        DouyinAccount: {
-            /** @enum {string} */
-            platform: "douyin";
-            username?: string;
-            avatar_url?: string;
-            status: components["schemas"]["PlatformAccountStatus"];
-            /** Format: date-time */
-            last_tested_at?: string;
-            last_test_error?: string;
-            /** Format: date-time */
-            updated_at?: string;
-        };
-        ZhihuAccount: {
-            /** @enum {string} */
-            platform: "zhihu";
-            username?: string;
-            avatar_url?: string;
-            status: components["schemas"]["PlatformAccountStatus"];
-            /** Format: date-time */
-            last_tested_at?: string;
-            last_test_error?: string;
-            /** Format: date-time */
-            updated_at?: string;
-        };
-        BrowserSession: {
-            /** Format: uuid */
-            session_id: string;
-            platform: components["schemas"]["PublishPlatform"];
-            status: components["schemas"]["BrowserSessionStatus"];
-            stream_url?: string;
-            /** Format: date-time */
-            stream_token_expires_at?: string;
-            /** Format: date-time */
-            expires_at: string;
-            message?: string;
-        };
-        StartBrowserSessionResult: {
-            /** Format: uuid */
-            session_id: string;
-            status: components["schemas"]["BrowserSessionStatus"];
-            stream_url: string;
-            /** Format: date-time */
-            stream_token_expires_at: string;
-            /** Format: date-time */
-            expires_at: string;
-        };
-        StartPublishBrowserSessionResult: components["schemas"]["StartBrowserSessionResult"] & {
-            platform: components["schemas"]["PublishPlatform"];
-            /** Format: uuid */
-            project_id: string;
-        };
-        CompleteBrowserSessionResult: {
-            /** Format: uuid */
-            session_id: string;
-            platform: components["schemas"]["PublishPlatform"];
-            status: components["schemas"]["BrowserSessionStatus"];
-            account: {
-                username: string;
-                avatar_url: string;
-            };
-            message: string;
-        };
-        CancelBrowserSessionResult: {
-            /** Format: uuid */
-            session_id: string;
-            status: components["schemas"]["BrowserSessionStatus"];
-        };
+  schemas: {
+    /** @enum {string} */
+    DraftFormat: "html" | "markdown" | "text";
+    /** @enum {string} */
+    PublishPlatform: "douyin" | "wechat" | "x" | "zhihu";
+    /** @enum {string} */
+    GeneratedByType: "agent" | "system" | "user";
+    /** @enum {string} */
+    AdaptedAssetType: "image";
+    /** @enum {string} */
+    ProjectStatus: "draft" | "ready" | "publishing" | "published" | "failed";
+    /** @enum {string} */
+    ProjectRole: "owner" | "editor" | "viewer";
+    /** @enum {string} */
+    ProjectAccessSource: "owner" | "direct_share" | "workspace";
+    /** @enum {string} */
+    ProjectCollaboratorRole: "editor" | "viewer";
+    /** @enum {string} */
+    ProjectActivityType:
+      | "content_saved"
+      | "comment_created"
+      | "comment_resolved"
+      | "collaborator_added"
+      | "collaborator_role_changed"
+      | "collaborator_removed"
+      | "publish_requested"
+      | "publish_queued"
+      | "publish_completed"
+      | "share_link_accepted"
+      | "share_link_created"
+      | "share_link_revoked"
+      | "version_restored";
+    /** @enum {string} */
+    ProjectCommentStatus: "open" | "resolved";
+    /** @enum {string} */
+    ProjectShareLinkStatus: "active" | "revoked";
+    /** @enum {string} */
+    WorkspaceRole: "owner" | "admin" | "member" | "viewer";
+    /** @enum {string} */
+    WorkspaceMemberRequestRole: "admin" | "member" | "viewer";
+    /** @enum {string} */
+    WorkspaceStatus: "active" | "archived";
+    /** @enum {string} */
+    WorkspaceActivityType:
+      | "workspace_created"
+      | "workspace_updated"
+      | "member_added"
+      | "member_role_changed"
+      | "member_removed"
+      | "invite_created"
+      | "invite_accepted"
+      | "invite_revoked";
+    /** @enum {string} */
+    PublicationStatus:
+      | "draft"
+      | "syncing"
+      | "queued"
+      | "publishing"
+      | "succeeded"
+      | "failed"
+      | "cancelled";
+    /** @enum {string} */
+    PublicationDraftStatus: "unsynced" | "syncing" | "ready" | "stale";
+    /** @enum {string} */
+    PublicationReviewStatus:
+      | "draft"
+      | "reviewing"
+      | "approved"
+      | "changes_requested";
+    /** @enum {string} */
+    ContentTemplateScope: "system" | "workspace" | "personal";
+    /** @enum {string} */
+    MediaAssetLibraryScope: "project" | "workspace" | "personal";
+    /** @enum {string} */
+    PublishResultStatus:
+      | "error"
+      | "failed"
+      | "manual_required"
+      | "queued"
+      | "succeeded"
+      | "publishing";
+    /** @enum {string} */
+    PlatformAccountStatus: "unconfigured" | "untested" | "connected" | "failed";
+    /** @enum {string} */
+    ConnectionTestStatus: "connected" | "failed";
+    /** @enum {string} */
+    RequirementStatusValue: "passed" | "warning" | "failed" | "unknown";
+    /** @enum {string} */
+    BrowserSessionStatus:
+      | "pending"
+      | "ready"
+      | "login_detected"
+      | "capturing"
+      | "connected"
+      | "expired"
+      | "failed";
+    /** @enum {string} */
+    CollabDocumentStatus: "active";
+    /** @enum {string} */
+    CollabDocumentRole: "editor" | "viewer";
+    GeneratedBy: {
+      type: components["schemas"]["GeneratedByType"];
+      id: string;
+      version?: string;
+      agent_run_id?: string;
+      instructions?: string;
     };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+    AdaptedAsset: {
+      type: components["schemas"]["AdaptedAssetType"];
+      source_url: string;
+      alt?: string;
+    };
+    AdaptedContent: {
+      schema_version?: number;
+      format: components["schemas"]["DraftFormat"];
+      summary?: string;
+      /** @description RFC3339 timestamp or a future revision identifier. */
+      source_revision?: string;
+      generated_by?: components["schemas"]["GeneratedBy"];
+      html?: string;
+      markdown?: string;
+      text?: string;
+      assets?: components["schemas"]["AdaptedAsset"][];
+    };
+    DashboardStats: {
+      total_users: number;
+      total_projects: number;
+      total_published_publications: number;
+      total_failed_publications: number;
+    };
+    PublicationSummary: {
+      /** Format: uuid */
+      id: string;
+      platform: components["schemas"]["PublishPlatform"];
+      enabled: boolean;
+      status: components["schemas"]["PublicationStatus"];
+      draft_status: components["schemas"]["PublicationDraftStatus"];
+      review_status: components["schemas"]["PublicationReviewStatus"];
+      sync_required: boolean;
+      publish_url?: string;
+    };
+    PublicationDetail: components["schemas"]["PublicationSummary"] & {
+      error_message?: string;
+      config: {
+        [key: string]: unknown;
+      };
+      adapted_content: components["schemas"]["AdaptedContent"];
+      remote_id?: string;
+      retry_count: number;
+      /** Format: date-time */
+      last_attempt_at?: string;
+      /** Format: date-time */
+      published_at?: string;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    ProjectPublications: {
+      /** Format: uuid */
+      project_id: string;
+      items: components["schemas"]["PublicationDetail"][];
+    };
+    CreateCollabDocumentRequest: {
+      title: string;
+    };
+    UpdateCollabDocumentRequest: {
+      title: string;
+    };
+    CollabSessionLimits: {
+      max_message_bytes: number;
+      heartbeat_seconds: number;
+    };
+    CollabDocumentSession: {
+      /** Format: uuid */
+      document_id: string;
+      role: components["schemas"]["CollabDocumentRole"];
+      websocket_url: string;
+      token: string;
+      /** Format: date-time */
+      expires_at: string;
+      limits: components["schemas"]["CollabSessionLimits"];
+    };
+    CollabDocument: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      owner_user_id: string;
+      title: string;
+      status: components["schemas"]["CollabDocumentStatus"];
+      schema_version: number;
+      /** Format: int64 */
+      current_seq: number;
+      /** Format: uuid */
+      last_edited_by?: string | null;
+      /** Format: date-time */
+      last_edited_at?: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    PaginationCollabDocuments: {
+      items: components["schemas"]["CollabDocument"][];
+      page: number;
+      limit: number;
+      total: number;
+      total_pages: number;
+    };
+    PublishResult: {
+      status: components["schemas"]["PublishResultStatus"];
+      /** Format: uuid */
+      job_id?: string;
+      idempotency_key?: string;
+      platform?: components["schemas"]["PublishPlatform"];
+      /** Format: date-time */
+      queued_at?: string;
+      remote_id?: string;
+      publish_url?: string;
+      error_message?: string;
+      /** Format: uuid */
+      browser_session_id?: string;
+      stream_url?: string;
+    };
+    ProjectListItem: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      user_id: string;
+      /** Format: uuid */
+      workspace_id?: string | null;
+      /** Format: uuid */
+      collab_document_id?: string | null;
+      /** Format: uuid */
+      template_id?: string | null;
+      /** Format: uuid */
+      brand_profile_id?: string | null;
+      title: string;
+      status: components["schemas"]["ProjectStatus"];
+      role: components["schemas"]["ProjectRole"];
+      access_source?: components["schemas"]["ProjectAccessSource"];
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+      publications: components["schemas"]["PublicationSummary"][];
+    };
+    ProjectDetail: components["schemas"]["ProjectListItem"] & {
+      source_content: string;
+      publication_details?: components["schemas"]["PublicationDetail"][];
+      comments?: components["schemas"]["ProjectComment"][];
+      versions?: components["schemas"]["ProjectVersion"][];
+      activities?: components["schemas"]["ProjectActivity"][];
+      collaborators?: components["schemas"]["ProjectCollaborator"][];
+      share_links?: components["schemas"]["ProjectShareLink"][];
+      permission_sources?: components["schemas"]["ProjectPermissionSource"][];
+    };
+    ProjectPermissionSource: {
+      source: string;
+      role: string;
+    };
+    ContentTemplate: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      workspace_id?: string | null;
+      /** Format: uuid */
+      owner_user_id?: string | null;
+      scope: components["schemas"]["ContentTemplateScope"];
+      name: string;
+      description: string;
+      title_template: string;
+      source_template: string;
+      default_platforms: components["schemas"]["PublishPlatform"][];
+      platform_config: {
+        [key: string]: unknown;
+      };
+      tags: string[];
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    ContentTemplatesResponse: {
+      items: components["schemas"]["ContentTemplate"][];
+    };
+    CreateContentTemplateRequest: {
+      scope?: components["schemas"]["ContentTemplateScope"];
+      name: string;
+      description?: string;
+      title_template: string;
+      source_template: string;
+      default_platforms: components["schemas"]["PublishPlatform"][];
+      platform_config?: {
+        [key: string]: unknown;
+      };
+      tags?: string[];
+    };
+    BrandProfile: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      workspace_id: string;
+      /** Format: uuid */
+      created_by: string;
+      name: string;
+      voice: string;
+      audience: string;
+      banned_words: string[];
+      cta: string;
+      link_strategy: string;
+      default_tags: string[];
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    BrandProfilesResponse: {
+      items: components["schemas"]["BrandProfile"][];
+    };
+    CreateBrandProfileRequest: {
+      name: string;
+      voice?: string;
+      audience?: string;
+      banned_words?: string[];
+      cta?: string;
+      link_strategy?: string;
+      default_tags?: string[];
+    };
+    AddProjectCollaboratorRequest: {
+      /** Format: uuid */
+      user_id?: string;
+      /** Format: email */
+      email?: string;
+      role: components["schemas"]["ProjectCollaboratorRole"];
+    };
+    UpdateProjectCollaboratorRequest: {
+      role: components["schemas"]["ProjectCollaboratorRole"];
+    };
+    ProjectCollaborator: {
+      /** Format: uuid */
+      project_id: string;
+      /** Format: uuid */
+      user_id: string;
+      username: string;
+      /** Format: email */
+      email: string;
+      role: components["schemas"]["ProjectCollaboratorRole"];
+      /** Format: uuid */
+      created_by: string;
+      /** Format: date-time */
+      created_at: string;
+    };
+    ProjectCollaboratorsResponse: {
+      items: components["schemas"]["ProjectCollaborator"][];
+    };
+    ProjectActivity: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      project_id: string;
+      /** Format: uuid */
+      actor_user_id: string;
+      actor_username: string;
+      /** Format: email */
+      actor_email: string;
+      /** Format: uuid */
+      target_user_id?: string;
+      target_username?: string;
+      /** Format: email */
+      target_email?: string;
+      event_type: components["schemas"]["ProjectActivityType"];
+      metadata: {
+        [key: string]: unknown;
+      };
+      /** Format: date-time */
+      created_at: string;
+    };
+    ProjectActivitiesResponse: {
+      items: components["schemas"]["ProjectActivity"][];
+    };
+    CreateProjectCommentRequest: {
+      body: string;
+      anchor_text?: string;
+      metadata?: {
+        [key: string]: unknown;
+      };
+    };
+    UpdateProjectCommentRequest: {
+      /** @enum {string} */
+      status: "resolved";
+    };
+    ProjectComment: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      project_id: string;
+      /** Format: uuid */
+      author_id: string;
+      author_username: string;
+      /** Format: email */
+      author_email: string;
+      body: string;
+      anchor_text?: string;
+      status: components["schemas"]["ProjectCommentStatus"];
+      metadata: {
+        [key: string]: unknown;
+      };
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      resolved_at?: string;
+    };
+    ProjectCommentsResponse: {
+      items: components["schemas"]["ProjectComment"][];
+    };
+    ProjectVersion: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      project_id: string;
+      /** Format: uuid */
+      created_by: string;
+      creator_username: string;
+      /** Format: email */
+      creator_email: string;
+      version_number: number;
+      title: string;
+      source: string;
+      /** Format: uuid */
+      collab_document_id?: string;
+      /** Format: int64 */
+      collab_seq: number;
+      /** Format: date-time */
+      created_at: string;
+    };
+    ProjectVersionsResponse: {
+      items: components["schemas"]["ProjectVersion"][];
+    };
+    RestoreProjectVersionResponse: {
+      project: components["schemas"]["ProjectDetail"];
+      version: components["schemas"]["ProjectVersion"];
+    };
+    CreateProjectShareLinkRequest: {
+      role: components["schemas"]["ProjectCollaboratorRole"];
+      /** Format: date-time */
+      expires_at?: string;
+    };
+    ProjectShareLink: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      project_id: string;
+      /** Format: uuid */
+      created_by: string;
+      role: components["schemas"]["ProjectCollaboratorRole"];
+      status: components["schemas"]["ProjectShareLinkStatus"];
+      /** Format: date-time */
+      expires_at?: string;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      revoked_at?: string;
+    };
+    ProjectShareLinkWithToken: components["schemas"]["ProjectShareLink"] & {
+      token: string;
+      url: string;
+    };
+    ProjectShareLinksResponse: {
+      items: components["schemas"]["ProjectShareLink"][];
+    };
+    AcceptProjectShareLinkResponse: {
+      project: components["schemas"]["ProjectDetail"];
+      role: components["schemas"]["ProjectRole"];
+    };
+    CreateWorkspaceRequest: {
+      name: string;
+      slug?: string;
+    };
+    UpdateWorkspaceRequest: {
+      name: string;
+      slug?: string;
+    };
+    AddWorkspaceMemberRequest: {
+      /** Format: uuid */
+      user_id?: string;
+      /** Format: email */
+      email?: string;
+      role: components["schemas"]["WorkspaceMemberRequestRole"];
+    };
+    CreateWorkspaceInviteRequest: {
+      /** Format: email */
+      email: string;
+      role: components["schemas"]["WorkspaceMemberRequestRole"];
+      /** Format: date-time */
+      expires_at?: string;
+    };
+    AcceptWorkspaceInviteRequest: {
+      token: string;
+    };
+    UpdateWorkspaceMemberRequest: {
+      role: components["schemas"]["WorkspaceMemberRequestRole"];
+    };
+    Workspace: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      owner_user_id: string;
+      name: string;
+      slug?: string;
+      status: components["schemas"]["WorkspaceStatus"];
+      role: components["schemas"]["WorkspaceRole"];
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    WorkspacesResponse: {
+      items: components["schemas"]["Workspace"][];
+    };
+    WorkspaceMember: {
+      /** Format: uuid */
+      workspace_id: string;
+      /** Format: uuid */
+      user_id: string;
+      username: string;
+      /** Format: email */
+      email: string;
+      role: components["schemas"]["WorkspaceRole"];
+      /** Format: uuid */
+      invited_by?: string;
+      /** Format: date-time */
+      joined_at?: string;
+      /** Format: date-time */
+      created_at: string;
+    };
+    WorkspaceMembersResponse: {
+      items: components["schemas"]["WorkspaceMember"][];
+    };
+    WorkspaceInvite: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      workspace_id: string;
+      /** Format: email */
+      email: string;
+      role: components["schemas"]["WorkspaceRole"];
+      /** Format: uuid */
+      invited_by: string;
+      /** Format: uuid */
+      accepted_by?: string;
+      /** @enum {string} */
+      status: "pending" | "accepted" | "expired" | "revoked";
+      /** Format: date-time */
+      expires_at: string;
+      /** Format: date-time */
+      accepted_at?: string;
+      /** Format: date-time */
+      revoked_at?: string;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    WorkspaceInviteWithToken: components["schemas"]["WorkspaceInvite"] & {
+      token: string;
+    };
+    WorkspaceInvitesResponse: {
+      items: components["schemas"]["WorkspaceInvite"][];
+    };
+    WorkspaceActivity: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      workspace_id: string;
+      /** Format: uuid */
+      actor_user_id: string;
+      actor_username: string;
+      /** Format: email */
+      actor_email: string;
+      /** Format: uuid */
+      target_user_id?: string;
+      target_username?: string;
+      /** Format: email */
+      target_email?: string;
+      event_type: components["schemas"]["WorkspaceActivityType"];
+      metadata: {
+        [key: string]: unknown;
+      };
+      /** Format: date-time */
+      created_at: string;
+    };
+    WorkspaceActivitiesResponse: {
+      items: components["schemas"]["WorkspaceActivity"][];
+    };
+    PaginationProjects: {
+      items: components["schemas"]["ProjectListItem"][];
+      /** @description Opaque keyset cursor used for this page. */
+      cursor?: string;
+      /** @description Opaque keyset cursor for the next page. */
+      next_cursor?: string;
+      has_more: boolean;
+      page: number;
+      limit: number;
+      total: number;
+      total_pages: number;
+    };
+    AIChatMessage: {
+      /** @enum {string} */
+      role: "user" | "assistant";
+      content: string;
+    };
+    AIEditContentRequest: {
+      title?: string;
+      content: string;
+      message: string;
+      conversation?: components["schemas"]["AIChatMessage"][];
+    };
+    AIEditContentResponse: {
+      /** @enum {string} */
+      channel: "content";
+      content: string;
+    };
+    AIEditPrepublishRequest: {
+      title?: string;
+      platform: components["schemas"]["PublishPlatform"];
+      adapted_content: components["schemas"]["AdaptedContent"];
+      message: string;
+      conversation?: components["schemas"]["AIChatMessage"][];
+    };
+    AIEditPrepublishResponse: {
+      /** @enum {string} */
+      channel: "prepublish";
+      platform: components["schemas"]["PublishPlatform"];
+      adapted_content: components["schemas"]["AdaptedContent"];
+      content: string;
+    };
+    AIDraftingStartRequest: {
+      message: string;
+      title?: string;
+    };
+    AIDraftingContinueRequest: {
+      message: string;
+    };
+    AIDraftingMessage: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      session_id: string;
+      /** @enum {string} */
+      role: "user" | "assistant" | "system";
+      content: string;
+      /** Format: date-time */
+      created_at: string;
+    };
+    /** @enum {string} */
+    AIDraftingEventType:
+      | "status"
+      | "message"
+      | "tool_call"
+      | "tool_result"
+      | "proposal"
+      | "error";
+    AIDraftingEvent: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      session_id: string;
+      event_type: components["schemas"]["AIDraftingEventType"];
+      payload: {
+        [key: string]: unknown;
+      };
+      /** Format: date-time */
+      created_at: string;
+    };
+    AIDraftingReplay: {
+      /** Format: uuid */
+      session_id: string;
+      events: components["schemas"]["AIDraftingEvent"][];
+      model_messages: components["schemas"]["AIDraftingMessage"][];
+    };
+    RequirementStatus: {
+      status: components["schemas"]["RequirementStatusValue"];
+      title: string;
+      message: string;
+    };
+    WechatAccount: {
+      /** @enum {string} */
+      platform: "wechat";
+      app_id: string;
+      has_app_secret: boolean;
+      status: components["schemas"]["PlatformAccountStatus"];
+      /** Format: date-time */
+      last_tested_at?: string;
+      last_test_error?: string;
+      /** Format: date-time */
+      updated_at?: string;
+      ip_whitelist: components["schemas"]["RequirementStatus"];
+      account_auth: components["schemas"]["RequirementStatus"];
+    };
+    SaveWechatAccountInput: {
+      app_id: string;
+      app_secret?: string;
+    };
+    WechatConnectionTestResult: {
+      connected: boolean;
+      status: components["schemas"]["ConnectionTestStatus"];
+      message: string;
+      err_code?: number;
+      err_msg?: string;
+      /** Format: date-time */
+      tested_at: string;
+      ip_whitelist: components["schemas"]["RequirementStatus"];
+      account_auth: components["schemas"]["RequirementStatus"];
+    };
+    XAccount: {
+      /** @enum {string} */
+      platform: "x";
+      /** @enum {string} */
+      auth_type: "oauth1" | "oauth2";
+      api_key?: string;
+      /** Format: date-time */
+      expires_at?: string;
+      username?: string;
+      has_api_secret: boolean;
+      has_access_token: boolean;
+      has_access_token_secret: boolean;
+      has_oauth2_refresh: boolean;
+      status: components["schemas"]["PlatformAccountStatus"];
+      /** Format: date-time */
+      last_tested_at?: string;
+      last_test_error?: string;
+      /** Format: date-time */
+      updated_at?: string;
+      account_auth: components["schemas"]["RequirementStatus"];
+      publish_access: components["schemas"]["RequirementStatus"];
+    };
+    SaveXAccountInput: {
+      api_key?: string;
+      api_secret?: string;
+      access_token?: string;
+      access_token_secret?: string;
+      username?: string;
+    };
+    XConnectionTestResult: {
+      connected: boolean;
+      status: components["schemas"]["ConnectionTestStatus"];
+      message: string;
+      /** Format: date-time */
+      tested_at: string;
+      user_id?: string;
+      username?: string;
+      name?: string;
+      account_auth: components["schemas"]["RequirementStatus"];
+      publish_access: components["schemas"]["RequirementStatus"];
+    };
+    DouyinAccount: {
+      /** @enum {string} */
+      platform: "douyin";
+      username?: string;
+      avatar_url?: string;
+      status: components["schemas"]["PlatformAccountStatus"];
+      /** Format: date-time */
+      last_tested_at?: string;
+      last_test_error?: string;
+      /** Format: date-time */
+      updated_at?: string;
+    };
+    ZhihuAccount: {
+      /** @enum {string} */
+      platform: "zhihu";
+      username?: string;
+      avatar_url?: string;
+      status: components["schemas"]["PlatformAccountStatus"];
+      /** Format: date-time */
+      last_tested_at?: string;
+      last_test_error?: string;
+      /** Format: date-time */
+      updated_at?: string;
+    };
+    BrowserSession: {
+      /** Format: uuid */
+      session_id: string;
+      platform: components["schemas"]["PublishPlatform"];
+      status: components["schemas"]["BrowserSessionStatus"];
+      stream_url?: string;
+      /** Format: date-time */
+      stream_token_expires_at?: string;
+      /** Format: date-time */
+      expires_at: string;
+      message?: string;
+    };
+    StartBrowserSessionResult: {
+      /** Format: uuid */
+      session_id: string;
+      status: components["schemas"]["BrowserSessionStatus"];
+      stream_url: string;
+      /** Format: date-time */
+      stream_token_expires_at: string;
+      /** Format: date-time */
+      expires_at: string;
+    };
+    StartPublishBrowserSessionResult: components["schemas"]["StartBrowserSessionResult"] & {
+      platform: components["schemas"]["PublishPlatform"];
+      /** Format: uuid */
+      project_id: string;
+    };
+    CompleteBrowserSessionResult: {
+      /** Format: uuid */
+      session_id: string;
+      platform: components["schemas"]["PublishPlatform"];
+      status: components["schemas"]["BrowserSessionStatus"];
+      account: {
+        username: string;
+        avatar_url: string;
+      };
+      message: string;
+    };
+    CancelBrowserSessionResult: {
+      /** Format: uuid */
+      session_id: string;
+      status: components["schemas"]["BrowserSessionStatus"];
+    };
+  };
+  responses: never;
+  parameters: never;
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export type operations = Record<string, never>;
