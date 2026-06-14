@@ -23,6 +23,7 @@ type Handler struct {
 	dashboardService *dashboardsvc.DashboardService
 	aiContentEditor  aisvc.AIContentEditor
 	aiDrafting       *aisvc.DraftingService
+	aiGrowth         *aisvc.GrowthOptimizationService
 	quotaSvc         *aisvc.QuotaService
 	streamLimiter    *streamgate.Limiter
 }
@@ -41,6 +42,10 @@ func (h *Handler) UseAIContentEditor(editor aisvc.AIContentEditor) {
 
 func (h *Handler) UseAIDraftingService(svc *aisvc.DraftingService) {
 	h.aiDrafting = svc
+}
+
+func (h *Handler) UseAIGrowthOptimizationService(svc *aisvc.GrowthOptimizationService) {
+	h.aiGrowth = svc
 }
 
 func (h *Handler) UseQuotaService(svc *aisvc.QuotaService) {

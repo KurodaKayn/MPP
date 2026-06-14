@@ -245,6 +245,75 @@ func (h *Handler) StartAIDraftingSession(c echo.Context) error {
 	return nil
 }
 
+func (h *Handler) CreateAIGrowthOptimizationRun(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+	if h.aiGrowth == nil {
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", aisvc.ErrAIServiceUnavailable.Error())
+	}
+
+	projectID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
+	}
+	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		return sendWorkspaceError(c, err)
+	}
+	project, err := h.serviceFor(c).GetProject(projectID, &userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return sendError(c, http.StatusNotFound, "not_found", "project not found")
+		}
+		if errors.Is(err, accesspolicy.ErrForbidden) {
+			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+
+	req := new(dto.CreateAIGrowthOptimizationRunRequest)
+	if err := c.Bind(req); err != nil {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid body")
+	}
+	if strings.TrimSpace(req.Goal) == "" || len(req.TargetPlatforms) == 0 {
+		return sendError(c, http.StatusBadRequest, "invalid_request", "goal and target_platforms are required")
+	}
+	if strings.TrimSpace(req.Title) == "" {
+		req.Title = project.Title
+	}
+	if strings.TrimSpace(req.SourceContent) == "" {
+		req.SourceContent = project.SourceContent
+	}
+
+	lease, err := h.acquireAILease(c, userID, "growth-optimization")
+	if err != nil {
+		if handled := streamgate.SendLimitError(c, err); handled != nil {
+			return handled
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	defer func() { _ = lease.Release(context.Background()) }()
+
+	resp, err := h.aiGrowth.CreateRun(c.Request().Context(), projectID, userID, *req)
+	if err != nil {
+		if errors.Is(err, aisvc.ErrInvalidGrowthOptimizationRequest) || errors.Is(err, aisvc.ErrInvalidAIEditRequest) {
+			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		}
+		if errors.Is(err, aisvc.ErrAIServiceUnavailable) {
+			return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", err.Error())
+		}
+		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
+	}
+	return c.JSON(http.StatusCreated, resp)
+}
+
 func (h *Handler) ContinueAIDraftingSession(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
