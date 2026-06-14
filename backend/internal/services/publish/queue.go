@@ -284,7 +284,7 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		}); err != nil {
 			return err
 		}
-		if err := txService.markPublicationQueued(&pub, job.EnqueuedAt); err != nil {
+		if err := txService.lifecycle().MarkQueued(&pub, job.EnqueuedAt); err != nil {
 			return err
 		}
 		if err := txService.recordPublishEvent(models.PublishEvent{
@@ -429,8 +429,11 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 		log.Printf("publish job %s failed: %v", job.JobID, err)
 		observeJob(publishJobResultError)
 		cleanupCtx, cancelCleanup := publishCleanupContext(ctx)
-		if markErr := s.markPublicationFailed(cleanupCtx, job.ProjectID, job.Platform, err.Error()); markErr != nil {
+		if markErr := s.lifecycle().MarkFailed(cleanupCtx, job.ProjectID, job.Platform, err.Error()); markErr != nil {
 			log.Printf("failed to mark publish job %s as failed: %v", job.JobID, markErr)
+		} else {
+			s.invalidateDashboardCaches(cleanupCtx)
+			s.refreshProjectReadModel(cleanupCtx, job.ProjectID)
 		}
 		cancelCleanup()
 		_ = s.recordPublishEvent(models.PublishEvent{
@@ -595,40 +598,6 @@ func publicationPublishingStale(pub models.ProjectPlatformPublication) bool {
 		return false
 	}
 	return time.Since(*pub.LastAttemptAt) > publishStaleAfter
-}
-
-func (s *Service) markPublicationQueued(pub *models.ProjectPlatformPublication, queuedAt time.Time) error {
-	result := s.db.Model(&models.ProjectPlatformPublication{}).
-		Where("id = ? AND status = ?", pub.ID, pub.Status).
-		Updates(map[string]any{
-			"status":          models.PublicationStatusQueued,
-			"error_message":   "",
-			"last_attempt_at": &queuedAt,
-		})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return s.publicationStateChangedError(pub.ID)
-	}
-	pub.Status = models.PublicationStatusQueued
-	pub.LastAttemptAt = &queuedAt
-	return nil
-}
-
-func (s *Service) markPublicationFailed(ctx context.Context, projectID uuid.UUID, platform, message string) error {
-	if err := s.db.WithContext(ctx).Model(&models.ProjectPlatformPublication{}).
-		Where("project_id = ? AND platform = ?", projectID, platform).
-		Updates(map[string]any{
-			"status":        models.PublicationStatusFailed,
-			"error_message": SanitizeUserFacingErrorMessage(message),
-			"retry_count":   gorm.Expr("retry_count + ?", 1),
-		}).Error; err != nil {
-		return err
-	}
-	s.invalidateDashboardCaches(ctx)
-	s.refreshProjectReadModel(ctx, projectID)
-	return nil
 }
 
 func publishLockKey(projectID uuid.UUID, platform string) string {

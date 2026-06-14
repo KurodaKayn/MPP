@@ -13,11 +13,11 @@ import (
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
-	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 )
 
-var ErrForbidden = publishsvc.ErrForbidden
+var ErrForbidden = accesspolicy.ErrForbidden
 var ErrInvalidProject = errors.New("invalid project")
 var ErrInvalidProjectCollaborator = errors.New("invalid project collaborator")
 var ErrProjectCollabUnavailable = errors.New("project collaboration unavailable")

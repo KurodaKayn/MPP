@@ -8,53 +8,30 @@ import (
 	"gorm.io/gorm"
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
-	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
-	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 )
 
-var ErrForbidden = publishsvc.ErrForbidden
+var ErrForbidden = accesspolicy.ErrForbidden
 var ErrInvalidWorkspace = errors.New("invalid workspace")
 var ErrInvalidWorkspaceMember = errors.New("invalid workspace member")
 var ErrInvalidWorkspaceInvite = errors.New("invalid workspace invite")
 
-type Permission string
+type Permission = accesspolicy.Permission
 
 const (
-	PermissionManageBilling   Permission = "workspace.manage_billing"
-	PermissionManageMembers   Permission = "workspace.manage_members"
-	PermissionAccountConnect  Permission = "account.connect"
-	PermissionAccountManage   Permission = "account.manage"
-	PermissionAccountUse      Permission = "account.use"
-	PermissionProjectCreate   Permission = "project.create"
-	PermissionProjectEdit     Permission = "project.edit"
-	PermissionProjectReview   Permission = "project.review"
-	PermissionPublishApprove  Permission = "publication.approve"
-	PermissionPublishPublish  Permission = "publication.publish"
-	PermissionPublishSchedule Permission = "publication.schedule"
+	PermissionManageBilling   = accesspolicy.PermissionManageBilling
+	PermissionManageMembers   = accesspolicy.PermissionManageMembers
+	PermissionAccountConnect  = accesspolicy.PermissionAccountConnect
+	PermissionAccountManage   = accesspolicy.PermissionAccountManage
+	PermissionAccountUse      = accesspolicy.PermissionAccountUse
+	PermissionProjectCreate   = accesspolicy.PermissionProjectCreate
+	PermissionProjectEdit     = accesspolicy.PermissionProjectEdit
+	PermissionProjectReview   = accesspolicy.PermissionProjectReview
+	PermissionPublishApprove  = accesspolicy.PermissionPublishApprove
+	PermissionPublishPublish  = accesspolicy.PermissionPublishPublish
+	PermissionPublishSchedule = accesspolicy.PermissionPublishSchedule
 )
-
-var rolePermissions = map[string]map[Permission]struct{}{
-	models.WorkspaceRoleOwner: {
-		PermissionManageBilling: {}, PermissionManageMembers: {}, PermissionAccountConnect: {},
-		PermissionAccountManage: {}, PermissionAccountUse: {}, PermissionProjectCreate: {},
-		PermissionProjectEdit: {}, PermissionProjectReview: {}, PermissionPublishApprove: {},
-		PermissionPublishPublish: {}, PermissionPublishSchedule: {},
-	},
-	models.WorkspaceRoleAdmin: {
-		PermissionManageMembers: {}, PermissionAccountConnect: {}, PermissionAccountManage: {},
-		PermissionAccountUse: {}, PermissionProjectCreate: {}, PermissionProjectEdit: {},
-		PermissionProjectReview: {}, PermissionPublishApprove: {}, PermissionPublishPublish: {},
-		PermissionPublishSchedule: {},
-	},
-	models.WorkspaceRoleMember: {
-		PermissionAccountUse: {}, PermissionProjectCreate: {}, PermissionProjectEdit: {},
-		PermissionProjectReview: {}, PermissionPublishPublish: {}, PermissionPublishSchedule: {},
-	},
-	models.WorkspaceRoleViewer: {
-		PermissionProjectReview: {},
-	},
-}
 
 type Service struct {
 	db         *gorm.DB
@@ -69,12 +46,7 @@ type DashboardReadModelUpdater interface {
 }
 
 func RoleHasPermission(role string, permission Permission) bool {
-	permissions, ok := rolePermissions[role]
-	if !ok {
-		return false
-	}
-	_, ok = permissions[permission]
-	return ok
+	return accesspolicy.RoleHasPermission(role, permission)
 }
 
 func (s *Service) WorkspaceAccessRole(workspaceID uuid.UUID, userID uuid.UUID) (string, error) {
@@ -82,14 +54,10 @@ func (s *Service) WorkspaceAccessRole(workspaceID uuid.UUID, userID uuid.UUID) (
 }
 
 func (s *Service) RequirePermission(workspaceID uuid.UUID, userID uuid.UUID, permission Permission) (string, error) {
-	role, err := s.workspaceAccessRole(workspaceID, userID)
-	if err != nil {
-		return "", err
+	if workspaceID == uuid.Nil || userID == uuid.Nil {
+		return "", ErrInvalidWorkspace
 	}
-	if !RoleHasPermission(role, permission) {
-		return "", ErrForbidden
-	}
-	return role, nil
+	return accesspolicy.RequireWorkspacePermissionWithDB(s.strongReadDB(), workspaceID, userID, permission)
 }
 
 func NewService(db *gorm.DB, projects *projectsvc.Service) *Service {

@@ -20,11 +20,12 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 )
 
-var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
+var ErrForbidden = accesspolicy.ErrForbidden
 var ErrPublicationDisabled = errors.New("publication is disabled")
 var ErrPublicationRequiresSync = errors.New("publication requires prepublish sync")
 var ErrManualPublishUnsupported = errors.New("manual publish is only supported for x")
@@ -209,13 +210,17 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 	}
 
 	startedAt := time.Now().UTC()
-	attempt, hasAttempt, err := s.startPublishAttempt(scheduleID, startedAt)
+	lifecycle := s.lifecycle()
+	attempt, hasAttempt, err := lifecycle.StartPublishAttempt(scheduleID, startedAt)
 	if err != nil {
 		return nil, err
 	}
 	failAttempt := func(err error) error {
 		if hasAttempt {
-			_ = s.finishPublishAttempt(&attempt, models.PublishAttemptStatusFailed, "", "", SanitizeUserFacingErrorMessage(err.Error()))
+			_ = lifecycle.FinishPublishAttempt(&attempt, publishAttemptCompletion{
+				Status:       models.PublishAttemptStatusFailed,
+				ErrorMessage: SanitizeUserFacingErrorMessage(err.Error()),
+			})
 		}
 		return err
 	}
@@ -254,7 +259,7 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 		}
 	}
 
-	if err := s.markPublicationPublishing(&pub, startedAt); err != nil {
+	if err := lifecycle.MarkPublishing(&pub, startedAt); err != nil {
 		return nil, failAttempt(err)
 	}
 	s.invalidateDashboardCaches(ctx)
@@ -288,19 +293,12 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 		"error_message":      errMsg,
 		"browser_session_id": uuid.Nil,
 	}
-	updates := map[string]any{
-		"status":        status,
-		"remote_id":     remoteID,
-		"publish_url":   publishURL,
-		"error_message": errMsg,
-	}
-	if status == models.PublicationStatusSucceeded {
-		publishedAt := time.Now().UTC()
-		updates["published_at"] = &publishedAt
-	} else {
-		updates["retry_count"] = gorm.Expr("retry_count + ?", 1)
-	}
-	if err := s.db.Model(&pub).Updates(updates).Error; err != nil {
+	if err := lifecycle.CompletePublication(&pub, publicationCompletion{
+		Status:       status,
+		RemoteID:     remoteID,
+		PublishURL:   publishURL,
+		ErrorMessage: errMsg,
+	}); err != nil {
 		return nil, failAttempt(err)
 	}
 	s.refreshProjectReadModel(ctx, projectID)
@@ -309,7 +307,12 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 		attemptStatus = models.PublishAttemptStatusFailed
 	}
 	if hasAttempt {
-		if err := s.finishPublishAttempt(&attempt, attemptStatus, remoteID, publishURL, errMsg); err != nil {
+		if err := lifecycle.FinishPublishAttempt(&attempt, publishAttemptCompletion{
+			Status:       attemptStatus,
+			RemoteID:     remoteID,
+			PublishURL:   publishURL,
+			ErrorMessage: errMsg,
+		}); err != nil {
 			return nil, err
 		}
 	}
@@ -323,25 +326,6 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 	}
 
 	return response, nil
-}
-
-func (s *Service) markPublicationPublishing(pub *models.ProjectPlatformPublication, startedAt time.Time) error {
-	result := s.db.Model(&models.ProjectPlatformPublication{}).
-		Where("id = ? AND status = ?", pub.ID, pub.Status).
-		Updates(map[string]any{
-			"status":          models.PublicationStatusPublishing,
-			"error_message":   "",
-			"last_attempt_at": &startedAt,
-		})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return s.publicationStateChangedError(pub.ID)
-	}
-	pub.Status = models.PublicationStatusPublishing
-	pub.LastAttemptAt = &startedAt
-	return nil
 }
 
 func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID) (map[string]any, error) {
@@ -386,17 +370,6 @@ func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID)
 
 func normalizeIdempotencyKey(key string) string {
 	return strings.TrimSpace(key)
-}
-
-func (s *Service) publicationStateChangedError(publicationID uuid.UUID) error {
-	var pub models.ProjectPlatformPublication
-	if err := s.db.Select("status", "last_attempt_at").First(&pub, "id = ?", publicationID).Error; err != nil {
-		return err
-	}
-	if pub.Status == models.PublicationStatusQueued || pub.Status == models.PublicationStatusPublishing {
-		return ErrPublicationAlreadyPublishing
-	}
-	return ErrPublicationRequiresSync
 }
 
 func publicationHasSyncedDraft(pub models.ProjectPlatformPublication) bool {
