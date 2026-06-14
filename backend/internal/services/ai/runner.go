@@ -28,6 +28,7 @@ const (
 
 	defaultDraftingContextBudget = 50000
 	defaultMaxHarnessTurns       = 6
+	defaultMaxToolResultSize     = 24000
 )
 
 var ErrHarnessTurnLimitExceeded = errors.New("ai harness turn limit exceeded")
@@ -38,6 +39,12 @@ var ErrToolPermissionDenied = errors.New("tool permission denied")
 type Tool interface {
 	Name() string
 	Description() string
+	InputSchema() map[string]any
+	IsReadOnly() bool
+	IsConcurrencySafe() bool
+	RequiresPermission() bool
+	MaxResultSize() int
+	MapResult(result string, runErr error) (string, bool)
 	Execute(ctx context.Context, args json.RawMessage) (string, error)
 }
 
@@ -53,12 +60,25 @@ func NewMockTool(name string, desc string, fn func(ctx context.Context, args jso
 
 func (t *MockTool) Name() string        { return t.name }
 func (t *MockTool) Description() string { return t.desc }
+func (t *MockTool) InputSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": true}
+}
+func (t *MockTool) IsReadOnly() bool         { return true }
+func (t *MockTool) IsConcurrencySafe() bool  { return true }
+func (t *MockTool) RequiresPermission() bool { return false }
+func (t *MockTool) MaxResultSize() int       { return defaultMaxToolResultSize }
+func (t *MockTool) MapResult(result string, runErr error) (string, bool) {
+	if runErr != nil {
+		return runErr.Error(), true
+	}
+	return limitToolResult(result, t.MaxResultSize()), false
+}
 func (t *MockTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	return t.fn(ctx, args)
 }
 
 type LLMAdapter interface {
-	Query(ctx context.Context, sessionID uuid.UUID, messages []models.AIDraftingMessage, snapshot *models.AIContextSnapshot, toolResults []models.AIToolCall) (*LLMResponse, error)
+	Query(ctx context.Context, sessionID uuid.UUID, messages []ModelVisibleMessage, snapshot *models.AIContextSnapshot, toolResults []models.AIToolCall) (*LLMResponse, error)
 }
 
 type Runner struct {
@@ -114,7 +134,7 @@ type MockLLMAdapter struct {
 	Turn int
 }
 
-func (m *MockLLMAdapter) Query(_ context.Context, sessionID uuid.UUID, _ []models.AIDraftingMessage, snapshot *models.AIContextSnapshot, toolResults []models.AIToolCall) (*LLMResponse, error) {
+func (m *MockLLMAdapter) Query(_ context.Context, sessionID uuid.UUID, _ []ModelVisibleMessage, snapshot *models.AIContextSnapshot, toolResults []models.AIToolCall) (*LLMResponse, error) {
 	m.Turn++
 	if len(toolResults) == 0 {
 		toolCallID := uuid.New()
@@ -172,16 +192,17 @@ func (r *Runner) RunSession(ctx context.Context, sessionID uuid.UUID, createdByI
 	if err := r.db.WithContext(ctx).Create(&userMsg).Error; err != nil {
 		return err
 	}
-	r.emit(ctx, sessionID, sseChan, EventMessage, userMsg)
+	r.emit(ctx, sessionID, sseChan, EventMessage, userMsg, WithEventModelVisible(true))
 
 	var toolResults []models.AIToolCall
 	for turn := 1; turn <= r.maxTurns; turn++ {
+		turnID := uuid.New()
 		if err := ctx.Err(); err != nil {
-			return r.fail(ctx, sessionID, sseChan, classifyHarnessError(err), err.Error(), err)
+			return r.fail(ctx, sessionID, sseChan, classifyHarnessError(err), err.Error(), err, WithEventTurnID(turnID))
 		}
 		if r.quotaSvc != nil {
 			if err := r.quotaSvc.CheckQuota(ctx, session.WorkspaceID); err != nil {
-				return r.fail(ctx, sessionID, sseChan, "quota_exceeded", err.Error(), err)
+				return r.fail(ctx, sessionID, sseChan, "quota_exceeded", err.Error(), err, WithEventTurnID(turnID))
 			}
 		}
 
@@ -189,7 +210,7 @@ func (r *Runner) RunSession(ctx context.Context, sessionID uuid.UUID, createdByI
 			ContextBudget: defaultDraftingContextBudget,
 		})
 		if err != nil {
-			return r.fail(ctx, sessionID, sseChan, "context_unavailable", err.Error(), err)
+			return r.fail(ctx, sessionID, sseChan, "context_unavailable", err.Error(), err, WithEventTurnID(turnID))
 		}
 		if err := r.db.WithContext(ctx).Model(&session).Updates(map[string]any{
 			"active_context_snapshot_id": snapshot.ID,
@@ -201,21 +222,22 @@ func (r *Runner) RunSession(ctx context.Context, sessionID uuid.UUID, createdByI
 			"status":      "context_assembled",
 			"snapshot_id": snapshot.ID,
 			"turn":        turn,
-		})
+		}, WithEventTurnID(turnID))
 
-		var messages []models.AIDraftingMessage
-		if err := r.db.WithContext(ctx).Where("session_id = ?", sessionID).Order("created_at asc, id asc").Find(&messages).Error; err != nil {
+		replay, err := r.eventMgr.ReplaySession(ctx, sessionID)
+		if err != nil {
 			return err
 		}
+		messages := replay.ModelMessages
 
-		r.emit(ctx, sessionID, sseChan, EventStatus, map[string]any{"status": "model_querying", "turn": turn})
+		r.emit(ctx, sessionID, sseChan, EventStatus, map[string]any{"status": "model_querying", "turn": turn}, WithEventTurnID(turnID))
 		resp, err := r.adapter.Query(ctx, sessionID, messages, snapshot, toolResults)
 		if err != nil {
 			code := classifyHarnessError(err)
 			if code == "tool_error" {
 				code = "model_error"
 			}
-			return r.fail(ctx, sessionID, sseChan, code, err.Error(), err)
+			return r.fail(ctx, sessionID, sseChan, code, err.Error(), err, WithEventTurnID(turnID))
 		}
 
 		if resp.Usage != nil && r.quotaSvc != nil {
@@ -235,7 +257,7 @@ func (r *Runner) RunSession(ctx context.Context, sessionID uuid.UUID, createdByI
 			if err := r.db.WithContext(ctx).Create(&assistantMsg).Error; err != nil {
 				return err
 			}
-			r.emit(ctx, sessionID, sseChan, EventMessage, assistantMsg)
+			r.emit(ctx, sessionID, sseChan, EventMessage, assistantMsg, WithEventTurnID(turnID), WithEventModelVisible(true))
 		}
 
 		if len(resp.ToolCalls) > 0 {
@@ -244,6 +266,9 @@ func (r *Runner) RunSession(ctx context.Context, sessionID uuid.UUID, createdByI
 				tc.SessionID = sessionID
 				if tc.ID == uuid.Nil {
 					tc.ID = uuid.New()
+				}
+				if strings.TrimSpace(tc.ToolUseID) == "" {
+					tc.ToolUseID = "toolu_" + uuid.NewString()
 				}
 				if tc.Version == "" {
 					tc.Version = "1.0"
@@ -256,20 +281,22 @@ func (r *Runner) RunSession(ctx context.Context, sessionID uuid.UUID, createdByI
 					if err := r.db.WithContext(ctx).Create(&tc).Error; err != nil {
 						return err
 					}
-					r.emit(ctx, sessionID, sseChan, EventToolCall, tc)
-					return r.fail(ctx, sessionID, sseChan, classifyHarnessError(err), err.Error(), err)
+					r.emit(ctx, sessionID, sseChan, EventToolCall, tc, WithEventTurnID(turnID), WithEventToolUseID(tc.ToolUseID), WithEventModelVisible(true))
+					r.emit(ctx, sessionID, sseChan, EventToolResult, tc, WithEventTurnID(turnID), WithEventToolUseID(tc.ToolUseID), WithEventModelVisible(true))
+					return r.fail(ctx, sessionID, sseChan, classifyHarnessError(err), err.Error(), err, WithEventTurnID(turnID), WithEventToolUseID(tc.ToolUseID))
 				}
 				if err := r.db.WithContext(ctx).Create(&tc).Error; err != nil {
 					return err
 				}
-				r.emit(ctx, sessionID, sseChan, EventToolCall, tc)
+				r.emit(ctx, sessionID, sseChan, EventToolCall, tc, WithEventTurnID(turnID), WithEventToolUseID(tc.ToolUseID), WithEventModelVisible(true))
 
 				executed, err := r.executeTool(ctx, tools, tc)
 				if err != nil {
-					return r.fail(ctx, sessionID, sseChan, classifyHarnessError(err), err.Error(), err)
+					r.emit(ctx, sessionID, sseChan, EventToolResult, executed, WithEventTurnID(turnID), WithEventToolUseID(executed.ToolUseID), WithEventModelVisible(true))
+					return r.fail(ctx, sessionID, sseChan, classifyHarnessError(err), err.Error(), err, WithEventTurnID(turnID), WithEventToolUseID(executed.ToolUseID))
 				}
 				toolResults = append(toolResults, executed)
-				r.emit(ctx, sessionID, sseChan, EventToolResult, executed)
+				r.emit(ctx, sessionID, sseChan, EventToolResult, executed, WithEventTurnID(turnID), WithEventToolUseID(executed.ToolUseID), WithEventModelVisible(true))
 			}
 			continue
 		}
@@ -286,11 +313,11 @@ func (r *Runner) RunSession(ctx context.Context, sessionID uuid.UUID, createdByI
 				if err := r.db.WithContext(ctx).Create(&prop).Error; err != nil {
 					return err
 				}
-				r.emit(ctx, sessionID, sseChan, EventProposal, prop)
+				r.emit(ctx, sessionID, sseChan, EventProposal, prop, WithEventTurnID(turnID))
 			}
 		}
 
-		r.emit(ctx, sessionID, sseChan, EventStatus, map[string]any{"status": "completed"})
+		r.emit(ctx, sessionID, sseChan, EventStatus, map[string]any{"status": "completed"}, WithEventTurnID(turnID))
 		return nil
 	}
 
@@ -319,10 +346,15 @@ func (r *Runner) executeTool(ctx context.Context, tools map[string]Tool, tc mode
 		result, runErr = tool.Execute(ctx, json.RawMessage(tc.Arguments))
 	}
 	tc.DurationMs = int(time.Since(start).Milliseconds())
-	if runErr != nil {
+	if exists {
+		mapped, isError := tool.MapResult(result, runErr)
+		if isError {
+			tc.Error = mapped
+		} else {
+			tc.Result = mapped
+		}
+	} else if runErr != nil {
 		tc.Error = runErr.Error()
-	} else {
-		tc.Result = result
 	}
 	if err := r.db.WithContext(ctx).Save(&tc).Error; err != nil {
 		return tc, err
@@ -333,10 +365,10 @@ func (r *Runner) executeTool(ctx context.Context, tools map[string]Tool, tc mode
 	return tc, nil
 }
 
-func (r *Runner) fail(ctx context.Context, sessionID uuid.UUID, ch chan<- string, code string, message string, err error) error {
+func (r *Runner) fail(ctx context.Context, sessionID uuid.UUID, ch chan<- string, code string, message string, err error, opts ...EventLogOption) error {
 	payload := map[string]any{"code": code, "message": message}
 	eventCtx := context.WithoutCancel(ctx)
-	r.emit(eventCtx, sessionID, ch, EventError, payload)
+	r.emit(eventCtx, sessionID, ch, EventError, payload, opts...)
 	if err != nil {
 		return err
 	}
@@ -360,8 +392,8 @@ func classifyHarnessError(err error) string {
 	}
 }
 
-func (r *Runner) emit(ctx context.Context, sessionID uuid.UUID, ch chan<- string, eventType string, payload any) {
-	event, err := r.eventMgr.LogEvent(ctx, sessionID, eventType, payload)
+func (r *Runner) emit(ctx context.Context, sessionID uuid.UUID, ch chan<- string, eventType string, payload any, opts ...EventLogOption) {
+	event, err := r.eventMgr.LogEvent(ctx, sessionID, eventType, payload, opts...)
 	if err != nil {
 		log.Printf("[ai] failed to append session event session=%s event=%s: %v", sessionID, eventType, err)
 		return
@@ -388,4 +420,18 @@ func firstLine(s string) string {
 		return "Draft"
 	}
 	return line
+}
+
+func limitToolResult(result string, maxSize int) string {
+	if maxSize <= 0 || len(result) <= maxSize {
+		return result
+	}
+	const marker = "\n... [TRUNCATED TOOL RESULT] ...\n"
+	available := maxSize - len(marker)
+	if available <= 0 {
+		return result[:maxSize]
+	}
+	head := available / 2
+	tail := available - head
+	return result[:head] + marker + result[len(result)-tail:]
 }

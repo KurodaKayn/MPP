@@ -135,6 +135,43 @@ func (t *ReadProjectContextTool) Description() string {
 	return "Read the current project drafting context snapshot."
 }
 
+func (t *ReadProjectContextTool) InputSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"project_id": map[string]any{
+				"type":        "string",
+				"format":      "uuid",
+				"description": "Optional project id. The runner binds this automatically for drafting sessions.",
+			},
+		},
+	}
+}
+
+func (t *ReadProjectContextTool) IsReadOnly() bool {
+	return true
+}
+
+func (t *ReadProjectContextTool) IsConcurrencySafe() bool {
+	return true
+}
+
+func (t *ReadProjectContextTool) RequiresPermission() bool {
+	return false
+}
+
+func (t *ReadProjectContextTool) MaxResultSize() int {
+	return defaultMaxToolResultSize
+}
+
+func (t *ReadProjectContextTool) MapResult(result string, runErr error) (string, bool) {
+	if runErr != nil {
+		return runErr.Error(), true
+	}
+	return limitToolResult(result, t.MaxResultSize()), false
+}
+
 func (t *ReadProjectContextTool) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		ProjectID string `json:"project_id"`
