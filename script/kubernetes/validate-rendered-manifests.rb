@@ -7,6 +7,7 @@ require_relative "validation/app_baseline"
 require_relative "validation/browser_runtime_control"
 require_relative "validation/observability"
 require_relative "validation/data_services"
+require_relative "validation/external_secrets"
 require_relative "validation/environment_overlays"
 
 package_dir, rendered_path = ARGV
@@ -44,6 +45,10 @@ end
 
 if context.path_suffix?("deploy/kubernetes/data-services/self-hosted")
   KubernetesValidation::DataServices.validate_self_hosted(context)
+end
+
+if context.path_suffix?("deploy/kubernetes/external-secrets")
+  KubernetesValidation::ExternalSecrets.validate_app_secret_contract(context, "external-secrets")
 end
 
 if context.path_suffix?("deploy/kubernetes/overlays/staging-self-hosted")

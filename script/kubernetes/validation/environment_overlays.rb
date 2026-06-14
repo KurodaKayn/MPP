@@ -2,6 +2,7 @@
 
 require "base64"
 require "uri"
+require_relative "external_secrets"
 
 module KubernetesValidation
   module EnvironmentOverlays
@@ -15,19 +16,8 @@ module KubernetesValidation
       "production-provider-model",
       "replace-with-production-model",
     ].freeze
-    REQUIRED_EXTERNAL_SECRET_KEYS = [
-      "JWT_SECRET",
-      "DB_PASSWORD",
-      "COLLAB_TOKEN_SECRET",
-      "COOKIE_ENCRYPTION_KEY",
-      "LLM_PROVIDER_KEY",
-      "BROWSER_WORKER_INTERNAL_TOKEN",
-      "AI_SERVICE_INTERNAL_TOKEN",
-      "CONTENT_PIPELINE_INTERNAL_TOKEN",
-      "R2_ACCESS_KEY_ID",
-      "R2_SECRET_ACCESS_KEY",
-    ].freeze
-    OPTIONAL_EXTERNAL_SECRET_KEYS = ["REDIS_PASSWORD"].freeze
+    REQUIRED_EXTERNAL_SECRET_KEYS = ExternalSecrets::REQUIRED_APP_SECRET_KEYS
+    OPTIONAL_EXTERNAL_SECRET_KEYS = ExternalSecrets::OPTIONAL_APP_SECRET_KEYS
     APP_IMAGES = {
       "frontend" => ["frontend", "ghcr.io/kurodakayn/mpp-frontend"],
       "backend" => ["backend", "ghcr.io/kurodakayn/mpp-backend"],
@@ -65,6 +55,7 @@ module KubernetesValidation
     def validate_production_managed(context)
       overlay = "production-managed"
       validate_managed_config(context, overlay, app_env: "production")
+      ExternalSecrets.validate_app_secret_contract(context, overlay)
       validate_external_secret_contract(context, overlay)
       validate_ingress(context, overlay)
       validate_runtime_image(context, overlay)
