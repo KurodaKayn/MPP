@@ -16,8 +16,14 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
-	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
+	aisvc "github.com/kurodakayn/mpp-backend/internal/services/ai"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
+	dashboardsvc "github.com/kurodakayn/mpp-backend/internal/services/dashboard"
+	extensionsvc "github.com/kurodakayn/mpp-backend/internal/services/extension"
+	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
+	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
+	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 )
 
 const (
@@ -26,20 +32,20 @@ const (
 )
 
 type UserDashboardHandler struct {
-	dashboardService *services.DashboardService
-	aiContentEditor  services.AIContentEditor
+	dashboardService *dashboardsvc.DashboardService
+	aiContentEditor  aisvc.AIContentEditor
 	streamLimiter    *streamgate.Limiter
 }
 
-func NewUserDashboardHandler(s *services.DashboardService) *UserDashboardHandler {
+func NewUserDashboardHandler(s *dashboardsvc.DashboardService) *UserDashboardHandler {
 	return &UserDashboardHandler{dashboardService: s}
 }
 
-func (h *UserDashboardHandler) serviceFor(c echo.Context) *services.DashboardService {
+func (h *UserDashboardHandler) serviceFor(c echo.Context) *dashboardsvc.DashboardService {
 	return h.dashboardService.WithContext(c.Request().Context())
 }
 
-func (h *UserDashboardHandler) UseAIContentEditor(editor services.AIContentEditor) {
+func (h *UserDashboardHandler) UseAIContentEditor(editor aisvc.AIContentEditor) {
 	h.aiContentEditor = editor
 }
 
@@ -60,7 +66,7 @@ func (h *UserDashboardHandler) GetMyStats(c echo.Context) error {
 			stats, err = dashReq.service.GetStats(&dashReq.userID)
 		}
 		if err != nil {
-			if errors.Is(err, services.ErrForbidden) {
+			if errors.Is(err, accesspolicy.ErrForbidden) {
 				return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 			}
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -103,16 +109,16 @@ func (h *UserDashboardHandler) CreateExtensionHandoff(c echo.Context) error {
 
 		handoff, err := dashReq.service.CreateExtensionHandoff(dashReq.userID, *req, extensionEventsCallbackURL(c))
 		if err != nil {
-			if errors.Is(err, services.ErrInvalidProject) {
+			if errors.Is(err, projectsvc.ErrInvalidProject) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", "project_id and supported platforms are required")
 			}
-			if errors.Is(err, services.ErrPublicationDisabled) {
+			if errors.Is(err, publishsvc.ErrPublicationDisabled) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
 			}
-			if errors.Is(err, services.ErrPublicationRequiresSync) {
+			if errors.Is(err, publishsvc.ErrPublicationRequiresSync) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", "sync prepublish draft before extension handoff")
 			}
-			if errors.Is(err, services.ErrForbidden) {
+			if errors.Is(err, accesspolicy.ErrForbidden) {
 				return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 			}
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -133,8 +139,8 @@ func (h *UserDashboardHandler) RecordExtensionEvent(c echo.Context) error {
 
 	resp, err := h.dashboardService.RecordExtensionEvent(*req)
 	if err != nil {
-		if errors.Is(err, services.ErrExtensionCallbackTokenInvalid) ||
-			errors.Is(err, services.ErrExtensionCallbackTokenExpired) {
+		if errors.Is(err, extensionsvc.ErrExtensionCallbackTokenInvalid) ||
+			errors.Is(err, extensionsvc.ErrExtensionCallbackTokenExpired) {
 			return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -165,7 +171,7 @@ func (h *UserDashboardHandler) ListMyProjects(c echo.Context) error {
 		// Personal view: enforce scopeUserID, ignore any requested filterUserID
 		resp, err := dashReq.service.ListProjectsCursor(cursor, page, limit, status, "", platform, &dashReq.userID)
 		if err != nil {
-			if errors.Is(err, services.ErrInvalidProject) {
+			if errors.Is(err, projectsvc.ErrInvalidProject) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 			}
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -189,7 +195,7 @@ func (h *UserDashboardHandler) CreateProject(c echo.Context) error {
 		if workspaceID != uuid.Nil {
 			resp, err := dashReq.service.CreateWorkspaceProject(workspaceID, dashReq.userID, *req)
 			if err != nil {
-				if errors.Is(err, services.ErrInvalidProject) {
+				if errors.Is(err, projectsvc.ErrInvalidProject) {
 					return sendError(c, http.StatusBadRequest, "invalid_request", "title, source_content and platforms are required")
 				}
 				return sendWorkspaceError(c, err)
@@ -199,7 +205,7 @@ func (h *UserDashboardHandler) CreateProject(c echo.Context) error {
 
 		resp, err := dashReq.service.CreateProject(dashReq.userID, *req)
 		if err != nil {
-			if errors.Is(err, services.ErrInvalidProject) {
+			if errors.Is(err, projectsvc.ErrInvalidProject) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", "title, source_content and platforms are required")
 			}
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -365,7 +371,7 @@ func (h *UserDashboardHandler) GetMyProject(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -379,7 +385,7 @@ func (h *UserDashboardHandler) GetMyProject(c echo.Context) error {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
 		}
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -400,7 +406,7 @@ func (h *UserDashboardHandler) UpdateProject(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -413,16 +419,16 @@ func (h *UserDashboardHandler) UpdateProject(c echo.Context) error {
 
 	project, err := h.serviceFor(c).UpdateProject(projectID, userID, *req)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidProject) {
+		if errors.Is(err, projectsvc.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "title, source_content and platforms are required")
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
 		}
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
-		if errors.Is(err, services.ErrProjectCollabUnavailable) {
+		if errors.Is(err, projectsvc.ErrProjectCollabUnavailable) {
 			return sendError(c, http.StatusServiceUnavailable, "service_unavailable", "project collaboration unavailable")
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -442,7 +448,7 @@ func (h *UserDashboardHandler) DeleteProject(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -452,16 +458,16 @@ func (h *UserDashboardHandler) DeleteProject(c echo.Context) error {
 	}
 
 	if err := h.serviceFor(c).DeleteProject(projectID, userID); err != nil {
-		if errors.Is(err, services.ErrInvalidProject) {
+		if errors.Is(err, projectsvc.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
 		}
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
-		if errors.Is(err, services.ErrProjectDeletionBlocked) {
+		if errors.Is(err, projectsvc.ErrProjectDeletionBlocked) {
 			return sendError(c, http.StatusConflict, "conflict", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -482,7 +488,7 @@ func (h *UserDashboardHandler) SaveProjectContent(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -495,16 +501,16 @@ func (h *UserDashboardHandler) SaveProjectContent(c echo.Context) error {
 
 	project, err := h.serviceFor(c).SaveProjectContent(projectID, userID, *req)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidProject) {
+		if errors.Is(err, projectsvc.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "title and source_content are required")
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
 		}
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
-		if errors.Is(err, services.ErrProjectCollabUnavailable) {
+		if errors.Is(err, projectsvc.ErrProjectCollabUnavailable) {
 			return sendError(c, http.StatusServiceUnavailable, "service_unavailable", "project collaboration unavailable")
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -525,7 +531,7 @@ func (h *UserDashboardHandler) SaveProjectPlatforms(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -538,13 +544,13 @@ func (h *UserDashboardHandler) SaveProjectPlatforms(c echo.Context) error {
 
 	project, err := h.serviceFor(c).SaveProjectPlatforms(projectID, userID, *req)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidProject) {
+		if errors.Is(err, projectsvc.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "valid platforms are required")
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
 		}
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -564,7 +570,7 @@ func (h *UserDashboardHandler) CreateProjectMediaUpload(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -659,7 +665,7 @@ func (h *UserDashboardHandler) CreateProjectCollabSession(c echo.Context) error 
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -667,16 +673,16 @@ func (h *UserDashboardHandler) CreateProjectCollabSession(c echo.Context) error 
 
 	session, err := h.serviceFor(c).CreateProjectCollabSession(projectID, userID)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidProject) {
+		if errors.Is(err, projectsvc.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project")
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
 		}
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
-		if errors.Is(err, services.ErrProjectCollabUnavailable) {
+		if errors.Is(err, projectsvc.ErrProjectCollabUnavailable) {
 			return sendError(c, http.StatusServiceUnavailable, "service_unavailable", "project collaboration unavailable")
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -1030,7 +1036,7 @@ func (h *UserDashboardHandler) CreateWorkspaceProject(c echo.Context) error {
 
 	project, err := h.serviceFor(c).CreateWorkspaceProject(workspaceID, userID, *req)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidProject) {
+		if errors.Is(err, projectsvc.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "title, source_content and platforms are required")
 		}
 		return sendWorkspaceError(c, err)
@@ -1279,7 +1285,7 @@ func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -1292,7 +1298,7 @@ func (h *UserDashboardHandler) GetMyProjectPublications(c echo.Context) error {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
 		}
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -1311,7 +1317,7 @@ func (h *UserDashboardHandler) ScheduleProjectPublication(c echo.Context) error 
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -1337,7 +1343,7 @@ func (h *UserDashboardHandler) CancelScheduledPublication(c echo.Context) error 
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -1363,7 +1369,7 @@ func (h *UserDashboardHandler) RetryScheduledPublication(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -1415,7 +1421,7 @@ func (h *UserDashboardHandler) SyncProjectPrepublish(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -1428,19 +1434,19 @@ func (h *UserDashboardHandler) SyncProjectPrepublish(c echo.Context) error {
 
 	publications, err := h.serviceFor(c).SyncProjectPrepublish(projectID, userID, *req)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidProject) {
+		if errors.Is(err, projectsvc.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "at least one valid platform is required")
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project not found")
 		}
-		if errors.Is(err, services.ErrPublicationAlreadyPublishing) {
+		if errors.Is(err, publishsvc.ErrPublicationAlreadyPublishing) {
 			return sendError(c, http.StatusConflict, "publish_in_progress", "publication is already publishing")
 		}
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
-		if errors.Is(err, services.ErrProjectCollabUnavailable) {
+		if errors.Is(err, projectsvc.ErrProjectCollabUnavailable) {
 			return sendError(c, http.StatusServiceUnavailable, "service_unavailable", "project collaboration unavailable")
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -1460,7 +1466,7 @@ func (h *UserDashboardHandler) UpdateProjectPrepublishDraft(c echo.Context) erro
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -1473,13 +1479,13 @@ func (h *UserDashboardHandler) UpdateProjectPrepublishDraft(c echo.Context) erro
 
 	publications, err := h.serviceFor(c).UpdateProjectPrepublishDraft(projectID, userID, c.Param("platform"), *req)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidProject) {
+		if errors.Is(err, projectsvc.ErrInvalidProject) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "valid platform and adapted_content are required")
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return sendError(c, http.StatusNotFound, "not_found", "project or publication not found")
 		}
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -1494,7 +1500,7 @@ func (h *UserDashboardHandler) EditContentWithAI(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 	if h.aiContentEditor == nil {
-		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", aisvc.ErrAIServiceUnavailable.Error())
 	}
 
 	req := new(dto.AIEditContentRequest)
@@ -1524,7 +1530,7 @@ func (h *UserDashboardHandler) StreamEditContentWithAI(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 	if h.aiContentEditor == nil {
-		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", aisvc.ErrAIServiceUnavailable.Error())
 	}
 
 	req := new(dto.AIEditContentRequest)
@@ -1554,7 +1560,7 @@ func (h *UserDashboardHandler) EditPrepublishWithAI(c echo.Context) error {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 	if h.aiContentEditor == nil {
-		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", aisvc.ErrAIServiceUnavailable.Error())
 	}
 
 	req := new(dto.AIEditPrepublishRequest)
@@ -1584,7 +1590,7 @@ func (h *UserDashboardHandler) StreamEditPrepublishWithAI(c echo.Context) error 
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 	}
 	if h.aiContentEditor == nil {
-		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+		return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", aisvc.ErrAIServiceUnavailable.Error())
 	}
 
 	req := new(dto.AIEditPrepublishRequest)
@@ -1625,9 +1631,9 @@ func (h *UserDashboardHandler) acquireAILease(c echo.Context, userID uuid.UUID, 
 	})
 }
 
-func writeAIStream(c echo.Context, stream *services.AIServiceStream, lease *streamgate.Lease) error {
+func writeAIStream(c echo.Context, stream *aisvc.AIServiceStream, lease *streamgate.Lease) error {
 	if stream == nil || stream.Body == nil {
-		return sendError(c, http.StatusBadGateway, "ai_unavailable", services.ErrAIServiceUnavailable.Error())
+		return sendError(c, http.StatusBadGateway, "ai_unavailable", aisvc.ErrAIServiceUnavailable.Error())
 	}
 	defer func() { _ = stream.Body.Close() }()
 
@@ -1675,7 +1681,7 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -1694,18 +1700,18 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 
 	if strings.EqualFold(strings.TrimSpace(req.Mode), "manual") {
 		if len(req.Platforms) > 0 || !strings.EqualFold(strings.TrimSpace(req.Platform), "x") {
-			return sendError(c, http.StatusBadRequest, "invalid_request", services.ErrManualPublishUnsupported.Error())
+			return sendError(c, http.StatusBadRequest, "invalid_request", publishsvc.ErrManualPublishUnsupported.Error())
 		}
 
 		resp, err := h.serviceFor(c).CreateXPostIntent(projectID, &userID)
 		if err != nil {
-			if errors.Is(err, services.ErrPublicationDisabled) {
+			if errors.Is(err, publishsvc.ErrPublicationDisabled) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
 			}
-			if errors.Is(err, services.ErrPublicationRequiresSync) {
+			if errors.Is(err, publishsvc.ErrPublicationRequiresSync) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", "sync prepublish draft before publishing")
 			}
-			if errors.Is(err, services.ErrForbidden) {
+			if errors.Is(err, accesspolicy.ErrForbidden) {
 				return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 			}
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -1720,7 +1726,7 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	if idempotencyKey == "" {
 		idempotencyKey = uuid.New().String()
 	}
-	publishReq := services.PublishRequest{IdempotencyKey: idempotencyKey}
+	publishReq := publishsvc.PublishRequest{IdempotencyKey: idempotencyKey}
 
 	if len(req.Platforms) > 0 {
 		resp, err := h.serviceFor(c).BatchEnqueuePublishProject(c.Request().Context(), projectID, req.Platforms, &userID, publishReq)
@@ -1733,16 +1739,16 @@ func (h *UserDashboardHandler) PublishProject(c echo.Context) error {
 	// Single platform fallback
 	resp, err := h.serviceFor(c).EnqueuePublishProject(c.Request().Context(), projectID, req.Platform, &userID, publishReq)
 	if err != nil {
-		if errors.Is(err, services.ErrPublicationDisabled) {
+		if errors.Is(err, publishsvc.ErrPublicationDisabled) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
 		}
-		if errors.Is(err, services.ErrPublicationAlreadyPublishing) {
+		if errors.Is(err, publishsvc.ErrPublicationAlreadyPublishing) {
 			return sendError(c, http.StatusConflict, "publish_in_progress", "publication is already publishing")
 		}
-		if errors.Is(err, services.ErrPublicationRequiresSync) {
+		if errors.Is(err, publishsvc.ErrPublicationRequiresSync) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "sync prepublish draft before publishing")
 		}
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -1761,7 +1767,7 @@ func (h *UserDashboardHandler) StartDouyinPublishSession(c echo.Context) error {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "invalid project UUID")
 	}
 	if err := h.ensureProjectWorkspaceContext(c, projectID, userID); err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
 		return sendWorkspaceError(c, err)
@@ -1769,13 +1775,13 @@ func (h *UserDashboardHandler) StartDouyinPublishSession(c echo.Context) error {
 
 	resp, err := h.serviceFor(c).StartDouyinPublishSession(c.Request().Context(), projectID, userID)
 	if err != nil {
-		if errors.Is(err, services.ErrForbidden) {
+		if errors.Is(err, accesspolicy.ErrForbidden) {
 			return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 		}
-		if errors.Is(err, services.ErrPublicationDisabled) {
+		if errors.Is(err, publishsvc.ErrPublicationDisabled) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
 		}
-		if errors.Is(err, services.ErrPublicationRequiresSync) {
+		if errors.Is(err, publishsvc.ErrPublicationRequiresSync) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", "sync douyin prepublish draft before publishing")
 		}
 		if errors.Is(err, browsersession.ErrActiveSessionExists) {
@@ -1818,7 +1824,7 @@ func (h *UserDashboardHandler) SaveWechatAccount(c echo.Context) error {
 
 		resp, err := dashReq.service.UpsertWorkspaceWechatAccount(dashReq.userID, workspaceID, *req)
 		if err != nil {
-			if errors.Is(err, services.ErrInvalidPlatformAccount) {
+			if errors.Is(err, platformaccount.ErrInvalidPlatformAccount) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 			}
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -1837,7 +1843,7 @@ func (h *UserDashboardHandler) TestWechatAccount(c echo.Context) error {
 
 		resp, err := dashReq.service.TestWorkspaceWechatAccount(dashReq.userID, workspaceID, *req)
 		if err != nil {
-			if errors.Is(err, services.ErrInvalidPlatformAccount) {
+			if errors.Is(err, platformaccount.ErrInvalidPlatformAccount) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 			}
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -1889,7 +1895,7 @@ func (h *UserDashboardHandler) SaveXAccount(c echo.Context) error {
 
 		resp, err := dashReq.service.UpsertWorkspaceXAccount(dashReq.userID, workspaceID, *req)
 		if err != nil {
-			if errors.Is(err, services.ErrInvalidPlatformAccount) {
+			if errors.Is(err, platformaccount.ErrInvalidPlatformAccount) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 			}
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -1908,7 +1914,7 @@ func (h *UserDashboardHandler) TestXAccount(c echo.Context) error {
 
 		resp, err := dashReq.service.TestWorkspaceXAccount(dashReq.userID, workspaceID, *req)
 		if err != nil {
-			if errors.Is(err, services.ErrInvalidPlatformAccount) {
+			if errors.Is(err, platformaccount.ErrInvalidPlatformAccount) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 			}
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
@@ -1922,7 +1928,7 @@ func (h *UserDashboardHandler) StartXOAuth2(c echo.Context) error {
 	return h.withWorkspaceAccountDashboardRequest(c, func(dashReq *dashboardRequest, workspaceID uuid.UUID) error {
 		authURL, err := dashReq.service.StartWorkspaceXOAuth2(dashReq.userID, workspaceID, xOAuth2RedirectURI(c))
 		if err != nil {
-			if errors.Is(err, services.ErrXOAuth2NotConfigured) {
+			if errors.Is(err, platformaccount.ErrXOAuth2NotConfigured) {
 				return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 			}
 			return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())

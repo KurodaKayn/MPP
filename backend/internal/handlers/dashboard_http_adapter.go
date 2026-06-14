@@ -13,12 +13,18 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
-	"github.com/kurodakayn/mpp-backend/internal/services"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
+	aisvc "github.com/kurodakayn/mpp-backend/internal/services/ai"
+	dashboardsvc "github.com/kurodakayn/mpp-backend/internal/services/dashboard"
+	mediaassetsvc "github.com/kurodakayn/mpp-backend/internal/services/mediaasset"
+	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
+	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
+	workspacesvc "github.com/kurodakayn/mpp-backend/internal/services/workspace"
 )
 
 type dashboardRequest struct {
 	c       echo.Context
-	service *services.DashboardService
+	service *dashboardsvc.DashboardService
 	userID  uuid.UUID
 }
 
@@ -66,7 +72,7 @@ func (r *dashboardRequest) requireWorkspaceAccountManager(workspaceID uuid.UUID)
 	if workspaceID == uuid.Nil {
 		return nil
 	}
-	_, err := r.service.RequirePermission(workspaceID, r.userID, services.PermissionAccountManage)
+	_, err := r.service.RequirePermission(workspaceID, r.userID, workspacesvc.PermissionAccountManage)
 	if err != nil {
 		return sendWorkspaceError(r.c, err)
 	}
@@ -110,7 +116,7 @@ func (h *UserDashboardHandler) ensureProjectWorkspaceContext(c echo.Context, pro
 		return err
 	}
 	if project.WorkspaceID == nil || *project.WorkspaceID != workspaceID {
-		return services.ErrForbidden
+		return accesspolicy.ErrForbidden
 	}
 	return nil
 }
@@ -134,83 +140,83 @@ func sendError(c echo.Context, code int, errCode, message string) error {
 }
 
 func sendMediaAssetError(c echo.Context, err error) error {
-	if errors.Is(err, services.ErrInvalidMediaAsset) || errors.Is(err, services.ErrInvalidProject) {
+	if errors.Is(err, mediaassetsvc.ErrInvalidMediaAsset) || errors.Is(err, projectsvc.ErrInvalidProject) {
 		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 	}
-	if errors.Is(err, services.ErrMediaStorageUnavailable) {
+	if errors.Is(err, mediaassetsvc.ErrMediaStorageUnavailable) {
 		return sendError(c, http.StatusServiceUnavailable, "media_storage_unavailable", err.Error())
 	}
-	if errors.Is(err, services.ErrMediaAssetUploadIncomplete) {
+	if errors.Is(err, mediaassetsvc.ErrMediaAssetUploadIncomplete) {
 		return sendError(c, http.StatusConflict, "upload_incomplete", err.Error())
 	}
-	if errors.Is(err, services.ErrMediaAssetNotReady) {
+	if errors.Is(err, mediaassetsvc.ErrMediaAssetNotReady) {
 		return sendError(c, http.StatusConflict, "media_asset_not_ready", err.Error())
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return sendError(c, http.StatusNotFound, "not_found", "media asset not found")
 	}
-	if errors.Is(err, services.ErrForbidden) {
+	if errors.Is(err, accesspolicy.ErrForbidden) {
 		return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 	}
 	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 }
 
 func sendProjectCollaboratorError(c echo.Context, err error) error {
-	if errors.Is(err, services.ErrInvalidProject) || errors.Is(err, services.ErrInvalidProjectCollaborator) {
+	if errors.Is(err, projectsvc.ErrInvalidProject) || errors.Is(err, projectsvc.ErrInvalidProjectCollaborator) {
 		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return sendError(c, http.StatusNotFound, "not_found", "project collaborator not found")
 	}
-	if errors.Is(err, services.ErrForbidden) {
+	if errors.Is(err, accesspolicy.ErrForbidden) {
 		return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 	}
 	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 }
 
 func sendProjectExperienceError(c echo.Context, err error) error {
-	if errors.Is(err, services.ErrInvalidProject) ||
-		errors.Is(err, services.ErrInvalidProjectComment) ||
-		errors.Is(err, services.ErrInvalidProjectShareLink) ||
-		errors.Is(err, services.ErrInvalidProjectVersion) {
+	if errors.Is(err, projectsvc.ErrInvalidProject) ||
+		errors.Is(err, projectsvc.ErrInvalidProjectComment) ||
+		errors.Is(err, projectsvc.ErrInvalidProjectShareLink) ||
+		errors.Is(err, projectsvc.ErrInvalidProjectVersion) {
 		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return sendError(c, http.StatusNotFound, "not_found", "project collaboration resource not found")
 	}
-	if errors.Is(err, services.ErrForbidden) {
+	if errors.Is(err, accesspolicy.ErrForbidden) {
 		return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 	}
 	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 }
 
 func sendWorkspaceError(c echo.Context, err error) error {
-	if errors.Is(err, services.ErrInvalidWorkspace) ||
-		errors.Is(err, services.ErrInvalidWorkspaceInvite) ||
-		errors.Is(err, services.ErrInvalidWorkspaceMember) ||
-		errors.Is(err, services.ErrInvalidProject) {
+	if errors.Is(err, workspacesvc.ErrInvalidWorkspace) ||
+		errors.Is(err, workspacesvc.ErrInvalidWorkspaceInvite) ||
+		errors.Is(err, workspacesvc.ErrInvalidWorkspaceMember) ||
+		errors.Is(err, projectsvc.ErrInvalidProject) {
 		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return sendError(c, http.StatusNotFound, "not_found", "workspace resource not found")
 	}
-	if errors.Is(err, services.ErrForbidden) {
+	if errors.Is(err, accesspolicy.ErrForbidden) {
 		return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 	}
 	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())
 }
 
 func sendPublishScheduleError(c echo.Context, err error) error {
-	if errors.Is(err, services.ErrPublicationDisabled) {
+	if errors.Is(err, publishsvc.ErrPublicationDisabled) {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "publication is disabled for this project")
 	}
-	if errors.Is(err, services.ErrPublicationAlreadyPublishing) {
+	if errors.Is(err, publishsvc.ErrPublicationAlreadyPublishing) {
 		return sendError(c, http.StatusConflict, "publish_in_progress", "publication is already publishing")
 	}
-	if errors.Is(err, services.ErrPublicationRequiresSync) {
+	if errors.Is(err, publishsvc.ErrPublicationRequiresSync) {
 		return sendError(c, http.StatusBadRequest, "invalid_request", "sync prepublish draft before scheduling")
 	}
-	if errors.Is(err, services.ErrForbidden) {
+	if errors.Is(err, accesspolicy.ErrForbidden) {
 		return sendError(c, http.StatusForbidden, "forbidden", err.Error())
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -220,10 +226,10 @@ func sendPublishScheduleError(c echo.Context, err error) error {
 }
 
 func sendAIEditError(c echo.Context, err error) error {
-	if errors.Is(err, services.ErrInvalidAIEditRequest) {
+	if errors.Is(err, aisvc.ErrInvalidAIEditRequest) {
 		return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 	}
-	if errors.Is(err, services.ErrAIServiceUnavailable) {
+	if errors.Is(err, aisvc.ErrAIServiceUnavailable) {
 		return sendError(c, http.StatusBadGateway, "ai_unavailable", err.Error())
 	}
 	return sendError(c, http.StatusInternalServerError, "internal_error", err.Error())

@@ -23,9 +23,11 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/pkg/streamgate"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/redisclient"
-	"github.com/kurodakayn/mpp-backend/internal/services"
+	aisvc "github.com/kurodakayn/mpp-backend/internal/services/ai"
 	"github.com/kurodakayn/mpp-backend/internal/services/archive"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
+	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
+	dashboardsvc "github.com/kurodakayn/mpp-backend/internal/services/dashboard"
 	"github.com/kurodakayn/mpp-backend/internal/services/email"
 )
 
@@ -54,7 +56,7 @@ func main() {
 
 	// Initialize Services and Handlers
 	observabilitySuite := observability.New(runtimeConfig.ServiceName())
-	dashboardService := services.NewDashboardServiceWithRouter(db.DB, db.DefaultRouter)
+	dashboardService := dashboardsvc.NewDashboardServiceWithRouter(db.DB, db.DefaultRouter)
 	dashboardService.SetPublishJobObserver(observabilitySuite.PublishJobObserver())
 	objectStorageConfig, err := objectstorage.ConfigFromEnv()
 	if err != nil {
@@ -75,14 +77,14 @@ func main() {
 	if archiveConfig.Enabled && objectStorageClient == nil {
 		log.Fatal("EVENT_ARCHIVE_ENABLED requires OBJECT_STORAGE_PROVIDER=r2")
 	}
-	collabDocumentService := services.NewCollabDocumentService(db.DB)
+	collabDocumentService := collabdoc.NewService(db.DB)
 	collabSecret := []byte(app.CollabTokenSecret(jwtSecret))
-	collabDocumentService.UseSessionConfig(services.CollabDocumentSessionConfig{
+	collabDocumentService.UseSessionConfig(collabdoc.SessionConfig{
 		TokenSecret:      collabSecret,
 		WebsocketURLBase: app.CollabWebsocketURLBase(),
 	})
 	collabDocumentService.UseProjectDocumentInitializer(
-		services.NewHTTPProjectDocumentInitializer(app.CollabInternalURL(), collabSecret, nil),
+		collabdoc.NewHTTPProjectDocumentInitializer(app.CollabInternalURL(), collabSecret, nil),
 	)
 	dashboardService.SetCollabDocumentService(collabDocumentService)
 	redisClient, err := redisclient.NewFromEnv(context.Background())
@@ -140,7 +142,7 @@ func main() {
 	adminDashboardHandler := handlers.NewDashboardHandler(dashboardService)
 	userDashboardHandler := handlers.NewUserDashboardHandler(dashboardService)
 	collabDocumentHandler := handlers.NewCollabDocumentHandler(collabDocumentService)
-	userDashboardHandler.UseAIContentEditor(services.NewAIServiceClientFromEnv())
+	userDashboardHandler.UseAIContentEditor(aisvc.NewAIServiceClientFromEnv())
 	streamLimiter := streamgate.New(redisClient, streamgate.ConfigFromEnv())
 	userDashboardHandler.UseStreamLimiter(streamLimiter)
 	mockLogin := app.MockLoginEnabled()

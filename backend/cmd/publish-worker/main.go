@@ -24,9 +24,9 @@ import (
 	objectstorager2 "github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage/r2"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	"github.com/kurodakayn/mpp-backend/internal/redisclient"
-	"github.com/kurodakayn/mpp-backend/internal/services"
 	"github.com/kurodakayn/mpp-backend/internal/services/archive"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
+	dashboardsvc "github.com/kurodakayn/mpp-backend/internal/services/dashboard"
 	"github.com/kurodakayn/mpp-backend/internal/services/email"
 )
 
@@ -52,7 +52,7 @@ func main() {
 	browserSessionService.UseRedis(redisClient)
 
 	observabilitySuite := observability.New(app.PublishWorkerServiceName)
-	dashboardService := services.NewDashboardServiceWithRouter(db.DB, db.DefaultRouter)
+	dashboardService := dashboardsvc.NewDashboardServiceWithRouter(db.DB, db.DefaultRouter)
 	dashboardService.SetPublishJobObserver(observabilitySuite.PublishJobObserver())
 	dashboardService.SetBrowserWorkerClient(workerClient)
 	dashboardService.SetBrowserSessionService(browserSessionService)

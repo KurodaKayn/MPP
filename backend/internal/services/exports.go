@@ -4,10 +4,13 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/services/ai"
 	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
 	dashboard "github.com/kurodakayn/mpp-backend/internal/services/dashboard"
+	extensionsvc "github.com/kurodakayn/mpp-backend/internal/services/extension"
 	mediaassetsvc "github.com/kurodakayn/mpp-backend/internal/services/mediaasset"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
+	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 	readmodelsvc "github.com/kurodakayn/mpp-backend/internal/services/readmodel"
+	workspacesvc "github.com/kurodakayn/mpp-backend/internal/services/workspace"
 )
 
 type AIContentEditor = ai.AIContentEditor
@@ -24,7 +27,7 @@ type PublishJob = publishsvc.PublishJob
 type PublishQueue = publishsvc.PublishQueue
 type PublishRequest = publishsvc.PublishRequest
 type DashboardRebuildTaskInfo = readmodelsvc.DashboardRebuildTaskInfo
-type WorkspacePermission = dashboard.WorkspacePermission
+type WorkspacePermission = workspacesvc.Permission
 type RedisPublishQueue = publishsvc.RedisPublishQueue
 type RedisXOAuth2StateStore = platformaccount.RedisXOAuth2StateStore
 type WechatAPITester = platformaccount.WechatAPITester
@@ -36,38 +39,38 @@ type XOAuth2Provider = platformaccount.XOAuth2Provider
 type XOAuth2StateStore = platformaccount.XOAuth2StateStore
 
 var ErrAIServiceUnavailable = ai.ErrAIServiceUnavailable
-var ErrExtensionCallbackTokenExpired = dashboard.ErrExtensionCallbackTokenExpired
-var ErrExtensionCallbackTokenInvalid = dashboard.ErrExtensionCallbackTokenInvalid
-var ErrForbidden = dashboard.ErrForbidden
+var ErrExtensionCallbackTokenExpired = extensionsvc.ErrExtensionCallbackTokenExpired
+var ErrExtensionCallbackTokenInvalid = extensionsvc.ErrExtensionCallbackTokenInvalid
+var ErrForbidden = publishsvc.ErrForbidden
 var ErrCollabDocumentForbidden = collabdoc.ErrDocumentForbidden
 var ErrInvalidCollabDocument = collabdoc.ErrInvalidDocument
 var ErrInvalidAIEditRequest = ai.ErrInvalidAIEditRequest
 var ErrInvalidPlatformAccount = platformaccount.ErrInvalidPlatformAccount
-var ErrInvalidProject = dashboard.ErrInvalidProject
-var ErrInvalidProjectComment = dashboard.ErrInvalidProjectComment
-var ErrInvalidProjectCollaborator = dashboard.ErrInvalidProjectCollaborator
-var ErrInvalidProjectShareLink = dashboard.ErrInvalidProjectShareLink
-var ErrInvalidProjectVersion = dashboard.ErrInvalidProjectVersion
-var ErrInvalidWorkspace = dashboard.ErrInvalidWorkspace
-var ErrInvalidWorkspaceInvite = dashboard.ErrInvalidWorkspaceInvite
-var ErrInvalidWorkspaceMember = dashboard.ErrInvalidWorkspaceMember
-var ErrProjectDeletionBlocked = dashboard.ErrProjectDeletionBlocked
-var ErrProjectCollabUnavailable = dashboard.ErrProjectCollabUnavailable
+var ErrInvalidProject = projectsvc.ErrInvalidProject
+var ErrInvalidProjectComment = projectsvc.ErrInvalidProjectComment
+var ErrInvalidProjectCollaborator = projectsvc.ErrInvalidProjectCollaborator
+var ErrInvalidProjectShareLink = projectsvc.ErrInvalidProjectShareLink
+var ErrInvalidProjectVersion = projectsvc.ErrInvalidProjectVersion
+var ErrInvalidWorkspace = workspacesvc.ErrInvalidWorkspace
+var ErrInvalidWorkspaceInvite = workspacesvc.ErrInvalidWorkspaceInvite
+var ErrInvalidWorkspaceMember = workspacesvc.ErrInvalidWorkspaceMember
+var ErrProjectDeletionBlocked = projectsvc.ErrProjectDeletionBlocked
+var ErrProjectCollabUnavailable = projectsvc.ErrProjectCollabUnavailable
 var ErrInvalidXOAuth2State = platformaccount.ErrInvalidXOAuth2State
-var ErrManualPublishUnsupported = dashboard.ErrManualPublishUnsupported
+var ErrManualPublishUnsupported = publishsvc.ErrManualPublishUnsupported
 var ErrInvalidMediaAsset = mediaassetsvc.ErrInvalidMediaAsset
 var ErrMediaAssetNotReady = mediaassetsvc.ErrMediaAssetNotReady
 var ErrMediaAssetUploadIncomplete = mediaassetsvc.ErrMediaAssetUploadIncomplete
 var ErrMediaStorageUnavailable = mediaassetsvc.ErrMediaStorageUnavailable
 var ErrPublicationAlreadyPublishing = publishsvc.ErrPublicationAlreadyPublishing
-var ErrPublicationDisabled = dashboard.ErrPublicationDisabled
-var ErrPublicationRequiresSync = dashboard.ErrPublicationRequiresSync
-var ErrPublishMediaAssetNotReady = dashboard.ErrPublishMediaAssetNotReady
+var ErrPublicationDisabled = publishsvc.ErrPublicationDisabled
+var ErrPublicationRequiresSync = publishsvc.ErrPublicationRequiresSync
+var ErrPublishMediaAssetNotReady = publishsvc.ErrPublishMediaAssetNotReady
 var ErrPublishQueueEmpty = publishsvc.ErrPublishQueueEmpty
 var ErrDashboardRebuildQueueUnavailable = readmodelsvc.ErrDashboardRebuildQueueUnavailable
 var ErrXOAuth2NotConfigured = platformaccount.ErrXOAuth2NotConfigured
 
-const PermissionAccountManage = dashboard.PermissionAccountManage
+const PermissionAccountManage = workspacesvc.PermissionAccountManage
 
 var NewAIServiceClient = ai.NewAIServiceClient
 var NewAIServiceClientFromEnv = ai.NewAIServiceClientFromEnv
