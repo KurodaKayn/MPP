@@ -31,6 +31,9 @@ func run(args []string, env map[string]string, stdout io.Writer, stderr io.Write
 	suite := checks.NewSuite(config.CheckSettings(), kubectl, reporter, http)
 	suite.Run()
 	maybeCollectDiagnostics(config, reporter, kubectl)
+	for _, err := range writeReports(config, reporter) {
+		reporter.Fail("write smoke report", err.Error())
+	}
 	return reporter.ExitCode()
 }
 
