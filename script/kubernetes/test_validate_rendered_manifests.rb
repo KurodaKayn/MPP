@@ -11,6 +11,7 @@ class ValidateRenderedManifestsTest < Minitest::Test
     "deploy/kubernetes/overlays/staging-managed",
     "deploy/kubernetes/overlays/staging-self-hosted",
   ].freeze
+  EXTERNAL_SECRETS_PACKAGE = "deploy/kubernetes/external-secrets"
   PRODUCTION_MANAGED_OVERLAY = "deploy/kubernetes/overlays/production-managed"
 
   def test_deployable_validation_rejects_checked_in_staging_examples
@@ -31,12 +32,45 @@ class ValidateRenderedManifestsTest < Minitest::Test
   def test_production_managed_overlay_uses_external_secret_contract
     rendered = render_overlay(PRODUCTION_MANAGED_OVERLAY)
     documents = parse_documents(File.read(rendered.path))
+    external_secret = document(documents, "ExternalSecret", "mpp-app-secrets", "mpp-system")
 
     assert_nil documents.find { |document| document["kind"] == "Secret" && document.dig("metadata", "name") == "mpp-app-secrets" }
+    assert_equal "external-secrets.io/v1", external_secret["apiVersion"]
+    assert_equal "mpp-app-secrets", external_secret.dig("spec", "target", "name")
 
     _stdout, stderr, status = run_validator(PRODUCTION_MANAGED_OVERLAY, rendered.path)
 
     assert status.success?, "production-managed validation failed: #{stderr}"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_external_secrets_package_renders_app_secret_contract
+    rendered = render_overlay(EXTERNAL_SECRETS_PACKAGE)
+    documents = parse_documents(File.read(rendered.path))
+    external_secret = document(documents, "ExternalSecret", "mpp-app-secrets", "mpp-system")
+
+    assert_equal "external-secrets.io/v1", external_secret["apiVersion"]
+    assert_equal "ClusterSecretStore", external_secret.dig("spec", "secretStoreRef", "kind")
+    assert_equal "mpp-production-secrets", external_secret.dig("spec", "secretStoreRef", "name")
+
+    _stdout, stderr, status = run_validator(EXTERNAL_SECRETS_PACKAGE, rendered.path)
+
+    assert status.success?, "external-secrets validation failed: #{stderr}"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_external_secrets_package_rejects_missing_required_remote_ref
+    rendered = mutated_render(EXTERNAL_SECRETS_PACKAGE) do |documents|
+      external_secret = document(documents, "ExternalSecret", "mpp-app-secrets", "mpp-system")
+      external_secret.dig("spec", "data").reject! { |entry| entry["secretKey"] == "JWT_SECRET" }
+    end
+
+    _stdout, stderr, status = run_validator(EXTERNAL_SECRETS_PACKAGE, rendered.path)
+
+    refute status.success?, "external-secrets validation unexpectedly accepted a missing app Secret key"
+    assert_includes stderr, "external secret contract is missing remote refs: JWT_SECRET"
   ensure
     rendered&.unlink
   end
@@ -57,7 +91,7 @@ class ValidateRenderedManifestsTest < Minitest::Test
     _stdout, stderr, status = run_validator(PRODUCTION_MANAGED_OVERLAY, rendered.path)
 
     refute status.success?, "production-managed validation unexpectedly accepted a rendered app Secret"
-    assert_includes stderr, "must not render mpp-app-secrets"
+    assert_includes stderr, "must not render raw mpp-app-secrets"
   ensure
     rendered&.unlink
   end
