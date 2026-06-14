@@ -323,22 +323,102 @@ def fallback_growth_proposals(
         ),
     ]
     for platform in request.target_platforms:
-        profile_id = f"{platform}@growth-v1"
+        platform_key = str(platform)
+        profile_id = f"{platform_key}@growth-v1"
+        platform_plan = fallback_platform_plan(platform_key, title, request.source_content)
         proposals.append(
             GrowthProposal(
                 proposal_type="prepublish_patch",
-                target_platform=str(platform),
-                summary=f"{profile_id} platform draft proposal",
+                target_platform=platform_key,
+                summary=platform_plan["summary"],
                 patch="",
-                full_content=(
-                    f"{title}\n\n"
-                    f"Optimized for {platform} with {request.intensity} intensity.\n\n"
-                    f"{request.source_content.strip()}"
-                ),
-                quality_checks=warnings | {"audience_profile": profile_id},
+                full_content=platform_plan["content"],
+                quality_checks=warnings
+                | {
+                    "audience_profile": profile_id,
+                    "title_strategy": platform_plan["title_strategy"],
+                    "body_strategy": platform_plan["body_strategy"],
+                    "comparison_strategy": platform_plan["comparison_strategy"],
+                },
             )
         )
     return proposals
+
+
+def fallback_platform_plan(platform: str, title: str, source_content: str) -> dict[str, str]:
+    source = source_content.strip()
+    plans = {
+        "wechat": {
+            "summary": (
+                "wechat@growth-v1 platform draft proposal using a heightened positive "
+                "narrative."
+            ),
+            "title_strategy": "Dramatic but fact-bound WeChat title.",
+            "body_strategy": "Positive, constructive, confidence-building long-form rewrite.",
+            "comparison_strategy": "Use only source-supported comparisons or mark them to verify.",
+            "content": (
+                f"{title}: this change may be bigger than it first appears\n\n"
+                "Start with the pressure readers feel, then turn it toward progress.\n\n"
+                f"{source}\n\n"
+                "Close with a constructive takeaway and a forward-looking CTA."
+            ),
+        },
+        "zhihu": {
+            "summary": (
+                "zhihu@growth-v1 platform draft proposal using specific technical "
+                "framing and evidence checks."
+            ),
+            "title_strategy": "Specific technical title naming the claim, bottleneck, or result.",
+            "body_strategy": "Rigorous analysis with thesis, mechanism, evidence, and conclusion.",
+            "comparison_strategy": "Quantify and compare only when the source supports it.",
+            "content": (
+                f"{title}: the specific technical result, constraint, and evidence to verify\n\n"
+                "Thesis: state what changed and why it matters.\n\n"
+                f"{source}\n\n"
+                "Evidence: add numbers, benchmarks, or peer comparisons only where "
+                "the source supports them; otherwise list verification needs."
+            ),
+        },
+        "douyin": {
+            "summary": (
+                "douyin@growth-v1 platform draft proposal using metaphor, contrast, "
+                "and comment hooks."
+            ),
+            "title_strategy": "Indirect metaphor or double-meaning title that hints at the topic.",
+            "body_strategy": "Vivid, high-retention rewrite with sharper contrast and pacing.",
+            "comparison_strategy": "Use memorable qualitative contrasts without fabricating data.",
+            "content": (
+                f"When the quiet door opens, everyone hears the hinge\n\n"
+                "Hint at the topic first, then reveal the conflict in short beats.\n\n"
+                f"{source}\n\n"
+                "Add a vivid comparison and end by asking readers which side they "
+                "think has the real advantage."
+            ),
+        },
+        "x": {
+            "summary": "x@growth-v1 platform draft proposal using plain factual wording.",
+            "title_strategy": "Plain title that directly states the article topic.",
+            "body_strategy": "Simple language: what happened, why it matters, what is next.",
+            "comparison_strategy": "Keep comparisons short, direct, and evidence-bound.",
+            "content": (
+                f"{title}\n\n"
+                "What happened:\n"
+                f"{source}\n\n"
+                "Why it matters: explain the concrete change in plain language.\n"
+                "What to watch next: name the next fact or signal readers should check."
+            ),
+        },
+    }
+    return plans.get(
+        platform,
+        {
+            "summary": f"{platform}@growth-v1 platform draft proposal",
+            "title_strategy": "Use a clear platform-specific title.",
+            "body_strategy": "Rewrite for platform fit while preserving source facts.",
+            "comparison_strategy": "Avoid unsupported comparisons.",
+            "content": f"{title}\n\n{source}",
+        },
+    )
 
 
 async def growth_event_stream(
