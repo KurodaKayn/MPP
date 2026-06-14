@@ -669,14 +669,14 @@ Acceptance:
 
 Goal: expose one-click optimization without leaking harness complexity.
 
-- [ ] Add an "AI Optimize" entry, result summary, diff, risk warnings, and apply button to the project page.
-- [ ] Show target platform, goal, intensity, proposal status, and quality warnings.
-- [ ] Support per-platform apply and reject actions.
-- [ ] Add optimistic UI states for running, ready, applying, applied, failed, and cancelled.
+- [x] Add an "AI Optimize" entry, result summary, diff, risk warnings, and apply button to the project page.
+- [x] Show target platform, goal, intensity, proposal status, and quality warnings.
+- [x] Support per-platform apply and reject actions.
+- [x] Add optimistic UI states for running, ready, applying, applied, failed, and cancelled.
 
 Acceptance:
 
-- An existing project can select target platforms and complete an optimization run.
+- An existing project can select target platforms and complete an optimization run with local frontend mock data while backend integration is pending.
 - The result is understandable without exposing internal tool calls.
 
 ### Phase 2A: Drafting Session Shell

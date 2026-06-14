@@ -199,6 +199,90 @@ export type AITextStreamOptions = {
   signal?: AbortSignal;
 };
 
+export type AIGrowthOptimizationGoal =
+  | "recommendation"
+  | "views"
+  | "ctr"
+  | "completion"
+  | "engagement"
+  | "conversion";
+
+export type AIGrowthOptimizationIntensity =
+  | "conservative"
+  | "balanced"
+  | "aggressive";
+
+export type AIGrowthOptimizationRunStatus =
+  | "running"
+  | "ready"
+  | "applied"
+  | "failed"
+  | "cancelled";
+
+export type AIProposalStatus =
+  | "proposed"
+  | "accepted"
+  | "rejected"
+  | "superseded";
+
+export type AIQualityWarningSeverity = "info" | "warning" | "risk";
+
+export type AIQualityWarning = {
+  id: string;
+  message: string;
+  severity: AIQualityWarningSeverity;
+};
+
+export type AISourceProposal = {
+  id: string;
+  previous_content: string;
+  previous_title: string;
+  proposed_content: string;
+  proposed_title: string;
+  quality_warnings: AIQualityWarning[];
+  status: AIProposalStatus;
+  summary: string;
+};
+
+export type AIPlatformProposal = {
+  id: string;
+  previous_content: string;
+  proposed_content: string;
+  quality_warnings: AIQualityWarning[];
+  status: AIProposalStatus;
+  summary: string;
+  target_platform: PublishPlatform;
+};
+
+export type AIGrowthOptimizationRun = {
+  id: string;
+  created_at: string;
+  goal: AIGrowthOptimizationGoal;
+  intensity: AIGrowthOptimizationIntensity;
+  model: string;
+  project_id: string;
+  prompt_version: string;
+  quality_warnings: AIQualityWarning[];
+  source_proposal: AISourceProposal;
+  status: AIGrowthOptimizationRunStatus;
+  summary: string;
+  target_platforms: PublishPlatform[];
+  platform_proposals: AIPlatformProposal[];
+  updated_at: string;
+};
+
+export type CreateAIGrowthOptimizationRunInput = {
+  goal: AIGrowthOptimizationGoal;
+  intensity: AIGrowthOptimizationIntensity;
+  source_content: string;
+  target_platforms: PublishPlatform[];
+  title: string;
+};
+
+export type DecideAIProposalResult = {
+  proposal_id: string;
+  status: Extract<AIProposalStatus, "accepted" | "rejected">;
+};
 export type AIDraftingEventType = ContractSchema<"AIDraftingEventType">;
 export type AIDraftingEvent = ContractSchema<"AIDraftingEvent">;
 export type AIDraftingStreamEvent = Omit<

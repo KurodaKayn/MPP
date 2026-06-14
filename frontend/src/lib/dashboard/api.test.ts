@@ -5,12 +5,14 @@ import {
   acceptProjectShareLink,
   addProjectCollaborator,
   addWorkspaceMember,
+  applyAIGrowthOptimizationProposal,
   cancelBrowserSession,
   cancelScheduledPublication,
   completeBrowserSession,
   completeMediaUpload,
   createBrandProfile,
   createContentTemplate,
+  createAIGrowthOptimizationRun,
   createDashboardProject,
   createProjectMediaUpload,
   createProjectComment,
@@ -562,6 +564,33 @@ describe("dashboard api client", () => {
         title: "Draft",
       }),
     );
+  });
+
+  it("creates a mock AI growth optimization run while backend endpoints are pending", async () => {
+    await expect(
+      createAIGrowthOptimizationRun("project-1", {
+        goal: "views",
+        intensity: "balanced",
+        source_content: "Original body",
+        target_platforms: ["wechat", "zhihu"],
+        title: "Original title",
+      }),
+    ).resolves.toMatchObject({
+      goal: "views",
+      intensity: "balanced",
+      project_id: "project-1",
+      status: "ready",
+      target_platforms: ["wechat", "zhihu"],
+    });
+  });
+
+  it("marks a mock AI growth proposal as accepted", async () => {
+    await expect(
+      applyAIGrowthOptimizationProposal("project-1", "proposal-wechat"),
+    ).resolves.toEqual({
+      proposal_id: "proposal-wechat",
+      status: "accepted",
+    });
   });
 
   it("updates a platform prepublish draft", async () => {
