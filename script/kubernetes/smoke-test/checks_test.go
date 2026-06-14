@@ -99,6 +99,8 @@ func suiteWith(t *testing.T, reporter *Reporter, kubectl KubernetesClient, http 
 
 type fakeKubectl struct {
 	secretData Object
+	resources  map[string]Object
+	lists      map[string][]Object
 }
 
 func (kubectl fakeKubectl) CurrentContext() (string, error) {
@@ -114,6 +116,11 @@ func (kubectl fakeKubectl) Namespace(name string) (Object, error) {
 }
 
 func (kubectl fakeKubectl) Resource(kind string, name string, namespace string) (Object, error) {
+	if kubectl.resources != nil {
+		if resource, ok := kubectl.resources[fakeResourceKey(kind, name, namespace)]; ok {
+			return resource, nil
+		}
+	}
 	switch {
 	case kind == "configmap" && name == "mpp-app-config" && namespace == "mpp-system":
 		return Object{"data": requiredConfigData()}, nil
@@ -125,6 +132,14 @@ func (kubectl fakeKubectl) Resource(kind string, name string, namespace string) 
 }
 
 func (kubectl fakeKubectl) ResourceList(kind string, namespace string, selector string) ([]Object, error) {
+	if kubectl.lists != nil {
+		if resources, ok := kubectl.lists[fakeResourceKey(kind, "", namespace)]; ok {
+			return resources, nil
+		}
+		if resources, ok := kubectl.lists[fakeResourceKey(kind, selector, namespace)]; ok {
+			return resources, nil
+		}
+	}
 	return nil, nil
 }
 
@@ -181,6 +196,10 @@ func requiredSecretData() Object {
 		data[key] = "encoded-value"
 	}
 	return data
+}
+
+func fakeResourceKey(kind string, name string, namespace string) string {
+	return kind + "/" + namespace + "/" + name
 }
 
 func hasResult(results []CheckResult, name string) bool {
