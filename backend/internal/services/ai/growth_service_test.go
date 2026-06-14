@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"gorm.io/datatypes"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -113,4 +114,64 @@ func TestGrowthOptimizationServiceCreatesReadyRunAndProposal(t *testing.T) {
 	var persistedProposals []models.AIProposal
 	require.NoError(t, db.Where("run_id = ?", resp.Run.ID).Find(&persistedProposals).Error)
 	require.Len(t, persistedProposals, 1)
+}
+
+func TestGrowthOptimizationServiceMarksCancelledRun(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(
+		&models.AIContextSnapshot{},
+		&models.AIGrowthOptimizationRun{},
+		&models.AIProposal{},
+		&models.ProjectComment{},
+		&models.MediaAsset{},
+	))
+
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	projectID := uuid.New()
+	require.NoError(t, db.Create(&models.User{
+		ID:           userID,
+		Username:     "cancel-user",
+		Email:        "cancel@example.com",
+		PasswordHash: "hash",
+	}).Error)
+	require.NoError(t, db.Create(&models.Workspace{
+		ID:          workspaceID,
+		OwnerUserID: userID,
+		Name:        "Cancel Workspace",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}).Error)
+	require.NoError(t, db.Create(&models.Project{
+		ID:            projectID,
+		UserID:        userID,
+		WorkspaceID:   &workspaceID,
+		Title:         "Cancelled note",
+		SourceContent: "Original article",
+		Status:        models.ProjectStatusDraft,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}).Error)
+
+	service := NewGrowthOptimizationService(db, &fakeGrowthOptimizer{err: context.Canceled})
+	_, err := service.CreateRun(t.Context(), projectID, userID, dto.CreateAIGrowthOptimizationRunRequest{
+		Goal:            "improve platform fit",
+		TargetPlatforms: []string{"wechat"},
+	})
+
+	require.ErrorIs(t, err, context.Canceled)
+
+	var persistedRun models.AIGrowthOptimizationRun
+	require.NoError(t, db.First(&persistedRun, "project_id = ?", projectID).Error)
+	require.Equal(t, "cancelled", persistedRun.Status)
+}
+
+func TestMapGrowthRunResponseRejectsCorruptJSON(t *testing.T) {
+	_, err := mapGrowthRunResponse(models.AIGrowthOptimizationRun{
+		ID:              uuid.New(),
+		TargetPlatforms: datatypes.JSON(`not-json`),
+	}, nil)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "decode growth run target platforms")
 }
