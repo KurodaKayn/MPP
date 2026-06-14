@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -34,6 +35,7 @@ const (
 type UserDashboardHandler struct {
 	dashboardService *dashboardsvc.DashboardService
 	aiContentEditor  aisvc.AIContentEditor
+	quotaSvc         *aisvc.QuotaService
 	streamLimiter    *streamgate.Limiter
 }
 
@@ -47,6 +49,10 @@ func (h *UserDashboardHandler) serviceFor(c echo.Context) *dashboardsvc.Dashboar
 
 func (h *UserDashboardHandler) UseAIContentEditor(editor aisvc.AIContentEditor) {
 	h.aiContentEditor = editor
+}
+
+func (h *UserDashboardHandler) UseQuotaService(svc *aisvc.QuotaService) {
+	h.quotaSvc = svc
 }
 
 func (h *UserDashboardHandler) UseStreamLimiter(limiter *streamgate.Limiter) {
@@ -1517,10 +1523,26 @@ func (h *UserDashboardHandler) EditContentWithAI(c echo.Context) error {
 	}
 	defer func() { _ = lease.Release(context.Background()) }()
 
+	// Quota gate: check before calling AI service when workspace_id is provided.
+	workspaceID, _ := workspaceIDFromQuery(c)
+	if workspaceID != uuid.Nil && h.quotaSvc != nil {
+		if err := h.quotaSvc.CheckQuota(c.Request().Context(), workspaceID); err != nil {
+			return sendError(c, http.StatusTooManyRequests, "quota_exceeded", err.Error())
+		}
+	}
+
 	resp, err := h.aiContentEditor.EditContent(c.Request().Context(), *req)
 	if err != nil {
 		return sendAIEditError(c, err)
 	}
+
+	// Record real usage best-effort after successful call.
+	if workspaceID != uuid.Nil && h.quotaSvc != nil && resp.Usage != nil {
+		if recErr := h.quotaSvc.RecordUsage(c.Request().Context(), workspaceID, userID, nil, "edit_content", resp.Usage); recErr != nil {
+			log.Printf("[quota] RecordUsage failed workspace=%s kind=edit_content: %v", workspaceID, recErr)
+		}
+	}
+
 	return c.JSON(http.StatusOK, resp)
 }
 
@@ -1577,10 +1599,26 @@ func (h *UserDashboardHandler) EditPrepublishWithAI(c echo.Context) error {
 	}
 	defer func() { _ = lease.Release(context.Background()) }()
 
+	// Quota gate: check before calling AI service when workspace_id is provided.
+	workspaceID, _ := workspaceIDFromQuery(c)
+	if workspaceID != uuid.Nil && h.quotaSvc != nil {
+		if err := h.quotaSvc.CheckQuota(c.Request().Context(), workspaceID); err != nil {
+			return sendError(c, http.StatusTooManyRequests, "quota_exceeded", err.Error())
+		}
+	}
+
 	resp, err := h.aiContentEditor.EditPrepublish(c.Request().Context(), *req)
 	if err != nil {
 		return sendAIEditError(c, err)
 	}
+
+	// Record real usage best-effort after successful call.
+	if workspaceID != uuid.Nil && h.quotaSvc != nil && resp.Usage != nil {
+		if recErr := h.quotaSvc.RecordUsage(c.Request().Context(), workspaceID, userID, nil, "edit_prepublish", resp.Usage); recErr != nil {
+			log.Printf("[quota] RecordUsage failed workspace=%s kind=edit_prepublish: %v", workspaceID, recErr)
+		}
+	}
+
 	return c.JSON(http.StatusOK, resp)
 }
 
