@@ -159,6 +159,7 @@ BROWSER_WORKER_INTERNAL_TOKEN
 CONTENT_PIPELINE_INTERNAL_TOKEN
 R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY
+X_OAUTH2_CLIENT_SECRET
 ```
 
 Add `REDIS_PASSWORD` when Redis auth is enabled. Use an external secret manager
@@ -171,6 +172,11 @@ provider-specific `ClusterSecretStore` named `mpp-production-secrets` or patch
 `spec.secretStoreRef`, and replace every placeholder `remoteRef.key` with the
 production provider path. Add a `REDIS_PASSWORD` mapping only when Redis auth is
 enabled.
+
+Keep the non-secret X OAuth2 values in `mpp-app-config`: set
+`X_OAUTH2_CLIENT_ID`, point `X_OAUTH2_REDIRECT_URL` at the public host callback
+path, and leave `X_OAUTH2_AUTHORIZE_URL`/`X_OAUTH2_TOKEN_URL` blank unless the
+provider endpoints need to be overridden.
 
 For local staging or a one-time bootstrap, generate the app/internal random
 values, add provider-supplied values, and render a Secret manifest to a

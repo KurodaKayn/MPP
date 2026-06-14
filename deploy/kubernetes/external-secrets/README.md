@@ -15,7 +15,9 @@ Required overlay inputs:
 
 The package must not contain a raw Kubernetes `Secret`. The operator owns the
 runtime `mpp-app-secrets` Secret and keeps the value contract explicit through
-one `spec.data` entry per required app key.
+one `spec.data` entry per required app key, including database, Redis-adjacent
+internal app tokens, R2 credentials, LLM provider credentials, and X OAuth2
+client credentials.
 
 Render and validate:
 

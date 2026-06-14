@@ -36,6 +36,8 @@ Before applying this overlay to production:
   `REDIS_TLS=true` so Redis certificate hostname verification succeeds.
 - Replace `LLM_MODEL=replace-with-production-model` with the provider model
   used by production.
+- Replace `X_OAUTH2_CLIENT_ID` and keep `X_OAUTH2_REDIRECT_URL` aligned to the
+  production public host.
 - Install External Secrets Operator, create or patch the referenced
   `ClusterSecretStore`, and replace every `ExternalSecret` remote key with the
   production provider path. Add a `REDIS_PASSWORD` remote key when the managed
