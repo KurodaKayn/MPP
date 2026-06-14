@@ -8,7 +8,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 
-	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/services"
 )
 
@@ -22,13 +21,6 @@ func NewDashboardHandler(s *services.DashboardService) *DashboardHandler {
 
 func (h *DashboardHandler) serviceFor(c echo.Context) *services.DashboardService {
 	return h.dashboardService.WithContext(c.Request().Context())
-}
-
-func sendError(c echo.Context, code int, errCode, message string) error {
-	resp := dto.ErrorResponse{}
-	resp.Error.Code = errCode
-	resp.Error.Message = message
-	return c.JSON(code, resp)
 }
 
 func (h *DashboardHandler) GetStats(c echo.Context) error {
