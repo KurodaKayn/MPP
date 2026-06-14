@@ -12,7 +12,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 )
 
-type publicationLifecycle struct {
+type PublicationLifecycle struct {
 	db *gorm.DB
 }
 
@@ -30,11 +30,15 @@ type publishAttemptCompletion struct {
 	ErrorMessage string
 }
 
-func (s *Service) lifecycle() publicationLifecycle {
-	return publicationLifecycle{db: s.db}
+func NewPublicationLifecycle(db *gorm.DB) PublicationLifecycle {
+	return PublicationLifecycle{db: db}
 }
 
-func (l publicationLifecycle) MarkQueued(pub *models.ProjectPlatformPublication, queuedAt time.Time) error {
+func (s *Service) lifecycle() PublicationLifecycle {
+	return NewPublicationLifecycle(s.db)
+}
+
+func (l PublicationLifecycle) MarkQueued(pub *models.ProjectPlatformPublication, queuedAt time.Time) error {
 	result := l.db.Model(&models.ProjectPlatformPublication{}).
 		Where("id = ? AND status = ?", pub.ID, pub.Status).
 		Updates(map[string]any{
@@ -53,7 +57,7 @@ func (l publicationLifecycle) MarkQueued(pub *models.ProjectPlatformPublication,
 	return nil
 }
 
-func (l publicationLifecycle) MarkPublishing(pub *models.ProjectPlatformPublication, startedAt time.Time) error {
+func (l PublicationLifecycle) MarkPublishing(pub *models.ProjectPlatformPublication, startedAt time.Time) error {
 	result := l.db.Model(&models.ProjectPlatformPublication{}).
 		Where("id = ? AND status = ?", pub.ID, pub.Status).
 		Updates(map[string]any{
@@ -72,7 +76,7 @@ func (l publicationLifecycle) MarkPublishing(pub *models.ProjectPlatformPublicat
 	return nil
 }
 
-func (l publicationLifecycle) MarkFailed(ctx context.Context, projectID uuid.UUID, platform string, message string) error {
+func (l PublicationLifecycle) MarkFailed(ctx context.Context, projectID uuid.UUID, platform string, message string) error {
 	db := l.db
 	if ctx != nil {
 		db = db.WithContext(ctx)
@@ -86,7 +90,7 @@ func (l publicationLifecycle) MarkFailed(ctx context.Context, projectID uuid.UUI
 		}).Error
 }
 
-func (l publicationLifecycle) CompletePublication(pub *models.ProjectPlatformPublication, completion publicationCompletion) error {
+func (l PublicationLifecycle) CompletePublication(pub *models.ProjectPlatformPublication, completion publicationCompletion) error {
 	updates := map[string]any{
 		"status":        completion.Status,
 		"remote_id":     completion.RemoteID,
@@ -109,7 +113,7 @@ func (l publicationLifecycle) CompletePublication(pub *models.ProjectPlatformPub
 	return nil
 }
 
-func (l publicationLifecycle) StartPublishAttempt(scheduleID uuid.UUID, startedAt time.Time) (models.PublishAttempt, bool, error) {
+func (l PublicationLifecycle) StartPublishAttempt(scheduleID uuid.UUID, startedAt time.Time) (models.PublishAttempt, bool, error) {
 	if scheduleID == uuid.Nil {
 		return models.PublishAttempt{}, false, nil
 	}
@@ -169,7 +173,7 @@ func (l publicationLifecycle) StartPublishAttempt(scheduleID uuid.UUID, startedA
 	return attempt, true, nil
 }
 
-func (l publicationLifecycle) FinishPublishAttempt(attempt *models.PublishAttempt, completion publishAttemptCompletion) error {
+func (l PublicationLifecycle) FinishPublishAttempt(attempt *models.PublishAttempt, completion publishAttemptCompletion) error {
 	if attempt == nil {
 		return nil
 	}
@@ -202,7 +206,52 @@ func (l publicationLifecycle) FinishPublishAttempt(attempt *models.PublishAttemp
 	})
 }
 
-func (l publicationLifecycle) publicationStateChangedError(publicationID uuid.UUID) error {
+func (l PublicationLifecycle) MarkPrepublishSyncing(projectID uuid.UUID, platforms []string) error {
+	if len(platforms) == 0 {
+		return nil
+	}
+	return l.db.Transaction(func(tx *gorm.DB) error {
+		var activeCount int64
+		if err := tx.Model(&models.ProjectPlatformPublication{}).
+			Where("project_id = ? AND platform IN ? AND status IN ?", projectID, platforms, activePublicationStatuses()).
+			Count(&activeCount).Error; err != nil {
+			return err
+		}
+		if activeCount > 0 {
+			return ErrPublicationAlreadyPublishing
+		}
+
+		if err := tx.Model(&models.ProjectPlatformPublication{}).
+			Where("project_id = ? AND platform IN ? AND status NOT IN ?", projectID, platforms, activePublicationStatuses()).
+			Updates(map[string]any{
+				"draft_status":  models.PublicationDraftStatusSyncing,
+				"error_message": "",
+				"status":        models.PublicationStatusSyncing,
+			}).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Model(&models.ProjectPlatformPublication{}).
+			Where("project_id = ? AND platform IN ? AND status IN ?", projectID, platforms, activePublicationStatuses()).
+			Count(&activeCount).Error; err != nil {
+			return err
+		}
+		if activeCount > 0 {
+			return ErrPublicationAlreadyPublishing
+		}
+
+		return nil
+	})
+}
+
+func activePublicationStatuses() []string {
+	return []string{
+		models.PublicationStatusQueued,
+		models.PublicationStatusPublishing,
+	}
+}
+
+func (l PublicationLifecycle) publicationStateChangedError(publicationID uuid.UUID) error {
 	var pub models.ProjectPlatformPublication
 	if err := l.db.Select("status", "last_attempt_at").First(&pub, "id = ?", publicationID).Error; err != nil {
 		return err
