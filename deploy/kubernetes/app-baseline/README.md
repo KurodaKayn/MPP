@@ -33,7 +33,8 @@ Required overlay inputs:
 - A `mpp-app-secrets` Secret in `mpp-system` with at least `JWT_SECRET`,
   `DB_PASSWORD`, `COLLAB_TOKEN_SECRET`, `COOKIE_ENCRYPTION_KEY`,
   `LLM_PROVIDER_KEY`, `AI_SERVICE_INTERNAL_TOKEN`,
-  `BROWSER_WORKER_INTERNAL_TOKEN`, and `CONTENT_PIPELINE_INTERNAL_TOKEN`.
+  `BROWSER_WORKER_INTERNAL_TOKEN`, `CONTENT_PIPELINE_INTERNAL_TOKEN`,
+  `R2_ACCESS_KEY_ID`, and `R2_SECRET_ACCESS_KEY`.
 
 The CI validation overlay under `deploy/kubernetes/validation/app-baseline`
 uses fake values to verify manifest shape without committing real secrets or

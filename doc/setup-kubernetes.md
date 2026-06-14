@@ -24,6 +24,7 @@ deploy/kubernetes/app-baseline
 deploy/kubernetes/observability
 deploy/kubernetes/data-services/managed
 deploy/kubernetes/data-services/self-hosted
+deploy/kubernetes/external-secrets
 deploy/kubernetes/overlays/staging-managed
 deploy/kubernetes/overlays/staging-self-hosted
 deploy/kubernetes/overlays/production-managed
@@ -35,6 +36,8 @@ Use `app-baseline` for the long-running application services. Add
 `observability` when the cluster has Loki, Alloy, and Prometheus Operator CRDs.
 Choose exactly one data-service mode: `managed` for production, or
 `self-hosted` for small test clusters and demos.
+Use `external-secrets` when production should materialize `mpp-app-secrets`
+through External Secrets Operator.
 Use `overlays/staging-managed` as a renderable starter when staging should use
 managed PostgreSQL and Redis endpoints, or `overlays/staging-self-hosted` when
 staging should run PostgreSQL and Redis inside the cluster.
@@ -90,9 +93,10 @@ Secret literals, so patch those inputs through your environment workflow before
 applying either overlay to a shared cluster.
 The included `deploy/kubernetes/overlays/production-managed` overlay wires the
 same baseline to managed PostgreSQL and Redis without rendering
-`mpp-app-secrets`; create that Secret through the production secret workflow
-before applying app workloads, then replace the checked-in example hosts and
-image tags.
+raw `mpp-app-secrets` values. It includes an `ExternalSecret` starter that
+expects External Secrets Operator to materialize the Secret at runtime. Create
+or patch the referenced secret store before applying app workloads, then replace
+the checked-in example hosts and image tags.
 
 ## Images
 
@@ -153,10 +157,20 @@ LLM_PROVIDER_KEY
 AI_SERVICE_INTERNAL_TOKEN
 BROWSER_WORKER_INTERNAL_TOKEN
 CONTENT_PIPELINE_INTERNAL_TOKEN
+R2_ACCESS_KEY_ID
+R2_SECRET_ACCESS_KEY
 ```
 
 Add `REDIS_PASSWORD` when Redis auth is enabled. Use an external secret manager
 or sealed-secret workflow for production; do not commit real Secret values.
+
+For production-managed clusters using External Secrets Operator, the included
+`deploy/kubernetes/external-secrets` package renders an `ExternalSecret` named
+`mpp-app-secrets` in `mpp-system`. Install the operator and CRDs, create the
+provider-specific `ClusterSecretStore` named `mpp-production-secrets` or patch
+`spec.secretStoreRef`, and replace every placeholder `remoteRef.key` with the
+production provider path. Add a `REDIS_PASSWORD` mapping only when Redis auth is
+enabled.
 
 For local staging or a one-time bootstrap, generate the app/internal random
 values, add provider-supplied values, and render a Secret manifest to a
@@ -282,9 +296,9 @@ MPP_KUBERNETES_VALIDATE_DEPLOYABLE=1 \
 
 For `deploy/kubernetes/overlays/production-managed`, deployable validation
 rejects `.example.invalid` hosts, all-zero SHA image tags, and example model
-values. The overlay does not render `mpp-app-secrets`, so secret value
-validation belongs to the external secret manager, sealed-secret, or bootstrap
-workflow that creates the Secret.
+values. The overlay renders an `ExternalSecret`, not a raw `Secret`, so secret
+value validation belongs to the provider-backed secret store that materializes
+`mpp-app-secrets`.
 
 For the final environment overlay, also run an admission dry-run against the
 target cluster to catch cluster-specific admission policies, enabled API
