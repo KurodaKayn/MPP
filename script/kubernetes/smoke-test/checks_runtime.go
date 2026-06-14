@@ -76,6 +76,7 @@ func (suite *Suite) runtimeCleanupState() {
 		}
 		return fmt.Sprintf("%d active runtime Pods have cleanup metadata", len(pods)), nil
 	})
+	suite.runtimePodSecurityContract()
 }
 
 func (suite *Suite) runtimeManagerServiceAccount() string {
