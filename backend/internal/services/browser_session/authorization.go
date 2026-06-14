@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 )
 
@@ -50,35 +51,13 @@ func (s *BrowserSessionService) authorizeSessionAccount(ctx context.Context, use
 }
 
 func (s *BrowserSessionService) requireWorkspaceAccountConnect(ctx context.Context, userID uuid.UUID, workspaceID uuid.UUID) error {
-	if workspaceID == models.PersonalWorkspaceID(userID) {
-		return nil
-	}
-
-	db := s.dbWithContext(ctx)
-	var workspace models.Workspace
-	if err := db.Select("owner_user_id").First(&workspace, "id = ?", workspaceID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := accesspolicy.RequireWorkspaceAccountConnectWithDB(s.dbWithContext(ctx), workspaceID, userID); err != nil {
+		if errors.Is(err, accesspolicy.ErrForbidden) || errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrPlatformAccountForbidden
 		}
 		return err
 	}
-	if workspace.OwnerUserID == userID {
-		return nil
-	}
-
-	var member models.WorkspaceMember
-	if err := db.Select("role").First(&member, "workspace_id = ? AND user_id = ?", workspaceID, userID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrPlatformAccountForbidden
-		}
-		return err
-	}
-	switch member.Role {
-	case models.WorkspaceRoleOwner, models.WorkspaceRoleAdmin:
-		return nil
-	default:
-		return ErrPlatformAccountForbidden
-	}
+	return nil
 }
 
 func (s *BrowserSessionService) dbWithContext(ctx context.Context) *gorm.DB {

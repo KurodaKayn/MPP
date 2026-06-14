@@ -15,6 +15,7 @@ import (
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 )
 
 var ErrPlatformAccountForbidden = errors.New("platform account access denied")
@@ -278,13 +279,11 @@ func (s *Service) RequireAccountUse(userID uuid.UUID, account models.PlatformAcc
 		if account.WorkspaceID == nil {
 			return ErrPlatformAccountForbidden
 		}
-		readDB := s.strongReadDB()
-		var member models.WorkspaceMember
-		err := readDB.Select("role").First(&member, "workspace_id = ? AND user_id = ?", *account.WorkspaceID, userID).Error
-		if err == nil && member.Role != models.WorkspaceRoleViewer {
+		_, err := accesspolicy.RequireWorkspacePermissionWithDB(s.strongReadDB(), *account.WorkspaceID, userID, accesspolicy.PermissionAccountUse)
+		if err == nil {
 			return nil
 		}
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		if !errors.Is(err, accesspolicy.ErrForbidden) && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
 	}
@@ -311,18 +310,13 @@ func (s *Service) RequireAccountUse(userID uuid.UUID, account models.PlatformAcc
 }
 
 func (s *Service) requireWorkspaceAccountMembership(userID uuid.UUID, workspaceID uuid.UUID) error {
-	if workspaceID == models.PersonalWorkspaceID(userID) {
-		return nil
+	if err := accesspolicy.RequireWorkspaceMemberRecordWithDB(s.strongReadDB(), workspaceID, userID); err != nil {
+		if errors.Is(err, accesspolicy.ErrForbidden) || errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrPlatformAccountForbidden
+		}
+		return err
 	}
-	var member models.WorkspaceMember
-	err := s.strongReadDB().Select("role").First(&member, "workspace_id = ? AND user_id = ?", workspaceID, userID).Error
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return ErrPlatformAccountForbidden
-	}
-	return err
+	return nil
 }
 
 func (s *Service) ensureAccountDefaults(account *models.PlatformAccount, userID uuid.UUID, workspaceID uuid.UUID, platform string) {
