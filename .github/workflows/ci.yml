@@ -13,6 +13,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  contracts:
+    name: Shared contracts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select area
+        id: select
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash script/ci/select-area.sh contracts "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
+
+      - name: Setup pnpm
+        if: steps.select.outputs.selected == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.0
+          run_install: false
+
+      - name: Setup Node.js
+        if: steps.select.outputs.selected == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Setup Go
+        if: steps.select.outputs.selected == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: |
+            backend/go.sum
+            browser-worker/go.sum
+
+      - name: Setup Python
+        if: steps.select.outputs.selected == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ai-service/.python-version
+
+      - name: Setup uv
+        if: steps.select.outputs.selected == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: ai-service/uv.lock
+
+      - name: Check generated contracts
+        if: steps.select.outputs.selected == 'true'
+        run: bash script/ci/contracts.sh
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest

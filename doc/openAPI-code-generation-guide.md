@@ -41,3 +41,5 @@ sh contracts/generate.sh
 ```
 
 All generated files are updated automatically and should not be edited manually.
+CI also runs `script/ci/contracts.sh`, which regenerates these artifacts and
+fails when the checked-in outputs are stale.
