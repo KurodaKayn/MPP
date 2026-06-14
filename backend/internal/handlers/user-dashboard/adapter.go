@@ -1,4 +1,4 @@
-package handlers
+package userdashboard
 
 import (
 	"errors"
@@ -28,7 +28,7 @@ type dashboardRequest struct {
 	userID  uuid.UUID
 }
 
-func (h *UserDashboardHandler) withAuthenticatedDashboardRequest(c echo.Context, handle func(*dashboardRequest) error) error {
+func (h *Handler) withAuthenticatedDashboardRequest(c echo.Context, handle func(*dashboardRequest) error) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
@@ -40,7 +40,7 @@ func (h *UserDashboardHandler) withAuthenticatedDashboardRequest(c echo.Context,
 	})
 }
 
-func (h *UserDashboardHandler) withWorkspaceAccountDashboardRequest(c echo.Context, handle func(*dashboardRequest, uuid.UUID) error) error {
+func (h *Handler) withWorkspaceAccountDashboardRequest(c echo.Context, handle func(*dashboardRequest, uuid.UUID) error) error {
 	return h.withAuthenticatedDashboardRequest(c, func(req *dashboardRequest) error {
 		workspaceID, err := req.optionalWorkspaceID()
 		if err != nil {
@@ -106,7 +106,7 @@ func workspaceIDFromQuery(c echo.Context) (uuid.UUID, error) {
 	return uuid.Parse(raw)
 }
 
-func (h *UserDashboardHandler) ensureProjectWorkspaceContext(c echo.Context, projectID uuid.UUID, userID uuid.UUID) error {
+func (h *Handler) ensureProjectWorkspaceContext(c echo.Context, projectID uuid.UUID, userID uuid.UUID) error {
 	workspaceID, err := workspaceIDFromQuery(c)
 	if err != nil || workspaceID == uuid.Nil {
 		return err
