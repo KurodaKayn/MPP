@@ -8,7 +8,6 @@ from schemas import (
     GrowthOptimizationRequest,
 )
 
-
 GROWTH_AUDIENCE_PROFILES = {
     "wechat": {
         "profile_id": "wechat@growth-v1",
@@ -230,10 +229,7 @@ def build_growth_optimization_messages(
     profiles = request.audience_profiles or audience_profiles_for(
         [str(platform) for platform in request.target_platforms]
     )
-    drafts = [
-        draft.model_dump(mode="json", exclude_none=True)
-        for draft in request.platform_drafts
-    ]
+    drafts = [draft.model_dump(mode="json", exclude_none=True) for draft in request.platform_drafts]
     return [
         SystemMessage(
             content=(

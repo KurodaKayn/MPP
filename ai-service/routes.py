@@ -314,11 +314,7 @@ def fallback_growth_proposals(
             target_platform="source",
             summary="Source rewrite optimized for clearer opening retention",
             patch="",
-            full_content=(
-                f"{title}\n\n"
-                f"Goal: {request.goal}\n\n"
-                f"{request.source_content.strip()}"
-            ),
+            full_content=(f"{title}\n\nGoal: {request.goal}\n\n{request.source_content.strip()}"),
             quality_checks=warnings,
         ),
     ]
@@ -350,8 +346,7 @@ def fallback_platform_plan(platform: str, title: str, source_content: str) -> di
     plans = {
         "wechat": {
             "summary": (
-                "wechat@growth-v1 platform draft proposal using a heightened positive "
-                "narrative."
+                "wechat@growth-v1 platform draft proposal using a heightened positive narrative."
             ),
             "title_strategy": "Dramatic but fact-bound WeChat title.",
             "body_strategy": "Positive, constructive, confidence-building long-form rewrite.",
