@@ -158,8 +158,8 @@ func SanitizeUserFacingErrorMessage(message string) string {
 	return sensitiveErrorQueryParamPattern.ReplaceAllString(message, "$1=<redacted>")
 }
 
-func (s *Service) BatchPublishProject(projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID) (map[string]map[string]any, error) {
-	results := make(map[string]map[string]any)
+func (s *Service) BatchPublishProject(projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID) (map[string]PublishResponse, error) {
+	results := make(map[string]PublishResponse)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
@@ -170,7 +170,7 @@ func (s *Service) BatchPublishProject(projectID uuid.UUID, platforms []string, s
 			resp, err := s.PublishProject(projectID, p, scopeUserID, uuid.Nil)
 			mu.Lock()
 			if err != nil {
-				results[p] = map[string]any{"status": "error", "message": err.Error()}
+				results[p] = publishErrorResponse(err)
 			} else {
 				results[p] = resp
 			}
@@ -182,11 +182,11 @@ func (s *Service) BatchPublishProject(projectID uuid.UUID, platforms []string, s
 	return results, nil
 }
 
-func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, scheduleID uuid.UUID) (map[string]any, error) {
+func (s *Service) PublishProject(projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, scheduleID uuid.UUID) (PublishResponse, error) {
 	return s.PublishProjectWithContext(context.Background(), projectID, platform, scopeUserID, scheduleID)
 }
 
-func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, scheduleID uuid.UUID) (map[string]any, error) {
+func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, scheduleID uuid.UUID) (PublishResponse, error) {
 	// Remote browser sessions are only for account connection and cookie capture.
 	// Publish jobs must be durable across Redis workers, so they load saved credentials instead.
 	if ctx == nil {
@@ -195,26 +195,26 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 	s = s.WithContext(ctx)
 
 	if scopeUserID == nil {
-		return nil, ErrForbidden
+		return PublishResponse{}, ErrForbidden
 	}
 	proj, err := s.projectForPublish(ctx, projectID, *scopeUserID)
 	if err != nil {
-		return nil, err
+		return PublishResponse{}, err
 	}
 
 	var pub models.ProjectPlatformPublication
 	if err := s.db.Where("project_id = ? AND platform = ?", projectID, platform).First(&pub).Error; err != nil {
-		return nil, fmt.Errorf("publication record not found for platform: %s", platform)
+		return PublishResponse{}, fmt.Errorf("publication record not found for platform: %s", platform)
 	}
 	if !pub.Enabled || pub.Status == models.PublicationStatusCancelled {
-		return nil, ErrPublicationDisabled
+		return PublishResponse{}, ErrPublicationDisabled
 	}
 
 	startedAt := time.Now().UTC()
 	lifecycle := s.lifecycle()
 	attempt, hasAttempt, err := lifecycle.StartPublishAttempt(scheduleID, startedAt)
 	if err != nil {
-		return nil, err
+		return PublishResponse{}, err
 	}
 	failAttempt := func(err error) error {
 		if hasAttempt {
@@ -228,40 +228,40 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 
 	p, err := publisher.Factory.GetPublisher(platform)
 	if err != nil {
-		return nil, failAttempt(err)
+		return PublishResponse{}, failAttempt(err)
 	}
 	if pub.Status == models.PublicationStatusSyncing || (!publicationHasSyncedDraft(pub) && pub.Status != models.PublicationStatusQueued && pub.Status != models.PublicationStatusPublishing) {
-		return nil, failAttempt(ErrPublicationRequiresSync)
+		return PublishResponse{}, failAttempt(ErrPublicationRequiresSync)
 	}
 
 	if err := s.accounts.ApplySavedCredentialsToPublication(*scopeUserID, &pub); err != nil {
 		if errors.Is(err, platformaccount.ErrPlatformAccountForbidden) {
-			return nil, failAttempt(ErrForbidden)
+			return PublishResponse{}, failAttempt(ErrForbidden)
 		}
-		return nil, failAttempt(err)
+		return PublishResponse{}, failAttempt(err)
 	}
 	pub, err = s.preparePublicationMediaRefs(ctx, proj, pub)
 	if err != nil {
-		return nil, failAttempt(err)
+		return PublishResponse{}, failAttempt(err)
 	}
 
 	var account models.PlatformAccount
 	if pub.PlatformAccountID != nil && *pub.PlatformAccountID != uuid.Nil {
 		if err := s.db.Where("id = ?", *pub.PlatformAccountID).First(&account).Error; err != nil {
-			return nil, err
+			return PublishResponse{}, err
 		}
 	}
 	if usesStoredBrowserCookies(platform) {
 		if account.ID == uuid.Nil {
-			return nil, failAttempt(fmt.Errorf("%w: %s account is not connected", platformaccount.ErrInvalidPlatformAccount, platform))
+			return PublishResponse{}, failAttempt(fmt.Errorf("%w: %s account is not connected", platformaccount.ErrInvalidPlatformAccount, platform))
 		}
 		if err := s.applySavedBrowserCookies(ctx, *scopeUserID, platform, &account); err != nil {
-			return nil, failAttempt(err)
+			return PublishResponse{}, failAttempt(err)
 		}
 	}
 
 	if err := lifecycle.MarkPublishing(&pub, startedAt); err != nil {
-		return nil, failAttempt(err)
+		return PublishResponse{}, failAttempt(err)
 	}
 	s.invalidateDashboardCaches(ctx)
 	s.refreshProjectReadModel(ctx, projectID)
@@ -287,12 +287,12 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 		errMsg = SanitizeUserFacingErrorMessage(err.Error())
 	}
 
-	response := map[string]any{
-		"status":             status,
-		"remote_id":          remoteID,
-		"publish_url":        publishURL,
-		"error_message":      errMsg,
-		"browser_session_id": uuid.Nil,
+	response := PublishResponse{
+		Status:           status,
+		RemoteID:         remoteID,
+		PublishURL:       publishURL,
+		ErrorMessage:     errMsg,
+		BrowserSessionID: uuid.Nil,
 	}
 	if err := lifecycle.CompletePublication(&pub, publicationCompletion{
 		Status:       status,
@@ -300,7 +300,7 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 		PublishURL:   publishURL,
 		ErrorMessage: errMsg,
 	}); err != nil {
-		return nil, failAttempt(err)
+		return PublishResponse{}, failAttempt(err)
 	}
 	s.refreshProjectReadModel(ctx, projectID)
 	attemptStatus := models.PublishAttemptStatusSucceeded
@@ -314,7 +314,7 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 			PublishURL:   publishURL,
 			ErrorMessage: errMsg,
 		}); err != nil {
-			return nil, err
+			return PublishResponse{}, err
 		}
 	}
 	s.invalidateDashboardCaches(ctx)
@@ -329,43 +329,43 @@ func (s *Service) PublishProjectWithContext(ctx context.Context, projectID uuid.
 	return response, nil
 }
 
-func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID) (map[string]any, error) {
+func (s *Service) CreateXPostIntent(projectID uuid.UUID, scopeUserID *uuid.UUID) (PublishResponse, error) {
 	if scopeUserID == nil {
-		return nil, ErrForbidden
+		return PublishResponse{}, ErrForbidden
 	}
 	if _, err := s.projectForPublish(context.Background(), projectID, *scopeUserID); err != nil {
-		return nil, err
+		return PublishResponse{}, err
 	}
 
 	var pub models.ProjectPlatformPublication
 	if err := s.db.Where("project_id = ? AND platform = ?", projectID, "x").First(&pub).Error; err != nil {
-		return nil, fmt.Errorf("publication record not found for platform: x")
+		return PublishResponse{}, fmt.Errorf("publication record not found for platform: x")
 	}
 	if !pub.Enabled || pub.Status == models.PublicationStatusCancelled {
-		return nil, ErrPublicationDisabled
+		return PublishResponse{}, ErrPublicationDisabled
 	}
 	if !publicationHasSyncedDraft(pub) {
-		return nil, ErrPublicationRequiresSync
+		return PublishResponse{}, ErrPublicationRequiresSync
 	}
 
 	publishURL, err := publisher.BuildXPostIntentURL(pub.AdaptedContent)
 	if err != nil {
-		return nil, err
+		return PublishResponse{}, err
 	}
 
 	if err := s.db.Model(&pub).Updates(map[string]any{
 		"publish_url":   publishURL,
 		"error_message": "",
 	}).Error; err != nil {
-		return nil, err
+		return PublishResponse{}, err
 	}
 	s.invalidateDashboardProjectListCache(context.Background())
 	s.refreshProjectReadModel(context.Background(), projectID)
 
-	return map[string]any{
-		"status":      "manual_required",
-		"platform":    "x",
-		"publish_url": publishURL,
+	return PublishResponse{
+		Status:     "manual_required",
+		Platform:   "x",
+		PublishURL: publishURL,
 	}, nil
 }
 
@@ -411,12 +411,12 @@ func (s *Service) recordProjectPublishActivity(projectID uuid.UUID, userID uuid.
 	}).Error
 }
 
-func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform string, userID uuid.UUID, key string) (map[string]any, bool, error) {
+func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform string, userID uuid.UUID, key string) (PublishResponse, bool, error) {
 	if strings.TrimSpace(key) == "" {
-		return nil, false, nil
+		return PublishResponse{}, false, nil
 	}
 	if !s.db.Migrator().HasTable(&models.PublishEvent{}) {
-		return nil, false, nil
+		return PublishResponse{}, false, nil
 	}
 
 	var queued models.PublishEvent
@@ -425,10 +425,10 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 		Order("created_at DESC").
 		First(&queued).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, false, nil
+		return PublishResponse{}, false, nil
 	}
 	if err != nil {
-		return nil, false, err
+		return PublishResponse{}, false, err
 	}
 
 	event := queued
@@ -438,7 +438,7 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 		Order("created_at ASC").
 		Find(&events).Error
 	if err != nil {
-		return nil, false, err
+		return PublishResponse{}, false, err
 	}
 	for _, candidate := range events {
 		if publishEventNewerForReplay(candidate, event) {
@@ -446,15 +446,15 @@ func (s *Service) findIdempotentPublishResponse(projectID uuid.UUID, platform st
 		}
 	}
 
-	resp := map[string]any{
-		"status":          event.Status,
-		"job_id":          queued.JobID.String(),
-		"idempotency_key": key,
-		"platform":        platform,
-		"queued_at":       queued.CreatedAt,
-		"remote_id":       event.RemoteID,
-		"publish_url":     event.PublishURL,
-		"error_message":   event.ErrorMessage,
+	resp := PublishResponse{
+		Status:         event.Status,
+		JobID:          queued.JobID.String(),
+		IdempotencyKey: key,
+		Platform:       platform,
+		QueuedAt:       &queued.CreatedAt,
+		RemoteID:       event.RemoteID,
+		PublishURL:     event.PublishURL,
+		ErrorMessage:   event.ErrorMessage,
 	}
 	return resp, true, nil
 }
@@ -484,7 +484,7 @@ func publishEventReplayRank(eventType string) int {
 	}
 }
 
-func (s *Service) waitForIdempotentPublishResponse(ctx context.Context, projectID uuid.UUID, platform string, userID uuid.UUID, key string) (map[string]any, bool, error) {
+func (s *Service) waitForIdempotentPublishResponse(ctx context.Context, projectID uuid.UUID, platform string, userID uuid.UUID, key string) (PublishResponse, bool, error) {
 	deadline := time.NewTimer(publishReplayWait)
 	defer deadline.Stop()
 
@@ -499,9 +499,9 @@ func (s *Service) waitForIdempotentPublishResponse(ctx context.Context, projectI
 
 		select {
 		case <-ctx.Done():
-			return nil, false, ctx.Err()
+			return PublishResponse{}, false, ctx.Err()
 		case <-deadline.C:
-			return nil, false, nil
+			return PublishResponse{}, false, nil
 		case <-ticker.C:
 		}
 	}

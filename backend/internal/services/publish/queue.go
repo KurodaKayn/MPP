@@ -188,14 +188,14 @@ return 0
 	return q.redisClient.Eval(ctx, releaseLockScript, []string{key}, value).Err()
 }
 
-func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, req PublishRequest) (map[string]any, error) {
+func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platform string, scopeUserID *uuid.UUID, req PublishRequest) (PublishResponse, error) {
 	if scopeUserID == nil {
-		return nil, ErrForbidden
+		return PublishResponse{}, ErrForbidden
 	}
 	req.IdempotencyKey = normalizeIdempotencyKey(req.IdempotencyKey)
 	if req.IdempotencyKey != "" {
 		if resp, ok, err := s.findIdempotentPublishResponse(projectID, platform, *scopeUserID, req.IdempotencyKey); err != nil {
-			return nil, err
+			return PublishResponse{}, err
 		} else if ok {
 			return resp, nil
 		}
@@ -205,27 +205,27 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 	if err != nil {
 		if req.IdempotencyKey != "" {
 			if resp, ok, lookupErr := s.findIdempotentPublishResponse(projectID, platform, *scopeUserID, req.IdempotencyKey); lookupErr != nil {
-				return nil, lookupErr
+				return PublishResponse{}, lookupErr
 			} else if ok {
 				return resp, nil
 			}
 		}
-		return nil, err
+		return PublishResponse{}, err
 	}
 	scheduledAt := time.Now().UTC()
 
 	if s.queue == nil {
 		schedule, err := s.createScheduledPublication(ctx, project, pub, *scopeUserID, req.IdempotencyKey, scheduledAt, models.ScheduledPublicationStatusScheduled)
 		if err != nil {
-			return nil, err
+			return PublishResponse{}, err
 		}
 		resp, err := s.PublishProjectWithContext(ctx, projectID, platform, scopeUserID, schedule.ID)
 		if err != nil {
-			return nil, err
+			return PublishResponse{}, err
 		}
 		if schedule.ID != uuid.Nil {
-			resp["scheduled_publication_id"] = schedule.ID.String()
-			resp["scheduled_at"] = schedule.ScheduledAt
+			resp.ScheduledPublicationID = schedule.ID.String()
+			resp.ScheduledAt = &schedule.ScheduledAt
 		}
 		return resp, nil
 	}
@@ -242,17 +242,17 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 	lockKey := publishLockKey(project.ID, platform)
 	acquired, err := s.queue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
 	if err != nil {
-		return nil, err
+		return PublishResponse{}, err
 	}
 	if !acquired {
 		if req.IdempotencyKey != "" {
 			if resp, ok, err := s.waitForIdempotentPublishResponse(ctx, project.ID, platform, *scopeUserID, req.IdempotencyKey); err != nil {
-				return nil, err
+				return PublishResponse{}, err
 			} else if ok {
 				return resp, nil
 			}
 		}
-		return nil, ErrPublicationAlreadyPublishing
+		return PublishResponse{}, ErrPublicationAlreadyPublishing
 	}
 
 	var schedule models.ScheduledPublication
@@ -313,7 +313,7 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		return nil
 	}); err != nil {
 		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
-		return nil, err
+		return PublishResponse{}, err
 	}
 	s.invalidateDashboardCaches(ctx)
 	s.refreshProjectReadModel(ctx, project.ID)
@@ -321,23 +321,23 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		log.Printf("failed to dispatch publish outbox event %s for job %s: %v", outboxEventID, job.JobID, err)
 	}
 
-	resp := map[string]any{
-		"status":          models.PublicationStatusQueued,
-		"job_id":          job.JobID.String(),
-		"idempotency_key": req.IdempotencyKey,
-		"platform":        platform,
-		"queued_at":       job.EnqueuedAt,
-		"publish_url":     pub.PublishURL,
+	resp := PublishResponse{
+		Status:         models.PublicationStatusQueued,
+		JobID:          job.JobID.String(),
+		IdempotencyKey: req.IdempotencyKey,
+		Platform:       platform,
+		QueuedAt:       &job.EnqueuedAt,
+		PublishURL:     pub.PublishURL,
 	}
 	if schedule.ID != uuid.Nil {
-		resp["scheduled_publication_id"] = schedule.ID.String()
-		resp["scheduled_at"] = schedule.ScheduledAt
+		resp.ScheduledPublicationID = schedule.ID.String()
+		resp.ScheduledAt = &schedule.ScheduledAt
 	}
 	return resp, nil
 }
 
-func (s *Service) BatchEnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID, req PublishRequest) (map[string]map[string]any, error) {
-	results := make(map[string]map[string]any)
+func (s *Service) BatchEnqueuePublishProject(ctx context.Context, projectID uuid.UUID, platforms []string, scopeUserID *uuid.UUID, req PublishRequest) (map[string]PublishResponse, error) {
+	results := make(map[string]PublishResponse)
 	for _, platform := range platforms {
 		platformReq := req
 		if platformReq.IdempotencyKey != "" {
@@ -345,7 +345,7 @@ func (s *Service) BatchEnqueuePublishProject(ctx context.Context, projectID uuid
 		}
 		resp, err := s.EnqueuePublishProject(ctx, projectID, platform, scopeUserID, platformReq)
 		if err != nil {
-			results[platform] = map[string]any{"status": "error", "message": err.Error()}
+			results[platform] = publishErrorResponse(err)
 			continue
 		}
 		results[platform] = resp
@@ -452,8 +452,8 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 		}
 		return err
 	}
-	if status, _ := resp["status"].(string); status == models.PublicationStatusFailed {
-		message, _ := resp["error_message"].(string)
+	if resp.Status == models.PublicationStatusFailed {
+		message := resp.ErrorMessage
 		err := fmt.Errorf("publish job %s failed: %s", job.JobID, message)
 		observeJob(publishJobResultError)
 		_ = s.recordPublishEvent(models.PublishEvent{
@@ -472,8 +472,6 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 		}
 		return err
 	}
-	remoteID, _ := resp["remote_id"].(string)
-	publishURL, _ := resp["publish_url"].(string)
 	_ = s.recordPublishEvent(models.PublishEvent{
 		PublicationID:  job.PublicationID,
 		ProjectID:      job.ProjectID,
@@ -483,8 +481,8 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 		IdempotencyKey: job.IdempotencyKey,
 		EventType:      "succeeded",
 		Status:         models.PublicationStatusSucceeded,
-		RemoteID:       remoteID,
-		PublishURL:     publishURL,
+		RemoteID:       resp.RemoteID,
+		PublishURL:     resp.PublishURL,
 	})
 
 	if err := s.queue.ReleaseLock(ctx, lockKey, job.JobID.String()); err != nil {
