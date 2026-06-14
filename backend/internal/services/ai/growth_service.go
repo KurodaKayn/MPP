@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"time"
 
@@ -81,6 +82,9 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 	if strings.TrimSpace(req.SourceContent) == "" {
 		req.SourceContent = snapshot.SourceContent
 	}
+	if strings.TrimSpace(req.SourceContent) == "" {
+		return nil, ErrInvalidGrowthOptimizationRequest
+	}
 
 	targetPlatformsJSON, err := json.Marshal(req.TargetPlatforms)
 	if err != nil {
@@ -109,14 +113,14 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 
 	stream, err := s.optimizer.StreamGrowthOptimization(ctx, req)
 	if err != nil {
-		s.markRunFailed(context.WithoutCancel(ctx), &run, err.Error())
+		s.markRunTerminal(context.WithoutCancel(ctx), &run, terminalGrowthRunStatus(err), err.Error())
 		return nil, err
 	}
 	defer func() { _ = stream.Body.Close() }()
 
 	proposalEvents, status, err := readGrowthOptimizationEvents(stream.Body)
 	if err != nil {
-		s.markRunFailed(context.WithoutCancel(ctx), &run, err.Error())
+		s.markRunTerminal(context.WithoutCancel(ctx), &run, terminalGrowthRunStatus(err), err.Error())
 		return nil, err
 	}
 	if status.Model != "" {
@@ -153,7 +157,7 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 		proposals = append(proposals, proposal)
 	}
 	if len(proposals) == 0 {
-		s.markRunFailed(context.WithoutCancel(ctx), &run, "growth optimizer returned no proposals")
+		s.markRunTerminal(context.WithoutCancel(ctx), &run, "failed", "growth optimizer returned no proposals")
 		return nil, fmt.Errorf("%w: no proposals returned", ErrAIServiceUnavailable)
 	}
 
@@ -167,18 +171,30 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 		return nil, err
 	}
 
-	return mapGrowthRunResponse(run, proposals), nil
+	return mapGrowthRunResponse(run, proposals)
 }
 
-func (s *GrowthOptimizationService) markRunFailed(ctx context.Context, run *models.AIGrowthOptimizationRun, message string) {
+func (s *GrowthOptimizationService) markRunTerminal(ctx context.Context, run *models.AIGrowthOptimizationRun, status string, message string) {
 	if run == nil || run.ID == uuid.Nil {
 		return
 	}
-	_ = s.db.WithContext(ctx).Model(run).Updates(map[string]any{
-		"status":          "failed",
+	if status == "" {
+		status = "failed"
+	}
+	if err := s.db.WithContext(ctx).Model(run).Updates(map[string]any{
+		"status":          status,
 		"quality_summary": strings.TrimSpace(message),
 		"updated_at":      time.Now(),
-	}).Error
+	}).Error; err != nil {
+		log.Printf("[ai] failed to mark growth run terminal run=%s status=%s: %v", run.ID, status, err)
+	}
+}
+
+func terminalGrowthRunStatus(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "cancelled"
+	}
+	return "failed"
 }
 
 func readGrowthOptimizationEvents(body io.Reader) ([]GrowthOptimizationProposalEvent, GrowthOptimizationStatusEvent, error) {
@@ -261,11 +277,15 @@ func jsonMap(value map[string]any) datatypes.JSON {
 	return datatypes.JSON(raw)
 }
 
-func mapGrowthRunResponse(run models.AIGrowthOptimizationRun, proposals []models.AIProposal) *dto.AIGrowthOptimizationRunResponse {
+func mapGrowthRunResponse(run models.AIGrowthOptimizationRun, proposals []models.AIProposal) (*dto.AIGrowthOptimizationRunResponse, error) {
 	var targetPlatforms []string
-	_ = json.Unmarshal(run.TargetPlatforms, &targetPlatforms)
+	if err := unmarshalJSONField(run.TargetPlatforms, &targetPlatforms); err != nil {
+		return nil, fmt.Errorf("decode growth run target platforms: %w", err)
+	}
 	var usage map[string]any
-	_ = json.Unmarshal(run.Usage, &usage)
+	if err := unmarshalJSONField(run.Usage, &usage); err != nil {
+		return nil, fmt.Errorf("decode growth run usage: %w", err)
+	}
 	out := &dto.AIGrowthOptimizationRunResponse{
 		Run: dto.AIGrowthOptimizationRun{
 			ID:                run.ID,
@@ -288,7 +308,9 @@ func mapGrowthRunResponse(run models.AIGrowthOptimizationRun, proposals []models
 	}
 	for _, proposal := range proposals {
 		var qualityChecks map[string]any
-		_ = json.Unmarshal(proposal.QualityChecks, &qualityChecks)
+		if err := unmarshalJSONField(proposal.QualityChecks, &qualityChecks); err != nil {
+			return nil, fmt.Errorf("decode proposal quality checks: %w", err)
+		}
 		out.Proposals = append(out.Proposals, dto.AIProposal{
 			ID:                proposal.ID,
 			WorkspaceID:       proposal.WorkspaceID,
@@ -305,5 +327,12 @@ func mapGrowthRunResponse(run models.AIGrowthOptimizationRun, proposals []models
 			CreatedAt:         proposal.CreatedAt,
 		})
 	}
-	return out
+	return out, nil
+}
+
+func unmarshalJSONField(raw datatypes.JSON, out any) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	return json.Unmarshal(raw, out)
 }
