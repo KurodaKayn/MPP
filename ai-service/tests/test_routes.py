@@ -250,6 +250,12 @@ def test_stream_growth_optimization_emits_reviewable_proposals(monkeypatch):
     assert "zhihu@growth-v1" in response.text
     assert "x@growth-v1" in response.text
     assert "douyin@growth-v1" in response.text
+    assert "Dramatic but fact-bound WeChat title" in response.text
+    assert "Specific technical title" in response.text
+    assert "Indirect metaphor or double-meaning title" in response.text
+    assert "Plain title that directly states" in response.text
     assert '"status": "ready"' in response.text
     assert fake_llm.messages is not None
     assert "wechat@growth-v1" in fake_llm.messages[-1].content
+    assert "title_strategy" in fake_llm.messages[-1].content
+    assert "verification warning instead of inventing data" in fake_llm.messages[-1].content
