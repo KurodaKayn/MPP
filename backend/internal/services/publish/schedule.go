@@ -13,6 +13,7 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 )
 
 const (
@@ -238,21 +239,7 @@ func (s *Service) requireWorkspaceCalendarAccess(ctx context.Context, workspaceI
 	if ctx != nil {
 		db = db.WithContext(ctx)
 	}
-	var workspace models.Workspace
-	if err := db.Select("id", "owner_user_id").First(&workspace, "id = ?", workspaceID).Error; err != nil {
-		return err
-	}
-	if workspace.OwnerUserID == userID {
-		return nil
-	}
-	var member models.WorkspaceMember
-	if err := db.Select("workspace_id", "user_id").First(&member, "workspace_id = ? AND user_id = ?", workspaceID, userID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrForbidden
-		}
-		return err
-	}
-	return nil
+	return accesspolicy.RequireWorkspaceMemberWithDB(db, workspaceID, userID)
 }
 
 func (s *Service) StartScheduledPublicationDispatcher(ctx context.Context) {

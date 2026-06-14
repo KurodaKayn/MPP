@@ -20,11 +20,12 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/resilience"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 )
 
-var ErrForbidden = errors.New("forbidden: you do not have permission to access this resource")
+var ErrForbidden = accesspolicy.ErrForbidden
 var ErrPublicationDisabled = errors.New("publication is disabled")
 var ErrPublicationRequiresSync = errors.New("publication requires prepublish sync")
 var ErrManualPublishUnsupported = errors.New("manual publish is only supported for x")
