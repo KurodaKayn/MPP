@@ -303,7 +303,7 @@ func (h *Handler) CreateAIGrowthOptimizationRun(c echo.Context) error {
 
 	resp, err := h.aiGrowth.CreateRun(c.Request().Context(), projectID, userID, *req)
 	if err != nil {
-		if errors.Is(err, aisvc.ErrInvalidGrowthOptimizationRequest) || errors.Is(err, aisvc.ErrInvalidAIEditRequest) {
+		if errors.Is(err, aisvc.ErrInvalidGrowthOptimizationRequest) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		}
 		if errors.Is(err, aisvc.ErrAIServiceUnavailable) {
