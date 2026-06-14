@@ -470,7 +470,72 @@ export const ADAPTER_SCRIPT_FILES = ${tsConst(scriptFiles)} as const;
 }
 
 function tsConst(value: unknown): string {
-  return JSON.stringify(value, null, 2).replace(/"([^"]+)":/g, "$1:");
+  return tsValue(value, 0);
+}
+
+function tsValue(value: unknown, indent: number): string {
+  if (Array.isArray(value)) {
+    return tsArray(value, indent);
+  }
+  if (value !== null && typeof value === "object") {
+    return tsObject(value as Record<string, unknown>, indent);
+  }
+  return JSON.stringify(value);
+}
+
+function tsArray(values: unknown[], indent: number): string {
+  if (values.length === 0) {
+    return "[]";
+  }
+  if (values.every(isTsPrimitive)) {
+    const inline = `[${values.map((item) => tsValue(item, indent)).join(", ")}]`;
+    if (indent + inline.length <= 80) {
+      return inline;
+    }
+  }
+
+  const childIndent = indent + 2;
+  const lines = values.map(
+    (item) => `${spaces(childIndent)}${tsValue(item, childIndent)},`,
+  );
+  return `[\n${lines.join("\n")}\n${spaces(indent)}]`;
+}
+
+function tsObject(value: Record<string, unknown>, indent: number): string {
+  const entries = Object.entries(value);
+  if (entries.length === 0) {
+    return "{}";
+  }
+
+  const childIndent = indent + 2;
+  const lines = entries.map(([key, item]) => {
+    const rendered = tsValue(item, childIndent);
+    const keyPrefix = `${spaces(childIndent)}${tsKey(key)}`;
+    const inline = `${keyPrefix}: ${rendered},`;
+    if (rendered.includes("\n")) {
+      return inline;
+    }
+    if (inline.length <= 80) {
+      return inline;
+    }
+    return `${keyPrefix}:\n${spaces(childIndent + 2)}${rendered},`;
+  });
+  return `{\n${lines.join("\n")}\n${spaces(indent)}}`;
+}
+
+function tsKey(value: string): string {
+  if (/^[A-Za-z_$][\w$]*$/.test(value)) {
+    return value;
+  }
+  return JSON.stringify(value);
+}
+
+function isTsPrimitive(value: unknown): boolean {
+  return value === null || ["string", "number", "boolean"].includes(typeof value);
+}
+
+function spaces(count: number): string {
+  return " ".repeat(count);
 }
 
 function generatedFile(path: string): string {

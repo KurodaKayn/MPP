@@ -10,7 +10,7 @@ export const PLATFORM_TABS = [
     icon: "/icons/platforms/wechat.svg",
     autoPublishAllowed: true,
     preferredPublishMode: "api",
-    draftFormat: "html"
+    draftFormat: "html",
   },
   {
     value: "zhihu",
@@ -19,7 +19,7 @@ export const PLATFORM_TABS = [
     icon: "/icons/platforms/zhihu.svg",
     autoPublishAllowed: true,
     preferredPublishMode: "headless_browser",
-    draftFormat: "markdown"
+    draftFormat: "markdown",
   },
   {
     value: "x",
@@ -28,7 +28,7 @@ export const PLATFORM_TABS = [
     icon: "/icons/platforms/x.svg",
     autoPublishAllowed: true,
     preferredPublishMode: "api",
-    draftFormat: "text"
+    draftFormat: "text",
   },
   {
     value: "douyin",
@@ -37,6 +37,6 @@ export const PLATFORM_TABS = [
     icon: "/icons/platforms/douyin.svg",
     autoPublishAllowed: false,
     preferredPublishMode: "extension",
-    draftFormat: "text"
-  }
+    draftFormat: "text",
+  },
 ] as const;
