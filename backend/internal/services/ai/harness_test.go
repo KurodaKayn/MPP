@@ -3,12 +3,14 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
@@ -41,6 +43,9 @@ func TestEventLogManagerAndReplay(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, timeline, 3)
+	assert.Equal(t, uint64(1), timeline[0].Sequence)
+	assert.Equal(t, uint64(2), timeline[1].Sequence)
+	assert.Equal(t, uint64(3), timeline[2].Sequence)
 	assert.Equal(t, "status", timeline[0].EventType)
 	assert.Equal(t, "started", timeline[0].Payload["state"])
 
@@ -106,7 +111,7 @@ func TestRunnerStateMachineLoop(t *testing.T) {
 
 	// Register a mock tool
 	toolExecuted := false
-	mockTool := NewMockTool("read_project_draft", "Read draft details", func(ctx context.Context, args json.RawMessage) (string, error) {
+	mockTool := NewMockTool("read_project_context", "Read project context", func(ctx context.Context, args json.RawMessage) (string, error) {
 		toolExecuted = true
 		return "Mock tool executed successfully returning project data", nil
 	})
@@ -159,4 +164,279 @@ func TestRunnerStateMachineLoop(t *testing.T) {
 	assert.True(t, hasToolResult, "timeline missing tool_result event")
 	assert.True(t, hasProposal, "timeline missing proposal event")
 	assert.True(t, hasStatus, "timeline missing status event")
+}
+
+func TestRunnerWritesStructuredErrorEventOnToolFailure(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	err := db.AutoMigrate(
+		&models.AIContextSnapshot{},
+		&models.AIProposal{},
+		&models.AIDraftingSession{},
+		&models.AIDraftingMessage{},
+		&models.AIToolCall{},
+		&models.AISessionEvent{},
+		&models.AIUsageRecord{},
+		&models.WorkspaceQuotaAggregate{},
+		&models.MediaAsset{},
+		&models.ProjectComment{},
+	)
+	require.NoError(t, err)
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	sessionID := uuid.New()
+	project := models.Project{
+		ID:            projectID,
+		UserID:        userID,
+		Title:         "Failure Project",
+		SourceContent: "Original content",
+		Status:        "draft",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+	require.NoError(t, db.Create(&project).Error)
+	session := models.AIDraftingSession{
+		ID:            sessionID,
+		WorkspaceID:   uuid.New(),
+		ProjectID:     projectID,
+		CreatedByID:   userID,
+		Title:         "Failure Session",
+		Status:        "active",
+		LastMessageAt: time.Now(),
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+	require.NoError(t, db.Create(&session).Error)
+
+	assembler := NewAIContextAssembler(db)
+	eventMgr := NewEventLogManager(db)
+	runner := NewRunnerWithAdapter(db, eventMgr, assembler, NewQuotaService(db), unknownToolAdapter{})
+
+	err = runner.RunSession(context.Background(), sessionID, userID, "Please optimize", nil)
+	require.Error(t, err)
+
+	timeline, err := eventMgr.Replay(context.Background(), sessionID)
+	require.NoError(t, err)
+	require.NotEmpty(t, timeline)
+	last := timeline[len(timeline)-1]
+	assert.Equal(t, EventError, last.EventType)
+	assert.Equal(t, "missing_tool", last.Payload["code"])
+	assert.Contains(t, last.Payload["message"], "unknown_tool")
+}
+
+func TestRunnerWritesStructuredErrorEventsForPhase0DFailures(t *testing.T) {
+	tests := []struct {
+		name      string
+		adapter   LLMAdapter
+		register  func(*Runner)
+		wantCode  string
+		wantError string
+	}{
+		{
+			name:      "schema error",
+			adapter:   toolCallAdapter{toolName: "read_project_context", arguments: []byte(`{`)},
+			wantCode:  "schema_error",
+			wantError: "invalid arguments",
+		},
+		{
+			name:    "denied permission",
+			adapter: toolCallAdapter{toolName: "permission_tool", arguments: []byte(`{}`)},
+			register: func(r *Runner) {
+				r.RegisterTool(NewMockTool("permission_tool", "Denied tool", func(ctx context.Context, args json.RawMessage) (string, error) {
+					return "", ErrToolPermissionDenied
+				}))
+			},
+			wantCode:  "permission_denied",
+			wantError: ErrToolPermissionDenied.Error(),
+		},
+		{
+			name:      "timeout",
+			adapter:   failingAdapter{err: context.DeadlineExceeded},
+			wantCode:  "timeout",
+			wantError: context.DeadlineExceeded.Error(),
+		},
+		{
+			name:      "user interruption",
+			adapter:   failingAdapter{err: context.Canceled},
+			wantCode:  "user_interrupted",
+			wantError: context.Canceled.Error(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, userID, sessionID := setupHarnessRun(t)
+			assembler := NewAIContextAssembler(db)
+			eventMgr := NewEventLogManager(db)
+			runner := NewRunnerWithAdapter(db, eventMgr, assembler, NewQuotaService(db), tt.adapter)
+			if tt.register != nil {
+				tt.register(runner)
+			}
+
+			err := runner.RunSession(context.Background(), sessionID, userID, "Please optimize", nil)
+			require.Error(t, err)
+
+			replay, err := eventMgr.ReplaySession(context.Background(), sessionID)
+			require.NoError(t, err)
+			require.NotEmpty(t, replay.Events)
+			last := replay.Events[len(replay.Events)-1]
+			assert.Equal(t, EventError, last.EventType)
+			assert.Equal(t, tt.wantCode, last.Payload["code"])
+			assert.Contains(t, last.Payload["message"], tt.wantError)
+		})
+	}
+}
+
+func TestReplaySessionIncludesModelVisibleMessageSequence(t *testing.T) {
+	db, userID, sessionID := setupHarnessRun(t)
+	assembler := NewAIContextAssembler(db)
+	eventMgr := NewEventLogManager(db)
+	runner := NewRunner(db, eventMgr, assembler, NewQuotaService(db))
+
+	err := runner.RunSession(context.Background(), sessionID, userID, "Please optimize my drafting content", nil)
+	require.NoError(t, err)
+
+	replay, err := eventMgr.ReplaySession(context.Background(), sessionID)
+	require.NoError(t, err)
+	require.NotEmpty(t, replay.Events)
+	require.Len(t, replay.ModelMessages, 4)
+	assert.Equal(t, "user", replay.ModelMessages[0].Role)
+	require.Len(t, replay.ModelMessages[0].Content, 1)
+	assert.Equal(t, "text", replay.ModelMessages[0].Content[0].Type)
+	assert.Equal(t, "Please optimize my drafting content", replay.ModelMessages[0].Content[0].Text)
+	assert.Equal(t, "assistant", replay.ModelMessages[1].Role)
+	require.Len(t, replay.ModelMessages[1].Content, 2)
+	assert.Equal(t, "text", replay.ModelMessages[1].Content[0].Type)
+	assert.Equal(t, "tool_use", replay.ModelMessages[1].Content[1].Type)
+	toolUseID := replay.ModelMessages[1].Content[1].ID
+	assert.NotEmpty(t, toolUseID)
+	assert.Equal(t, "read_project_context", replay.ModelMessages[1].Content[1].Name)
+	assert.Equal(t, "user", replay.ModelMessages[2].Role)
+	require.Len(t, replay.ModelMessages[2].Content, 1)
+	assert.Equal(t, "tool_result", replay.ModelMessages[2].Content[0].Type)
+	assert.Equal(t, toolUseID, replay.ModelMessages[2].Content[0].ToolUseID)
+	assert.False(t, replay.ModelMessages[2].Content[0].IsError)
+	assert.Equal(t, "assistant", replay.ModelMessages[3].Role)
+}
+
+func TestRunnerFeedsToolResultsIntoNextModelTurn(t *testing.T) {
+	db, userID, sessionID := setupHarnessRun(t)
+	assembler := NewAIContextAssembler(db)
+	eventMgr := NewEventLogManager(db)
+	adapter := &capturingAdapter{}
+	runner := NewRunnerWithAdapter(db, eventMgr, assembler, NewQuotaService(db), adapter)
+
+	err := runner.RunSession(context.Background(), sessionID, userID, "Please optimize my drafting content", nil)
+	require.NoError(t, err)
+	require.Len(t, adapter.messagesByTurn, 2)
+
+	secondTurn := adapter.messagesByTurn[1]
+	require.Len(t, secondTurn, 3)
+	assert.Equal(t, "assistant", secondTurn[1].Role)
+	require.Len(t, secondTurn[1].Content, 2)
+	assert.Equal(t, "tool_use", secondTurn[1].Content[1].Type)
+	assert.Equal(t, "user", secondTurn[2].Role)
+	require.Len(t, secondTurn[2].Content, 1)
+	assert.Equal(t, "tool_result", secondTurn[2].Content[0].Type)
+	assert.Equal(t, secondTurn[1].Content[1].ID, secondTurn[2].Content[0].ToolUseID)
+}
+
+func setupHarnessRun(t *testing.T) (*gorm.DB, uuid.UUID, uuid.UUID) {
+	t.Helper()
+	db := testsupport.SetupTestDB()
+	err := db.AutoMigrate(
+		&models.AIContextSnapshot{},
+		&models.AIProposal{},
+		&models.AIDraftingSession{},
+		&models.AIDraftingMessage{},
+		&models.AIToolCall{},
+		&models.AISessionEvent{},
+		&models.AIUsageRecord{},
+		&models.WorkspaceQuotaAggregate{},
+		&models.MediaAsset{},
+		&models.ProjectComment{},
+	)
+	require.NoError(t, err)
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	sessionID := uuid.New()
+	project := models.Project{
+		ID:            projectID,
+		UserID:        userID,
+		Title:         "Phase 0D Project",
+		SourceContent: "Original content",
+		Status:        "draft",
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+	require.NoError(t, db.Create(&project).Error)
+	session := models.AIDraftingSession{
+		ID:            sessionID,
+		WorkspaceID:   uuid.New(),
+		ProjectID:     projectID,
+		CreatedByID:   userID,
+		Title:         "Phase 0D Session",
+		Status:        "active",
+		LastMessageAt: time.Now(),
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+	require.NoError(t, db.Create(&session).Error)
+	return db, userID, sessionID
+}
+
+type unknownToolAdapter struct{}
+
+func (unknownToolAdapter) Query(_ context.Context, sessionID uuid.UUID, _ []ModelVisibleMessage, _ *models.AIContextSnapshot, _ []models.AIToolCall) (*LLMResponse, error) {
+	return &LLMResponse{
+		ToolCalls: []models.AIToolCall{
+			{
+				ID:        uuid.New(),
+				SessionID: sessionID,
+				ToolName:  "unknown_tool",
+				Version:   "1.0",
+				Arguments: []byte(`{}`),
+			},
+		},
+	}, nil
+}
+
+type toolCallAdapter struct {
+	toolName  string
+	arguments []byte
+}
+
+func (a toolCallAdapter) Query(_ context.Context, sessionID uuid.UUID, _ []ModelVisibleMessage, _ *models.AIContextSnapshot, _ []models.AIToolCall) (*LLMResponse, error) {
+	return &LLMResponse{
+		ToolCalls: []models.AIToolCall{
+			{
+				ID:        uuid.New(),
+				SessionID: sessionID,
+				ToolName:  a.toolName,
+				Version:   "1.0",
+				Arguments: a.arguments,
+			},
+		},
+	}, nil
+}
+
+type failingAdapter struct {
+	err error
+}
+
+func (a failingAdapter) Query(_ context.Context, _ uuid.UUID, _ []ModelVisibleMessage, _ *models.AIContextSnapshot, _ []models.AIToolCall) (*LLMResponse, error) {
+	return nil, a.err
+}
+
+type capturingAdapter struct {
+	messagesByTurn [][]ModelVisibleMessage
+}
+
+func (a *capturingAdapter) Query(_ context.Context, sessionID uuid.UUID, messages []ModelVisibleMessage, snapshot *models.AIContextSnapshot, toolResults []models.AIToolCall) (*LLMResponse, error) {
+	a.messagesByTurn = append(a.messagesByTurn, slices.Clone(messages))
+	if len(toolResults) == 0 {
+		return (&MockLLMAdapter{}).Query(context.Background(), sessionID, messages, snapshot, toolResults)
+	}
+	return (&MockLLMAdapter{}).Query(context.Background(), sessionID, messages, snapshot, toolResults)
 }

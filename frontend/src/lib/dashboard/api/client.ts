@@ -1,5 +1,9 @@
 import { clearAuthSession, clearServerAuthSession } from "@/lib/auth/client";
-import type { AITextStreamOptions } from "./types";
+import type {
+  AIDraftingStreamEvent,
+  AIDraftingStreamOptions,
+  AITextStreamOptions,
+} from "./types";
 
 type ApiErrorResponse = {
   message?: string;
@@ -198,5 +202,97 @@ export async function streamDashboardText(
     }
     accumulated += chunk;
     options.onChunk?.(chunk, accumulated);
+  }
+}
+
+export async function streamDashboardEvents(
+  path: string,
+  body: unknown,
+  options: AIDraftingStreamOptions = {},
+) {
+  const headers = new Headers({
+    Accept: "text/event-stream, application/json",
+    "Content-Type": "application/json",
+  });
+  const workspaceId = getStoredWorkspaceId();
+  if (workspaceId) {
+    headers.set("X-Workspace-ID", workspaceId);
+  }
+
+  const response = await fetch(pathWithWorkspaceContext(path, workspaceId), {
+    body: JSON.stringify(body),
+    credentials: "same-origin",
+    headers,
+    method: "POST",
+    signal: options.signal,
+  });
+
+  if (!response.ok) {
+    throw await createDashboardError(response);
+  }
+  if (!response.body) {
+    return [];
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const events: AIDraftingStreamEvent[] = [];
+
+  const drain = (final = false) => {
+    for (;;) {
+      const separator = buffer.indexOf("\n\n");
+      if (separator < 0) {
+        if (final && buffer.trim()) {
+          consumeSSEBlock(buffer);
+          buffer = "";
+        }
+        return;
+      }
+      const block = buffer.slice(0, separator);
+      buffer = buffer.slice(separator + 2);
+      consumeSSEBlock(block);
+    }
+  };
+
+  const consumeSSEBlock = (block: string) => {
+    const lines = block.split(/\r?\n/);
+    let eventType = "message";
+    const dataLines: string[] = [];
+    for (const line of lines) {
+      if (line.startsWith("event:")) {
+        eventType = line.slice("event:".length).trim();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice("data:".length).trimStart());
+      }
+    }
+    if (dataLines.length === 0) {
+      return;
+    }
+    const payload = JSON.parse(dataLines.join("\n")) as Record<string, unknown>;
+    const event: AIDraftingStreamEvent = {
+      event_type: eventType,
+      payload,
+    };
+    events.push(event);
+    options.onEvent?.(event);
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      const trailing = decoder.decode();
+      if (trailing) {
+        buffer += trailing;
+      }
+      drain(true);
+      return events;
+    }
+    const chunk = decoder.decode(value, { stream: true });
+    if (!chunk) {
+      continue;
+    }
+    buffer += chunk.replace(/\r\n/g, "\n");
+    drain();
   }
 }

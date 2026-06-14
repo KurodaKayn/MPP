@@ -60,6 +60,8 @@ func main() {
 	userDashboardHandler := handlers.NewUserDashboardHandler(runtime.DashboardService)
 	collabDocumentHandler := handlers.NewCollabDocumentHandler(runtime.CollabDocumentService)
 	userDashboardHandler.UseAIContentEditor(aisvc.NewAIServiceClientFromEnv())
+	userDashboardHandler.UseAIDraftingService(aisvc.NewDraftingService(db.DB))
+	userDashboardHandler.UseQuotaService(aisvc.NewQuotaService(db.DB))
 	streamLimiter := streamgate.New(runtime.RedisClient, streamgate.ConfigFromEnv())
 	userDashboardHandler.UseStreamLimiter(streamLimiter)
 	authHandler := handlers.NewAuthHandler(db.DB, runtime.RedisClient, runtime.EmailService, jwtSigningKey)

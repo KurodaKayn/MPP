@@ -29,6 +29,16 @@ const (
 	GrowthOptimization AIContextSnapshotContextKind = "growth_optimization"
 )
 
+// Defines values for AIDraftingEventType.
+const (
+	AIDraftingEventTypeError      AIDraftingEventType = "error"
+	AIDraftingEventTypeMessage    AIDraftingEventType = "message"
+	AIDraftingEventTypeProposal   AIDraftingEventType = "proposal"
+	AIDraftingEventTypeStatus     AIDraftingEventType = "status"
+	AIDraftingEventTypeToolCall   AIDraftingEventType = "tool_call"
+	AIDraftingEventTypeToolResult AIDraftingEventType = "tool_result"
+)
+
 // Defines values for AIDraftingMessageRole.
 const (
 	AIDraftingMessageRoleAssistant AIDraftingMessageRole = "assistant"
@@ -349,10 +359,10 @@ const (
 
 // Defines values for RequirementStatusValue.
 const (
-	RequirementStatusValueFailed  RequirementStatusValue = "failed"
-	RequirementStatusValuePassed  RequirementStatusValue = "passed"
-	RequirementStatusValueUnknown RequirementStatusValue = "unknown"
-	RequirementStatusValueWarning RequirementStatusValue = "warning"
+	Failed  RequirementStatusValue = "failed"
+	Passed  RequirementStatusValue = "passed"
+	Unknown RequirementStatusValue = "unknown"
+	Warning RequirementStatusValue = "warning"
 )
 
 // Defines values for StartPublishBrowserSessionResultPlatform.
@@ -479,6 +489,23 @@ type AIContextSnapshotCompactionLevel string
 // AIContextSnapshotContextKind defines model for AIContextSnapshot.ContextKind.
 type AIContextSnapshotContextKind string
 
+// AIDraftingContinueRequest defines model for AIDraftingContinueRequest.
+type AIDraftingContinueRequest struct {
+	Message string `json:"message"`
+}
+
+// AIDraftingEvent defines model for AIDraftingEvent.
+type AIDraftingEvent struct {
+	CreatedAt time.Time              `json:"created_at"`
+	EventType AIDraftingEventType    `json:"event_type"`
+	Id        openapi_types.UUID     `json:"id"`
+	Payload   map[string]interface{} `json:"payload"`
+	SessionId openapi_types.UUID     `json:"session_id"`
+}
+
+// AIDraftingEventType defines model for AIDraftingEventType.
+type AIDraftingEventType string
+
 // AIDraftingMessage defines model for AIDraftingMessage.
 type AIDraftingMessage struct {
 	Content   string                `json:"content"`
@@ -490,6 +517,13 @@ type AIDraftingMessage struct {
 
 // AIDraftingMessageRole defines model for AIDraftingMessage.Role.
 type AIDraftingMessageRole string
+
+// AIDraftingReplay defines model for AIDraftingReplay.
+type AIDraftingReplay struct {
+	Events        []AIDraftingEvent   `json:"events"`
+	ModelMessages []AIDraftingMessage `json:"model_messages"`
+	SessionId     openapi_types.UUID  `json:"session_id"`
+}
 
 // AIDraftingSession defines model for AIDraftingSession.
 type AIDraftingSession struct {
@@ -522,6 +556,12 @@ type AIDraftingSessionSummary struct {
 	Summary            string                   `json:"summary"`
 	UpdatedAt          time.Time                `json:"updated_at"`
 	UserIntent         string                   `json:"user_intent"`
+}
+
+// AIDraftingStartRequest defines model for AIDraftingStartRequest.
+type AIDraftingStartRequest struct {
+	Message string  `json:"message"`
+	Title   *string `json:"title,omitempty"`
 }
 
 // AIEditContentRequest defines model for AIEditContentRequest.

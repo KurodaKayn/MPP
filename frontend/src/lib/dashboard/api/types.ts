@@ -199,6 +199,27 @@ export type AITextStreamOptions = {
   signal?: AbortSignal;
 };
 
+export type AIDraftingEventType = ContractSchema<"AIDraftingEventType">;
+export type AIDraftingEvent = ContractSchema<"AIDraftingEvent">;
+export type AIDraftingStreamEvent = Omit<
+  Partial<AIDraftingEvent>,
+  "event_type" | "payload"
+> & {
+  event_type: AIDraftingEventType | string;
+  payload: Record<string, unknown>;
+};
+
+export type AIDraftingStreamOptions = {
+  onEvent?: (event: AIDraftingStreamEvent) => void;
+  signal?: AbortSignal;
+};
+
+export type StartAIDraftingSessionInput =
+  ContractSchema<"AIDraftingStartRequest">;
+export type ContinueAIDraftingSessionInput =
+  ContractSchema<"AIDraftingContinueRequest">;
+export type AIDraftingReplay = ContractSchema<"AIDraftingReplay">;
+
 export type RequirementStatus = ContractSchema<"RequirementStatus">;
 export type WechatAccount = ContractSchema<"WechatAccount">;
 export type SaveWechatAccountInput = ContractSchema<"SaveWechatAccountInput">;

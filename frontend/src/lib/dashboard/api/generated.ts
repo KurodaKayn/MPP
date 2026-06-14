@@ -643,6 +643,50 @@ export interface components {
       adapted_content: components["schemas"]["AdaptedContent"];
       content: string;
     };
+    AIDraftingStartRequest: {
+      message: string;
+      title?: string;
+    };
+    AIDraftingContinueRequest: {
+      message: string;
+    };
+    AIDraftingMessage: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      session_id: string;
+      /** @enum {string} */
+      role: "user" | "assistant" | "system";
+      content: string;
+      /** Format: date-time */
+      created_at: string;
+    };
+    /** @enum {string} */
+    AIDraftingEventType:
+      | "status"
+      | "message"
+      | "tool_call"
+      | "tool_result"
+      | "proposal"
+      | "error";
+    AIDraftingEvent: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      session_id: string;
+      event_type: components["schemas"]["AIDraftingEventType"];
+      payload: {
+        [key: string]: unknown;
+      };
+      /** Format: date-time */
+      created_at: string;
+    };
+    AIDraftingReplay: {
+      /** Format: uuid */
+      session_id: string;
+      events: components["schemas"]["AIDraftingEvent"][];
+      model_messages: components["schemas"]["AIDraftingMessage"][];
+    };
     RequirementStatus: {
       status: components["schemas"]["RequirementStatusValue"];
       title: string;
