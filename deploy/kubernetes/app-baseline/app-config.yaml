@@ -44,3 +44,7 @@ data:
   R2_BUCKET: replace-with-r2-bucket
   R2_ENDPOINT: https://replace-with-r2-account-id.r2.cloudflarestorage.com
   R2_REGION: auto
+  X_OAUTH2_CLIENT_ID: replace-with-x-oauth2-client-id
+  X_OAUTH2_REDIRECT_URL: https://replace-with-public-host.example.invalid/api/user/dashboard/settings/x/oauth2/callback
+  X_OAUTH2_AUTHORIZE_URL: ""
+  X_OAUTH2_TOKEN_URL: ""

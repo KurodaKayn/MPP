@@ -471,3 +471,78 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    AIDraftingStartRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - message
+      properties:
+        message:
+          type: string
+        title:
+          type: string
+
+    AIDraftingContinueRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - message
+      properties:
+        message:
+          type: string
+
+    AIDraftingEventType:
+      type: string
+      enum:
+        - status
+        - message
+        - tool_call
+        - tool_result
+        - proposal
+        - error
+
+    AIDraftingEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - session_id
+        - event_type
+        - payload
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        event_type:
+          $ref: "#/components/schemas/AIDraftingEventType"
+        payload:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    AIDraftingReplay:
+      type: object
+      additionalProperties: false
+      required:
+        - session_id
+        - events
+        - model_messages
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AIDraftingEvent"
+        model_messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/AIDraftingMessage"

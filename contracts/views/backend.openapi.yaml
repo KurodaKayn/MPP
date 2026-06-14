@@ -327,6 +327,21 @@ components:
     AIDraftingSessionSummary:
       $ref: "../openapi.yaml#/components/schemas/AIDraftingSessionSummary"
 
+    AIDraftingStartRequest:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingStartRequest"
+
+    AIDraftingContinueRequest:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingContinueRequest"
+
+    AIDraftingEventType:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingEventType"
+
+    AIDraftingEvent:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingEvent"
+
+    AIDraftingReplay:
+      $ref: "../openapi.yaml#/components/schemas/AIDraftingReplay"
+
     RequirementStatus:
       $ref: "../openapi.yaml#/components/schemas/RequirementStatus"
 

@@ -4,6 +4,7 @@ resources:
   - ../../browser-runtime-control
   - ../../app-baseline
   - ../../data-services/managed
+  - ../../external-secrets
 
 patches:
   - patch: |-
@@ -68,6 +69,8 @@ configMapGenerator:
       - COLLAB_WEBSOCKET_URL_BASE=wss://mpp.example.invalid
       - LLM_PROVIDER_URL=https://llm.production.example.invalid/v1
       - LLM_MODEL=replace-with-production-model
+      - X_OAUTH2_CLIENT_ID=replace-with-x-oauth2-client-id
+      - X_OAUTH2_REDIRECT_URL=https://mpp.example.invalid/api/user/dashboard/settings/x/oauth2/callback
 
 images:
   - name: registry.example.invalid/kurodakayn/mpp-frontend

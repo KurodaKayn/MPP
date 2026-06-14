@@ -879,6 +879,9 @@ Secret-to-workload map:
 | `AI_SERVICE_INTERNAL_TOKEN` | `backend`, `publish-worker`, `ai-service` |
 | `BROWSER_WORKER_INTERNAL_TOKEN` | `backend`, `publish-worker`, `browser-worker` |
 | `CONTENT_PIPELINE_INTERNAL_TOKEN` | `backend`, `publish-worker`, `content-pipeline-service` |
+| `R2_ACCESS_KEY_ID` | `backend`, `publish-worker`, `content-pipeline-service` |
+| `R2_SECRET_ACCESS_KEY` | `backend`, `publish-worker`, `content-pipeline-service` |
+| `X_OAUTH2_CLIENT_SECRET` | `backend`, `publish-worker` |
 
 ## Scaling
 

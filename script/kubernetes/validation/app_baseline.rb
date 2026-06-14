@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../env/env_contract"
+
 module KubernetesValidation
   module AppBaseline
     EXPECTED_DEPLOYMENTS = [
@@ -43,6 +45,10 @@ module KubernetesValidation
       "R2_BUCKET",
       "R2_ENDPOINT",
       "R2_REGION",
+      "X_OAUTH2_CLIENT_ID",
+      "X_OAUTH2_REDIRECT_URL",
+      "X_OAUTH2_AUTHORIZE_URL",
+      "X_OAUTH2_TOKEN_URL",
     ].freeze
 
     SECRET_KEYS = [
@@ -56,6 +62,7 @@ module KubernetesValidation
       "CONTENT_PIPELINE_INTERNAL_TOKEN",
       "R2_ACCESS_KEY_ID",
       "R2_SECRET_ACCESS_KEY",
+      "X_OAUTH2_CLIENT_SECRET",
     ].freeze
 
     INTERNAL_INGRESS_POLICIES = {
@@ -155,6 +162,7 @@ module KubernetesValidation
         "CONTENT_PIPELINE_INTERNAL_TOKEN",
         "R2_ACCESS_KEY_ID",
         "R2_SECRET_ACCESS_KEY",
+        "X_OAUTH2_CLIENT_SECRET",
       ]
       require_secret_refs(context, "backend", backend_secret_keys)
       require_secret_refs(context, "publish-worker", backend_secret_keys)
@@ -290,6 +298,33 @@ module KubernetesValidation
       CONFIG_KEYS.each do |key|
         context.add_error("mpp-app-config is missing #{key}") unless config.data.key?(key)
       end
+
+      validate_env_schema_types(context)
+    end
+
+    def validate_env_schema_types(context)
+      variables = env_schema_variables
+      CONFIG_KEYS.each do |key|
+        spec = variables[key]
+        if spec.nil?
+          context.add_error("mpp-app-config key #{key} is not declared in contracts/env.schema.yaml")
+        elsif spec["type"] == "secret"
+          context.add_error("mpp-app-config must not contain secret env key #{key}")
+        end
+      end
+
+      SECRET_KEYS.each do |key|
+        spec = variables[key]
+        if spec.nil?
+          context.add_error("mpp-app-secrets key #{key} is not declared in contracts/env.schema.yaml")
+        elsif spec["type"] != "secret"
+          context.add_error("mpp-app-secrets key #{key} must be declared as a secret in contracts/env.schema.yaml")
+        end
+      end
+    end
+
+    def env_schema_variables
+      @env_schema_variables ||= EnvContract.load_schema("contracts/env.schema.yaml").fetch("variables")
     end
 
     def validate_ingress(context)

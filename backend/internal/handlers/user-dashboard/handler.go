@@ -22,6 +22,7 @@ const (
 type Handler struct {
 	dashboardService *dashboardsvc.DashboardService
 	aiContentEditor  aisvc.AIContentEditor
+	aiDrafting       *aisvc.DraftingService
 	quotaSvc         *aisvc.QuotaService
 	streamLimiter    *streamgate.Limiter
 }
@@ -36,6 +37,10 @@ func (h *Handler) serviceFor(c echo.Context) *dashboardsvc.DashboardService {
 
 func (h *Handler) UseAIContentEditor(editor aisvc.AIContentEditor) {
 	h.aiContentEditor = editor
+}
+
+func (h *Handler) UseAIDraftingService(svc *aisvc.DraftingService) {
+	h.aiDrafting = svc
 }
 
 func (h *Handler) UseQuotaService(svc *aisvc.QuotaService) {

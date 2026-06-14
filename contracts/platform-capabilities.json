@@ -1,0 +1,225 @@
+{
+  "schema_version": 1,
+  "platforms": [
+    {
+      "key": "wechat",
+      "display_name": "WeChat",
+      "project": {
+        "selectable": true
+      },
+      "draft": {
+        "profile": "wechat@v1",
+        "schema_version": 1,
+        "format": "html"
+      },
+      "publishing": {
+        "modes": ["api"],
+        "preferred_mode": "api",
+        "auto_publish_allowed": true,
+        "uses_stored_browser_cookies": false
+      },
+      "account": {
+        "mode": "api_credentials"
+      },
+      "frontend": {
+        "tab": true,
+        "label_key": "platforms.wechat",
+        "default_label": "WeChat",
+        "icon": "/icons/platforms/wechat.svg"
+      },
+      "extension": null
+    },
+    {
+      "key": "zhihu",
+      "display_name": "Zhihu",
+      "project": {
+        "selectable": true
+      },
+      "draft": {
+        "profile": "zhihu@v1",
+        "schema_version": 1,
+        "format": "markdown"
+      },
+      "publishing": {
+        "modes": ["headless_browser", "extension"],
+        "preferred_mode": "headless_browser",
+        "auto_publish_allowed": true,
+        "uses_stored_browser_cookies": true
+      },
+      "account": {
+        "mode": "browser_cookies"
+      },
+      "frontend": {
+        "tab": true,
+        "label_key": "platforms.zhihu",
+        "default_label": "Zhihu",
+        "icon": "/icons/platforms/zhihu.svg"
+      },
+      "extension": {
+        "backend_handoff": false,
+        "supported_modes": ["extension", "remote"],
+        "preferred_mode": "extension",
+        "adapter_key": "ARTICLE_ZHIHU",
+        "inject_url": "https://zhuanlan.zhihu.com/write",
+        "content_kinds": ["article"],
+        "target_formats": ["markdown", "html"],
+        "requires_review": true,
+        "auto_publish_allowed": false,
+        "script_file": "/content-scripts/zhihu-article.js"
+      }
+    },
+    {
+      "key": "x",
+      "display_name": "X",
+      "project": {
+        "selectable": true
+      },
+      "draft": {
+        "profile": "x@v1",
+        "schema_version": 1,
+        "format": "text"
+      },
+      "publishing": {
+        "modes": ["api", "extension"],
+        "preferred_mode": "api",
+        "auto_publish_allowed": true,
+        "uses_stored_browser_cookies": false
+      },
+      "account": {
+        "mode": "oauth2"
+      },
+      "frontend": {
+        "tab": true,
+        "label_key": "platforms.x",
+        "default_label": "X",
+        "icon": "/icons/platforms/x.svg"
+      },
+      "extension": {
+        "backend_handoff": true,
+        "supported_modes": ["extension"],
+        "preferred_mode": "extension",
+        "adapter_key": "POST_X",
+        "inject_url": "https://x.com/compose/post",
+        "content_kinds": ["dynamic_post"],
+        "target_formats": ["text"],
+        "requires_review": true,
+        "auto_publish_allowed": false,
+        "script_file": "/content-scripts/x-post.js"
+      }
+    },
+    {
+      "key": "douyin",
+      "display_name": "Douyin",
+      "project": {
+        "selectable": true
+      },
+      "draft": {
+        "profile": "douyin@v1",
+        "schema_version": 1,
+        "format": "text"
+      },
+      "publishing": {
+        "modes": ["extension"],
+        "preferred_mode": "extension",
+        "auto_publish_allowed": false,
+        "uses_stored_browser_cookies": true
+      },
+      "account": {
+        "mode": "browser_cookies"
+      },
+      "frontend": {
+        "tab": true,
+        "label_key": "platforms.douyin",
+        "default_label": "Douyin",
+        "icon": "/icons/platforms/douyin.svg"
+      },
+      "extension": {
+        "backend_handoff": true,
+        "supported_modes": ["extension"],
+        "preferred_mode": "extension",
+        "adapter_key": "DYNAMIC_DOUYIN",
+        "inject_url": "https://creator.douyin.com/creator-micro/content/upload?default-tab=5",
+        "inject_urls": [
+          "https://creator.douyin.com/creator-micro/content/upload",
+          "https://creator.douyin.com/creator-micro/content/post/article"
+        ],
+        "content_kinds": ["article", "image_video"],
+        "handoff_content_kind": "article",
+        "target_formats": ["text"],
+        "requires_review": true,
+        "auto_publish_allowed": false,
+        "script_file": "/content-scripts/douyin-dynamic.js"
+      }
+    },
+    {
+      "key": "xiaohongshu",
+      "display_name": "Xiaohongshu",
+      "project": {
+        "selectable": false
+      },
+      "draft": null,
+      "publishing": {
+        "modes": ["extension"],
+        "preferred_mode": "extension",
+        "auto_publish_allowed": false,
+        "uses_stored_browser_cookies": false
+      },
+      "account": {
+        "mode": "local_browser"
+      },
+      "frontend": {
+        "tab": false,
+        "label_key": "platforms.xiaohongshu",
+        "default_label": "Xiaohongshu",
+        "icon": "/icons/platforms/xiaohongshu.svg"
+      },
+      "extension": {
+        "backend_handoff": false,
+        "supported_modes": ["extension"],
+        "preferred_mode": "extension",
+        "adapter_key": "NOTE_XIAOHONGSHU",
+        "inject_url": "https://creator.xiaohongshu.com/publish/publish",
+        "content_kinds": ["image_note"],
+        "target_formats": ["text"],
+        "requires_review": true,
+        "auto_publish_allowed": false,
+        "script_file": "/content-scripts/xiaohongshu-note.js"
+      }
+    },
+    {
+      "key": "bilibili",
+      "display_name": "Bilibili",
+      "project": {
+        "selectable": false
+      },
+      "draft": null,
+      "publishing": {
+        "modes": ["extension"],
+        "preferred_mode": "extension",
+        "auto_publish_allowed": false,
+        "uses_stored_browser_cookies": false
+      },
+      "account": {
+        "mode": "local_browser"
+      },
+      "frontend": {
+        "tab": false,
+        "label_key": "platforms.bilibili",
+        "default_label": "Bilibili",
+        "icon": "/icons/platforms/bilibili.svg"
+      },
+      "extension": {
+        "backend_handoff": false,
+        "supported_modes": ["extension"],
+        "preferred_mode": "extension",
+        "adapter_key": "DYNAMIC_BILIBILI",
+        "inject_url": "https://t.bilibili.com",
+        "content_kinds": ["dynamic_post"],
+        "target_formats": ["text"],
+        "requires_review": true,
+        "auto_publish_allowed": false,
+        "script_file": "/content-scripts/bilibili-dynamic.js"
+      }
+    }
+  ]
+}

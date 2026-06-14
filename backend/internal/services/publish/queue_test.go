@@ -371,7 +371,7 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 
 	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-1"})
 	require.NoError(t, err)
-	require.Equal(t, models.PublicationStatusQueued, resp["status"])
+	require.Equal(t, models.PublicationStatusQueued, resp.Status)
 	require.Len(t, queue.jobs, 1)
 	require.Equal(t, uuid.Nil, queue.jobs[0].BrowserSessionID)
 
@@ -393,7 +393,7 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 
 	duplicate, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-1"})
 	require.NoError(t, err)
-	require.Equal(t, resp["job_id"], duplicate["job_id"])
+	require.Equal(t, resp.JobID, duplicate.JobID)
 }
 
 func TestEnqueuePublishProjectInvalidatesDashboardCaches(t *testing.T) {
@@ -429,7 +429,7 @@ func TestEnqueuePublishProjectInvalidatesDashboardCaches(t *testing.T) {
 	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "cache-click"})
 
 	require.NoError(t, err)
-	require.Equal(t, models.PublicationStatusQueued, resp["status"])
+	require.Equal(t, models.PublicationStatusQueued, resp.Status)
 	require.Equal(t, 1, invalidator.projectListInvalidations)
 	require.Equal(t, 1, invalidator.statsInvalidations)
 }
@@ -480,7 +480,7 @@ func TestEnqueuePublishProjectRejectsProjectEditor(t *testing.T) {
 	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &editor.ID, PublishRequest{IdempotencyKey: "click-editor"})
 
 	require.ErrorIs(t, err, ErrForbidden)
-	require.Nil(t, resp)
+	require.Empty(t, resp.Status)
 	require.Empty(t, queue.jobs)
 }
 
@@ -520,7 +520,7 @@ func TestEnqueuePublishProjectRejectsProjectViewer(t *testing.T) {
 	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &viewer.ID, PublishRequest{IdempotencyKey: "click-viewer"})
 
 	require.ErrorIs(t, err, ErrForbidden)
-	require.Nil(t, resp)
+	require.Empty(t, resp.Status)
 	require.Empty(t, queue.jobs)
 }
 
@@ -575,8 +575,8 @@ func TestEnqueuePublishProjectReplaysDuplicateWhenLockWinsBeforeQueuedEvent(t *t
 	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-race"})
 
 	require.NoError(t, err)
-	require.Equal(t, models.PublicationStatusQueued, resp["status"])
-	require.Equal(t, originalJobID.String(), resp["job_id"])
+	require.Equal(t, models.PublicationStatusQueued, resp.Status)
+	require.Equal(t, originalJobID.String(), resp.JobID)
 	require.Empty(t, queue.jobs)
 }
 
@@ -616,7 +616,7 @@ func TestEnqueuePublishProjectDoesNotPersistScheduleWhenLockIsHeld(t *testing.T)
 	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{})
 
 	require.ErrorIs(t, err, ErrPublicationAlreadyPublishing)
-	require.Nil(t, resp)
+	require.Empty(t, resp.Status)
 
 	var schedules int64
 	require.NoError(t, db.Model(&models.ScheduledPublication{}).
@@ -749,11 +749,11 @@ func TestEnqueuePublishProjectReplaysOriginalJobEventsAfterPublicationChanges(t 
 	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-original"})
 
 	require.NoError(t, err)
-	require.Equal(t, models.PublicationStatusSucceeded, resp["status"])
-	require.Equal(t, jobID.String(), resp["job_id"])
-	require.Equal(t, "event-remote", resp["remote_id"])
-	require.Equal(t, "https://example.com/original", resp["publish_url"])
-	require.Empty(t, resp["error_message"])
+	require.Equal(t, models.PublicationStatusSucceeded, resp.Status)
+	require.Equal(t, jobID.String(), resp.JobID)
+	require.Equal(t, "event-remote", resp.RemoteID)
+	require.Equal(t, "https://example.com/original", resp.PublishURL)
+	require.Empty(t, resp.ErrorMessage)
 }
 
 func TestEnqueuePublishProjectLeavesFailedDispatchInOutboxForRetry(t *testing.T) {
@@ -787,7 +787,7 @@ func TestEnqueuePublishProjectLeavesFailedDispatchInOutboxForRetry(t *testing.T)
 
 	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-3"})
 	require.NoError(t, err)
-	require.Equal(t, models.PublicationStatusQueued, resp["status"])
+	require.Equal(t, models.PublicationStatusQueued, resp.Status)
 	require.Empty(t, queue.jobs)
 
 	var queuedEvents int64
@@ -797,7 +797,7 @@ func TestEnqueuePublishProjectLeavesFailedDispatchInOutboxForRetry(t *testing.T)
 	require.EqualValues(t, 1, queuedEvents)
 
 	var outbox models.OutboxEvent
-	require.NoError(t, db.First(&outbox, "aggregate_id = ?", uuid.MustParse(resp["job_id"].(string))).Error)
+	require.NoError(t, db.First(&outbox, "aggregate_id = ?", uuid.MustParse(resp.JobID)).Error)
 	require.Equal(t, models.OutboxStatusFailed, outbox.Status)
 	require.Equal(t, 1, outbox.Attempts)
 	require.NotNil(t, outbox.NextAttemptAt)
@@ -809,7 +809,7 @@ func TestEnqueuePublishProjectLeavesFailedDispatchInOutboxForRetry(t *testing.T)
 		Update("next_attempt_at", time.Now().UTC().Add(-time.Second)).Error)
 	require.NoError(t, service.FlushPublishOutbox(context.Background(), 10))
 	require.Len(t, queue.jobs, 1)
-	require.Equal(t, resp["job_id"], queue.jobs[0].JobID.String())
+	require.Equal(t, resp.JobID, queue.jobs[0].JobID.String())
 
 	require.NoError(t, db.First(&outbox, "id = ?", outbox.ID).Error)
 	require.Equal(t, models.OutboxStatusDispatched, outbox.Status)
@@ -1023,7 +1023,7 @@ func TestEnqueuePublishProjectRequiresPrepublishSyncForSyncingPublication(t *tes
 	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-syncing"})
 
 	require.ErrorIs(t, err, ErrPublicationRequiresSync)
-	require.Nil(t, resp)
+	require.Empty(t, resp.Status)
 	require.Empty(t, queue.jobs)
 
 	var saved models.ProjectPlatformPublication
@@ -1069,7 +1069,7 @@ func TestEnqueuePublishProjectRejectsPublicationChangedToSyncingAfterLock(t *tes
 	resp, err := service.EnqueuePublishProject(context.Background(), project.ID, "wechat", &user.ID, PublishRequest{IdempotencyKey: "click-race"})
 
 	require.ErrorIs(t, err, ErrPublicationRequiresSync)
-	require.Nil(t, resp)
+	require.Empty(t, resp.Status)
 	require.Empty(t, queue.jobs)
 	require.Empty(t, queue.locks)
 

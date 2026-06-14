@@ -338,6 +338,21 @@ components:
     AIDraftingSessionSummary:
       $ref: "./components/ai.yaml#/components/schemas/AIDraftingSessionSummary"
 
+    AIDraftingStartRequest:
+      $ref: "./components/ai.yaml#/components/schemas/AIDraftingStartRequest"
+
+    AIDraftingContinueRequest:
+      $ref: "./components/ai.yaml#/components/schemas/AIDraftingContinueRequest"
+
+    AIDraftingEventType:
+      $ref: "./components/ai.yaml#/components/schemas/AIDraftingEventType"
+
+    AIDraftingEvent:
+      $ref: "./components/ai.yaml#/components/schemas/AIDraftingEvent"
+
+    AIDraftingReplay:
+      $ref: "./components/ai.yaml#/components/schemas/AIDraftingReplay"
+
     RequirementStatus:
       $ref: "./components/account.yaml#/components/schemas/RequirementStatus"
 

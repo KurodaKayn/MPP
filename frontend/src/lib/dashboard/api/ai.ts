@@ -1,13 +1,21 @@
-import { streamDashboardText } from "./client";
+import {
+  fetchDashboard,
+  streamDashboardEvents,
+  streamDashboardText,
+} from "./client";
 import type {
   AIGrowthOptimizationRun,
   AIPlatformProposal,
+  AIDraftingReplay,
+  AIDraftingStreamOptions,
   AIEditContentStreamInput,
   AIEditPrepublishStreamInput,
   CreateAIGrowthOptimizationRunInput,
   DecideAIProposalResult,
   AITextStreamOptions,
   PublishPlatform,
+  ContinueAIDraftingSessionInput,
+  StartAIDraftingSessionInput,
 } from "./types";
 
 export function streamAIContentEdit(
@@ -175,3 +183,32 @@ const platformProposalHints: Partial<Record<PublishPlatform, string>> = {
   zhihu:
     "Added a more credible argumentative frame and made the structure easier to follow.",
 };
+export function startAIDraftingSession(
+  projectId: string,
+  input: StartAIDraftingSessionInput,
+  options?: AIDraftingStreamOptions,
+) {
+  return streamDashboardEvents(
+    `/api/user/dashboard/projects/${projectId}/ai/drafting-sessions`,
+    input,
+    options,
+  );
+}
+
+export function continueAIDraftingSession(
+  sessionId: string,
+  input: ContinueAIDraftingSessionInput,
+  options?: AIDraftingStreamOptions,
+) {
+  return streamDashboardEvents(
+    `/api/user/dashboard/ai/drafting-sessions/${sessionId}/messages`,
+    input,
+    options,
+  );
+}
+
+export function replayAIDraftingSession(sessionId: string) {
+  return fetchDashboard<AIDraftingReplay>(
+    `/api/user/dashboard/ai/drafting-sessions/${sessionId}/events`,
+  );
+}

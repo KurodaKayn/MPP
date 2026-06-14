@@ -122,6 +122,7 @@ type AIDraftingMessage struct {
 type AIToolCall struct {
 	ID         uuid.UUID      `gorm:"type:uuid;primaryKey"`
 	SessionID  uuid.UUID      `gorm:"type:uuid;not null;index"`
+	ToolUseID  string         `gorm:"not null;index"`
 	ToolName   string         `gorm:"not null"`
 	Version    string         `gorm:"not null"`
 	Arguments  datatypes.JSON `gorm:"not null"`
@@ -153,11 +154,15 @@ type AIDraftingSessionSummary struct {
 }
 
 type AISessionEvent struct {
-	ID        uuid.UUID      `gorm:"type:uuid;primaryKey"`
-	SessionID uuid.UUID      `gorm:"type:uuid;not null;index"`
-	EventType string         `gorm:"not null"` // e.g. "status", "tool_call", "tool_result", "proposal", "message"
-	Payload   datatypes.JSON `gorm:"type:jsonb;not null"`
-	CreatedAt time.Time      `gorm:"not null;index"`
+	ID           uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	SessionID    uuid.UUID      `gorm:"type:uuid;not null;index:idx_ai_session_events_sequence,priority:1"`
+	Sequence     uint64         `gorm:"not null;index:idx_ai_session_events_sequence,priority:2"`
+	TurnID       *uuid.UUID     `gorm:"type:uuid;index"`
+	ToolUseID    string         `gorm:"index"`
+	EventType    string         `gorm:"not null"` // e.g. "status", "tool_call", "tool_result", "proposal", "message"
+	ModelVisible bool           `gorm:"not null"`
+	Payload      datatypes.JSON `gorm:"type:jsonb;not null"`
+	CreatedAt    time.Time      `gorm:"not null;index"`
 
 	// Relationships
 	Session *AIDraftingSession `gorm:"foreignKey:SessionID;references:ID;constraint:OnDelete:CASCADE"`

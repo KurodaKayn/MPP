@@ -32,7 +32,7 @@ func TestPublicationLifecycleCompletesPublication(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&pub).Error)
 
-	lifecycle := publicationLifecycle{db: db}
+	lifecycle := NewPublicationLifecycle(db)
 	require.NoError(t, lifecycle.CompletePublication(&pub, publicationCompletion{
 		Status:     models.PublicationStatusSucceeded,
 		RemoteID:   "remote-1",
@@ -87,7 +87,7 @@ func TestPublicationLifecycleStartsAndFinishesScheduledAttempt(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&schedule).Error)
 
-	lifecycle := publicationLifecycle{db: db}
+	lifecycle := NewPublicationLifecycle(db)
 	attempt, ok, err := lifecycle.StartPublishAttempt(schedule.ID, time.Now().UTC())
 	require.NoError(t, err)
 	require.True(t, ok)
@@ -104,4 +104,65 @@ func TestPublicationLifecycleStartsAndFinishesScheduledAttempt(t *testing.T) {
 	}))
 	require.NoError(t, db.First(&savedSchedule, "id = ?", schedule.ID).Error)
 	require.Equal(t, models.ScheduledPublicationStatusPublished, savedSchedule.Status)
+}
+
+func TestPublicationLifecycleMarksPrepublishSyncing(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Prepublish",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:    project.ID,
+		Platform:     "wechat",
+		Enabled:      true,
+		Status:       models.PublicationStatusDraft,
+		DraftStatus:  models.PublicationDraftStatusUnsynced,
+		ErrorMessage: "old error",
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	lifecycle := NewPublicationLifecycle(db)
+	require.NoError(t, lifecycle.MarkPrepublishSyncing(project.ID, []string{"wechat"}))
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
+	require.Equal(t, models.PublicationStatusSyncing, saved.Status)
+	require.Equal(t, models.PublicationDraftStatusSyncing, saved.DraftStatus)
+	require.Empty(t, saved.ErrorMessage)
+}
+
+func TestPublicationLifecycleRejectsPrepublishSyncingDuringActivePublish(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	user := models.User{Username: "owner", Email: "owner@example.com"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Prepublish active",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	pub := models.ProjectPlatformPublication{
+		ProjectID:   project.ID,
+		Platform:    "wechat",
+		Enabled:     true,
+		Status:      models.PublicationStatusQueued,
+		DraftStatus: models.PublicationDraftStatusReady,
+	}
+	require.NoError(t, db.Create(&pub).Error)
+
+	lifecycle := NewPublicationLifecycle(db)
+	err := lifecycle.MarkPrepublishSyncing(project.ID, []string{"wechat"})
+	require.ErrorIs(t, err, ErrPublicationAlreadyPublishing)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
+	require.Equal(t, models.PublicationStatusQueued, saved.Status)
+	require.Equal(t, models.PublicationDraftStatusReady, saved.DraftStatus)
 }

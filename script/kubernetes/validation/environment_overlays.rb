@@ -2,6 +2,7 @@
 
 require "base64"
 require "uri"
+require_relative "external_secrets"
 
 module KubernetesValidation
   module EnvironmentOverlays
@@ -15,19 +16,8 @@ module KubernetesValidation
       "production-provider-model",
       "replace-with-production-model",
     ].freeze
-    REQUIRED_EXTERNAL_SECRET_KEYS = [
-      "JWT_SECRET",
-      "DB_PASSWORD",
-      "COLLAB_TOKEN_SECRET",
-      "COOKIE_ENCRYPTION_KEY",
-      "LLM_PROVIDER_KEY",
-      "BROWSER_WORKER_INTERNAL_TOKEN",
-      "AI_SERVICE_INTERNAL_TOKEN",
-      "CONTENT_PIPELINE_INTERNAL_TOKEN",
-      "R2_ACCESS_KEY_ID",
-      "R2_SECRET_ACCESS_KEY",
-    ].freeze
-    OPTIONAL_EXTERNAL_SECRET_KEYS = ["REDIS_PASSWORD"].freeze
+    REQUIRED_EXTERNAL_SECRET_KEYS = ExternalSecrets::REQUIRED_APP_SECRET_KEYS
+    OPTIONAL_EXTERNAL_SECRET_KEYS = ExternalSecrets::OPTIONAL_APP_SECRET_KEYS
     APP_IMAGES = {
       "frontend" => ["frontend", "ghcr.io/kurodakayn/mpp-frontend"],
       "backend" => ["backend", "ghcr.io/kurodakayn/mpp-backend"],
@@ -65,6 +55,7 @@ module KubernetesValidation
     def validate_production_managed(context)
       overlay = "production-managed"
       validate_managed_config(context, overlay, app_env: "production")
+      ExternalSecrets.validate_app_secret_contract(context, overlay)
       validate_external_secret_contract(context, overlay)
       validate_ingress(context, overlay)
       validate_runtime_image(context, overlay)
@@ -134,6 +125,7 @@ module KubernetesValidation
     def validate_common_config(context, config, overlay)
       validate_collab_websocket_url(context, config.data["COLLAB_WEBSOCKET_URL_BASE"].to_s, overlay)
       validate_llm_provider_url(context, config.data["LLM_PROVIDER_URL"].to_s, overlay)
+      validate_x_oauth_config(context, config, overlay)
 
       llm_model = config.data["LLM_MODEL"].to_s.strip
       context.add_error("#{overlay} mpp-app-config LLM_MODEL must be set") if llm_model.empty?
@@ -158,6 +150,7 @@ module KubernetesValidation
         "CONTENT_PIPELINE_INTERNAL_TOKEN",
         "R2_ACCESS_KEY_ID",
         "R2_SECRET_ACCESS_KEY",
+        "X_OAUTH2_CLIENT_SECRET",
       ].each do |key|
         value = secret_value(secret, key)
         if value.empty?
@@ -297,6 +290,29 @@ module KubernetesValidation
       end
     end
 
+    def validate_x_oauth_config(context, config, overlay)
+      client_id = config.data["X_OAUTH2_CLIENT_ID"].to_s.strip
+      context.add_error("#{overlay} mpp-app-config X_OAUTH2_CLIENT_ID must be set") if client_id.empty?
+      if deployable_validation? && example_config_value?(client_id)
+        context.add_error("#{overlay} mpp-app-config X_OAUTH2_CLIENT_ID must not use a placeholder in deployable validation")
+      end
+
+      uri = parse_uri(config.data["X_OAUTH2_REDIRECT_URL"].to_s)
+      if uri.nil? || uri.scheme != "https" || uri.host.to_s.empty?
+        context.add_error("#{overlay} mpp-app-config X_OAUTH2_REDIRECT_URL must be an https URL")
+        return
+      end
+
+      ingress = context.document("Ingress", "mpp-public-gateway", "mpp-system")
+      hosts = ingress ? AppBaseline.ingress_hosts(ingress) : []
+      unless hosts.include?(uri.host)
+        context.add_error("#{overlay} X_OAUTH2_REDIRECT_URL host must match an Ingress host")
+      end
+      if deployable_validation? && example_host?(uri.host)
+        context.add_error("#{overlay} X_OAUTH2_REDIRECT_URL must not use example.invalid in deployable validation")
+      end
+    end
+
     def validate_sha_image(context, image, label, repository)
       unless image.match?(/\A#{Regexp.escape(repository)}:sha-[0-9a-f]{40}\z/)
         context.add_error("#{label} must use #{repository}:sha-<40 hex>")
@@ -321,6 +337,10 @@ module KubernetesValidation
 
     def example_secret_value?(value)
       value.start_with?(EXAMPLE_SECRET_PREFIX) || value == EXAMPLE_COOKIE_ENCRYPTION_KEY
+    end
+
+    def example_config_value?(value)
+      value.start_with?(EXAMPLE_SECRET_PREFIX) || value.start_with?("replace-with-")
     end
 
     def example_llm_model?(value)
