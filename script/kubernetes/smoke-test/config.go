@@ -26,6 +26,7 @@ type Config struct {
 	AuthToken              string
 	ProjectID              string
 	BrowserPlatform        string
+	FullE2E                bool
 	RunUserFlowProbes      bool
 	RunBrowserSessionProbe bool
 	RequireUserFlows       bool
@@ -33,6 +34,10 @@ type Config struct {
 	SkipInternalHTTP       bool
 	SkipRuntimeRBAC        bool
 	SkipRuntimeCleanup     bool
+	SkipDiagnostics        bool
+	DiagnosticLines        int
+	ReportJSON             string
+	ReportJUnit            string
 	DryRun                 bool
 	Verbose                bool
 }
@@ -50,6 +55,7 @@ func ParseConfig(args []string, env map[string]string) (*Config, error) {
 		AuthToken:              env["MPP_SMOKE_AUTH_TOKEN"],
 		ProjectID:              env["MPP_SMOKE_PROJECT_ID"],
 		BrowserPlatform:        envString(env, "MPP_SMOKE_BROWSER_PLATFORM", "douyin"),
+		FullE2E:                truthy(env["MPP_SMOKE_FULL_E2E"]),
 		RunUserFlowProbes:      truthy(env["MPP_SMOKE_RUN_USER_FLOW_PROBES"]),
 		RunBrowserSessionProbe: truthy(env["MPP_SMOKE_RUN_BROWSER_SESSION_PROBE"]),
 		RequireUserFlows:       truthy(env["MPP_SMOKE_REQUIRE_USER_FLOWS"]),
@@ -57,6 +63,10 @@ func ParseConfig(args []string, env map[string]string) (*Config, error) {
 		SkipInternalHTTP:       truthy(env["MPP_SMOKE_SKIP_INTERNAL_HTTP"]),
 		SkipRuntimeRBAC:        truthy(env["MPP_SMOKE_SKIP_RUNTIME_RBAC"]),
 		SkipRuntimeCleanup:     truthy(env["MPP_SMOKE_SKIP_RUNTIME_CLEANUP"]),
+		SkipDiagnostics:        truthy(env["MPP_SMOKE_SKIP_DIAGNOSTICS"]),
+		DiagnosticLines:        envInt(env, "MPP_SMOKE_DIAGNOSTIC_LINES", 60),
+		ReportJSON:             env["MPP_SMOKE_REPORT_JSON"],
+		ReportJUnit:            env["MPP_SMOKE_REPORT_JUNIT"],
 		Verbose:                truthy(env["MPP_SMOKE_VERBOSE"]),
 	}
 
@@ -75,6 +85,7 @@ func ParseConfig(args []string, env map[string]string) (*Config, error) {
 	flags.StringVar(&config.AuthToken, "auth-token", config.AuthToken, "")
 	flags.StringVar(&config.ProjectID, "project-id", config.ProjectID, "")
 	flags.StringVar(&config.BrowserPlatform, "browser-platform", config.BrowserPlatform, "")
+	flags.BoolVar(&config.FullE2E, "full-e2e", config.FullE2E, "")
 	flags.BoolVar(&config.RunUserFlowProbes, "run-user-flow-probes", config.RunUserFlowProbes, "")
 	flags.BoolVar(&config.RunBrowserSessionProbe, "run-browser-session-probe", config.RunBrowserSessionProbe, "")
 	flags.BoolVar(&config.RequireUserFlows, "require-user-flows", config.RequireUserFlows, "")
@@ -82,6 +93,10 @@ func ParseConfig(args []string, env map[string]string) (*Config, error) {
 	flags.BoolVar(&config.SkipInternalHTTP, "skip-internal-http", config.SkipInternalHTTP, "")
 	flags.BoolVar(&config.SkipRuntimeRBAC, "skip-runtime-rbac", config.SkipRuntimeRBAC, "")
 	flags.BoolVar(&config.SkipRuntimeCleanup, "skip-runtime-cleanup", config.SkipRuntimeCleanup, "")
+	flags.BoolVar(&config.SkipDiagnostics, "skip-diagnostics", config.SkipDiagnostics, "")
+	flags.IntVar(&config.DiagnosticLines, "diagnostic-lines", config.DiagnosticLines, "")
+	flags.StringVar(&config.ReportJSON, "report-json", config.ReportJSON, "")
+	flags.StringVar(&config.ReportJUnit, "report-junit", config.ReportJUnit, "")
 	flags.BoolVar(&config.DryRun, "dry-run", false, "")
 	flags.BoolVar(&config.Verbose, "verbose", config.Verbose, "")
 	flags.BoolVar(&config.Verbose, "v", config.Verbose, "")
@@ -121,6 +136,9 @@ func (config *Config) Normalize() error {
 	if err := positiveInteger(config.RequestTimeout, "request timeout"); err != nil {
 		return err
 	}
+	if err := positiveInteger(config.DiagnosticLines, "diagnostic lines"); err != nil {
+		return err
+	}
 	if config.PublicURL, err = normalizeURL(config.PublicURL, "public URL"); err != nil {
 		return err
 	}
@@ -132,8 +150,29 @@ func (config *Config) Normalize() error {
 	}
 	config.AuthToken = blankToEmpty(config.AuthToken)
 	config.ProjectID = blankToEmpty(config.ProjectID)
+	config.ReportJSON = blankToEmpty(config.ReportJSON)
+	config.ReportJUnit = blankToEmpty(config.ReportJUnit)
+	if config.FullE2E {
+		config.RunUserFlowProbes = true
+		config.RunBrowserSessionProbe = true
+		config.RequireUserFlows = true
+	}
 	if config.RunBrowserSessionProbe {
 		config.RunUserFlowProbes = true
+	}
+	if config.FullE2E {
+		if config.SkipPublic || config.SkipInternalHTTP || config.SkipRuntimeRBAC || config.SkipRuntimeCleanup {
+			return fmt.Errorf("full E2E cannot be combined with core smoke skip flags")
+		}
+		if config.PublicURL == "" {
+			return fmt.Errorf("full E2E requires --public-url or MPP_PUBLIC_URL")
+		}
+		if config.AuthToken == "" {
+			return fmt.Errorf("full E2E requires --auth-token or MPP_SMOKE_AUTH_TOKEN")
+		}
+		if config.ProjectID == "" {
+			return fmt.Errorf("full E2E requires --project-id or MPP_SMOKE_PROJECT_ID")
+		}
 	}
 	return nil
 }
@@ -262,6 +301,7 @@ Public and user-flow probes:
   --auth-token TOKEN               Bearer token for authenticated smoke probes. Env: MPP_SMOKE_AUTH_TOKEN
   --project-id ID                  Existing project ID for collaboration and publishing dependency probes. Env: MPP_SMOKE_PROJECT_ID
   --browser-platform NAME          Browser session platform. Default: douyin
+  --full-e2e                       Require public, authenticated, project, collaboration, and browser-session probes.
   --run-user-flow-probes           Run authenticated read and project-scoped probes.
   --run-browser-session-probe      Start and cancel a remote browser session through the backend API.
   --require-user-flows             Fail instead of skipping when user-flow inputs are missing.
@@ -271,15 +311,20 @@ Skips:
   --skip-internal-http             Skip in-cluster HTTP probes.
   --skip-runtime-rbac              Skip browser runtime RBAC can-i probes.
   --skip-runtime-cleanup           Skip runtime Pod cleanup-state probes.
+  --skip-diagnostics               Skip failure diagnostics collection.
+  --diagnostic-lines LINES         Tail lines to print per diagnostic command. Default: 60
 
 Execution:
   --dry-run                        Print command intent without calling kubectl.
+  --report-json PATH               Write a machine-readable JSON report. Env: MPP_SMOKE_REPORT_JSON
+  --report-junit PATH              Write a JUnit XML report. Env: MPP_SMOKE_REPORT_JUNIT
   -v, --verbose                    Print command details.
   -h, --help                       Show this help.
 
 Examples:
   go run . --public-url https://mpp.example.com
   MPP_SMOKE_AUTH_TOKEN=... go run . --public-url https://mpp.example.com --run-user-flow-probes
+  MPP_SMOKE_AUTH_TOKEN=... go run . --public-url https://mpp.example.com --project-id ... --full-e2e
   go run . --run-browser-session-probe --auth-token ... --public-url https://mpp.example.com
 `
 }

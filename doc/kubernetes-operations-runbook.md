@@ -1330,6 +1330,33 @@ Run the Kubernetes smoke harness after applying an overlay:
 )
 ```
 
+If a required probe fails, the harness automatically prints app/runtime Pod
+summaries, recent events, and `browser-worker` Deployment diagnostics. Increase
+or reduce per-command output with `--diagnostic-lines`, or pass
+`--skip-diagnostics` when diagnostics are captured by CI artifacts.
+
+Use the full staging E2E profile for release verification. This enables public,
+authenticated, project-scoped, collaboration, and remote browser-session probes,
+and writes JSON/JUnit artifacts:
+
+```bash
+export MPP_SMOKE_AUTH_TOKEN=<bearer-token>
+export MPP_SMOKE_PROJECT_ID=<existing-project-id>
+(
+  cd script/kubernetes/smoke-test
+  go run . \
+    --public-url "$MPP_PUBLIC_URL" \
+    --full-e2e \
+    --report-json smoke-report.json \
+    --report-junit smoke-junit.xml
+)
+```
+
+The `Kubernetes Smoke E2E` GitHub Actions workflow runs this same profile
+against a selected protected environment. The environment must provide
+`MPP_KUBECONFIG_B64`, `MPP_SMOKE_AUTH_TOKEN`, and `MPP_SMOKE_PROJECT_ID`; the
+workflow uploads `smoke.log`, `smoke-report.json`, and `smoke-junit.xml`.
+
 Run authenticated read and project-scoped probes with a disposable user token:
 
 ```bash

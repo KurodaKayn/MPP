@@ -1,0 +1,105 @@
+name: Kubernetes Smoke E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub environment that stores staging smoke secrets.
+        required: true
+        default: staging
+      public_url:
+        description: Public MPP URL to probe.
+        required: true
+      app_namespace:
+        description: Kubernetes application namespace.
+        required: true
+        default: mpp-system
+      runtime_namespace:
+        description: Kubernetes browser runtime namespace.
+        required: true
+        default: mpp-browser-runtime
+      browser_platform:
+        description: Platform name used for the remote browser session probe.
+        required: true
+        default: douyin
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubernetes-smoke-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  staging-smoke:
+    name: Run staging smoke
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      KUBECONFIG_B64: ${{ secrets.MPP_KUBECONFIG_B64 }}
+      MPP_SMOKE_AUTH_TOKEN: ${{ secrets.MPP_SMOKE_AUTH_TOKEN }}
+      MPP_SMOKE_PROJECT_ID: ${{ secrets.MPP_SMOKE_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.33.9
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: script/kubernetes/smoke-test/go.mod
+
+      - name: Configure kubeconfig
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${KUBECONFIG_B64}" ]]; then
+            echo "Missing environment secret MPP_KUBECONFIG_B64" >&2
+            exit 1
+          fi
+
+          mkdir -p "${HOME}/.kube"
+          printf '%s' "${KUBECONFIG_B64}" | base64 -d > "${HOME}/.kube/config"
+          chmod 600 "${HOME}/.kube/config"
+
+      - name: Run full E2E smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${MPP_SMOKE_AUTH_TOKEN}" ]]; then
+            echo "Missing environment secret MPP_SMOKE_AUTH_TOKEN" >&2
+            exit 1
+          fi
+          if [[ -z "${MPP_SMOKE_PROJECT_ID}" ]]; then
+            echo "Missing environment secret MPP_SMOKE_PROJECT_ID" >&2
+            exit 1
+          fi
+
+          report_dir="${GITHUB_WORKSPACE}/artifacts/kubernetes-smoke"
+          mkdir -p "${report_dir}"
+
+          (
+            cd script/kubernetes/smoke-test
+            go run . \
+              --full-e2e \
+              --public-url "${{ inputs.public_url }}" \
+              --app-namespace "${{ inputs.app_namespace }}" \
+              --runtime-namespace "${{ inputs.runtime_namespace }}" \
+              --browser-platform "${{ inputs.browser_platform }}" \
+              --report-json "${report_dir}/smoke-report.json" \
+              --report-junit "${report_dir}/smoke-junit.xml"
+          ) 2>&1 | tee "${report_dir}/smoke.log"
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubernetes-smoke-${{ inputs.environment }}
+          path: artifacts/kubernetes-smoke
+          if-no-files-found: warn

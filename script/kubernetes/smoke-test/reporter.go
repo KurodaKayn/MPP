@@ -78,6 +78,17 @@ func (reporter *Reporter) Skip(name string, detail string) {
 	reporter.line("SKIP", name, detail)
 }
 
+func (reporter *Reporter) Diagnostic(name string, detail string) {
+	fmt.Fprintf(reporter.io, "  DIAG %s\n", name)
+	if strings.TrimSpace(detail) == "" {
+		fmt.Fprintln(reporter.io, "    (no output)")
+		return
+	}
+	for _, line := range strings.Split(detail, "\n") {
+		fmt.Fprintf(reporter.io, "    %s\n", line)
+	}
+}
+
 func (reporter *Reporter) Info(message string) {
 	if reporter.verbose {
 		fmt.Fprintf(reporter.io, "  INFO %s\n", message)
