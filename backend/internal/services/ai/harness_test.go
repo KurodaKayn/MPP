@@ -62,6 +62,8 @@ func TestRunnerStateMachineLoop(t *testing.T) {
 		&models.AIToolCall{},
 		&models.AIDraftingSessionSummary{},
 		&models.AISessionEvent{},
+		&models.AIUsageRecord{},
+		&models.WorkspaceQuotaAggregate{},
 		&models.MediaAsset{},
 		&models.ProjectComment{},
 	)
@@ -99,7 +101,8 @@ func TestRunnerStateMachineLoop(t *testing.T) {
 
 	assembler := NewAIContextAssembler(db)
 	eventMgr := NewEventLogManager(db)
-	runner := NewRunner(db, eventMgr, assembler)
+	quotaSvc := NewQuotaService(db)
+	runner := NewRunner(db, eventMgr, assembler, quotaSvc)
 
 	// Register a mock tool
 	toolExecuted := false
