@@ -51,7 +51,7 @@ MPP 当前已经具备多服务雏形：
 | 5    | API 服务无状态化与横向扩容   | 支撑更多并发请求                          | backend 不保存本地会话，扩多副本，共享 Redis/Postgres         | 5        | 2    | P1     | 完成     | API 基本无状态并支持 `api/worker/all` 角色，生产 Compose 默认多 backend 副本，数据层专项演进见 [数据库专项方案](./database-optimization.md)                                                                                   |
 | 6    | Redis 队列升级为可靠任务模型 | 发布任务异步化、可重试、可恢复            | 用 Redis Streams 或 Asynq 管理 publish jobs                   | 5        | 3    | P1     | 完成     | 已用 Asynq 替换 Redis List；publish job 具备 ack/retry/worker crash recovery/archive 语义，任务 payload 只保存 durable IDs，不携带 browser session 地址或 token                                                               |
 | 7    | 幂等键与发布状态机           | 防止重复点击、重复消费、重复发布          | publish 请求带 idempotency key，publication 状态机严格流转    | 5        | 3    | P1     | 完成     | 发布请求已支持 idempotency key 复用；publication 状态已对齐 `draft`、`syncing`、`queued`、`publishing`、`succeeded`、`failed`、`cancelled`，旧状态名保留为兼容别名                                                               |
-| 8    | Outbox Pattern               | 数据库更新与事件投递一致性                | publication 状态更新后写 outbox，由 worker 投递任务           | 4        | 4    | P1     | 未开始   | 适合发布流水线，但实现要谨慎                                                                                                                                                                                                  |
+| 8    | Outbox Pattern               | 数据库更新与事件投递一致性                | publication 状态更新后写 outbox，由 worker 投递任务           | 4        | 4    | P1     | 完成     | 发布排队链路已落地事务 Outbox：`EnqueuePublishProject` 同事务写 `outbox_events`，提交后即时 dispatch，worker 定时 flush failed/stale processing 并重试；当前仅覆盖 `publish.job_requested`，通用多消费者 CDC 仍按数据库专项演进 |
 | 9    | 分布式锁强化                 | 避免同一 publication 被并发发布           | Redis lock 加 owner、TTL、续约、释放校验                      | 5        | 2    | P1     | 完成     | 项目已经有 Redis，成本可控                                                                                                                                                                                                    |
 | 10   | 外部调用熔断、重试、退避     | 防止第三方平台或 LLM 故障拖垮系统         | AI、微信、知乎、X、抖音调用统一 retry/backoff/circuit breaker | 5        | 3    | P1     | 完成     | backend 已新增统一 resilience 层，HTTP retry 默认仅覆盖安全方法，非幂等 POST 只做 timeout/circuit breaker；发布操作层按平台维度熔断但不重试完整发布；ai-service LLM 客户端已配置 timeout、max retries 和 stream chunk timeout |
 | 11   | Browser Worker 资源池与配额  | 控制 Chromium 容器数量，避免宿主机爆掉    | 每用户/工作区限制并发 browser session，全局 worker pool       | 5        | 3    | P1     | 完成     | 已有用户+平台活跃 session 锁、用户/工作区并发配额、全局 worker pool 和容器 CPU/内存限制                                                                                                                                       |
@@ -146,7 +146,7 @@ MPP 当前已经具备多服务雏形：
 
 - 当前保留 Go backend 作为业务核心，不急着拆成多个业务微服务。
 - Traefik、限流、可观测性、健康检查、幂等、可靠队列、分布式锁、publish-worker、browser-worker 资源池和对象存储已经形成主要基线。
-- 下一阶段优先推进 Outbox Pattern、CDN、数据库读模型、缓存精细失效、读写分离收尾、事件保留期和归档。
+- 下一阶段优先推进 CDN、缓存精细失效、读写分离收尾、事件保留期和归档；Outbox 后续重点是从发布任务扩展到更多业务事件，并在多消费者需求明确后再评估 CDC。
 - Temporal、Service Mesh 和多区域容灾继续按触发条件评估；Kubernetes 保留为已经具备基础包和 runbook 的可选生产路径；数据层专项扩展按 [数据库专项方案](./database-optimization.md) 推进。
 
 这条路线能在控制复杂度的同时提升项目的并发承载、稳定性和业务增长承载能力。

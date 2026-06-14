@@ -66,7 +66,7 @@
 | 读写分离           | 进行中   | 已支持 `DB_READER_*` 可选读副本连接、`DefaultRouter`、签名 sticky writer；project/stats/workspace/platform_account 已接入 strong/eventual 路由和 stale replica 回归测试；dashboard、publish、collab-service 已完成一致性等级清单；writer pool 已在 Docker Compose 和自托管 Kubernetes 落地；`DB_READER_MAX_REPLICA_LAG` 可配置 replica lag 阈值，超阈值或 lag 未知时 eventual/analytics read 自动回退 writer，并暴露 `mpp_db_replica_lag_seconds`、`mpp_db_replica_healthy` 指标 | 生产 read replica、PgBouncer reader pool、publish/collab-service 按清单接入实际 DB Router | `backend/internal/db/db.go`、`backend/internal/db/router.go`、`backend/internal/db/replica_lag.go`、`backend/internal/observability/observability.go`、`backend/internal/middleware/sticky_writer.go`、`deploy/kubernetes/data-services/self-hosted/pgbouncer.yaml`、本文阶段 0 一致性等级清单 |
 | 事件表分区与归档   | 进行中   | `publish_events`、`extension_execution_events`、`project_activities`、`workspace_activities` 和终端 `remote_browser_sessions` 已制定默认保留期；`archive` worker 可按批导出 JSONL 到 R2/S3，成功上传后删除热表旧行 | 时间分区、冷分区导出、恢复流程未实现                                   | `backend/internal/services/archive/config.go`、`backend/internal/services/archive/worker.go`、`backend/internal/services/archive/worker_test.go` |
 | 协作批次治理       | 进行中   | `collab_document_states`、`collab_document_update_batches`、compaction/retention 基础已存在                           | `document_id` hash 分区、冷归档未实现                                 | `backend/internal/models/collab.go`、`collab-service/src/persistence/document-persistence.ts` |
-| Outbox/CDC/事件流  | 未开始   | Asynq 已承担发布任务队列；`PublishEvent` 已承担发布审计                                                               | 事务 Outbox、Debezium、Redpanda/Kafka CDC 未实现                      | `backend/internal/services/publish/queue.go`、`backend/internal/models/models.go`             |
+| Outbox/CDC/事件流  | 进行中   | 发布排队链路已落地事务 Outbox：`EnqueuePublishProject` 同事务写 `outbox_events`，提交后即时 dispatch；publish worker 启动 outbox dispatcher，支持 failed/stale processing 重试；Asynq 继续承担任务执行队列，`PublishEvent` 继续承担发布审计 | 当前仅覆盖 `publish.job_requested`；通用业务事件 outbox、Debezium、Redpanda/Kafka CDC 未实现 | `backend/internal/services/publish/queue.go`、`backend/internal/services/publish/outbox.go`、`backend/internal/models/models.go` |
 | Citus 目标态       | 未开始   | 已确认 `workspace_id` 是最合适的分布列方向                                                                            | Citus 分布式表、reference table、colocation、迁移演练未实现           | 本文阶段 5/6                                                                                  |
 | 复杂 DDL 迁移规范  | 完成     | 已制定版本化迁移规范，明确复杂 DDL 的触发条件、脚本命名、expand/contract 流程、回滚和验证要求                         | 后续首次复杂 DDL 需要选择并落地 `goose` 或 Atlas 执行器               | 本文阶段 0 复杂 DDL 版本化迁移规范                                                            |
 
@@ -368,7 +368,7 @@ dashboard / publish / collab-service DB 调用一致性清单：
 - PostgreSQL 读模型表。
 - Redis cache。
 - Asynq 定时/异步任务。
-- 后期可升级为 Outbox Pattern。
+- 发布排队链路已使用 Outbox Pattern；读模型刷新当前仍主要复用 Asynq/服务内触发，后续可按业务事件扩展 outbox 类型。
 
 收益：
 
@@ -378,7 +378,7 @@ dashboard / publish / collab-service DB 调用一致性清单：
 成本：
 
 - 需要处理读模型延迟和重建。
-- 需要在写路径增加事件或 outbox 记录。
+- 需要处理读模型刷新延迟、重建和 outbox 事件类型扩展。
 
 ### 阶段 3：读写分离
 
@@ -584,12 +584,12 @@ dashboard / publish / collab-service DB 调用一致性清单：
 
 ### 7.4 Outbox 与 CDC 演进
 
-当前阶段不需要为发布队列替换 Kafka。MPP 已经使用 Asynq 管发布任务，更适合先做事务内 outbox：
+当前阶段不需要为发布队列替换 Kafka。MPP 已经在发布排队链路落地事务内 outbox：
 
-1. 业务事务更新事实表。
-2. 同事务写 `outbox_events`。
-3. Asynq 或独立 dispatcher 读取 outbox，更新读模型、发通知、写审计、触发归档。
-4. 当消费者数量和事件规模明显增长，再把 outbox 通过 Debezium 推到 Redpanda/Kafka。
+1. `EnqueuePublishProject` 在业务事务中更新 publication、publish event、project activity 等事实表。
+2. 同事务写 `outbox_events`，当前事件类型为 `publish.job_requested`。
+3. 事务提交后立即尝试 dispatch；失败时保留 outbox 记录并标记 failed，后续由 publish worker 的 outbox dispatcher 扫描 failed/stale processing 记录并重试。
+4. 后续可将更多读模型刷新、通知、审计、归档事件纳入 outbox；当消费者数量和事件规模明显增长，再把 outbox 通过 Debezium 推到 Redpanda/Kafka。
 
 引入 Redpanda/Kafka 的触发条件：
 
@@ -623,8 +623,8 @@ dashboard / publish / collab-service DB 调用一致性清单：
 
 1. PgBouncer writer pool。
 2. Dashboard 读模型表。
-3. Outbox dispatcher。
-4. PostgreSQL read replica 和显式 DB Router。
+3. PostgreSQL read replica 和显式 DB Router。
+4. 将 Outbox 从 `publish.job_requested` 扩展到更多读模型、通知、归档事件。
 5. 事件表时间分区、协作批次 hash 分区。
 
 长期才做：
