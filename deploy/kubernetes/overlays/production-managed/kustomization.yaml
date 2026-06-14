@@ -4,6 +4,7 @@ resources:
   - ../../browser-runtime-control
   - ../../app-baseline
   - ../../data-services/managed
+  - ../../external-secrets
 
 patches:
   - patch: |-
