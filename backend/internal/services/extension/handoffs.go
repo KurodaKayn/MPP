@@ -12,6 +12,7 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	platformcapabilities "github.com/kurodakayn/mpp-backend/internal/platformcapabilities"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 )
@@ -23,26 +24,7 @@ const (
 	extensionHandoffTTL           = 10 * time.Minute
 )
 
-type extensionPlatformConfig struct {
-	AdapterKey  string
-	InjectURL   string
-	ContentKind string
-}
-
-var extensionPlatformConfigs = map[string]extensionPlatformConfig{
-	"douyin": {
-		AdapterKey:  "DYNAMIC_DOUYIN",
-		InjectURL:   "https://creator.douyin.com/creator-micro/content/upload?default-tab=5",
-		ContentKind: "article",
-	},
-	"x": {
-		AdapterKey:  "POST_X",
-		InjectURL:   "https://x.com/compose/post",
-		ContentKind: "dynamic_post",
-	},
-}
-
-var extensionPlatformKeys = []string{"douyin", "x"}
+var extensionPlatformKeys = platformcapabilities.ExtensionHandoffPlatformKeys
 
 func (s *Service) GetExtensionSession(userID uuid.UUID) (*dto.ExtensionSessionResponse, error) {
 	var user models.User
@@ -93,7 +75,7 @@ func (s *Service) ListExtensionPrepublish(userID uuid.UUID) (*dto.ExtensionPrepu
 }
 
 func extensionPrepublishPlatformFromPublication(publication models.ProjectPlatformPublication) dto.ExtensionPrepublishPlatform {
-	config := extensionPlatformConfigs[publication.Platform]
+	config, _ := platformcapabilities.ExtensionHandoffConfigFor(publication.Platform)
 
 	return dto.ExtensionPrepublishPlatform{
 		PublicationID: publication.ID,
@@ -148,7 +130,7 @@ func (s *Service) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensi
 	handoffPlatforms := make([]dto.ExtensionHandoffPlatform, 0, len(platforms))
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		for _, platform := range platforms {
-			config := extensionPlatformConfigs[platform]
+			config, _ := platformcapabilities.ExtensionHandoffConfigFor(platform)
 			var publication models.ProjectPlatformPublication
 			if err := tx.Where("project_id = ? AND platform = ?", project.ID, platform).First(&publication).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -179,8 +161,8 @@ func (s *Service) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensi
 				AdapterKey:     config.AdapterKey,
 				InjectURL:      config.InjectURL,
 				ContentKind:    config.ContentKind,
-				AutoPublish:    false,
-				RequiresReview: true,
+				AutoPublish:    config.AutoPublish,
+				RequiresReview: config.RequiresReview,
 				AdaptedContent: adaptedContent,
 				Assets:         []dto.ExtensionHandoffAsset{},
 				Callback: dto.ExtensionHandoffCallback{
@@ -335,7 +317,7 @@ func normalizeExtensionHandoffPlatforms(input []string) ([]string, error) {
 		if platform == "" {
 			continue
 		}
-		if _, ok := extensionPlatformConfigs[platform]; !ok {
+		if _, ok := platformcapabilities.ExtensionHandoffConfigFor(platform); !ok {
 			return nil, ErrInvalidProject
 		}
 		if _, ok := seen[platform]; ok {

@@ -10,7 +10,7 @@ export interface components {
     /** @enum {string} */
     DraftFormat: "html" | "markdown" | "text";
     /** @enum {string} */
-    PublishPlatform: "douyin" | "wechat" | "x" | "zhihu";
+    PublishPlatform: "wechat" | "zhihu" | "x" | "douyin";
     /** @enum {string} */
     GeneratedByType: "agent" | "system" | "user";
     /** @enum {string} */

@@ -144,7 +144,7 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Equal(t, models.PublicationStatusPublished, result.Status)
 
 	var completedActivity models.ProjectActivity
 	require.NoError(t, db.First(
@@ -215,7 +215,7 @@ func TestPublishProjectInvalidatesDashboardCaches(t *testing.T) {
 
 	resp, err := s.WithContext(context.Background()).PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, resp["status"])
+	assert.Equal(t, models.PublicationStatusPublished, resp.Status)
 	requirePublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 0)
 	require.Contains(t, requirePublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1), staleStatsKey)
 
@@ -258,8 +258,8 @@ func TestEnqueuePublishProjectCreatesImmediateScheduleAndAttempt(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, models.PublicationStatusSucceeded, resp["status"])
-	scheduleID, err := uuid.Parse(resp["scheduled_publication_id"].(string))
+	require.Equal(t, models.PublicationStatusSucceeded, resp.Status)
+	scheduleID, err := uuid.Parse(resp.ScheduledPublicationID)
 	require.NoError(t, err)
 
 	var schedule models.ScheduledPublication
@@ -321,10 +321,10 @@ func TestPublishProjectAppendsAttemptsWhenRetryingSameSchedule(t *testing.T) {
 
 	first, err := s.PublishProject(project.ID, "wechat", &user.ID, schedule.ID)
 	require.NoError(t, err)
-	require.Equal(t, models.PublicationStatusFailed, first["status"])
+	require.Equal(t, models.PublicationStatusFailed, first.Status)
 	second, err := s.PublishProject(project.ID, "wechat", &user.ID, schedule.ID)
 	require.NoError(t, err)
-	require.Equal(t, models.PublicationStatusSucceeded, second["status"])
+	require.Equal(t, models.PublicationStatusSucceeded, second.Status)
 
 	var attempts []models.PublishAttempt
 	require.NoError(t, db.Order("attempt_no asc").Find(&attempts, "scheduled_publication_id = ?", schedule.ID).Error)
@@ -443,7 +443,7 @@ func TestPublishProjectDoesNotAppendAttemptWhileScheduleIsRunning(t *testing.T) 
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, schedule.ID)
 
 	require.ErrorIs(t, err, services.ErrPublicationAlreadyPublishing)
-	require.Nil(t, result)
+	require.Empty(t, result.Status)
 	var attempts []models.PublishAttempt
 	require.NoError(t, db.Order("attempt_no asc").Find(&attempts, "scheduled_publication_id = ?", schedule.ID).Error)
 	require.Len(t, attempts, 1)
@@ -659,7 +659,7 @@ func TestPublishProjectAllowsEmbeddedWechatCredentialsWithoutSavedAccount(t *tes
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Equal(t, models.PublicationStatusPublished, result.Status)
 	assert.JSONEq(t, `{"app_id":"wx","app_secret":"secret","title":"Title"}`, string(fakePublisher.Config))
 }
 
@@ -732,7 +732,7 @@ func TestPublishProjectPresignsReadyMediaRefsWithoutPersistingSignedURLs(t *test
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Equal(t, models.PublicationStatusPublished, result.Status)
 	expectedURL := "fake://get/mpp-media/" + asset.ObjectKey
 	assert.Contains(t, string(fakePublisher.Config), expectedURL)
 	assert.NotContains(t, string(fakePublisher.Config), mediaRef)
@@ -810,7 +810,7 @@ func TestPublishProjectValidatesWorkspaceLibraryMediaReadyState(t *testing.T) {
 
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	require.ErrorIs(t, err, services.ErrPublishMediaAssetNotReady)
-	require.Nil(t, result)
+	require.Empty(t, result.Status)
 	require.Empty(t, fakePublisher.Config)
 
 	require.NoError(t, db.Model(&models.MediaAsset{}).
@@ -819,7 +819,7 @@ func TestPublishProjectValidatesWorkspaceLibraryMediaReadyState(t *testing.T) {
 
 	result, err = s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Equal(t, models.PublicationStatusPublished, result.Status)
 	assert.Contains(t, string(fakePublisher.Config), "fake://get/mpp-media/"+asset.ObjectKey)
 }
 
@@ -894,7 +894,7 @@ func TestPublishProjectPreservesReadyMediaRefsWhenContentPipelineResolverIsConfi
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Equal(t, models.PublicationStatusPublished, result.Status)
 	assert.Contains(t, string(fakePublisher.Config), mediaRef)
 	assert.NotContains(t, string(fakePublisher.Config), "fake://get/")
 	assert.Contains(t, string(fakePublisher.AdaptedContent), mediaRef)
@@ -941,7 +941,7 @@ func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
 	result, err := s.PublishProject(project.ID, "douyin", &user.ID, uuid.Nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Equal(t, models.PublicationStatusPublished, result.Status)
 	assert.Contains(t, string(fakePublisher.AccountCookies), "secret-value")
 	assert.NotContains(t, string(fakePublisher.AccountCookies), "ciphertext")
 
@@ -989,7 +989,7 @@ func TestPublishProjectIgnoresBrowserSessionIDForAsyncPublishing(t *testing.T) {
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, sessionID)
 
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Equal(t, models.PublicationStatusPublished, result.Status)
 	assert.Empty(t, fakePublisher.RemoteURL)
 }
 
@@ -1062,7 +1062,7 @@ func TestPublishProjectBlocksUnhealthyAccountAndCreatesNotification(t *testing.T
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 
 	require.ErrorIs(t, err, services.ErrInvalidPlatformAccount)
-	require.Nil(t, result)
+	require.Empty(t, result.Status)
 	assert.Empty(t, fakePublisher.Config)
 
 	var notification models.Notification
@@ -1103,7 +1103,7 @@ func TestPublishProjectRequiresPrepublishSyncForPendingPublication(t *testing.T)
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 
 	require.ErrorIs(t, err, services.ErrPublicationRequiresSync)
-	require.Nil(t, result)
+	require.Empty(t, result.Status)
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
@@ -1140,7 +1140,7 @@ func TestPublishProjectRequiresPrepublishSyncForSyncingPublication(t *testing.T)
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 
 	require.ErrorIs(t, err, services.ErrPublicationRequiresSync)
-	require.Nil(t, result)
+	require.Empty(t, result.Status)
 	assert.Empty(t, fakePublisher.Config)
 
 	var saved models.ProjectPlatformPublication
@@ -1193,7 +1193,7 @@ func TestPublishProjectRejectsProjectEditor(t *testing.T) {
 	result, err := s.PublishProject(project.ID, "wechat", &editor.ID, uuid.Nil)
 
 	require.ErrorIs(t, err, services.ErrForbidden)
-	require.Nil(t, result)
+	require.Empty(t, result.Status)
 	require.Empty(t, fakePublisher.Config)
 }
 
@@ -1234,7 +1234,7 @@ func TestPublishProjectRejectsProjectViewer(t *testing.T) {
 	result, err := s.PublishProject(project.ID, "wechat", &viewer.ID, uuid.Nil)
 
 	require.ErrorIs(t, err, services.ErrForbidden)
-	require.Nil(t, result)
+	require.Empty(t, result.Status)
 	require.Empty(t, fakePublisher.Config)
 }
 
@@ -1278,7 +1278,7 @@ func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
 
 	result, err := s.PublishProject(project.ID, "x", &user.ID, uuid.Nil)
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Equal(t, models.PublicationStatusPublished, result.Status)
 
 	var config map[string]any
 	require.NoError(t, json.Unmarshal(fakePublisher.Config, &config))
@@ -1350,7 +1350,7 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 
 	result, err := s.PublishProject(project.ID, "x", &user.ID, uuid.Nil)
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result["status"])
+	assert.Equal(t, models.PublicationStatusPublished, result.Status)
 	assert.Equal(t, "oauth2-refresh", provider.RefreshToken)
 	assert.Equal(t, "client-id", provider.RefreshConfig.ClientID)
 	assert.Equal(t, "client-secret", provider.RefreshConfig.ClientSecret)
@@ -1397,11 +1397,11 @@ func TestCreateXPostIntentReturnsManualPublishURL(t *testing.T) {
 
 	result, err := s.CreateXPostIntent(project.ID, &user.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "manual_required", result["status"])
-	assert.Equal(t, "x", result["platform"])
+	assert.Equal(t, "manual_required", result.Status)
+	assert.Equal(t, "x", result.Platform)
 
-	publishURL, ok := result["publish_url"].(string)
-	require.True(t, ok)
+	publishURL := result.PublishURL
+	require.NotEmpty(t, publishURL)
 	parsed, err := url.Parse(publishURL)
 	require.NoError(t, err)
 	assert.Equal(t, "https", parsed.Scheme)
@@ -1442,7 +1442,7 @@ func TestCreateXPostIntentRequiresPrepublishSyncForPendingPublication(t *testing
 	result, err := s.CreateXPostIntent(project.ID, &user.ID)
 
 	require.ErrorIs(t, err, services.ErrPublicationRequiresSync)
-	require.Nil(t, result)
+	require.Empty(t, result.Status)
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
@@ -1484,7 +1484,7 @@ func TestCreateXPostIntentRejectsProjectEditor(t *testing.T) {
 	result, err := s.CreateXPostIntent(project.ID, &editor.ID)
 
 	require.ErrorIs(t, err, services.ErrForbidden)
-	require.Nil(t, result)
+	require.Empty(t, result.Status)
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
@@ -1525,7 +1525,7 @@ func TestCreateXPostIntentRejectsProjectViewer(t *testing.T) {
 	result, err := s.CreateXPostIntent(project.ID, &viewer.ID)
 
 	require.ErrorIs(t, err, services.ErrForbidden)
-	require.Nil(t, result)
+	require.Empty(t, result.Status)
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)

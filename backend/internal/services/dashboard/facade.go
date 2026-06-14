@@ -245,37 +245,55 @@ func (s *DashboardService) wireDashboardCacheInvalidators() {
 	if s == nil {
 		return
 	}
+	sideEffects := s.dashboardSideEffects()
 	if s.Project != nil && s.Project.Service != nil && s.Stats != nil && s.Stats.Service != nil {
-		s.Project.SetDashboardStatsCacheInvalidator(s.Stats.Service)
+		s.Project.SetDashboardStatsCacheInvalidator(sideEffects)
 	}
 	if s.Project != nil && s.Project.Service != nil {
-		s.Project.SetDashboardReadModelUpdater(s.readModel)
+		s.Project.SetDashboardReadModelUpdater(sideEffects)
 	}
 	if s.Prepublish != nil && s.Prepublish.Service != nil && s.Stats != nil && s.Stats.Service != nil {
-		s.Prepublish.SetDashboardStatsCacheInvalidator(s.Stats.Service)
+		s.Prepublish.SetDashboardStatsCacheInvalidator(sideEffects)
 	}
 	if s.Prepublish != nil && s.Prepublish.Service != nil {
-		s.Prepublish.SetDashboardReadModelUpdater(s.readModel)
+		s.Prepublish.SetDashboardReadModelUpdater(sideEffects)
 	}
 	if s.Workspace != nil && s.Workspace.Service != nil {
-		s.Workspace.SetDashboardReadModelUpdater(s.readModel)
+		s.Workspace.SetDashboardReadModelUpdater(sideEffects)
 	}
 	if s.Publisher != nil && s.Publisher.Service != nil {
-		s.SetDashboardCacheInvalidator(s)
-		s.Publisher.SetDashboardReadModelUpdater(s.readModel)
+		publisher := s.Publisher.Service
+		publisher.SetDashboardCacheInvalidator(sideEffects)
+		publisher.SetDashboardReadModelUpdater(sideEffects)
+	}
+}
+
+func (s *DashboardService) dashboardSideEffects() dashboardSideEffects {
+	var projectLists dashboardProjectListInvalidator
+	if s.Project != nil && s.Project.Service != nil {
+		projectLists = s.Project.Service
+	}
+	var stats dashboardStatsInvalidator
+	if s.Stats != nil && s.Stats.Service != nil {
+		stats = s.Stats.Service
+	}
+	return dashboardSideEffects{
+		projectLists: projectLists,
+		stats:        stats,
+		readModels:   s.readModel,
 	}
 }
 
 func (s *DashboardService) InvalidateDashboardProjectListCache(ctx context.Context) {
-	if s == nil || s.Project == nil || s.Project.Service == nil {
+	if s == nil {
 		return
 	}
-	s.Project.InvalidateDashboardProjectListCache(ctx)
+	s.dashboardSideEffects().InvalidateDashboardProjectListCache(ctx)
 }
 
 func (s *DashboardService) InvalidateDashboardStatsCache(ctx context.Context) {
-	if s == nil || s.Stats == nil || s.Stats.Service == nil {
+	if s == nil {
 		return
 	}
-	s.Stats.InvalidateDashboardStatsCache(ctx)
+	s.dashboardSideEffects().InvalidateDashboardStatsCache(ctx)
 }
