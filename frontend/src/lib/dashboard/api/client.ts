@@ -1,4 +1,8 @@
-import { clearAuthSession, clearServerAuthSession } from "@/lib/auth/client";
+import {
+  clearAuthSession,
+  clearServerAuthSession,
+  subscribeAuthChanged,
+} from "@/lib/auth/client";
 import type {
   AIDraftingStreamEvent,
   AIDraftingStreamOptions,
@@ -37,6 +41,7 @@ const authUserStorageKey = "sevenoxcloud.auth_user";
 const dashboardGetCache = new Map<string, DashboardGetCacheEntry>();
 let dashboardGetCacheTtlMs = defaultDashboardGetCacheTtlMs;
 let dashboardGetCacheAuthScope: string | null = null;
+let unsubscribeDashboardGetCacheAuthChanges: (() => void) | null = null;
 
 function getStoredWorkspaceId() {
   if (typeof window === "undefined") {
@@ -131,6 +136,16 @@ function dashboardGetCacheKey(path: string, workspaceId: string) {
 
 function isDashboardGetCacheEnabled() {
   return typeof window !== "undefined";
+}
+
+function ensureDashboardGetCacheAuthSubscription() {
+  if (!isDashboardGetCacheEnabled() || unsubscribeDashboardGetCacheAuthChanges) {
+    return;
+  }
+
+  unsubscribeDashboardGetCacheAuthChanges = subscribeAuthChanged(() => {
+    clearDashboardGetCache();
+  });
 }
 
 export function setDashboardGetCacheTtlMs(ttlMs: number) {
@@ -252,6 +267,7 @@ export async function fetchDashboard<T>(
     return requestDashboardJson<T>(requestPath, requestInit);
   }
 
+  ensureDashboardGetCacheAuthSubscription();
   syncDashboardGetCacheAuthScope();
   const ttlMs =
     cacheTtlMsOption === undefined
