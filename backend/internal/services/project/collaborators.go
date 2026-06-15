@@ -44,6 +44,44 @@ func (s *Service) ListProjectCollaborators(projectID uuid.UUID, actorUserID uuid
 	return &dto.ProjectCollaboratorsResponse{Items: items}, nil
 }
 
+func (s *Service) ListOwnedProjectCollaboratorSummaries(actorUserID uuid.UUID) (*dto.ProjectCollaboratorSummariesResponse, error) {
+	if actorUserID == uuid.Nil {
+		return nil, ErrInvalidProject
+	}
+
+	var collaborators []models.ProjectCollaborator
+	if err := s.db.
+		Joins("JOIN projects ON projects.id = project_collaborators.project_id").
+		Preload("User", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id", "username", "email")
+		}).
+		Where("projects.user_id = ?", actorUserID).
+		Order("project_collaborators.project_id asc").
+		Order("project_collaborators.created_at asc").
+		Find(&collaborators).Error; err != nil {
+		return nil, err
+	}
+
+	items := make([]dto.ProjectCollaboratorSummary, 0)
+	indexByProjectID := make(map[uuid.UUID]int)
+	for _, collaborator := range collaborators {
+		index, ok := indexByProjectID[collaborator.ProjectID]
+		if !ok {
+			index = len(items)
+			indexByProjectID[collaborator.ProjectID] = index
+			items = append(items, dto.ProjectCollaboratorSummary{
+				ProjectID:     collaborator.ProjectID,
+				Collaborators: make([]dto.ProjectCollaborator, 0, 1),
+			})
+		}
+
+		items[index].Collaborators = append(items[index].Collaborators, projectCollaboratorFromModel(collaborator))
+		items[index].CollaboratorCount = len(items[index].Collaborators)
+	}
+
+	return &dto.ProjectCollaboratorSummariesResponse{Items: items}, nil
+}
+
 func (s *Service) AddProjectCollaborator(projectID uuid.UUID, actorUserID uuid.UUID, req dto.AddProjectCollaboratorRequest) (*dto.ProjectCollaborator, error) {
 	project, err := s.requireProjectOwner(projectID, actorUserID)
 	if err != nil {
