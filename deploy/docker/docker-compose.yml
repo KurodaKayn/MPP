@@ -28,8 +28,8 @@ services:
 
   frontend:
     build:
-      context: ../../frontend
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: frontend/Dockerfile
       args:
         FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://127.0.0.1}
     env_file: .env
@@ -252,8 +252,8 @@ services:
 
   collab-service:
     build:
-      context: ../../collab-service
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: collab-service/Dockerfile
     env_file: .env
     environment:
       COLLAB_PORT: "8090"

@@ -17,15 +17,19 @@ services:
       PORT: "3000"
       WATCHPACK_POLLING: "true"
     volumes:
-      - ../../frontend:/app
-      - frontend_node_modules:/app/node_modules
-      - frontend_next:/app/.next
+      - ../../frontend:/app/frontend
+      - frontend_node_modules:/app/frontend/node_modules
+      - frontend_next:/app/frontend/.next
     develop:
       watch:
         - action: rebuild
-          path: ../../frontend/package.json
+          path: ../../package.json
         - action: rebuild
-          path: ../../frontend/pnpm-lock.yaml
+          path: ../../pnpm-lock.yaml
+        - action: rebuild
+          path: ../../pnpm-workspace.yaml
+        - action: rebuild
+          path: ../../frontend/package.json
 
   backend:
     build:
@@ -148,27 +152,31 @@ services:
       BACKEND_INTERNAL_URL: http://backend:8080
       COLLAB_TOKEN_SECRET: ${COLLAB_TOKEN_SECRET:-change-me-collab-token-secret}
     volumes:
-      - ../../collab-service:/app
-      - collab_service_node_modules:/app/node_modules
+      - ../../collab-service:/app/collab-service
+      - collab_service_node_modules:/app/collab-service/node_modules
       - collab_service_pnpm_store:/pnpm/store
     develop:
       watch:
         - action: rebuild
-          path: ../../collab-service/package.json
+          path: ../../package.json
         - action: rebuild
-          path: ../../collab-service/pnpm-lock.yaml
+          path: ../../pnpm-lock.yaml
+        - action: rebuild
+          path: ../../pnpm-workspace.yaml
+        - action: rebuild
+          path: ../../collab-service/package.json
 
   extension-dev:
     image: node:24-alpine
     profiles:
       - extension
-    working_dir: /app
+    working_dir: /workspace/extension
     command:
       - /bin/sh
       - -c
       - |
         corepack enable
-        pnpm install --frozen-lockfile --config.confirmModulesPurge=false --store-dir /pnpm/store
+        pnpm install --frozen-lockfile --filter mpp-extension-publisher... --config.confirmModulesPurge=false --store-dir /pnpm/store
         pnpm dev --host 0.0.0.0 --port ${EXTENSION_DEV_PORT:-3010}
     ports:
       - "${EXTENSION_DEV_PORT:-3010}:${EXTENSION_DEV_PORT:-3010}"
@@ -178,8 +186,9 @@ services:
       CHOKIDAR_USEPOLLING: "true"
       WXT_MANUAL_RUNNER: "true"
     volumes:
-      - ../../extension:/app
-      - extension_node_modules:/app/node_modules
+      - ../../:/workspace
+      - extension_root_node_modules:/workspace/node_modules
+      - extension_node_modules:/workspace/extension/node_modules
       - extension_pnpm_store:/pnpm/store
 
   db:
@@ -204,4 +213,5 @@ volumes:
   collab_service_node_modules:
   collab_service_pnpm_store:
   extension_node_modules:
+  extension_root_node_modules:
   extension_pnpm_store:
