@@ -184,6 +184,32 @@ func TestDeleteMediaAssetInvalidatesResolvedAssetCache(t *testing.T) {
 	require.Equal(t, 1, storage.PresignGetObjectCount())
 }
 
+func TestResolveMediaAssetsRejectsCacheWrittenAfterAssetDeletion(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	redisClient, redisServer := newMediaAssetRedisClientWithServer(t)
+	service.UseRedis(redisClient)
+	owner, upload := createReadyMediaAsset(t, db, service, storage)
+
+	_, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
+	keys := requireResolvedMediaAssetCacheKeys(t, redisServer, upload.AssetID, 1)
+	stalePayload, err := redisClient.Get(context.Background(), keys[0]).Bytes()
+	require.NoError(t, err)
+
+	require.NoError(t, service.DeleteMediaAsset(upload.AssetID, owner.ID))
+	requireResolvedMediaAssetCacheKeys(t, redisServer, upload.AssetID, 0)
+	require.NoError(t, redisClient.Set(context.Background(), keys[0], stalePayload, time.Minute).Err())
+
+	_, err = service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
+}
+
 func TestResolveMediaAssetsChecksAuthorizationBeforeReturningCachedAsset(t *testing.T) {
 	db, service, storage := setupMediaAssetService(t)
 	redisClient, _ := newMediaAssetRedisClientWithServer(t)
