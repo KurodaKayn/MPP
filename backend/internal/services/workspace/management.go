@@ -186,6 +186,13 @@ func (s *Service) ListWorkspaceProjectsCursor(workspaceID uuid.UUID, actorUserID
 		return nil, err
 	}
 
+	if s.projects != nil && s.projects.CanUseDashboardProjectListCache() {
+		return s.projects.ListCachedWorkspaceProjects(workspaceID, actorUserID, cursor, page, limit, status, platform)
+	}
+	return s.computeWorkspaceProjectList(workspaceID, actorUserID, cursor, page, limit, status, platform)
+}
+
+func (s *Service) computeWorkspaceProjectList(workspaceID uuid.UUID, actorUserID uuid.UUID, cursor string, page, limit int, status, platform string) (*dto.PaginationResponse, error) {
 	query := s.strongReadDB().Model(&models.Project{}).Where("workspace_id = ?", workspaceID)
 	if status != "" {
 		query = query.Where("status = ?", status)
