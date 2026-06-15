@@ -405,6 +405,10 @@ export type ProjectPermissionSource = ContractSchema<"ProjectPermissionSource">;
 export type ProjectCollaborator = ContractSchema<"ProjectCollaborator">;
 export type ProjectCollaboratorsResponse =
   ContractSchema<"ProjectCollaboratorsResponse">;
+export type ProjectCollaboratorSummary =
+  ContractSchema<"ProjectCollaboratorSummary">;
+export type ProjectCollaboratorSummariesResponse =
+  ContractSchema<"ProjectCollaboratorSummariesResponse">;
 export type ProjectActivityType = ContractSchema<"ProjectActivityType">;
 export type ProjectActivity = ContractSchema<"ProjectActivity">;
 export type ProjectActivitiesResponse =

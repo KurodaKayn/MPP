@@ -23,6 +23,7 @@ import type {
   ProjectComment,
   ProjectCommentsResponse,
   ProjectCollaborator,
+  ProjectCollaboratorSummariesResponse,
   ProjectCollaboratorsResponse,
   ProjectDetail,
   ProjectListItem,
@@ -207,6 +208,13 @@ export function resolveMediaAssets(assetIds: string[]) {
 export function getProjectCollaborators(projectId: string) {
   return fetchDashboard<ProjectCollaboratorsResponse>(
     `/api/user/dashboard/projects/${projectId}/collaborators`,
+  );
+}
+
+export function getOwnedProjectCollaboratorSummaries() {
+  return fetchDashboard<ProjectCollaboratorSummariesResponse>(
+    "/api/user/dashboard/projects/collaborator-summaries",
+    { workspaceId: null },
   );
 }
 
