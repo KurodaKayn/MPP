@@ -15,6 +15,7 @@ import (
 type countingDashboardSideEffectTarget struct {
 	projectListInvalidations int
 	statsInvalidations       int
+	scopedStatsInvalidations int
 	projectRefreshes         int
 	workspaceRefreshes       int
 }
@@ -25,6 +26,10 @@ func (t *countingDashboardSideEffectTarget) InvalidateDashboardProjectListCache(
 
 func (t *countingDashboardSideEffectTarget) InvalidateDashboardStatsCache(context.Context) {
 	t.statsInvalidations++
+}
+
+func (t *countingDashboardSideEffectTarget) InvalidateDashboardScopedStatsCache(context.Context) {
+	t.scopedStatsInvalidations++
 }
 
 func (t *countingDashboardSideEffectTarget) RefreshProjectAsync(context.Context, uuid.UUID) {
@@ -73,11 +78,13 @@ func TestDashboardSideEffectsFanOutThroughNarrowInterfaces(t *testing.T) {
 
 	effects.InvalidateDashboardProjectListCache(context.Background())
 	effects.InvalidateDashboardStatsCache(context.Background())
+	effects.InvalidateDashboardScopedStatsCache(context.Background())
 	effects.RefreshProjectAsync(context.Background(), uuid.New())
 	effects.RefreshWorkspaceAsync(context.Background(), uuid.New())
 
 	require.Equal(t, 1, target.projectListInvalidations)
 	require.Equal(t, 1, target.statsInvalidations)
+	require.Equal(t, 1, target.scopedStatsInvalidations)
 	require.Equal(t, 1, target.projectRefreshes)
 	require.Equal(t, 1, target.workspaceRefreshes)
 }
