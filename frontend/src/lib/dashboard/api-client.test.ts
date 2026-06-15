@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest";
+import { setAuthSession } from "@/lib/auth/client";
 import {
   createDashboardProject,
   deleteDashboardProject,
@@ -257,6 +258,40 @@ describe("dashboard api client requests", () => {
     expect(fetchMock.mock.calls[1][0]).toBe(
       "/api/user/dashboard/stats?workspace_id=workspace-2",
     );
+  });
+
+  it("clears cached dashboard GET responses when auth changes with the same display user", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          total_failed_publications: 0,
+          total_projects: 1,
+          total_published_publications: 0,
+          total_users: 1,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          total_failed_publications: 0,
+          total_projects: 2,
+          total_published_publications: 0,
+          total_users: 1,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    setAuthSession({ username: "Creator" });
+    await expect(getDashboardStats()).resolves.toMatchObject({
+      total_projects: 1,
+    });
+
+    setAuthSession({ username: "Creator" });
+    await expect(getDashboardStats()).resolves.toMatchObject({
+      total_projects: 2,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not reuse cached responses for non-GET requests", async () => {
