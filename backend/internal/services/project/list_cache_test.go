@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -145,9 +146,9 @@ func TestListProjectsCacheSeparatesFilters(t *testing.T) {
 	requireProjectListCacheKeys(t, redisClient, 2)
 }
 
-func TestListProjectsCacheBypassesScopedLists(t *testing.T) {
+func TestListProjectsCacheCachesScopedLists(t *testing.T) {
 	db := testsupport.SetupTestDB()
-	redisClient := newProjectListRedisClient(t)
+	redisClient, redisServer := newProjectListRedisClientWithServer(t)
 	s := services.NewDashboardService(db)
 	s.UseRedis(redisClient)
 
@@ -164,7 +165,159 @@ func TestListProjectsCacheBypassesScopedLists(t *testing.T) {
 	scoped, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", &user.ID)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), scoped.Total)
+	requireProjectListCacheKeys(t, redisClient, 2)
+
+	seedProjectListCacheProject(t, db, user, "scoped-newer", models.ProjectStatusReady, "x")
+
+	cachedScoped, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", &user.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), cachedScoped.Total)
+
+	redisServer.FastForward(16 * time.Second)
+
+	refreshedScoped, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", &user.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), refreshedScoped.Total)
+}
+
+func TestListProjectsCacheSeparatesScopeUsers(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newProjectListRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	firstUser := createProjectListCacheUser(t, db, "cache-user-one")
+	secondUser := createProjectListCacheUser(t, db, "cache-user-two")
+	firstProject := seedProjectListCacheProject(t, db, firstUser, "first-user-project", models.ProjectStatusReady, "wechat")
+	secondProject := seedProjectListCacheProject(t, db, secondUser, "second-user-project", models.ProjectStatusReady, "zhihu")
+
+	firstList, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", &firstUser.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), firstList.Total)
+	firstItems := firstList.Items.([]dto.ProjectListItem)
+	require.Len(t, firstItems, 1)
+	require.Equal(t, firstProject.ID, firstItems[0].ID)
+
+	secondList, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", &secondUser.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), secondList.Total)
+	secondItems := secondList.Items.([]dto.ProjectListItem)
+	require.Len(t, secondItems, 1)
+	require.Equal(t, secondProject.ID, secondItems[0].ID)
+
+	requireProjectListCacheKeys(t, redisClient, 2)
+}
+
+func TestProjectCollaboratorChangeInvalidatesScopedProjectListCache(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newProjectListRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	owner := createProjectListCacheUser(t, db, "cache-collab-owner")
+	collaborator := createProjectListCacheUser(t, db, "cache-collab-user")
+	project := seedProjectListCacheProject(t, db, owner, "collaborator-cache-project", models.ProjectStatusReady, "wechat")
+
+	empty, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", &collaborator.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), empty.Total)
 	requireProjectListCacheKeys(t, redisClient, 1)
+
+	added, err := s.WithContext(context.Background()).AddProjectCollaborator(project.ID, owner.ID, dto.AddProjectCollaboratorRequest{
+		UserID: collaborator.ID,
+		Role:   models.ProjectRoleViewer,
+	})
+	require.NoError(t, err)
+	require.Equal(t, models.ProjectRoleViewer, added.Role)
+	requireProjectListCacheKeys(t, redisClient, 0)
+
+	first, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", &collaborator.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), first.Total)
+	firstItems := first.Items.([]dto.ProjectListItem)
+	require.Len(t, firstItems, 1)
+	require.Equal(t, project.ID, firstItems[0].ID)
+	require.Equal(t, models.ProjectRoleViewer, firstItems[0].Role)
+	requireProjectListCacheKeys(t, redisClient, 1)
+
+	updated, err := s.WithContext(context.Background()).UpdateProjectCollaborator(project.ID, owner.ID, collaborator.ID, dto.UpdateProjectCollaboratorRequest{
+		Role: models.ProjectRoleEditor,
+	})
+	require.NoError(t, err)
+	require.Equal(t, models.ProjectRoleEditor, updated.Role)
+	requireProjectListCacheKeys(t, redisClient, 0)
+
+	second, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", &collaborator.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), second.Total)
+	secondItems := second.Items.([]dto.ProjectListItem)
+	require.Len(t, secondItems, 1)
+	require.Equal(t, project.ID, secondItems[0].ID)
+	require.Equal(t, models.ProjectRoleEditor, secondItems[0].Role)
+	requireProjectListCacheKeys(t, redisClient, 1)
+
+	require.NoError(t, s.WithContext(context.Background()).RemoveProjectCollaborator(project.ID, owner.ID, collaborator.ID))
+	requireProjectListCacheKeys(t, redisClient, 0)
+
+	third, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", &collaborator.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), third.Total)
+	require.Empty(t, third.Items.([]dto.ProjectListItem))
+}
+
+func TestListProjectsCacheCachesWorkspaceLists(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient, redisServer := newProjectListRedisClientWithServer(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	owner := createProjectListCacheUser(t, db, "cache-workspace-owner")
+	workspace := createProjectListCacheWorkspace(t, db, owner, "Cache Workspace")
+	firstProject := seedWorkspaceProjectListCacheProject(t, db, owner, workspace.ID, "workspace-cached", models.ProjectStatusReady, "wechat")
+
+	first, err := s.WithContext(context.Background()).ListWorkspaceProjects(workspace.ID, owner.ID, 1, 10, "", "")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), first.Total)
+	firstItems := first.Items.([]dto.ProjectListItem)
+	require.Len(t, firstItems, 1)
+	require.Equal(t, firstProject.ID, firstItems[0].ID)
+	requireSingleProjectListCacheKey(t, redisClient)
+
+	seedWorkspaceProjectListCacheProject(t, db, owner, workspace.ID, "workspace-fresh", models.ProjectStatusReady, "zhihu")
+
+	cached, err := s.WithContext(context.Background()).ListWorkspaceProjects(workspace.ID, owner.ID, 1, 10, "", "")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), cached.Total)
+
+	redisServer.FastForward(16 * time.Second)
+
+	refreshed, err := s.WithContext(context.Background()).ListWorkspaceProjects(workspace.ID, owner.ID, 1, 10, "", "")
+	require.NoError(t, err)
+	require.Equal(t, int64(2), refreshed.Total)
+}
+
+func TestWorkspaceMemberChangeInvalidatesProjectListCache(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newProjectListRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	owner := createProjectListCacheUser(t, db, "cache-member-owner")
+	member := createProjectListCacheUser(t, db, "cache-member-user")
+	workspace := createProjectListCacheWorkspace(t, db, owner, "Member Cache Workspace")
+	seedWorkspaceProjectListCacheProject(t, db, owner, workspace.ID, "member-cache-project", models.ProjectStatusReady, "wechat")
+
+	first, err := s.WithContext(context.Background()).ListWorkspaceProjects(workspace.ID, owner.ID, 1, 10, "", "")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), first.Total)
+	requireProjectListCacheKeys(t, redisClient, 1)
+
+	_, err = s.WithContext(context.Background()).AddWorkspaceMember(workspace.ID, owner.ID, dto.AddWorkspaceMemberRequest{
+		UserID: member.ID,
+		Role:   models.WorkspaceRoleViewer,
+	})
+	require.NoError(t, err)
+	requireProjectListCacheKeys(t, redisClient, 0)
 }
 
 func TestListProjectsCacheBypassesStickyWriter(t *testing.T) {
@@ -473,6 +626,40 @@ func seedProjectListCacheProject(t *testing.T, db *gorm.DB, user models.User, ti
 
 	project := models.Project{
 		UserID:        user.ID,
+		Title:         title,
+		SourceContent: "content",
+		Status:        status,
+		CreatedAt:     time.Now(),
+	}
+	require.NoError(t, db.Create(&project).Error)
+	if platform != "" {
+		require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+			ProjectID: project.ID,
+			Platform:  platform,
+			Status:    models.PublicationStatusPublished,
+		}).Error)
+	}
+	return project
+}
+
+func createProjectListCacheWorkspace(t *testing.T, db *gorm.DB, owner models.User, name string) models.Workspace {
+	t.Helper()
+
+	workspace := models.Workspace{
+		OwnerUserID: owner.ID,
+		Name:        name,
+		Status:      models.WorkspaceStatusActive,
+	}
+	require.NoError(t, db.Create(&workspace).Error)
+	return workspace
+}
+
+func seedWorkspaceProjectListCacheProject(t *testing.T, db *gorm.DB, user models.User, workspaceID uuid.UUID, title string, status string, platform string) models.Project {
+	t.Helper()
+
+	project := models.Project{
+		UserID:        user.ID,
+		WorkspaceID:   &workspaceID,
 		Title:         title,
 		SourceContent: "content",
 		Status:        status,

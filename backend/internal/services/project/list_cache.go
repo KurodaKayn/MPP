@@ -29,6 +29,9 @@ type dashboardProjectListCacheParams struct {
 	Status       string `json:"status,omitempty"`
 	FilterUserID string `json:"filter_user_id,omitempty"`
 	Platform     string `json:"platform,omitempty"`
+	ScopeUserID  string `json:"scope_user_id,omitempty"`
+	WorkspaceID  string `json:"workspace_id,omitempty"`
+	ActorUserID  string `json:"actor_user_id,omitempty"`
 }
 
 type dashboardProjectListCachePayload struct {
@@ -42,30 +45,63 @@ type dashboardProjectListCachePayload struct {
 	TotalPages int                   `json:"total_pages"`
 }
 
-func (s *Service) getCachedDashboardProjectList(cursor string, page, limit int, status, filterUserID, platform string) (*dto.PaginationResponse, error) {
+type dashboardProjectListCacheCompute func(*Service) (*dto.PaginationResponse, error)
+
+func (s *Service) getCachedDashboardProjectList(cursor string, page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
+	params := dashboardProjectListCacheParams{
+		Cursor:       cursor,
+		Page:         page,
+		Limit:        limit,
+		Status:       status,
+		FilterUserID: filterUserID,
+		Platform:     platform,
+		ScopeUserID:  uuidStringValue(scopeUserID),
+	}
+	return s.getCachedProjectList(params, func(svc *Service) (*dto.PaginationResponse, error) {
+		return svc.computeProjectList(cursor, page, limit, status, filterUserID, platform, scopeUserID)
+	})
+}
+
+func (s *Service) getCachedWorkspaceProjectList(workspaceID uuid.UUID, actorUserID uuid.UUID, cursor string, page, limit int, status, platform string) (*dto.PaginationResponse, error) {
+	params := dashboardProjectListCacheParams{
+		Cursor:      cursor,
+		Page:        page,
+		Limit:       limit,
+		Status:      status,
+		Platform:    platform,
+		WorkspaceID: workspaceID.String(),
+		ActorUserID: actorUserID.String(),
+	}
+	return s.getCachedProjectList(params, func(svc *Service) (*dto.PaginationResponse, error) {
+		return svc.computeWorkspaceProjectList(workspaceID, actorUserID, cursor, page, limit, status, platform)
+	})
+}
+
+func (s *Service) getCachedProjectList(params dashboardProjectListCacheParams, compute dashboardProjectListCacheCompute) (*dto.PaginationResponse, error) {
 	ctx := s.requestContext()
 	generation, err := s.dashboardProjectListCacheGeneration(ctx)
 	if err != nil {
-		return s.computeProjectList(cursor, page, limit, status, filterUserID, platform, nil)
+		return compute(s)
 	}
-	cacheKey := dashboardProjectListCacheKey(generation, cursor, page, limit, status, filterUserID, platform)
-	if resp, hit, err := s.cachedDashboardProjectList(ctx, cacheKey, cursor, page, limit); hit {
+	params.Generation = generation
+	cacheKey := dashboardProjectListCacheKey(params)
+	if resp, hit, err := s.cachedDashboardProjectList(ctx, cacheKey, params.Cursor, params.Page, params.Limit); hit {
 		return resp, nil
 	} else if err != nil {
-		return s.computeProjectList(cursor, page, limit, status, filterUserID, platform, nil)
+		return compute(s)
 	}
 
 	resultCh := s.cacheGroup.DoChan(cacheKey, func() (any, error) {
 		refreshCtx, cancel := dashboardProjectListRefreshContext(ctx)
 		defer cancel()
 		refreshSvc := s.WithContext(refreshCtx)
-		if resp, hit, err := refreshSvc.cachedDashboardProjectList(refreshCtx, cacheKey, cursor, page, limit); hit {
+		if resp, hit, err := refreshSvc.cachedDashboardProjectList(refreshCtx, cacheKey, params.Cursor, params.Page, params.Limit); hit {
 			return resp, nil
 		} else if err != nil {
-			return refreshSvc.computeProjectList(cursor, page, limit, status, filterUserID, platform, nil)
+			return compute(refreshSvc)
 		}
 
-		return refreshSvc.refreshDashboardProjectListCache(refreshCtx, cacheKey, cursor, page, limit, status, filterUserID, platform)
+		return refreshSvc.refreshDashboardProjectListCache(refreshCtx, cacheKey, compute)
 	})
 
 	select {
@@ -76,7 +112,7 @@ func (s *Service) getCachedDashboardProjectList(cursor string, page, limit int, 
 		if resp, ok := result.Val.(*dto.PaginationResponse); ok {
 			return resp, nil
 		}
-		return s.computeProjectList(cursor, page, limit, status, filterUserID, platform, nil)
+		return compute(s)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -107,8 +143,8 @@ func decodeDashboardProjectListPayload(cached []byte, cursor string, page, limit
 	return dashboardProjectListPayloadToResponse(payload), true
 }
 
-func (s *Service) refreshDashboardProjectListCache(ctx context.Context, cacheKey string, cursor string, page, limit int, status, filterUserID, platform string) (*dto.PaginationResponse, error) {
-	resp, err := s.computeProjectList(cursor, page, limit, status, filterUserID, platform, nil)
+func (s *Service) refreshDashboardProjectListCache(ctx context.Context, cacheKey string, compute dashboardProjectListCacheCompute) (*dto.PaginationResponse, error) {
+	resp, err := compute(s)
 	if err != nil {
 		return nil, err
 	}
@@ -199,22 +235,20 @@ func (s *Service) dashboardProjectListCacheGeneration(ctx context.Context) (stri
 	return generation, err
 }
 
-func dashboardProjectListCacheKey(generation string, cursor string, page, limit int, status, filterUserID, platform string) string {
-	params := dashboardProjectListCacheParams{
-		Generation:   generation,
-		Cursor:       cursor,
-		Page:         page,
-		Limit:        limit,
-		Status:       status,
-		FilterUserID: filterUserID,
-		Platform:     platform,
-	}
+func dashboardProjectListCacheKey(params dashboardProjectListCacheParams) string {
 	encoded, err := json.Marshal(params)
 	if err != nil {
-		return fmt.Sprintf("%s:%d:%d", dashboardProjectListCachePrefix, page, limit)
+		return fmt.Sprintf("%s:%d:%d", dashboardProjectListCachePrefix, params.Page, params.Limit)
 	}
 	sum := sha256.Sum256(encoded)
 	return dashboardProjectListCachePrefix + ":" + hex.EncodeToString(sum[:])
+}
+
+func uuidStringValue(value *uuid.UUID) string {
+	if value == nil || *value == uuid.Nil {
+		return ""
+	}
+	return value.String()
 }
 
 func dashboardProjectListPayloadFromResponse(resp *dto.PaginationResponse) (dashboardProjectListCachePayload, bool) {

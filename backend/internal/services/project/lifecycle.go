@@ -701,10 +701,18 @@ func (s *Service) ListProjects(page, limit int, status, filterUserID, platform s
 }
 
 func (s *Service) ListProjectsCursor(cursor string, page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
-	if scopeUserID == nil && s.canUseDashboardProjectListCache() {
-		return s.getCachedDashboardProjectList(cursor, page, limit, status, filterUserID, platform)
+	if s.canUseDashboardProjectListCache() {
+		return s.getCachedDashboardProjectList(cursor, page, limit, status, filterUserID, platform, scopeUserID)
 	}
 	return s.computeProjectList(cursor, page, limit, status, filterUserID, platform, scopeUserID)
+}
+
+func (s *Service) CanUseDashboardProjectListCache() bool {
+	return s.canUseDashboardProjectListCache()
+}
+
+func (s *Service) ListCachedWorkspaceProjects(workspaceID uuid.UUID, actorUserID uuid.UUID, cursor string, page, limit int, status, platform string) (*dto.PaginationResponse, error) {
+	return s.getCachedWorkspaceProjectList(workspaceID, actorUserID, cursor, page, limit, status, platform)
 }
 
 func (s *Service) computeProjectList(cursor string, page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
@@ -739,6 +747,20 @@ func (s *Service) computeProjectList(cursor string, page, limit int, status, fil
 	}
 
 	return s.ListProjectPage(query, cursor, page, limit, scopeUserID)
+}
+
+func (s *Service) computeWorkspaceProjectList(workspaceID uuid.UUID, actorUserID uuid.UUID, cursor string, page, limit int, status, platform string) (*dto.PaginationResponse, error) {
+	query := s.strongReadDB().Model(&models.Project{}).Where("workspace_id = ?", workspaceID)
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if platform != "" {
+		query = query.Joins("JOIN project_platform_publications ppp ON ppp.project_id = projects.id").
+			Where("ppp.platform = ?", platform).
+			Group("projects.id")
+	}
+
+	return s.ListProjectPage(query, cursor, page, limit, &actorUserID)
 }
 
 func (s *Service) adminProjectListFromReadModel(cursor string, page, limit int, status, filterUserID string) (*dto.PaginationResponse, bool, error) {

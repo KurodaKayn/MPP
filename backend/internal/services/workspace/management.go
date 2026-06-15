@@ -186,6 +186,13 @@ func (s *Service) ListWorkspaceProjectsCursor(workspaceID uuid.UUID, actorUserID
 		return nil, err
 	}
 
+	if s.projects != nil && s.projects.CanUseDashboardProjectListCache() {
+		return s.projects.ListCachedWorkspaceProjects(workspaceID, actorUserID, cursor, page, limit, status, platform)
+	}
+	return s.computeWorkspaceProjectList(workspaceID, actorUserID, cursor, page, limit, status, platform)
+}
+
+func (s *Service) computeWorkspaceProjectList(workspaceID uuid.UUID, actorUserID uuid.UUID, cursor string, page, limit int, status, platform string) (*dto.PaginationResponse, error) {
 	query := s.strongReadDB().Model(&models.Project{}).Where("workspace_id = ?", workspaceID)
 	if status != "" {
 		query = query.Where("status = ?", status)
@@ -429,6 +436,7 @@ func (s *Service) AddWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUI
 	}); err != nil {
 		return nil, err
 	}
+	s.invalidateDashboardProjectListCache()
 	s.refreshWorkspaceReadModel(workspaceID)
 
 	return s.getWorkspaceMember(workspaceID, user.ID)
@@ -567,6 +575,7 @@ func (s *Service) AcceptWorkspaceInvite(actorUserID uuid.UUID, req dto.AcceptWor
 	}); err != nil {
 		return nil, err
 	}
+	s.invalidateDashboardProjectListCache()
 	s.refreshWorkspaceReadModel(member.WorkspaceID)
 	return s.getWorkspaceMember(member.WorkspaceID, actorUserID)
 }
@@ -639,6 +648,7 @@ func (s *Service) UpdateWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.
 	}); err != nil {
 		return nil, err
 	}
+	s.invalidateDashboardProjectListCache()
 	s.refreshWorkspaceReadModel(workspaceID)
 	return s.getWorkspaceMember(workspaceID, targetUserID)
 }
@@ -677,6 +687,7 @@ func (s *Service) RemoveWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.
 	}); err != nil {
 		return err
 	}
+	s.invalidateDashboardProjectListCache()
 	s.refreshWorkspaceReadModel(workspaceID)
 	return nil
 }
