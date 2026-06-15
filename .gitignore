@@ -3,6 +3,8 @@
 *.pem
 .env*
 !.env.*.example
+node_modules
+pnpm-debug.log*
 
 # Frontend (Next.js)
 frontend/node_modules

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd frontend
-pnpm install --frozen-lockfile
-pnpm run lint
-pnpm run type-check
-pnpm test
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+cd "$ROOT_DIR"
+pnpm install --frozen-lockfile --filter frontend...
+pnpm --dir frontend run lint
+pnpm --dir frontend run type-check
+pnpm --dir frontend test

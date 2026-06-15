@@ -1,0 +1,103 @@
+packages:
+  - "frontend"
+  - "extension"
+  - "collab-service"
+
+catalog:
+  "@hocuspocus/provider": 4.1.0
+  "@hocuspocus/server": 4.1.0
+  "@tailwindcss/postcss": 4.3.0
+  "@tailwindcss/vite": 4.3.0
+  "@types/node": 24.12.4
+  "@types/react": 19.2.15
+  "@types/react-dom": 19.2.3
+  class-variance-authority: 0.7.1
+  clsx: 2.1.1
+  jsdom: 29.1.1
+  lucide-react: 1.17.0
+  oxfmt: 0.53.0
+  oxlint: 1.68.0
+  react: 19.2.4
+  react-dom: 19.2.4
+  shadcn: 4.10.0
+  tailwind-merge: 3.6.0
+  tailwindcss: 4.3.0
+  tw-animate-css: 1.4.0
+  typescript: 6.0.3
+  vitest: 4.1.8
+  yjs: 13.6.31
+
+catalogs:
+  tiptap:
+    "@tiptap/core": 3.23.6
+    "@tiptap/extension-blockquote": 3.23.6
+    "@tiptap/extension-bold": 3.23.6
+    "@tiptap/extension-bubble-menu": 3.23.6
+    "@tiptap/extension-bullet-list": 3.23.6
+    "@tiptap/extension-code": 3.23.6
+    "@tiptap/extension-code-block": 3.23.6
+    "@tiptap/extension-collaboration": 3.23.6
+    "@tiptap/extension-collaboration-caret": 3.23.6
+    "@tiptap/extension-document": 3.23.6
+    "@tiptap/extension-dropcursor": 3.23.6
+    "@tiptap/extension-floating-menu": 3.23.6
+    "@tiptap/extension-gapcursor": 3.23.6
+    "@tiptap/extension-hard-break": 3.23.6
+    "@tiptap/extension-heading": 3.23.6
+    "@tiptap/extension-horizontal-rule": 3.23.6
+    "@tiptap/extension-image": 3.23.6
+    "@tiptap/extension-italic": 3.23.6
+    "@tiptap/extension-link": 3.23.6
+    "@tiptap/extension-list": 3.23.6
+    "@tiptap/extension-list-item": 3.23.6
+    "@tiptap/extension-list-keymap": 3.23.6
+    "@tiptap/extension-ordered-list": 3.23.6
+    "@tiptap/extension-paragraph": 3.23.6
+    "@tiptap/extension-placeholder": 3.23.6
+    "@tiptap/extension-strike": 3.23.6
+    "@tiptap/extension-text": 3.23.6
+    "@tiptap/extension-text-align": 3.23.6
+    "@tiptap/extension-underline": 3.23.6
+    "@tiptap/extensions": 3.23.6
+    "@tiptap/html": 3.23.6
+    "@tiptap/markdown": 3.23.6
+    "@tiptap/pm": 3.23.6
+    "@tiptap/react": 3.23.6
+    "@tiptap/starter-kit": 3.23.6
+    "@tiptap/y-tiptap": 3.0.4
+
+allowBuilds:
+  esbuild: true
+  msw: true
+  sharp: true
+  spawn-sync: false
+  unrs-resolver: false
+
+overrides:
+  "@types/node": "catalog:"
+  "@tiptap/core": "catalog:tiptap"
+  "@tiptap/extension-blockquote": "catalog:tiptap"
+  "@tiptap/extension-bold": "catalog:tiptap"
+  "@tiptap/extension-bubble-menu": "catalog:tiptap"
+  "@tiptap/extension-bullet-list": "catalog:tiptap"
+  "@tiptap/extension-code": "catalog:tiptap"
+  "@tiptap/extension-code-block": "catalog:tiptap"
+  "@tiptap/extension-document": "catalog:tiptap"
+  "@tiptap/extension-dropcursor": "catalog:tiptap"
+  "@tiptap/extension-floating-menu": "catalog:tiptap"
+  "@tiptap/extension-gapcursor": "catalog:tiptap"
+  "@tiptap/extension-hard-break": "catalog:tiptap"
+  "@tiptap/extension-heading": "catalog:tiptap"
+  "@tiptap/extension-horizontal-rule": "catalog:tiptap"
+  "@tiptap/extension-italic": "catalog:tiptap"
+  "@tiptap/extension-list": "catalog:tiptap"
+  "@tiptap/extension-list-item": "catalog:tiptap"
+  "@tiptap/extension-list-keymap": "catalog:tiptap"
+  "@tiptap/extension-ordered-list": "catalog:tiptap"
+  "@tiptap/extension-paragraph": "catalog:tiptap"
+  "@tiptap/extension-strike": "catalog:tiptap"
+  "@tiptap/extension-text": "catalog:tiptap"
+  "@tiptap/extension-underline": "catalog:tiptap"
+  "@tiptap/extensions": "catalog:tiptap"
+  "@tiptap/pm": "catalog:tiptap"
+  "@tiptap/y-tiptap": "catalog:tiptap"

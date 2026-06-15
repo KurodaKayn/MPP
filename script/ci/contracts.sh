@@ -12,7 +12,7 @@ generated_files=(
 
 cd "$ROOT_DIR"
 
-(cd frontend && pnpm install --frozen-lockfile)
+pnpm install --frozen-lockfile --filter frontend...
 (cd ai-service && uv sync --locked)
 
 sh contracts/generate.sh
