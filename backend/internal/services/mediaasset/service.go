@@ -3,7 +3,9 @@ package mediaasset
 import (
 	"context"
 	"errors"
+	"time"
 
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
@@ -25,6 +27,8 @@ type Service struct {
 	projects      *projectsvc.Service
 	objectStorage objectstorage.Client
 	storageConfig objectstorage.Config
+	cache         *redis.Client
+	cacheTTL      time.Duration
 }
 
 func NewService(db *gorm.DB, projects *projectsvc.Service) *Service {
@@ -56,6 +60,14 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 func (s *Service) UseObjectStorage(client objectstorage.Client, config objectstorage.Config) {
 	s.objectStorage = client
 	s.storageConfig = config
+}
+
+func (s *Service) UseRedis(client *redis.Client) {
+	if client == nil {
+		return
+	}
+	s.cache = client
+	s.cacheTTL = resolvedMediaAssetCacheTTL
 }
 
 func (s *Service) requestContext() context.Context {

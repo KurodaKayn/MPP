@@ -151,6 +151,7 @@ func (s *Service) CompleteMediaUpload(assetID uuid.UUID, userID uuid.UUID) (*dto
 	}).Error; err != nil {
 		return nil, err
 	}
+	s.invalidateResolvedMediaAssetCache(asset.ID)
 
 	return &dto.CompleteMediaUploadResponse{
 		AssetID:   asset.ID,
@@ -169,6 +170,13 @@ func (s *Service) ResolveMediaAssets(userID uuid.UUID, req dto.ResolveMediaAsset
 
 	items := make([]dto.ResolvedMediaAsset, 0, len(req.AssetIDs))
 	for _, assetID := range req.AssetIDs {
+		if item, hit, err := s.cachedResolvedMediaAsset(assetID, userID); hit {
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, item)
+			continue
+		}
 		asset, err := s.mediaAssetForRead(assetID, userID)
 		if err != nil {
 			return nil, err
@@ -184,11 +192,13 @@ func (s *Service) ResolveMediaAssets(userID uuid.UUID, req dto.ResolveMediaAsset
 		if err != nil {
 			return nil, fmt.Errorf("presign media download: %w", err)
 		}
-		items = append(items, dto.ResolvedMediaAsset{
+		item := dto.ResolvedMediaAsset{
 			AssetID:   asset.ID,
 			URL:       presigned.URL,
 			ExpiresAt: time.Now().UTC().Add(presigned.Expires),
-		})
+		}
+		s.cacheResolvedMediaAsset(*asset, userID, item)
+		items = append(items, item)
 	}
 	return &dto.ResolveMediaAssetsResponse{Items: items}, nil
 }
@@ -236,13 +246,17 @@ func (s *Service) DeleteMediaAsset(assetID uuid.UUID, userID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
+	defer s.invalidateResolvedMediaAssetCache(assetID)
 	if err := s.objectStorage.DeleteObject(s.requestContext(), asset.ObjectKey); err != nil && !errors.Is(err, objectstorage.ErrObjectNotFound) {
 		return err
 	}
 	if err := s.writerDB().Model(asset).Update("status", models.MediaAssetStatusDeleted).Error; err != nil {
 		return err
 	}
-	return s.writerDB().Delete(asset).Error
+	if err := s.writerDB().Delete(asset).Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Service) ensureMediaStorage() error {
@@ -361,10 +375,14 @@ func (s *Service) mediaAssetWithProject(assetID uuid.UUID) (*models.MediaAsset, 
 }
 
 func (s *Service) markMediaAssetFailed(asset *models.MediaAsset, message string) error {
-	return s.writerDB().Model(asset).Updates(map[string]any{
+	if err := s.writerDB().Model(asset).Updates(map[string]any{
 		"error_message": message,
 		"status":        models.MediaAssetStatusFailed,
-	}).Error
+	}).Error; err != nil {
+		return err
+	}
+	s.invalidateResolvedMediaAssetCache(asset.ID)
+	return nil
 }
 
 func mediaAssetWorkspaceID(project models.Project) uuid.UUID {

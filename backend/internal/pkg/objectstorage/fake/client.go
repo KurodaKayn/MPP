@@ -13,8 +13,9 @@ import (
 
 // Client is an in-memory object storage client for tests.
 type Client struct {
-	mu      sync.RWMutex
-	objects map[string]storedObject
+	mu                sync.RWMutex
+	objects           map[string]storedObject
+	presignGetObjects int
 }
 
 type storedObject struct {
@@ -71,11 +72,21 @@ func (c *Client) PresignGetObject(ctx context.Context, input objectstorage.GetOb
 	if err := ctx.Err(); err != nil {
 		return objectstorage.PresignedURL{}, err
 	}
+	c.mu.Lock()
+	c.presignGetObjects++
+	c.mu.Unlock()
 	return objectstorage.PresignedURL{
 		URL:     "fake://get/" + input.Bucket + "/" + input.Key,
 		Headers: map[string]string{},
 		Expires: input.Expires,
 	}, nil
+}
+
+func (c *Client) PresignGetObjectCount() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.presignGetObjects
 }
 
 // StoreObject inserts or replaces an object in the fake client.
