@@ -29,9 +29,8 @@ If you run services outside Compose, make sure host-facing values are used for P
 ## Frontend
 
 ```bash
-cd frontend
-pnpm install
-pnpm dev
+pnpm install --filter frontend...
+pnpm --dir frontend dev
 ```
 
 Default URL:
@@ -84,9 +83,8 @@ The browser worker uses Docker to create isolated browser runtime containers. Ma
 ## Collaboration Service
 
 ```bash
-cd collab-service
-pnpm install
-pnpm dev
+pnpm install --filter collab-service...
+pnpm --dir collab-service dev
 ```
 
 Default URL:
@@ -111,9 +109,8 @@ localhost:50051
 ## Browser Extension
 
 ```bash
-cd extension
-pnpm install
-pnpm dev
+pnpm install --filter mpp-extension-publisher...
+pnpm --dir extension dev
 ```
 
 Default URL:

@@ -32,7 +32,9 @@ This mode starts the frontend, backend, AI service, browser-worker, content pipe
 - The backend runs with `air`; Go source changes rebuild and restart the API.
 - The browser worker runs with the Go dev target and rebuilds when source changes.
 - The AI service runs with `uvicorn --reload`; Python source changes reload the server.
-- Dependency file changes trigger service rebuilds, including `package.json`, `pnpm-lock.yaml`, `go.mod`, `go.sum`, `pyproject.toml`, and `uv.lock`.
+- Dependency file changes trigger service rebuilds, including root `package.json`, root `pnpm-workspace.yaml`, root `pnpm-lock.yaml`, package-local `package.json`, `go.mod`, `go.sum`, `pyproject.toml`, and `uv.lock`.
+
+Node dependency versions are managed from the root pnpm workspace. See [Node dependency management](node-dependency-management.md).
 
 ## Start In The Background
 
