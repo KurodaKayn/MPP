@@ -1,4 +1,8 @@
-import { clearAuthSession, clearServerAuthSession } from "@/lib/auth/client";
+import {
+  clearAuthSession,
+  clearServerAuthSession,
+  subscribeAuthChanged,
+} from "@/lib/auth/client";
 import type {
   AIDraftingStreamEvent,
   AIDraftingStreamOptions,
@@ -14,10 +18,30 @@ type ApiErrorResponse = {
 };
 
 type DashboardRequestInit = Omit<RequestInit, "headers" | "credentials"> & {
+  cacheTtlMs?: number;
   workspaceId?: string | null;
 };
 
+export type DashboardGetCacheInvalidation = {
+  path?: string;
+  pathPrefix?: string;
+  workspaceId?: string | null;
+};
+
+type DashboardGetCacheEntry<T = unknown> = {
+  expiresAt: number;
+  path: string;
+  promise: Promise<T>;
+  workspaceId: string;
+};
+
+const defaultDashboardGetCacheTtlMs = 10_000;
 const selectedWorkspaceStorageKey = "mpp.dashboard.selectedWorkspaceId";
+const authUserStorageKey = "sevenoxcloud.auth_user";
+const dashboardGetCache = new Map<string, DashboardGetCacheEntry>();
+let dashboardGetCacheTtlMs = defaultDashboardGetCacheTtlMs;
+let dashboardGetCacheAuthScope: string | null = null;
+let unsubscribeDashboardGetCacheAuthChanges: (() => void) | null = null;
 
 function getStoredWorkspaceId() {
   if (typeof window === "undefined") {
@@ -57,6 +81,108 @@ function resolveWorkspaceContext(workspaceId: string | null | undefined) {
   return getStoredWorkspaceId();
 }
 
+function getStoredAuthUser(storage: Storage) {
+  try {
+    return storage.getItem(authUserStorageKey)?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function getDashboardGetCacheAuthScope() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  try {
+    const localAuthUser = getStoredAuthUser(window.localStorage);
+    if (localAuthUser) {
+      return localAuthUser;
+    }
+  } catch {
+    // Some privacy modes can deny Web Storage access.
+  }
+
+  try {
+    return getStoredAuthUser(window.sessionStorage);
+  } catch {
+    return "";
+  }
+}
+
+function syncDashboardGetCacheAuthScope() {
+  const nextAuthScope = getDashboardGetCacheAuthScope();
+  if (dashboardGetCacheAuthScope === null) {
+    dashboardGetCacheAuthScope = nextAuthScope;
+    return;
+  }
+  if (dashboardGetCacheAuthScope !== nextAuthScope) {
+    dashboardGetCache.clear();
+    dashboardGetCacheAuthScope = nextAuthScope;
+  }
+}
+
+function normalizeCacheTtlMs(ttlMs: number) {
+  return Number.isFinite(ttlMs) ? Math.max(0, ttlMs) : 0;
+}
+
+function normalizeRequestMethod(method: string | undefined) {
+  return (method ?? "GET").trim().toUpperCase();
+}
+
+function dashboardGetCacheKey(path: string, workspaceId: string) {
+  return JSON.stringify({ path, workspaceId });
+}
+
+function isDashboardGetCacheEnabled() {
+  return typeof window !== "undefined";
+}
+
+function ensureDashboardGetCacheAuthSubscription() {
+  if (!isDashboardGetCacheEnabled() || unsubscribeDashboardGetCacheAuthChanges) {
+    return;
+  }
+
+  unsubscribeDashboardGetCacheAuthChanges = subscribeAuthChanged(() => {
+    clearDashboardGetCache();
+  });
+}
+
+export function setDashboardGetCacheTtlMs(ttlMs: number) {
+  dashboardGetCacheTtlMs = normalizeCacheTtlMs(ttlMs);
+  clearDashboardGetCache();
+}
+
+export function clearDashboardGetCache() {
+  dashboardGetCache.clear();
+  dashboardGetCacheAuthScope = null;
+}
+
+export function invalidateDashboardGetCache(
+  invalidation: DashboardGetCacheInvalidation = {},
+) {
+  const workspaceId =
+    invalidation.workspaceId === undefined
+      ? undefined
+      : resolveWorkspaceContext(invalidation.workspaceId);
+
+  for (const [key, entry] of dashboardGetCache) {
+    if (workspaceId !== undefined && entry.workspaceId !== workspaceId) {
+      continue;
+    }
+    if (invalidation.path && entry.path !== invalidation.path) {
+      continue;
+    }
+    if (
+      invalidation.pathPrefix &&
+      !entry.path.startsWith(invalidation.pathPrefix)
+    ) {
+      continue;
+    }
+    dashboardGetCache.delete(key);
+  }
+}
+
 async function getDashboardErrorMessage(response: Response) {
   const fallback = `Request failed (${response.status})`;
 
@@ -79,6 +205,7 @@ async function createDashboardError(response: Response) {
   const message = await getDashboardErrorMessage(response);
 
   if (isExpiredAuthError(response, message) && typeof window !== "undefined") {
+    clearDashboardGetCache();
     clearAuthSession();
     await clearServerAuthSession();
   }
@@ -86,11 +213,33 @@ async function createDashboardError(response: Response) {
   return new Error(message);
 }
 
+async function requestDashboardJson<T>(
+  path: string,
+  init: RequestInit,
+): Promise<T> {
+  const response = await fetch(path, init);
+
+  if (!response.ok) {
+    throw await createDashboardError(response);
+  }
+
+  const method = normalizeRequestMethod(init.method);
+  if (method !== "GET") {
+    invalidateDashboardGetCache();
+  }
+
+  return response.json() as Promise<T>;
+}
+
 export async function fetchDashboard<T>(
   path: string,
   init?: DashboardRequestInit,
 ): Promise<T> {
-  const { workspaceId: workspaceIdOption, ...fetchInit } = init ?? {};
+  const {
+    cacheTtlMs: cacheTtlMsOption,
+    workspaceId: workspaceIdOption,
+    ...fetchInit
+  } = init ?? {};
   const headers = new Headers({
     Accept: "application/json",
   });
@@ -102,25 +251,75 @@ export async function fetchDashboard<T>(
   if (workspaceId) {
     headers.set("X-Workspace-ID", workspaceId);
   }
-
-  const response = await fetch(pathWithWorkspaceContext(path, workspaceId), {
+  const requestPath = pathWithWorkspaceContext(path, workspaceId);
+  const requestInit = {
     ...fetchInit,
-    credentials: "same-origin",
+    credentials: "same-origin" as const,
     headers,
-  });
+  };
+  const method = normalizeRequestMethod(fetchInit.method);
 
-  if (!response.ok) {
-    throw await createDashboardError(response);
+  if (method !== "GET") {
+    return requestDashboardJson<T>(requestPath, requestInit);
   }
 
-  return response.json() as Promise<T>;
+  if (!isDashboardGetCacheEnabled()) {
+    return requestDashboardJson<T>(requestPath, requestInit);
+  }
+
+  ensureDashboardGetCacheAuthSubscription();
+  syncDashboardGetCacheAuthScope();
+  const ttlMs =
+    cacheTtlMsOption === undefined
+      ? dashboardGetCacheTtlMs
+      : normalizeCacheTtlMs(cacheTtlMsOption);
+  if (ttlMs <= 0) {
+    return requestDashboardJson<T>(requestPath, requestInit);
+  }
+
+  const now = Date.now();
+  const cacheKey = dashboardGetCacheKey(requestPath, workspaceId);
+  const cached = dashboardGetCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.promise as Promise<T>;
+  }
+  if (cached) {
+    dashboardGetCache.delete(cacheKey);
+  }
+
+  const promise = requestDashboardJson<T>(requestPath, requestInit);
+  dashboardGetCache.set(cacheKey, {
+    expiresAt: now + ttlMs,
+    path: requestPath,
+    promise,
+    workspaceId,
+  });
+
+  try {
+    const data = await promise;
+    const entry = dashboardGetCache.get(cacheKey);
+    if (entry?.promise === promise) {
+      entry.expiresAt = Date.now() + ttlMs;
+    }
+    return data;
+  } catch (error) {
+    const entry = dashboardGetCache.get(cacheKey);
+    if (entry?.promise === promise) {
+      dashboardGetCache.delete(cacheKey);
+    }
+    throw error;
+  }
 }
 
 export async function fetchDashboardNoContent(
   path: string,
   init?: DashboardRequestInit,
 ): Promise<void> {
-  const { workspaceId: workspaceIdOption, ...fetchInit } = init ?? {};
+  const {
+    cacheTtlMs: _cacheTtlMsOption,
+    workspaceId: workspaceIdOption,
+    ...fetchInit
+  } = init ?? {};
   const headers = new Headers({
     Accept: "application/json",
   });
@@ -132,8 +331,9 @@ export async function fetchDashboardNoContent(
   if (workspaceId) {
     headers.set("X-Workspace-ID", workspaceId);
   }
+  const requestPath = pathWithWorkspaceContext(path, workspaceId);
 
-  const response = await fetch(pathWithWorkspaceContext(path, workspaceId), {
+  const response = await fetch(requestPath, {
     ...fetchInit,
     credentials: "same-origin",
     headers,
@@ -141,6 +341,11 @@ export async function fetchDashboardNoContent(
 
   if (!response.ok) {
     throw await createDashboardError(response);
+  }
+
+  const method = normalizeRequestMethod(fetchInit.method);
+  if (method !== "GET") {
+    invalidateDashboardGetCache();
   }
 }
 

@@ -62,6 +62,7 @@ export function startBrowserSession(platform: string) {
 export function getBrowserSession(sessionId: string) {
   return fetchDashboard<BrowserSession>(
     `/api/user/dashboard/browser-sessions/${encodeURIComponent(sessionId)}`,
+    { cacheTtlMs: 0 },
   );
 }
 
