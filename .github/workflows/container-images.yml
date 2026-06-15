@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          all_images='[{"name":"frontend","image":"mpp-frontend","context":"./frontend","file":"./frontend/Dockerfile"},{"name":"backend","image":"mpp-backend","context":"./backend","file":"./backend/Dockerfile"},{"name":"browser-worker","image":"mpp-browser-worker","context":"./browser-worker","file":"./browser-worker/Dockerfile"},{"name":"browser-runtime","image":"mpp-browser-runtime","context":"./browser-worker/runtime","file":"./browser-worker/runtime/Dockerfile"},{"name":"ai-service","image":"mpp-ai-service","context":"./ai-service","file":"./ai-service/Dockerfile"},{"name":"content-pipeline-service","image":"mpp-content-pipeline-service","context":"./content-pipeline-service","file":"./content-pipeline-service/Dockerfile"},{"name":"collab-service","image":"mpp-collab-service","context":"./collab-service","file":"./collab-service/Dockerfile"}]'
+          all_images='[{"name":"frontend","image":"mpp-frontend","context":".","file":"./frontend/Dockerfile"},{"name":"backend","image":"mpp-backend","context":"./backend","file":"./backend/Dockerfile"},{"name":"browser-worker","image":"mpp-browser-worker","context":"./browser-worker","file":"./browser-worker/Dockerfile"},{"name":"browser-runtime","image":"mpp-browser-runtime","context":"./browser-worker/runtime","file":"./browser-worker/runtime/Dockerfile"},{"name":"ai-service","image":"mpp-ai-service","context":"./ai-service","file":"./ai-service/Dockerfile"},{"name":"content-pipeline-service","image":"mpp-content-pipeline-service","context":"./content-pipeline-service","file":"./content-pipeline-service/Dockerfile"},{"name":"collab-service","image":"mpp-collab-service","context":".","file":"./collab-service/Dockerfile"}]'
 
           if [[ "${{ github.event_name }}" != "pull_request" ]]; then
             {
@@ -69,7 +69,7 @@ jobs:
           }
 
           if grep -Eq '^frontend/' changed-files.txt; then
-            add_image '{"name":"frontend","image":"mpp-frontend","context":"./frontend","file":"./frontend/Dockerfile"}'
+            add_image '{"name":"frontend","image":"mpp-frontend","context":".","file":"./frontend/Dockerfile"}'
           fi
           if grep -Eq '^backend/' changed-files.txt; then
             add_image '{"name":"backend","image":"mpp-backend","context":"./backend","file":"./backend/Dockerfile"}'
@@ -85,7 +85,7 @@ jobs:
             add_image '{"name":"content-pipeline-service","image":"mpp-content-pipeline-service","context":"./content-pipeline-service","file":"./content-pipeline-service/Dockerfile"}'
           fi
           if grep -Eq '^collab-service/' changed-files.txt; then
-            add_image '{"name":"collab-service","image":"mpp-collab-service","context":"./collab-service","file":"./collab-service/Dockerfile"}'
+            add_image '{"name":"collab-service","image":"mpp-collab-service","context":".","file":"./collab-service/Dockerfile"}'
           fi
 
           if (( ${#images[@]} == 0 )); then
