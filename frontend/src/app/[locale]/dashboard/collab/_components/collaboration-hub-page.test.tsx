@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => {
   return {
     deleteDashboardProject: vi.fn(),
     getDashboardProjects: vi.fn(),
+    getOwnedProjectCollaboratorSummaries: vi.fn(),
     getProjectCollaborators: vi.fn(),
     getWorkspaceProjects: vi.fn(),
     toastError: vi.fn(),
@@ -58,6 +59,8 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/dashboard/api", () => ({
   deleteDashboardProject: mocks.deleteDashboardProject,
   getDashboardProjects: mocks.getDashboardProjects,
+  getOwnedProjectCollaboratorSummaries:
+    mocks.getOwnedProjectCollaboratorSummaries,
   getProjectCollaborators: mocks.getProjectCollaborators,
   getWorkspaceProjects: mocks.getWorkspaceProjects,
 }));
@@ -177,6 +180,7 @@ describe("CollaborationHubPage project deletion", () => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     mocks.deleteDashboardProject.mockReset();
     mocks.getDashboardProjects.mockReset();
+    mocks.getOwnedProjectCollaboratorSummaries.mockReset();
     mocks.getProjectCollaborators.mockReset();
     mocks.getWorkspaceProjects.mockReset();
     mocks.toastError.mockReset();
@@ -206,8 +210,14 @@ describe("CollaborationHubPage project deletion", () => {
     mocks.getDashboardProjects.mockResolvedValue({
       items: [ownedProject, sharedProject],
     });
-    mocks.getProjectCollaborators.mockResolvedValue({
-      items: [collaborator({ project_id: ownedProject.id })],
+    mocks.getOwnedProjectCollaboratorSummaries.mockResolvedValue({
+      items: [
+        {
+          collaborator_count: 1,
+          collaborators: [collaborator({ project_id: ownedProject.id })],
+          project_id: ownedProject.id,
+        },
+      ],
     });
     mocks.getWorkspaceProjects.mockResolvedValue({
       items: [ownedProject],
@@ -220,6 +230,7 @@ describe("CollaborationHubPage project deletion", () => {
     expect(view.text()).toContain("Owned project");
     expect(view.text()).toContain("Shared project");
     expect(deleteButtons(view.container)).toHaveLength(2);
+    expect(mocks.getProjectCollaborators).not.toHaveBeenCalled();
 
     await act(async () => {
       deleteButtons(view.container)[0]?.click();
@@ -244,6 +255,33 @@ describe("CollaborationHubPage project deletion", () => {
     view.unmount();
   });
 
+  it("keeps shared-with-me projects visible when collaborator summaries fail", async () => {
+    const sharedProject = project({
+      access_source: "direct_share",
+      id: "shared-project",
+      role: "viewer",
+      title: "Shared project",
+      workspace_id: undefined,
+    });
+    mocks.getDashboardProjects.mockResolvedValue({
+      items: [sharedProject],
+    });
+    mocks.getOwnedProjectCollaboratorSummaries.mockRejectedValue(
+      new Error("Unable to load collaborator summaries"),
+    );
+    mocks.getWorkspaceProjects.mockResolvedValue({
+      items: [],
+    });
+
+    const view = renderPage();
+    await flushPageLoad();
+
+    expect(view.text()).toContain("Shared project");
+    expect(view.text()).toContain("Unable to load collaborator summaries");
+
+    view.unmount();
+  });
+
   it("deletes personal owned projects without inheriting the selected workspace", async () => {
     const personalProject = project({
       id: "personal-project",
@@ -253,8 +291,14 @@ describe("CollaborationHubPage project deletion", () => {
     mocks.getDashboardProjects.mockResolvedValue({
       items: [personalProject],
     });
-    mocks.getProjectCollaborators.mockResolvedValue({
-      items: [collaborator({ project_id: personalProject.id })],
+    mocks.getOwnedProjectCollaboratorSummaries.mockResolvedValue({
+      items: [
+        {
+          collaborator_count: 1,
+          collaborators: [collaborator({ project_id: personalProject.id })],
+          project_id: personalProject.id,
+        },
+      ],
     });
     mocks.getWorkspaceProjects.mockResolvedValue({
       items: [],

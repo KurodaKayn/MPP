@@ -75,6 +75,19 @@ func (h *Handler) ListProjectCollaborators(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+func (h *Handler) ListOwnedProjectCollaboratorSummaries(c echo.Context) error {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		return sendError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	}
+
+	resp, err := h.serviceFor(c).ListOwnedProjectCollaboratorSummaries(userID)
+	if err != nil {
+		return sendProjectCollaboratorError(c, err)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
 func (h *Handler) AddProjectCollaborator(c echo.Context) error {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {

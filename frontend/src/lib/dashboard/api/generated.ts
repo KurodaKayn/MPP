@@ -362,6 +362,15 @@ export interface components {
     ProjectCollaboratorsResponse: {
       items: components["schemas"]["ProjectCollaborator"][];
     };
+    ProjectCollaboratorSummary: {
+      /** Format: uuid */
+      project_id: string;
+      collaborator_count: number;
+      collaborators: components["schemas"]["ProjectCollaborator"][];
+    };
+    ProjectCollaboratorSummariesResponse: {
+      items: components["schemas"]["ProjectCollaboratorSummary"][];
+    };
     ProjectActivity: {
       /** Format: uuid */
       id: string;

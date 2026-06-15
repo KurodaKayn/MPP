@@ -1132,6 +1132,18 @@ type ProjectCollaborator struct {
 // ProjectCollaboratorRole defines model for ProjectCollaboratorRole.
 type ProjectCollaboratorRole string
 
+// ProjectCollaboratorSummariesResponse defines model for ProjectCollaboratorSummariesResponse.
+type ProjectCollaboratorSummariesResponse struct {
+	Items []ProjectCollaboratorSummary `json:"items"`
+}
+
+// ProjectCollaboratorSummary defines model for ProjectCollaboratorSummary.
+type ProjectCollaboratorSummary struct {
+	CollaboratorCount int                   `json:"collaborator_count"`
+	Collaborators     []ProjectCollaborator `json:"collaborators"`
+	ProjectId         openapi_types.UUID    `json:"project_id"`
+}
+
 // ProjectCollaboratorsResponse defines model for ProjectCollaboratorsResponse.
 type ProjectCollaboratorsResponse struct {
 	Items []ProjectCollaborator `json:"items"`

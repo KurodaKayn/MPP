@@ -12,6 +12,7 @@ import {
   getBrandProfiles,
   getContentTemplates,
   getDashboardProject,
+  getOwnedProjectCollaboratorSummaries,
   getProjectCollaborators,
   removeProjectCollaborator,
   resolveMediaAssets,
@@ -429,6 +430,48 @@ describe("dashboard project api", () => {
         headers: expect.any(Headers),
       }),
     );
+  });
+
+  it("lists owned project collaborator summaries without selected workspace context", async () => {
+    window.localStorage.setItem(
+      "mpp.dashboard.selectedWorkspaceId",
+      "workspace-1",
+    );
+    const summaries = {
+      items: [
+        {
+          collaborator_count: 1,
+          collaborators: [
+            {
+              created_at: "2026-06-04T12:00:00Z",
+              created_by: "owner-1",
+              email: "editor@example.com",
+              project_id: "project-1",
+              role: "editor",
+              user_id: "user-2",
+              username: "editor",
+            },
+          ],
+          project_id: "project-1",
+        },
+      ],
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(summaries));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getOwnedProjectCollaboratorSummaries()).resolves.toEqual(
+      summaries,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/user/dashboard/projects/collaborator-summaries",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: expect.any(Headers),
+      }),
+    );
+    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
+    expect(headers.get("X-Workspace-ID")).toBeNull();
   });
 
   it("adds a project collaborator", async () => {

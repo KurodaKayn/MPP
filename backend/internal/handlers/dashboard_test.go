@@ -1060,6 +1060,60 @@ func TestUserDashboardHandlerProjectCollaborators(t *testing.T) {
 	require.Equal(t, models.ProjectRoleEditor, detail.Role)
 }
 
+func TestUserDashboardHandlerOwnedProjectCollaboratorSummaries(t *testing.T) {
+	e := echo.New()
+	db := setupHandlerTestDB(t)
+	handler := NewUserDashboardHandler(services.NewDashboardService(db))
+
+	owner := models.User{Username: "summary-owner", Email: "summary-owner@example.com"}
+	collaborator := models.User{Username: "summary-collaborator", Email: "summary-collaborator@example.com"}
+	otherOwner := models.User{Username: "summary-other-owner", Email: "summary-other-owner@example.com"}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&collaborator).Error)
+	require.NoError(t, db.Create(&otherOwner).Error)
+
+	ownedProject := models.Project{
+		UserID:        owner.ID,
+		Title:         "Owned shared title",
+		SourceContent: "Owned shared body",
+		Status:        models.ProjectStatusReady,
+	}
+	sharedWithOwnerProject := models.Project{
+		UserID:        otherOwner.ID,
+		Title:         "Shared with owner title",
+		SourceContent: "Shared with owner body",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&ownedProject).Error)
+	require.NoError(t, db.Create(&sharedWithOwnerProject).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: ownedProject.ID,
+		UserID:    collaborator.ID,
+		Role:      models.ProjectRoleEditor,
+		CreatedBy: owner.ID,
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: sharedWithOwnerProject.ID,
+		UserID:    owner.ID,
+		Role:      models.ProjectRoleViewer,
+		CreatedBy: otherOwner.ID,
+	}).Error)
+
+	c, rec := newHandlerTestContext(e, http.MethodGet, "/api/user/dashboard/projects/collaborator-summaries")
+	setContextUser(c, owner.ID)
+
+	require.NoError(t, handler.ListOwnedProjectCollaboratorSummaries(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp dto.ProjectCollaboratorSummariesResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Items, 1)
+	require.Equal(t, ownedProject.ID, resp.Items[0].ProjectID)
+	require.Equal(t, 1, resp.Items[0].CollaboratorCount)
+	require.Len(t, resp.Items[0].Collaborators, 1)
+	require.Equal(t, collaborator.ID, resp.Items[0].Collaborators[0].UserID)
+}
+
 func TestUserDashboardHandlerWorkspaces(t *testing.T) {
 	e := echo.New()
 	db := setupHandlerTestDB(t)

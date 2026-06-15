@@ -25,14 +25,15 @@ export function getProjectsSharedWithMe(projects: ProjectListItem[]) {
 }
 
 export function getProjectsSharedByMe(
-  projects: Array<{
+  summaries: Array<{
+    collaborator_count: number;
     collaborators: ProjectCollaborator[];
     project: ProjectListItem;
   }>,
 ) {
-  return projects
-    .map(({ collaborators, project }) => ({
-      collaboratorCount: collaborators.length,
+  return summaries
+    .map(({ collaborator_count, collaborators, project }) => ({
+      collaboratorCount: collaborator_count,
       collaborators,
       project,
     }))

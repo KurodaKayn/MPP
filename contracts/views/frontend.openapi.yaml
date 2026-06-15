@@ -168,6 +168,12 @@ components:
     ProjectCollaboratorsResponse:
       $ref: "../openapi.yaml#/components/schemas/ProjectCollaboratorsResponse"
 
+    ProjectCollaboratorSummary:
+      $ref: "../openapi.yaml#/components/schemas/ProjectCollaboratorSummary"
+
+    ProjectCollaboratorSummariesResponse:
+      $ref: "../openapi.yaml#/components/schemas/ProjectCollaboratorSummariesResponse"
+
     ProjectActivity:
       $ref: "../openapi.yaml#/components/schemas/ProjectActivity"
 

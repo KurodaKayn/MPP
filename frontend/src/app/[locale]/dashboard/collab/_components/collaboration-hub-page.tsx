@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   deleteDashboardProject,
   getDashboardProjects,
-  getProjectCollaborators,
+  getOwnedProjectCollaboratorSummaries,
   getWorkspaceProjects,
   type ProjectListItem,
 } from "@/lib/dashboard/api";
@@ -228,19 +228,27 @@ export function CollaborationHubPage() {
       setAllProjects(projects);
 
       const ownedProjects = getOwnedProjects(projects);
-      const collaboratorResults = await Promise.allSettled(
-        ownedProjects.map(async (project) => {
-          const collaborators = await getProjectCollaborators(project.id);
-          return { collaborators: collaborators.items, project };
-        }),
+      const projectById = new Map(
+        ownedProjects.map((project) => [project.id, project]),
       );
-      const fulfilledResults = collaboratorResults
-        .filter((result) => result.status === "fulfilled")
-        .map((result) => result.value);
-      setSharedByMeProjects(getProjectsSharedByMe(fulfilledResults));
-
-      if (collaboratorResults.some((result) => result.status === "rejected")) {
-        setSharedProjectsError(t("collab.hub.error.defaultMessage"));
+      try {
+        const collaboratorSummaries =
+          await getOwnedProjectCollaboratorSummaries();
+        setSharedByMeProjects(
+          getProjectsSharedByMe(
+            collaboratorSummaries.items.flatMap((summary) => {
+              const project = projectById.get(summary.project_id);
+              return project ? [{ ...summary, project }] : [];
+            }),
+          ),
+        );
+      } catch (summaryError) {
+        setSharedByMeProjects([]);
+        setSharedProjectsError(
+          summaryError instanceof Error
+            ? summaryError.message
+            : t("collab.hub.error.defaultMessage"),
+        );
       }
     } catch (requestError) {
       setAllProjects([]);

@@ -451,6 +451,16 @@ type ProjectCollaboratorsResponse struct {
 	Items []ProjectCollaborator `json:"items"`
 }
 
+type ProjectCollaboratorSummary struct {
+	ProjectID         uuid.UUID             `json:"project_id"`
+	CollaboratorCount int                   `json:"collaborator_count"`
+	Collaborators     []ProjectCollaborator `json:"collaborators"`
+}
+
+type ProjectCollaboratorSummariesResponse struct {
+	Items []ProjectCollaboratorSummary `json:"items"`
+}
+
 type ProjectActivity struct {
 	ID             uuid.UUID      `json:"id"`
 	ProjectID      uuid.UUID      `json:"project_id"`

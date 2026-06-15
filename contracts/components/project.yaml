@@ -434,6 +434,35 @@ components:
           items:
             $ref: "#/components/schemas/ProjectCollaborator"
 
+    ProjectCollaboratorSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - project_id
+        - collaborator_count
+        - collaborators
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        collaborator_count:
+          type: integer
+        collaborators:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectCollaborator"
+
+    ProjectCollaboratorSummariesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectCollaboratorSummary"
+
     ProjectActivity:
       type: object
       additionalProperties: false

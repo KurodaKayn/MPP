@@ -78,6 +78,7 @@ describe("project collaboration groups", () => {
     expect(
       getProjectsSharedByMe([
         {
+          collaborator_count: 2,
           collaborators: [
             collaborator({ project_id: first.id, user_id: "user-2" }),
             collaborator({ project_id: first.id, user_id: "user-3" }),
@@ -85,6 +86,7 @@ describe("project collaboration groups", () => {
           project: first,
         },
         {
+          collaborator_count: 0,
           collaborators: [],
           project: second,
         },

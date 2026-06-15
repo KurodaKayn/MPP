@@ -212,6 +212,12 @@ components:
     ProjectCollaboratorsResponse:
       $ref: "./components/project.yaml#/components/schemas/ProjectCollaboratorsResponse"
 
+    ProjectCollaboratorSummary:
+      $ref: "./components/project.yaml#/components/schemas/ProjectCollaboratorSummary"
+
+    ProjectCollaboratorSummariesResponse:
+      $ref: "./components/project.yaml#/components/schemas/ProjectCollaboratorSummariesResponse"
+
     ProjectActivity:
       $ref: "./components/project.yaml#/components/schemas/ProjectActivity"
 
