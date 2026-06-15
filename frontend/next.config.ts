@@ -1,6 +1,10 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 
 const defaultBackendApiBaseUrl = "http://localhost:8080";
+const frontendDir = path.dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = path.join(frontendDir, "..");
 
 function getBackendApiBaseUrl() {
   return (
@@ -43,7 +47,11 @@ const nextConfig: NextConfig = {
   experimental: {
     turbopackFileSystemCacheForDev: isTurbopackFileSystemCacheEnabledForDev(),
   },
+  outputFileTracingRoot: workspaceRoot,
   output: "standalone",
+  turbopack: {
+    root: workspaceRoot,
+  },
   async rewrites() {
     const backendApiBaseUrl = getBackendApiBaseUrl();
 
