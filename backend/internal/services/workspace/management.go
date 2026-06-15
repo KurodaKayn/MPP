@@ -437,6 +437,7 @@ func (s *Service) AddWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.UUI
 		return nil, err
 	}
 	s.invalidateDashboardProjectListCache()
+	s.invalidateDashboardScopedStatsCache()
 	s.refreshWorkspaceReadModel(workspaceID)
 
 	return s.getWorkspaceMember(workspaceID, user.ID)
@@ -576,6 +577,7 @@ func (s *Service) AcceptWorkspaceInvite(actorUserID uuid.UUID, req dto.AcceptWor
 		return nil, err
 	}
 	s.invalidateDashboardProjectListCache()
+	s.invalidateDashboardScopedStatsCache()
 	s.refreshWorkspaceReadModel(member.WorkspaceID)
 	return s.getWorkspaceMember(member.WorkspaceID, actorUserID)
 }
@@ -649,6 +651,7 @@ func (s *Service) UpdateWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.
 		return nil, err
 	}
 	s.invalidateDashboardProjectListCache()
+	s.invalidateDashboardScopedStatsCache()
 	s.refreshWorkspaceReadModel(workspaceID)
 	return s.getWorkspaceMember(workspaceID, targetUserID)
 }
@@ -688,6 +691,7 @@ func (s *Service) RemoveWorkspaceMember(workspaceID uuid.UUID, actorUserID uuid.
 		return err
 	}
 	s.invalidateDashboardProjectListCache()
+	s.invalidateDashboardScopedStatsCache()
 	s.refreshWorkspaceReadModel(workspaceID)
 	return nil
 }

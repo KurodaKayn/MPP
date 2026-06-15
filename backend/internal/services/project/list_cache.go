@@ -195,6 +195,13 @@ func (s *Service) invalidateDashboardCaches(includeStats bool) {
 	}
 }
 
+func (s *Service) invalidateDashboardScopedStatsCache() {
+	if s.statsCache == nil {
+		return
+	}
+	s.statsCache.InvalidateDashboardScopedStatsCache(s.requestContext())
+}
+
 func (s *Service) refreshProjectReadModel(projectID uuid.UUID) {
 	if s.readModels == nil || projectID == uuid.Nil {
 		return

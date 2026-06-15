@@ -39,6 +39,7 @@ type Service struct {
 	projects   *projectsvc.Service
 	readModels DashboardReadModelUpdater
 	listCache  DashboardProjectListCacheInvalidator
+	statsCache DashboardStatsCacheInvalidator
 }
 
 type DashboardReadModelUpdater interface {
@@ -48,6 +49,10 @@ type DashboardReadModelUpdater interface {
 
 type DashboardProjectListCacheInvalidator interface {
 	InvalidateDashboardProjectListCache(ctx context.Context)
+}
+
+type DashboardStatsCacheInvalidator interface {
+	InvalidateDashboardScopedStatsCache(ctx context.Context)
 }
 
 func RoleHasPermission(role string, permission Permission) bool {
@@ -84,6 +89,10 @@ func (s *Service) SetDashboardProjectListCacheInvalidator(invalidator DashboardP
 	s.listCache = invalidator
 }
 
+func (s *Service) SetDashboardStatsCacheInvalidator(invalidator DashboardStatsCacheInvalidator) {
+	s.statsCache = invalidator
+}
+
 func (s *Service) requestContext() context.Context {
 	if s.db != nil && s.db.Statement != nil && s.db.Statement.Context != nil {
 		return s.db.Statement.Context
@@ -110,4 +119,11 @@ func (s *Service) invalidateDashboardProjectListCache() {
 		return
 	}
 	s.listCache.InvalidateDashboardProjectListCache(s.requestContext())
+}
+
+func (s *Service) invalidateDashboardScopedStatsCache() {
+	if s.statsCache == nil {
+		return
+	}
+	s.statsCache.InvalidateDashboardScopedStatsCache(s.requestContext())
 }
