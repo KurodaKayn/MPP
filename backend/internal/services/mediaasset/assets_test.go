@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
@@ -115,6 +117,111 @@ func TestResolveMediaAssetsPresignsReadyAssets(t *testing.T) {
 	require.Equal(t, upload.AssetID, resp.Items[0].AssetID)
 	require.Equal(t, "fake://get/mpp-media/"+finalKey, resp.Items[0].URL)
 	require.WithinDuration(t, time.Now().Add(5*time.Minute), resp.Items[0].ExpiresAt, 2*time.Second)
+}
+
+func TestResolveMediaAssetsUsesCachedResolvedAsset(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	redisClient, redisServer := newMediaAssetRedisClientWithServer(t)
+	service.UseRedis(redisClient)
+	owner, upload := createReadyMediaAsset(t, db, service, storage)
+
+	first, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
+	require.Len(t, requireResolvedMediaAssetCacheKeys(t, redisServer, upload.AssetID, 1), 1)
+	require.Less(t, requireResolvedMediaAssetCacheTTL(t, redisClient, redisServer, upload.AssetID), 5*time.Minute)
+
+	cached, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, first.Items, cached.Items)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
+}
+
+func TestResolveMediaAssetsRefreshesExpiredCache(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	redisClient, redisServer := newMediaAssetRedisClientWithServer(t)
+	service.UseRedis(redisClient)
+	owner, upload := createReadyMediaAsset(t, db, service, storage)
+
+	_, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
+
+	redisServer.FastForward(16 * time.Second)
+
+	_, err = service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, storage.PresignGetObjectCount())
+}
+
+func TestDeleteMediaAssetInvalidatesResolvedAssetCache(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	redisClient, redisServer := newMediaAssetRedisClientWithServer(t)
+	service.UseRedis(redisClient)
+	owner, upload := createReadyMediaAsset(t, db, service, storage)
+
+	_, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+	requireResolvedMediaAssetCacheKeys(t, redisServer, upload.AssetID, 1)
+
+	require.NoError(t, service.DeleteMediaAsset(upload.AssetID, owner.ID))
+
+	requireResolvedMediaAssetCacheKeys(t, redisServer, upload.AssetID, 0)
+	_, err = service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
+}
+
+func TestResolveMediaAssetsChecksAuthorizationBeforeReturningCachedAsset(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	redisClient, _ := newMediaAssetRedisClientWithServer(t)
+	service.UseRedis(redisClient)
+	owner, upload := createReadyMediaAsset(t, db, service, storage)
+
+	viewer := models.User{
+		ID:           uuid.New(),
+		Username:     "media-viewer",
+		Email:        "media-viewer@example.com",
+		PasswordHash: "hash",
+		Role:         "user",
+	}
+	require.NoError(t, db.Create(&viewer).Error)
+	var asset models.MediaAsset
+	require.NoError(t, db.First(&asset, "id = ?", upload.AssetID).Error)
+	require.NotNil(t, asset.ProjectID)
+	projectID := *asset.ProjectID
+	require.NoError(t, db.Create(&models.ProjectCollaborator{
+		ProjectID: projectID,
+		UserID:    viewer.ID,
+		Role:      models.ProjectRoleViewer,
+		CreatedBy: owner.ID,
+	}).Error)
+
+	_, err := service.ResolveMediaAssets(viewer.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
+
+	require.NoError(t, db.Delete(&models.ProjectCollaborator{}, "project_id = ? AND user_id = ?", projectID, viewer.ID).Error)
+
+	_, err = service.ResolveMediaAssets(viewer.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.ErrorIs(t, err, mediaasset.ErrForbidden)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
 }
 
 func TestResolveMediaObjectRefPresignsReadyAsset(t *testing.T) {
@@ -309,6 +416,64 @@ func setupMediaAssetService(t *testing.T) (*gorm.DB, *mediaasset.Service, *fake.
 	return db, service, storage
 }
 
+func createReadyMediaAsset(t *testing.T, db *gorm.DB, service *mediaasset.Service, storage *fake.Client) (models.User, *dto.CreateMediaUploadResponse) {
+	t.Helper()
+
+	owner, project := createMediaAssetProject(t, db)
+	upload, err := service.CreateProjectMediaUpload(project.ID, owner.ID, dto.CreateMediaUploadRequest{
+		Filename:  "hero.png",
+		MimeType:  "image/png",
+		SizeBytes: 11,
+		Usage:     models.MediaAssetUsageEditorImage,
+	})
+	require.NoError(t, err)
+	stagingKey := mediaAssetObjectKey(t, db, upload.AssetID)
+	storage.StoreObject(stagingKey, []byte("image-bytes"), objectstorage.ObjectInfo{
+		Key:         stagingKey,
+		ContentType: "image/png",
+		Size:        11,
+		ETag:        "etag-value",
+	})
+	_, err = service.CompleteMediaUpload(upload.AssetID, owner.ID)
+	require.NoError(t, err)
+	return owner, upload
+}
+
+func newMediaAssetRedisClientWithServer(t *testing.T) (*redis.Client, *miniredis.Miniredis) {
+	t.Helper()
+
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+	return client, redisServer
+}
+
+func requireResolvedMediaAssetCacheKeys(t *testing.T, redisServer *miniredis.Miniredis, assetID uuid.UUID, count int) []string {
+	t.Helper()
+
+	prefix := "mpp:dashboard:media-assets:resolve:v1:" + assetID.String() + ":"
+	keys := make([]string, 0)
+	for _, key := range redisServer.Keys() {
+		if strings.HasPrefix(key, prefix) {
+			keys = append(keys, key)
+		}
+	}
+	require.Len(t, keys, count)
+	return keys
+}
+
+func requireResolvedMediaAssetCacheTTL(t *testing.T, redisClient *redis.Client, redisServer *miniredis.Miniredis, assetID uuid.UUID) time.Duration {
+	t.Helper()
+
+	keys := requireResolvedMediaAssetCacheKeys(t, redisServer, assetID, 1)
+	ttl, err := redisClient.PTTL(context.Background(), keys[0]).Result()
+	require.NoError(t, err)
+	require.Positive(t, ttl)
+	return ttl
+}
+
 func createMediaAssetProject(t *testing.T, db *gorm.DB) (models.User, models.Project) {
 	t.Helper()
 
@@ -322,6 +487,14 @@ func createMediaAssetProject(t *testing.T, db *gorm.DB) (models.User, models.Pro
 	require.NoError(t, db.Create(&owner).Error)
 
 	workspaceID := models.PersonalWorkspaceID(owner.ID)
+	workspace := models.Workspace{
+		ID:          workspaceID,
+		OwnerUserID: owner.ID,
+		Name:        models.PersonalWorkspaceName,
+		Slug:        models.PersonalWorkspaceSlug(owner.ID),
+		Status:      models.WorkspaceStatusActive,
+	}
+	require.NoError(t, db.Create(&workspace).Error)
 	project := models.Project{
 		UserID:        owner.ID,
 		WorkspaceID:   &workspaceID,
