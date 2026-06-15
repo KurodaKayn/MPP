@@ -1,0 +1,126 @@
+name: Bug report
+description: Report a reproducible problem in MPP.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve MPP. Before submitting, please remove raw cookies, access tokens, CDP endpoints, session IDs, unpublished content, or platform credentials from logs and screenshots.
+
+        If this is a security vulnerability, do not open a public issue. Use the private security reporting link from the issue chooser instead.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I have searched existing issues and discussions for duplicates.
+          required: true
+        - label: I have tested with the latest available code or release that I can access.
+          required: true
+        - label: I have removed private credentials, cookies, tokens, and unpublished content from this report.
+          required: true
+
+  - type: dropdown
+    id: affected-areas
+    attributes:
+      label: Affected area
+      description: Select every part of MPP that appears to be involved.
+      multiple: true
+      options:
+        - Frontend app
+        - Browser extension
+        - Backend API
+        - Browser worker / remote login
+        - Collaboration service
+        - Content pipeline service
+        - AI service
+        - Platform adapter
+        - Contracts / OpenAPI
+        - Deployment / Kubernetes
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-platforms
+    attributes:
+      label: Publishing platform
+      description: Select the external publishing platform if the issue is platform-specific.
+      multiple: true
+      options:
+        - Not platform-specific
+        - WeChat
+        - Zhihu
+        - X
+        - Douyin
+        - Other
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: What happened?
+      description: Describe the incorrect behavior and any visible error messages.
+      placeholder: The draft adapter returns ..., but the editor/publisher shows ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: What did you expect to happen?
+      placeholder: I expected the draft to be converted/published/saved as ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How can we reproduce it?
+      description: Provide minimal, precise steps. Include a small reproduction repo or redacted fixture when possible.
+      placeholder: |
+        1. Start MPP with ...
+        2. Create a content project with ...
+        3. Open/publish/sync ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include versions that matter for the affected area.
+      render: shell
+      placeholder: |
+        MPP commit or version:
+        Setup: standalone / Docker dev / Kubernetes / browser extension
+        OS:
+        Browser:
+        Node:
+        pnpm:
+        Go:
+        Python:
+        Rust:
+        Database / Redis:
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, screenshots, or traces
+      description: Paste redacted logs, screenshots, network traces, or console output.
+      render: shell
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add links, suspected causes, recent changes, or related issues.

@@ -1,0 +1,62 @@
+name: Documentation issue
+description: Report missing, outdated, or confusing documentation.
+title: "[Docs]: "
+labels:
+  - documentation
+body:
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I have checked the relevant English and Chinese docs when available.
+          required: true
+        - label: I have searched existing issues for this documentation problem.
+          required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Documentation location
+      description: Link or path to the affected page, section, or file.
+      placeholder: doc/setup-dev.md, doc/zh/README.md, README.md, ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue type
+      options:
+        - Missing information
+        - Incorrect information
+        - Outdated information
+        - Confusing explanation
+        - Broken link or asset
+        - Translation mismatch
+        - Typo or formatting
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-docs
+    attributes:
+      label: What is wrong or missing?
+      description: Quote a short phrase or describe the gap. Avoid copying long sections.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested-change
+    attributes:
+      label: Suggested change
+      description: Describe the correction, example, diagram, command, or link that would help.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Add setup path, module, command, platform, screenshot, or related issue.

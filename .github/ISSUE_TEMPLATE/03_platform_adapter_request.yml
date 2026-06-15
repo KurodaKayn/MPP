@@ -1,0 +1,108 @@
+name: Platform adapter request
+description: Request support for a publishing platform or a platform-specific behavior change.
+title: "[Platform]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        MPP isolates publishing platforms behind adapters. Please focus this request on observable platform behavior, public documentation, draft format rules, login/account constraints, and validation requirements.
+
+        Do not include real account credentials, raw cookies, private drafts, access tokens, or unpublished content.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I have searched existing issues for this platform or behavior.
+          required: true
+        - label: I have removed credentials, cookies, tokens, and private content from this request.
+          required: true
+
+  - type: input
+    id: platform-name
+    attributes:
+      label: Platform name
+      placeholder: WeChat, Zhihu, X, Douyin, ...
+    validations:
+      required: true
+
+  - type: input
+    id: platform-url
+    attributes:
+      label: Platform URL or public documentation
+      placeholder: https://...
+
+  - type: dropdown
+    id: request-type
+    attributes:
+      label: Request type
+      multiple: true
+      options:
+        - New platform support
+        - Draft format adapter
+        - Media upload behavior
+        - Login / account session
+        - Validation rules
+        - Publish / schedule flow
+        - Status tracking
+        - Existing platform regression
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: desired-workflow
+    attributes:
+      label: Desired publishing workflow
+      description: Describe the creator/operator journey from draft to published content.
+      placeholder: |
+        1. User prepares ...
+        2. MPP converts ...
+        3. Platform requires ...
+        4. MPP publishes or schedules ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: platform-rules
+    attributes:
+      label: Platform rules and constraints
+      description: Include public rules for formats, length limits, media requirements, account model, login, rate limits, or review flow.
+      placeholder: |
+        - Title limit:
+        - Body format:
+        - Media:
+        - Login/account:
+        - Scheduling:
+        - Known validation errors:
+    validations:
+      required: true
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Redacted examples or fixtures
+      description: Provide safe sample drafts, HTML/Markdown fragments, screenshots, or API payloads.
+      render: markdown
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: What must work before this adapter or behavior is considered done?
+      placeholder: |
+        - Drafts convert to ...
+        - Invalid content reports ...
+        - Login/session handling avoids ...
+        - Publishing status updates ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add links to platform docs, related issues, or implementation notes.

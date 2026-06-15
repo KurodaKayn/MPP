@@ -1,0 +1,59 @@
+name: Question or help
+description: Ask a usage, setup, or contributor question that is not a bug report.
+title: "[Question]: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for questions that may help future users or contributors. If you can reproduce broken behavior, please use the bug report template instead.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight checklist
+      options:
+        - label: I have searched existing issues and documentation.
+          required: true
+        - label: This is not a security report and does not include credentials, cookies, tokens, or private content.
+          required: true
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      options:
+        - Local setup
+        - Docker development setup
+        - Kubernetes deployment
+        - Frontend app
+        - Browser extension
+        - Platform publishing
+        - Remote browser login
+        - Collaboration editing
+        - AI editing workflow
+        - Contributing
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to understand or accomplish?
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: List docs, commands, or approaches you already checked.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Include relevant environment, module, setup path, screenshots, or links.
