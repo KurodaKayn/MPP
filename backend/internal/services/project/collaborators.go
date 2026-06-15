@@ -90,6 +90,7 @@ func (s *Service) AddProjectCollaborator(projectID uuid.UUID, actorUserID uuid.U
 	}
 
 	s.invalidateDashboardCaches(false)
+	s.invalidateDashboardScopedStatsCache()
 
 	return s.getProjectCollaborator(projectID, user.ID)
 }
@@ -153,6 +154,7 @@ func (s *Service) RemoveProjectCollaborator(projectID uuid.UUID, actorUserID uui
 	}
 
 	s.invalidateDashboardCaches(false)
+	s.invalidateDashboardScopedStatsCache()
 
 	return nil
 }

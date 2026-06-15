@@ -360,6 +360,7 @@ func (s *Service) AcceptProjectShareLink(token string, userID uuid.UUID) (*dto.A
 
 	if collaboratorChanged {
 		s.invalidateDashboardCaches(false)
+		s.invalidateDashboardScopedStatsCache()
 	}
 
 	project, err := s.GetProject(projectID, &userID)

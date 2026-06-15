@@ -12,6 +12,7 @@ type dashboardProjectListInvalidator interface {
 
 type dashboardStatsInvalidator interface {
 	InvalidateDashboardStatsCache(ctx context.Context)
+	InvalidateDashboardScopedStatsCache(ctx context.Context)
 }
 
 type dashboardReadModelUpdater interface {
@@ -37,6 +38,13 @@ func (e dashboardSideEffects) InvalidateDashboardStatsCache(ctx context.Context)
 		return
 	}
 	e.stats.InvalidateDashboardStatsCache(ctx)
+}
+
+func (e dashboardSideEffects) InvalidateDashboardScopedStatsCache(ctx context.Context) {
+	if e.stats == nil {
+		return
+	}
+	e.stats.InvalidateDashboardScopedStatsCache(ctx)
 }
 
 func (e dashboardSideEffects) RefreshProjectAsync(ctx context.Context, projectID uuid.UUID) {

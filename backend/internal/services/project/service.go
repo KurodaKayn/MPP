@@ -28,6 +28,7 @@ const dashboardProjectListCacheTTL = 15 * time.Second
 
 type DashboardStatsCacheInvalidator interface {
 	InvalidateDashboardStatsCache(ctx context.Context)
+	InvalidateDashboardScopedStatsCache(ctx context.Context)
 }
 
 type DashboardReadModelUpdater interface {
