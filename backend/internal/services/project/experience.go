@@ -301,6 +301,7 @@ func (s *Service) AcceptProjectShareLink(token string, userID uuid.UUID) (*dto.A
 	tokenHash := hashProjectShareToken(token)
 	now := time.Now().UTC()
 	var projectID uuid.UUID
+	collaboratorChanged := false
 
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		var link models.ProjectShareLink
@@ -347,6 +348,7 @@ func (s *Service) AcceptProjectShareLink(token string, userID uuid.UUID) (*dto.A
 		}).Create(&collaborator).Error; err != nil {
 			return err
 		}
+		collaboratorChanged = true
 
 		return recordProjectActivity(tx, project.ID, userID, nil, models.ProjectActivityShareLinkAccepted, map[string]any{
 			"role":          role,
@@ -356,10 +358,15 @@ func (s *Service) AcceptProjectShareLink(token string, userID uuid.UUID) (*dto.A
 		return nil, err
 	}
 
+	if collaboratorChanged {
+		s.invalidateDashboardCaches(false)
+	}
+
 	project, err := s.GetProject(projectID, &userID)
 	if err != nil {
 		return nil, err
 	}
+
 	return &dto.AcceptProjectShareLinkResponse{
 		Project: project,
 		Role:    project.Role,

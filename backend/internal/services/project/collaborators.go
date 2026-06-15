@@ -89,6 +89,8 @@ func (s *Service) AddProjectCollaborator(projectID uuid.UUID, actorUserID uuid.U
 		return nil, err
 	}
 
+	s.invalidateDashboardCaches(false)
+
 	return s.getProjectCollaborator(projectID, user.ID)
 }
 
@@ -123,6 +125,8 @@ func (s *Service) UpdateProjectCollaborator(projectID uuid.UUID, actorUserID uui
 		return nil, err
 	}
 
+	s.invalidateDashboardCaches(false)
+
 	return s.getProjectCollaborator(projectID, targetUserID)
 }
 
@@ -135,7 +139,7 @@ func (s *Service) RemoveProjectCollaborator(projectID uuid.UUID, actorUserID uui
 		return ErrInvalidProjectCollaborator
 	}
 
-	return s.db.Transaction(func(tx *gorm.DB) error {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Delete(&models.ProjectCollaborator{}, "project_id = ? AND user_id = ?", projectID, targetUserID)
 		if result.Error != nil {
 			return result.Error
@@ -144,7 +148,13 @@ func (s *Service) RemoveProjectCollaborator(projectID uuid.UUID, actorUserID uui
 			return gorm.ErrRecordNotFound
 		}
 		return recordProjectActivity(tx, projectID, actorUserID, &targetUserID, models.ProjectActivityCollaboratorRemoved, nil)
-	})
+	}); err != nil {
+		return err
+	}
+
+	s.invalidateDashboardCaches(false)
+
+	return nil
 }
 
 func (s *Service) resolveProjectCollaboratorUser(req dto.AddProjectCollaboratorRequest) (*models.User, error) {
