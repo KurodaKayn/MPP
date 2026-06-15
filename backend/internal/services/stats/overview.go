@@ -16,7 +16,10 @@ import (
 )
 
 const dashboardStatsCachePrefix = "mpp:dashboard:stats:global:v1"
+const dashboardUserStatsCachePrefix = "mpp:dashboard:stats:user:v1"
+const dashboardWorkspaceStatsCachePrefix = "mpp:dashboard:stats:workspace:v1"
 const dashboardStatsCacheGenerationKey = "mpp:dashboard:stats-generation:v1"
+const dashboardScopedStatsCacheGenerationKey = "mpp:dashboard:stats-generation:scoped:v1"
 const dashboardStatsCacheVersion = 1
 const dashboardStatsRefreshTimeout = 15 * time.Second
 const dashboardStatsInvalidateTimeout = 2 * time.Second
@@ -27,9 +30,14 @@ type dashboardStatsCachePayload struct {
 	Stats      dto.DashboardStatsResponse `json:"stats"`
 }
 
+type dashboardStatsCacheCompute func(*Service) (*dto.DashboardStatsResponse, error)
+
 func (s *Service) GetStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsResponse, error) {
 	if scopeUserID == nil && s.canUseDashboardStatsCache() {
 		return s.getCachedStats()
+	}
+	if scopeUserID != nil && s.canUseDashboardStatsCache() {
+		return s.getCachedUserStats(*scopeUserID)
 	}
 	return s.computeStats(scopeUserID)
 }
@@ -143,13 +151,35 @@ func (s *Service) globalStatsFromReadModel() (*dto.DashboardStatsResponse, bool,
 }
 
 func (s *Service) getCachedStats() (*dto.DashboardStatsResponse, error) {
+	return s.getCachedDashboardStats(dashboardStatsCacheGenerationKey, dashboardStatsCacheKey, func(svc *Service) (*dto.DashboardStatsResponse, error) {
+		return svc.computeStats(nil)
+	})
+}
+
+func (s *Service) getCachedUserStats(userID uuid.UUID) (*dto.DashboardStatsResponse, error) {
+	return s.getCachedDashboardStats(dashboardScopedStatsCacheGenerationKey, func(generation string) string {
+		return dashboardUserStatsCacheKey(userID, generation)
+	}, func(svc *Service) (*dto.DashboardStatsResponse, error) {
+		return svc.computeStats(&userID)
+	})
+}
+
+func (s *Service) getCachedWorkspaceStats(workspaceID uuid.UUID) (*dto.DashboardStatsResponse, error) {
+	return s.getCachedDashboardStats(dashboardScopedStatsCacheGenerationKey, func(generation string) string {
+		return dashboardWorkspaceStatsCacheKey(workspaceID, generation)
+	}, func(svc *Service) (*dto.DashboardStatsResponse, error) {
+		return svc.computeWorkspaceStats(workspaceID)
+	})
+}
+
+func (s *Service) getCachedDashboardStats(generationKey string, cacheKeyForGeneration func(string) string, compute dashboardStatsCacheCompute) (*dto.DashboardStatsResponse, error) {
 	ctx := s.requestContext()
-	generation, err := s.dashboardStatsCacheGeneration(ctx)
+	generation, err := s.dashboardStatsCacheGeneration(ctx, generationKey)
 	cacheUnavailable := err != nil
 	if cacheUnavailable {
 		generation = "0"
 	}
-	cacheKey := dashboardStatsCacheKey(generation)
+	cacheKey := cacheKeyForGeneration(generation)
 	if !cacheUnavailable {
 		if stats, hit, _ := s.cachedDashboardStats(ctx, cacheKey, generation); hit {
 			return stats, nil
@@ -158,9 +188,9 @@ func (s *Service) getCachedStats() (*dto.DashboardStatsResponse, error) {
 
 	if s.cacheGroup == nil {
 		if cacheUnavailable {
-			return s.computeStats(nil)
+			return compute(s)
 		}
-		return s.refreshDashboardStatsCache(ctx, cacheKey, generation)
+		return s.refreshDashboardStatsCache(ctx, cacheKey, generation, compute)
 	}
 
 	resultCh := s.cacheGroup.DoChan(cacheKey, func() (any, error) {
@@ -168,14 +198,14 @@ func (s *Service) getCachedStats() (*dto.DashboardStatsResponse, error) {
 		defer cancel()
 		refreshSvc := s.WithContext(refreshCtx)
 		if cacheUnavailable {
-			return refreshSvc.computeStats(nil)
+			return compute(refreshSvc)
 		}
 		if stats, hit, err := refreshSvc.cachedDashboardStats(refreshCtx, cacheKey, generation); hit {
 			return stats, nil
 		} else if err != nil {
-			return refreshSvc.computeStats(nil)
+			return compute(refreshSvc)
 		}
-		return refreshSvc.refreshDashboardStatsCache(refreshCtx, cacheKey, generation)
+		return refreshSvc.refreshDashboardStatsCache(refreshCtx, cacheKey, generation, compute)
 	})
 
 	select {
@@ -186,7 +216,7 @@ func (s *Service) getCachedStats() (*dto.DashboardStatsResponse, error) {
 		if stats, ok := result.Val.(*dto.DashboardStatsResponse); ok {
 			return stats, nil
 		}
-		return s.computeStats(nil)
+		return compute(s)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -217,8 +247,8 @@ func decodeDashboardStatsCachePayload(cached []byte, generation string) (*dto.Da
 	return &payload.Stats, true
 }
 
-func (s *Service) refreshDashboardStatsCache(ctx context.Context, cacheKey string, generation string) (*dto.DashboardStatsResponse, error) {
-	stats, err := s.computeStats(nil)
+func (s *Service) refreshDashboardStatsCache(ctx context.Context, cacheKey string, generation string, compute dashboardStatsCacheCompute) (*dto.DashboardStatsResponse, error) {
+	stats, err := compute(s)
 	if err != nil {
 		return nil, err
 	}
@@ -255,6 +285,13 @@ func (s *Service) GetWorkspaceStats(workspaceID uuid.UUID, scopeUserID uuid.UUID
 	if _, err := s.projects.WorkspaceProjectRole(workspaceID, scopeUserID); err != nil {
 		return nil, err
 	}
+	if s.canUseDashboardStatsCache() {
+		return s.getCachedWorkspaceStats(workspaceID)
+	}
+	return s.computeWorkspaceStats(workspaceID)
+}
+
+func (s *Service) computeWorkspaceStats(workspaceID uuid.UUID) (*dto.DashboardStatsResponse, error) {
 	if s.canUseReadModels() {
 		var readModel models.WorkspaceDashboardStats
 		if err := s.eventualReadDB().First(&readModel, "workspace_id = ?", workspaceID).Error; err != nil {
@@ -346,15 +383,32 @@ func (s *Service) InvalidateDashboardStatsCache(ctx context.Context) {
 	}
 	invalidateCtx, cancel := dashboardStatsInvalidationContext(s.requestContext())
 	defer cancel()
-	_ = s.cache.Incr(invalidateCtx, dashboardStatsCacheGenerationKey).Err()
+	s.incrementDashboardStatsGeneration(invalidateCtx, dashboardStatsCacheGenerationKey)
+	s.incrementDashboardStatsGeneration(invalidateCtx, dashboardScopedStatsCacheGenerationKey)
+}
+
+func (s *Service) InvalidateDashboardScopedStatsCache(ctx context.Context) {
+	if s == nil || s.cache == nil {
+		return
+	}
+	if ctx != nil {
+		s = s.WithContext(ctx)
+	}
+	invalidateCtx, cancel := dashboardStatsInvalidationContext(s.requestContext())
+	defer cancel()
+	s.incrementDashboardStatsGeneration(invalidateCtx, dashboardScopedStatsCacheGenerationKey)
+}
+
+func (s *Service) incrementDashboardStatsGeneration(ctx context.Context, generationKey string) {
+	_ = s.cache.Incr(ctx, generationKey).Err()
 }
 
 func dashboardStatsInvalidationContext(parent context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(parent), dashboardStatsInvalidateTimeout)
 }
 
-func (s *Service) dashboardStatsCacheGeneration(ctx context.Context) (string, error) {
-	generation, err := s.cache.Get(ctx, dashboardStatsCacheGenerationKey).Result()
+func (s *Service) dashboardStatsCacheGeneration(ctx context.Context, generationKey string) (string, error) {
+	generation, err := s.cache.Get(ctx, generationKey).Result()
 	if errors.Is(err, redis.Nil) {
 		return "0", nil
 	}
@@ -363,4 +417,12 @@ func (s *Service) dashboardStatsCacheGeneration(ctx context.Context) (string, er
 
 func dashboardStatsCacheKey(generation string) string {
 	return dashboardStatsCachePrefix + ":" + generation
+}
+
+func dashboardUserStatsCacheKey(userID uuid.UUID, generation string) string {
+	return dashboardUserStatsCachePrefix + ":" + userID.String() + ":" + generation
+}
+
+func dashboardWorkspaceStatsCacheKey(workspaceID uuid.UUID, generation string) string {
+	return dashboardWorkspaceStatsCachePrefix + ":" + workspaceID.String() + ":" + generation
 }
