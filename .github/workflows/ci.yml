@@ -41,7 +41,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Go
         if: steps.select.outputs.selected == 'true'
@@ -97,7 +97,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Run frontend CI
         if: steps.select.outputs.selected == 'true'
@@ -131,7 +131,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: extension/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Run extension CI
         if: steps.select.outputs.selected == 'true'
@@ -257,7 +257,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: collab-service/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Run collab service CI
         if: steps.select.outputs.selected == 'true'
