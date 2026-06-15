@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -20,6 +21,8 @@ const (
 	resolvedMediaAssetCacheTTL        = 15 * time.Second
 	resolvedMediaAssetInvalidateDelay = 2 * time.Second
 )
+
+var errResolvedMediaAssetCacheStale = errors.New("resolved media asset cache stale")
 
 type resolvedMediaAssetCachePayload struct {
 	AssetID     string    `json:"asset_id"`
@@ -53,6 +56,9 @@ func (s *Service) cachedResolvedMediaAsset(assetID uuid.UUID, userID uuid.UUID) 
 		return dto.ResolvedMediaAsset{}, false, nil
 	}
 	if err := s.authorizeCachedResolvedMediaAsset(payload, userID); err != nil {
+		if errors.Is(err, errResolvedMediaAssetCacheStale) {
+			return dto.ResolvedMediaAsset{}, false, nil
+		}
 		return dto.ResolvedMediaAsset{}, true, err
 	}
 	return dto.ResolvedMediaAsset{
@@ -114,6 +120,9 @@ func (s *Service) authorizeCachedResolvedMediaAsset(payload resolvedMediaAssetCa
 		if err := s.strongReadDB().
 			Select("id", "user_id", "workspace_id").
 			First(&project, "id = ?", projectID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return s.authorizeCachedResolvedMediaAssetThroughCurrentAsset(payload, userID)
+			}
 			return err
 		}
 		_, err = s.projects.ProjectAccessRole(project, userID)
@@ -126,6 +135,24 @@ func (s *Service) authorizeCachedResolvedMediaAsset(payload resolvedMediaAssetCa
 	}
 	_, err = s.projects.WorkspaceProjectRole(workspaceID, userID)
 	return err
+}
+
+func (s *Service) authorizeCachedResolvedMediaAssetThroughCurrentAsset(payload resolvedMediaAssetCachePayload, userID uuid.UUID) error {
+	assetID, err := uuid.Parse(payload.AssetID)
+	if err != nil || assetID == uuid.Nil {
+		return ErrInvalidMediaAsset
+	}
+	asset, err := s.mediaAssetForRead(assetID, userID)
+	if err != nil {
+		return err
+	}
+	if asset.Status != models.MediaAssetStatusReady {
+		return ErrMediaAssetNotReady
+	}
+	if asset.Bucket != payload.Bucket || asset.ObjectKey != payload.ObjectKey {
+		return errResolvedMediaAssetCacheStale
+	}
+	return nil
 }
 
 func decodeResolvedMediaAssetCachePayload(cached []byte, assetID uuid.UUID, userID uuid.UUID, now time.Time) (resolvedMediaAssetCachePayload, bool) {
