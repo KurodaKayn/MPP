@@ -10,7 +10,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -111,33 +110,6 @@ func (s *Service) cacheResolvedMediaAsset(asset models.MediaAsset, userID uuid.U
 }
 
 func (s *Service) authorizeCachedResolvedMediaAsset(payload resolvedMediaAssetCachePayload, userID uuid.UUID) error {
-	if strings.TrimSpace(payload.ProjectID) != "" {
-		projectID, err := uuid.Parse(payload.ProjectID)
-		if err != nil || projectID == uuid.Nil {
-			return ErrInvalidMediaAsset
-		}
-		var project models.Project
-		if err := s.strongReadDB().
-			Select("id", "user_id", "workspace_id").
-			First(&project, "id = ?", projectID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return s.authorizeCachedResolvedMediaAssetThroughCurrentAsset(payload, userID)
-			}
-			return err
-		}
-		_, err = s.projects.ProjectAccessRole(project, userID)
-		return err
-	}
-
-	workspaceID, err := uuid.Parse(payload.WorkspaceID)
-	if err != nil || workspaceID == uuid.Nil {
-		return ErrInvalidMediaAsset
-	}
-	_, err = s.projects.WorkspaceProjectRole(workspaceID, userID)
-	return err
-}
-
-func (s *Service) authorizeCachedResolvedMediaAssetThroughCurrentAsset(payload resolvedMediaAssetCachePayload, userID uuid.UUID) error {
 	assetID, err := uuid.Parse(payload.AssetID)
 	if err != nil || assetID == uuid.Nil {
 		return ErrInvalidMediaAsset
