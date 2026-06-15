@@ -346,6 +346,7 @@ export function getProjectPublications(
 
   return fetchDashboard<ProjectPublications>(
     `/api/user/dashboard/projects/${projectId}/publications${query}`,
+    { cacheTtlMs: 0 },
   );
 }
 
