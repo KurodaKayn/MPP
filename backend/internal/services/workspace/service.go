@@ -38,11 +38,16 @@ type Service struct {
 	router     *dbrouter.Router
 	projects   *projectsvc.Service
 	readModels DashboardReadModelUpdater
+	listCache  DashboardProjectListCacheInvalidator
 }
 
 type DashboardReadModelUpdater interface {
 	RefreshProjectAsync(ctx context.Context, projectID uuid.UUID)
 	RefreshWorkspaceAsync(ctx context.Context, workspaceID uuid.UUID)
+}
+
+type DashboardProjectListCacheInvalidator interface {
+	InvalidateDashboardProjectListCache(ctx context.Context)
 }
 
 func RoleHasPermission(role string, permission Permission) bool {
@@ -75,6 +80,10 @@ func (s *Service) SetDashboardReadModelUpdater(updater DashboardReadModelUpdater
 	s.readModels = updater
 }
 
+func (s *Service) SetDashboardProjectListCacheInvalidator(invalidator DashboardProjectListCacheInvalidator) {
+	s.listCache = invalidator
+}
+
 func (s *Service) requestContext() context.Context {
 	if s.db != nil && s.db.Statement != nil && s.db.Statement.Context != nil {
 		return s.db.Statement.Context
@@ -94,4 +103,11 @@ func (s *Service) refreshWorkspaceReadModel(workspaceID uuid.UUID) {
 		return
 	}
 	s.readModels.RefreshWorkspaceAsync(s.requestContext(), workspaceID)
+}
+
+func (s *Service) invalidateDashboardProjectListCache() {
+	if s.listCache == nil {
+		return
+	}
+	s.listCache.InvalidateDashboardProjectListCache(s.requestContext())
 }

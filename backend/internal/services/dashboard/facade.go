@@ -260,6 +260,7 @@ func (s *DashboardService) wireDashboardCacheInvalidators() {
 	}
 	if s.Workspace != nil && s.Workspace.Service != nil {
 		s.Workspace.SetDashboardReadModelUpdater(sideEffects)
+		s.Workspace.SetDashboardProjectListCacheInvalidator(sideEffects)
 	}
 	if s.Publisher != nil && s.Publisher.Service != nil {
 		publisher := s.Publisher.Service
