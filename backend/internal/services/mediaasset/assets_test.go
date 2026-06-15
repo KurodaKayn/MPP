@@ -224,6 +224,34 @@ func TestResolveMediaAssetsChecksAuthorizationBeforeReturningCachedAsset(t *test
 	require.Equal(t, 1, storage.PresignGetObjectCount())
 }
 
+func TestResolveMediaAssetsUsesWorkspaceAccessAfterProjectDeletion(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	redisClient, _ := newMediaAssetRedisClientWithServer(t)
+	service.UseRedis(redisClient)
+	owner, upload := createReadyMediaAsset(t, db, service, storage)
+
+	first, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
+
+	var asset models.MediaAsset
+	require.NoError(t, db.First(&asset, "id = ?", upload.AssetID).Error)
+	require.NotNil(t, asset.ProjectID)
+	require.NoError(t, projectsvc.NewService(db).DeleteProject(*asset.ProjectID, owner.ID))
+	var detached models.MediaAsset
+	require.NoError(t, db.First(&detached, "id = ?", upload.AssetID).Error)
+	require.Nil(t, detached.ProjectID)
+
+	cached, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, first.Items, cached.Items)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
+}
+
 func TestResolveMediaObjectRefPresignsReadyAsset(t *testing.T) {
 	db, service, storage := setupMediaAssetService(t)
 	owner, project := createMediaAssetProject(t, db)
