@@ -211,6 +211,7 @@ func (s *DashboardService) UseRedis(client *redis.Client) {
 	}
 	s.Project.UseRedis(client)
 	s.AccountSettings.UseRedis(client)
+	s.MediaAsset.UseRedis(client)
 	s.Publisher.UseRedis(client)
 	s.Stats.UseRedis(client)
 	s.readModelRebuildQueue = readmodelsvc.NewRedisDashboardRebuildQueue(client)
