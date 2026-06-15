@@ -392,7 +392,7 @@ func TestGetStatsRepairsSemanticallyInvalidCachedPayload(t *testing.T) {
 	assert.Equal(t, int64(2), payload.Stats.TotalProjects)
 }
 
-func TestGetStatsDoesNotCacheScopedCounts(t *testing.T) {
+func TestGetStatsCachesScopedUserDashboardStats(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	redisClient := newStatsRedisClient(t)
 	s := services.NewDashboardService(db)
@@ -403,6 +403,12 @@ func TestGetStatsDoesNotCacheScopedCounts(t *testing.T) {
 	stats, err := s.WithContext(context.Background()).GetStats(&user.ID)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), stats.TotalProjects)
+	cacheKey := requireSingleStatsCacheKey(t, redisClient)
+	require.Contains(t, cacheKey, user.ID.String())
+	cacheTTL, err := redisClient.PTTL(context.Background(), cacheKey).Result()
+	require.NoError(t, err)
+	require.Positive(t, cacheTTL)
+	require.LessOrEqual(t, cacheTTL, 15*time.Second)
 
 	project := models.Project{
 		UserID:        user.ID,
@@ -417,12 +423,255 @@ func TestGetStatsDoesNotCacheScopedCounts(t *testing.T) {
 		Status:    models.PublicationStatusFailed,
 	}).Error)
 
+	cachedStats, err := s.WithContext(context.Background()).GetStats(&user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), cachedStats.TotalUsers)
+	assert.Equal(t, int64(1), cachedStats.TotalProjects)
+	assert.Equal(t, int64(1), cachedStats.TotalPublishedPublications)
+	assert.Equal(t, int64(0), cachedStats.TotalFailedPublications)
+
+	_, err = s.WithContext(context.Background()).CreateProject(user.ID, dto.CreateProjectRequest{
+		Title:         "scoped-c-project",
+		SourceContent: "content",
+		Platforms:     []string{"douyin"},
+	})
+	require.NoError(t, err)
+	require.Contains(t, requireStatsCacheKeys(t, redisClient, 1), cacheKey)
+
 	freshStats, err := s.WithContext(context.Background()).GetStats(&user.ID)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), freshStats.TotalUsers)
-	assert.Equal(t, int64(2), freshStats.TotalProjects)
+	assert.Equal(t, int64(3), freshStats.TotalProjects)
 	assert.Equal(t, int64(1), freshStats.TotalPublishedPublications)
 	assert.Equal(t, int64(1), freshStats.TotalFailedPublications)
+	requireStatsCacheKeys(t, redisClient, 2)
+}
+
+func TestGetStatsBypassesScopedCacheForStickyWriter(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	user := seedStatsOverviewProject(t, db, "scoped-sticky", models.PublicationStatusPublished)
+
+	stats, err := s.WithContext(context.Background()).GetStats(&user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalProjects)
+
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "scoped-sticky-fresh",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "zhihu",
+		Status:    models.PublicationStatusFailed,
+	}).Error)
+
+	cachedStats, err := s.WithContext(context.Background()).GetStats(&user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), cachedStats.TotalProjects)
+
+	stickyCtx := dbrouter.WithStickyWriter(context.Background(), time.Now().Add(time.Minute))
+	stickyStats, err := s.WithContext(stickyCtx).GetStats(&user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), stickyStats.TotalProjects)
+	assert.Equal(t, int64(1), stickyStats.TotalFailedPublications)
+	requireStatsCacheKeys(t, redisClient, 1)
+}
+
+func TestGetWorkspaceStatsCachesScopedDashboardStats(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	owner := seedStatsUser(t, db, "workspace-cache-owner")
+	workspaceID := seedStatsWorkspace(t, db, owner, "workspace-cache")
+	seedStatsWorkspaceProject(t, db, owner.ID, workspaceID, "workspace-cache-a", models.PublicationStatusPublished)
+
+	stats, err := s.WithContext(context.Background()).GetWorkspaceStats(workspaceID, owner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), stats.TotalProjects)
+	cacheKey := requireSingleStatsCacheKey(t, redisClient)
+	require.Contains(t, cacheKey, workspaceID.String())
+
+	seedStatsWorkspaceProject(t, db, owner.ID, workspaceID, "workspace-cache-b", models.PublicationStatusFailed)
+	cachedStats, err := s.WithContext(context.Background()).GetWorkspaceStats(workspaceID, owner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), cachedStats.TotalProjects)
+	assert.Equal(t, int64(0), cachedStats.TotalFailedPublications)
+
+	_, err = s.WithContext(context.Background()).CreateWorkspaceProject(workspaceID, owner.ID, dto.CreateProjectRequest{
+		Title:         "workspace-cache-c",
+		SourceContent: "content",
+		Platforms:     []string{"douyin"},
+	})
+	require.NoError(t, err)
+	require.Contains(t, requireStatsCacheKeys(t, redisClient, 1), cacheKey)
+
+	freshStats, err := s.WithContext(context.Background()).GetWorkspaceStats(workspaceID, owner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), freshStats.TotalProjects)
+	assert.Equal(t, int64(1), freshStats.TotalPublishedPublications)
+	assert.Equal(t, int64(1), freshStats.TotalFailedPublications)
+	requireStatsCacheKeys(t, redisClient, 2)
+}
+
+func TestGetWorkspaceStatsCachesReadModelFallback(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+	ctx := context.Background()
+
+	owner := seedStatsUser(t, db, "workspace-read-model-owner")
+	workspaceID := seedStatsWorkspace(t, db, owner, "workspace-read-model")
+	require.NoError(t, db.Create(&models.WorkspaceDashboardStats{
+		WorkspaceID:                workspaceID,
+		TotalProjects:              4,
+		TotalPublishedPublications: 3,
+		TotalFailedPublications:    2,
+		TotalMembers:               1,
+		RefreshedAt:                time.Now().UTC(),
+	}).Error)
+
+	stats, err := s.WithContext(ctx).GetWorkspaceStats(workspaceID, owner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(4), stats.TotalProjects)
+	cacheKey := requireSingleStatsCacheKey(t, redisClient)
+	require.Contains(t, cacheKey, workspaceID.String())
+
+	require.NoError(t, db.Model(&models.WorkspaceDashboardStats{}).
+		Where("workspace_id = ?", workspaceID).
+		Updates(map[string]any{
+			"total_projects":               7,
+			"total_published_publications": 5,
+			"total_failed_publications":    1,
+			"refreshed_at":                 time.Now().UTC(),
+		}).Error)
+
+	cachedStats, err := s.WithContext(ctx).GetWorkspaceStats(workspaceID, owner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(4), cachedStats.TotalProjects)
+
+	s.WithContext(ctx).InvalidateDashboardScopedStatsCache(ctx)
+	refreshedStats, err := s.WithContext(ctx).GetWorkspaceStats(workspaceID, owner.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), refreshedStats.TotalProjects)
+	assert.Equal(t, int64(5), refreshedStats.TotalPublishedPublications)
+	assert.Equal(t, int64(1), refreshedStats.TotalFailedPublications)
+	requireStatsCacheKeys(t, redisClient, 2)
+}
+
+func TestWorkspaceMembershipInvalidatesScopedStatsCache(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+	ctx := context.Background()
+
+	owner := seedStatsUser(t, db, "membership-cache-owner")
+	member := seedStatsUser(t, db, "membership-cache-member")
+	workspaceID := seedStatsWorkspace(t, db, owner, "membership-cache")
+	seedStatsWorkspaceProject(t, db, owner.ID, workspaceID, "membership-cache-project", models.PublicationStatusPublished)
+
+	beforeStats, err := s.WithContext(ctx).GetStats(&member.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), beforeStats.TotalProjects)
+	cacheKey := requireSingleStatsCacheKey(t, redisClient)
+	require.Contains(t, cacheKey, member.ID.String())
+
+	_, err = s.WithContext(ctx).AddWorkspaceMember(workspaceID, owner.ID, dto.AddWorkspaceMemberRequest{
+		UserID: member.ID,
+		Role:   models.WorkspaceRoleMember,
+	})
+	require.NoError(t, err)
+	require.Contains(t, requireStatsCacheKeys(t, redisClient, 1), cacheKey)
+
+	afterStats, err := s.WithContext(ctx).GetStats(&member.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), afterStats.TotalProjects)
+	assert.Equal(t, int64(1), afterStats.TotalPublishedPublications)
+	requireStatsCacheKeys(t, redisClient, 2)
+}
+
+func TestProjectCollaboratorChangesInvalidateScopedStatsCache(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+	ctx := context.Background()
+
+	owner, project := seedStatsLifecycleProject(t, db, "direct-share-cache")
+	collaborator := seedStatsUser(t, db, "direct-share-cache-collaborator")
+
+	beforeStats, err := s.WithContext(ctx).GetStats(&collaborator.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), beforeStats.TotalProjects)
+	cacheKey := requireSingleStatsCacheKey(t, redisClient)
+	require.Contains(t, cacheKey, collaborator.ID.String())
+
+	_, err = s.WithContext(ctx).AddProjectCollaborator(project.ID, owner.ID, dto.AddProjectCollaboratorRequest{
+		UserID: collaborator.ID,
+		Role:   models.ProjectRoleViewer,
+	})
+	require.NoError(t, err)
+	require.Contains(t, requireStatsCacheKeys(t, redisClient, 1), cacheKey)
+
+	sharedStats, err := s.WithContext(ctx).GetStats(&collaborator.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), sharedStats.TotalProjects)
+	assert.Equal(t, int64(1), sharedStats.TotalPublishedPublications)
+	assert.Equal(t, int64(1), sharedStats.TotalFailedPublications)
+	requireStatsCacheKeys(t, redisClient, 2)
+
+	require.NoError(t, s.WithContext(ctx).RemoveProjectCollaborator(project.ID, owner.ID, collaborator.ID))
+
+	removedStats, err := s.WithContext(ctx).GetStats(&collaborator.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), removedStats.TotalProjects)
+	assert.Equal(t, int64(0), removedStats.TotalPublishedPublications)
+	assert.Equal(t, int64(0), removedStats.TotalFailedPublications)
+	requireStatsCacheKeys(t, redisClient, 3)
+}
+
+func TestProjectShareLinkAcceptanceInvalidatesScopedStatsCache(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newStatsRedisClient(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+	ctx := context.Background()
+
+	owner, project := seedStatsLifecycleProject(t, db, "share-link-cache")
+	viewer := seedStatsUser(t, db, "share-link-cache-viewer")
+
+	beforeStats, err := s.WithContext(ctx).GetStats(&viewer.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), beforeStats.TotalProjects)
+	cacheKey := requireSingleStatsCacheKey(t, redisClient)
+	require.Contains(t, cacheKey, viewer.ID.String())
+
+	link, err := s.WithContext(ctx).CreateProjectShareLink(project.ID, owner.ID, dto.CreateProjectShareLinkRequest{
+		Role: models.ProjectRoleViewer,
+	}, "https://app.example.com")
+	require.NoError(t, err)
+
+	accepted, err := s.WithContext(ctx).AcceptProjectShareLink(link.Token, viewer.ID)
+	require.NoError(t, err)
+	require.Equal(t, project.ID, accepted.Project.ID)
+	require.Contains(t, requireStatsCacheKeys(t, redisClient, 1), cacheKey)
+
+	sharedStats, err := s.WithContext(ctx).GetStats(&viewer.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), sharedStats.TotalProjects)
+	assert.Equal(t, int64(1), sharedStats.TotalPublishedPublications)
+	assert.Equal(t, int64(1), sharedStats.TotalFailedPublications)
+	requireStatsCacheKeys(t, redisClient, 2)
 }
 
 func TestGetWorkspaceStatsFallbackIncludesLegacyPersonalProjects(t *testing.T) {
@@ -745,6 +994,57 @@ func seedStatsLifecycleProject(t *testing.T, db *gorm.DB, prefix string) (models
 		Status:    models.PublicationStatusFailed,
 	}).Error)
 	return user, project
+}
+
+func seedStatsUser(t *testing.T, db *gorm.DB, prefix string) models.User {
+	t.Helper()
+
+	user := models.User{
+		ID:           uuid.New(),
+		Username:     prefix + "-user",
+		Email:        prefix + "@example.com",
+		PasswordHash: "hash",
+	}
+	require.NoError(t, db.Create(&user).Error)
+	return user
+}
+
+func seedStatsWorkspace(t *testing.T, db *gorm.DB, owner models.User, prefix string) uuid.UUID {
+	t.Helper()
+
+	workspaceID := uuid.New()
+	now := time.Now().UTC()
+	require.NoError(t, db.Create(&models.Workspace{
+		ID:          workspaceID,
+		OwnerUserID: owner.ID,
+		Name:        prefix + " workspace",
+		Slug:        prefix,
+		Status:      models.WorkspaceStatusActive,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}).Error)
+	return workspaceID
+}
+
+func seedStatsWorkspaceProject(t *testing.T, db *gorm.DB, ownerUserID uuid.UUID, workspaceID uuid.UUID, title string, publicationStatus string) models.Project {
+	t.Helper()
+
+	project := models.Project{
+		ID:            uuid.New(),
+		UserID:        ownerUserID,
+		WorkspaceID:   &workspaceID,
+		Title:         title,
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ID:        uuid.New(),
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Status:    publicationStatus,
+	}).Error)
+	return project
 }
 
 func TestGetStatsUsesWriterForStickyEventualCounts(t *testing.T) {
