@@ -27,6 +27,7 @@ const (
 type contentSetupOptionsCachePayload[T any] struct {
 	Version     int       `json:"version"`
 	Resource    string    `json:"resource"`
+	Generation  string    `json:"generation"`
 	UserID      uuid.UUID `json:"user_id"`
 	WorkspaceID uuid.UUID `json:"workspace_id"`
 	Response    T         `json:"response"`
@@ -61,25 +62,29 @@ func getCachedContentSetupOptions[T any](
 	}
 
 	ctx := s.requestContext()
-	cacheKey := contentSetupOptionsCacheKey(resource, userID, workspaceID)
-	if resp, hit, _ := cachedContentSetupOptions(ctx, s, cacheKey, resource, userID, workspaceID, valid); hit {
+	generation, err := s.contentSetupOptionsCacheGeneration(ctx, resource, userID, workspaceID)
+	if err != nil {
+		return compute(s)
+	}
+	cacheKey := contentSetupOptionsCacheKey(resource, userID, workspaceID, generation)
+	if resp, hit, _ := cachedContentSetupOptions(ctx, s, cacheKey, resource, generation, userID, workspaceID, valid); hit {
 		return resp, nil
 	}
 
 	if s.cacheGroup == nil {
-		return refreshContentSetupOptionsCache(ctx, s, cacheKey, resource, userID, workspaceID, compute)
+		return refreshContentSetupOptionsCache(ctx, s, cacheKey, resource, generation, userID, workspaceID, compute)
 	}
 
 	resultCh := s.cacheGroup.DoChan(cacheKey, func() (any, error) {
 		refreshCtx, cancel := contentSetupOptionsRefreshContext(ctx)
 		defer cancel()
 		refreshSvc := s.WithContext(refreshCtx)
-		if resp, hit, err := cachedContentSetupOptions(refreshCtx, refreshSvc, cacheKey, resource, userID, workspaceID, valid); hit {
+		if resp, hit, err := cachedContentSetupOptions(refreshCtx, refreshSvc, cacheKey, resource, generation, userID, workspaceID, valid); hit {
 			return resp, nil
 		} else if err != nil {
 			return compute(refreshSvc)
 		}
-		return refreshContentSetupOptionsCache(refreshCtx, refreshSvc, cacheKey, resource, userID, workspaceID, compute)
+		return refreshContentSetupOptionsCache(refreshCtx, refreshSvc, cacheKey, resource, generation, userID, workspaceID, compute)
 	})
 
 	select {
@@ -101,6 +106,7 @@ func cachedContentSetupOptions[T any](
 	s *Service,
 	cacheKey string,
 	resource string,
+	generation string,
 	userID uuid.UUID,
 	workspaceID uuid.UUID,
 	valid func(T) bool,
@@ -112,7 +118,7 @@ func cachedContentSetupOptions[T any](
 		}
 		return nil, false, err
 	}
-	if resp, ok := decodeContentSetupOptionsPayload(cached, resource, userID, workspaceID, valid); ok {
+	if resp, ok := decodeContentSetupOptionsPayload(cached, resource, generation, userID, workspaceID, valid); ok {
 		return resp, true, nil
 	}
 	return nil, false, nil
@@ -121,6 +127,7 @@ func cachedContentSetupOptions[T any](
 func decodeContentSetupOptionsPayload[T any](
 	cached []byte,
 	resource string,
+	generation string,
 	userID uuid.UUID,
 	workspaceID uuid.UUID,
 	valid func(T) bool,
@@ -129,7 +136,7 @@ func decodeContentSetupOptionsPayload[T any](
 	if err := json.Unmarshal(cached, &payload); err != nil {
 		return nil, false
 	}
-	if !contentSetupOptionsPayloadValid(payload, resource, userID, workspaceID, valid) {
+	if !contentSetupOptionsPayloadValid(payload, resource, generation, userID, workspaceID, valid) {
 		return nil, false
 	}
 	return &payload.Response, true
@@ -140,6 +147,7 @@ func refreshContentSetupOptionsCache[T any](
 	s *Service,
 	cacheKey string,
 	resource string,
+	generation string,
 	userID uuid.UUID,
 	workspaceID uuid.UUID,
 	compute func(*Service) (*T, error),
@@ -151,6 +159,7 @@ func refreshContentSetupOptionsCache[T any](
 	payload := contentSetupOptionsCachePayload[T]{
 		Version:     contentSetupOptionsCacheVersion,
 		Resource:    resource,
+		Generation:  generation,
 		UserID:      userID,
 		WorkspaceID: workspaceID,
 		Response:    *resp,
@@ -169,9 +178,11 @@ func (s *Service) invalidateContentTemplateOptionsCache(userID uuid.UUID, worksp
 	ctx, cancel := contentSetupOptionsInvalidationContext(s.requestContext())
 	defer cancel()
 	if scope == models.ContentTemplateScopeWorkspace {
+		_ = s.cache.Incr(ctx, contentSetupOptionsWorkspaceGenerationKey(contentSetupResourceTemplates, workspaceID)).Err()
 		deleteContentSetupOptionsCacheKeys(ctx, s.cache, contentSetupOptionsWorkspacePattern(contentSetupResourceTemplates, workspaceID))
 		return
 	}
+	_ = s.cache.Incr(ctx, contentSetupOptionsUserGenerationKey(contentSetupResourceTemplates, userID)).Err()
 	deleteContentSetupOptionsCacheKeys(ctx, s.cache, contentSetupOptionsUserPattern(contentSetupResourceTemplates, userID))
 }
 
@@ -181,6 +192,7 @@ func (s *Service) invalidateBrandProfileOptionsCache(workspaceID uuid.UUID) {
 	}
 	ctx, cancel := contentSetupOptionsInvalidationContext(s.requestContext())
 	defer cancel()
+	_ = s.cache.Incr(ctx, contentSetupOptionsWorkspaceGenerationKey(contentSetupResourceBrandProfiles, workspaceID)).Err()
 	deleteContentSetupOptionsCacheKeys(ctx, s.cache, contentSetupOptionsWorkspacePattern(contentSetupResourceBrandProfiles, workspaceID))
 }
 
@@ -209,8 +221,35 @@ func (s *Service) canUseContentSetupOptionsCache() bool {
 	return !sticky || !stickyUntil.After(time.Now())
 }
 
-func contentSetupOptionsCacheKey(resource string, userID uuid.UUID, workspaceID uuid.UUID) string {
-	return contentSetupOptionsCachePrefix + ":" + resource + ":user:" + userID.String() + ":workspace:" + workspaceID.String()
+func (s *Service) contentSetupOptionsCacheGeneration(ctx context.Context, resource string, userID uuid.UUID, workspaceID uuid.UUID) (string, error) {
+	if resource == contentSetupResourceTemplates {
+		userGeneration, err := contentSetupOptionsGeneration(ctx, s.cache, contentSetupOptionsUserGenerationKey(resource, userID))
+		if err != nil {
+			return "", err
+		}
+		workspaceGeneration, err := contentSetupOptionsGeneration(ctx, s.cache, contentSetupOptionsWorkspaceGenerationKey(resource, workspaceID))
+		if err != nil {
+			return "", err
+		}
+		return "user:" + userGeneration + ":workspace:" + workspaceGeneration, nil
+	}
+	workspaceGeneration, err := contentSetupOptionsGeneration(ctx, s.cache, contentSetupOptionsWorkspaceGenerationKey(resource, workspaceID))
+	if err != nil {
+		return "", err
+	}
+	return "workspace:" + workspaceGeneration, nil
+}
+
+func contentSetupOptionsGeneration(ctx context.Context, client *redis.Client, key string) (string, error) {
+	generation, err := client.Get(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
+		return "0", nil
+	}
+	return generation, err
+}
+
+func contentSetupOptionsCacheKey(resource string, userID uuid.UUID, workspaceID uuid.UUID, generation string) string {
+	return contentSetupOptionsCachePrefix + ":" + resource + ":user:" + userID.String() + ":workspace:" + workspaceID.String() + ":generation:" + generation
 }
 
 func contentSetupOptionsUserPattern(resource string, userID uuid.UUID) string {
@@ -218,7 +257,15 @@ func contentSetupOptionsUserPattern(resource string, userID uuid.UUID) string {
 }
 
 func contentSetupOptionsWorkspacePattern(resource string, workspaceID uuid.UUID) string {
-	return contentSetupOptionsCachePrefix + ":" + resource + ":user:*:workspace:" + workspaceID.String()
+	return contentSetupOptionsCachePrefix + ":" + resource + ":user:*:workspace:" + workspaceID.String() + ":*"
+}
+
+func contentSetupOptionsUserGenerationKey(resource string, userID uuid.UUID) string {
+	return contentSetupOptionsCachePrefix + ":generation:" + resource + ":user:" + userID.String()
+}
+
+func contentSetupOptionsWorkspaceGenerationKey(resource string, workspaceID uuid.UUID) string {
+	return contentSetupOptionsCachePrefix + ":generation:" + resource + ":workspace:" + workspaceID.String()
 }
 
 func contentSetupOptionsRefreshContext(parent context.Context) (context.Context, context.CancelFunc) {
@@ -232,6 +279,7 @@ func contentSetupOptionsInvalidationContext(parent context.Context) (context.Con
 func contentSetupOptionsPayloadValid[T any](
 	payload contentSetupOptionsCachePayload[T],
 	resource string,
+	generation string,
 	userID uuid.UUID,
 	workspaceID uuid.UUID,
 	valid func(T) bool,
@@ -239,7 +287,7 @@ func contentSetupOptionsPayloadValid[T any](
 	if payload.Version != contentSetupOptionsCacheVersion {
 		return false
 	}
-	if payload.Resource != resource || payload.UserID != userID || payload.WorkspaceID != workspaceID {
+	if payload.Resource != resource || payload.Generation != generation || payload.UserID != userID || payload.WorkspaceID != workspaceID {
 		return false
 	}
 	return valid(payload.Response)

@@ -3,6 +3,8 @@ package project_test
 import (
 	"context"
 	"sort"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -178,6 +180,117 @@ func TestCreateBrandProfileInvalidatesOnlyBrandProfileCache(t *testing.T) {
 	require.Len(t, refreshed.Items, 2)
 }
 
+func TestContentSetupOptionsCacheIgnoresStaleTemplateRefillAfterInvalidation(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newContentSetupRedisClient(t)
+	blockingSet := &contentSetupBlockingSetHook{
+		resource: "content-templates",
+		started:  make(chan struct{}),
+		release:  make(chan struct{}),
+	}
+	redisClient.AddHook(blockingSet)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	owner := createContentSetupCacheUser(t, db, "setup-stale-template")
+	workspace := createContentSetupCacheWorkspace(t, db, owner, "Stale Template Workspace")
+	seedContentSetupTemplate(t, db, "template-cached", models.ContentTemplateScopeWorkspace, uuid.Nil, workspace.ID)
+
+	firstResult := make(chan *dto.ContentTemplatesResponse, 1)
+	firstErr := make(chan error, 1)
+	go func() {
+		resp, err := s.WithContext(context.Background()).ListContentTemplates(owner.ID, workspace.ID)
+		if err != nil {
+			firstErr <- err
+			return
+		}
+		firstResult <- resp
+	}()
+
+	select {
+	case <-blockingSet.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first content setup cache write")
+	}
+
+	_, err := s.WithContext(context.Background()).CreateContentTemplate(owner.ID, workspace.ID, dto.CreateContentTemplateRequest{
+		Name:             "template-created",
+		TitleTemplate:    "Created title",
+		SourceTemplate:   "Created body",
+		DefaultPlatforms: []string{"wechat"},
+	})
+	require.NoError(t, err)
+	requireContentSetupCacheKeys(t, redisClient, "content-templates", 0)
+
+	close(blockingSet.release)
+	select {
+	case err := <-firstErr:
+		require.NoError(t, err)
+	case resp := <-firstResult:
+		require.Len(t, resp.Items, 1)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first content setup list")
+	}
+
+	refreshed, err := s.WithContext(context.Background()).ListContentTemplates(owner.ID, workspace.ID)
+	require.NoError(t, err)
+	require.Len(t, refreshed.Items, 2)
+}
+
+func TestContentSetupOptionsCacheIgnoresStaleBrandProfileRefillAfterInvalidation(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	redisClient := newContentSetupRedisClient(t)
+	blockingSet := &contentSetupBlockingSetHook{
+		resource: "brand-profiles",
+		started:  make(chan struct{}),
+		release:  make(chan struct{}),
+	}
+	redisClient.AddHook(blockingSet)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	owner := createContentSetupCacheUser(t, db, "setup-stale-brand")
+	workspace := createContentSetupCacheWorkspace(t, db, owner, "Stale Brand Workspace")
+	seedContentSetupBrandProfile(t, db, workspace.ID, owner.ID, "brand-cached")
+
+	firstResult := make(chan *dto.BrandProfilesResponse, 1)
+	firstErr := make(chan error, 1)
+	go func() {
+		resp, err := s.WithContext(context.Background()).ListBrandProfiles(owner.ID, workspace.ID)
+		if err != nil {
+			firstErr <- err
+			return
+		}
+		firstResult <- resp
+	}()
+
+	select {
+	case <-blockingSet.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first brand profile cache write")
+	}
+
+	_, err := s.WithContext(context.Background()).CreateBrandProfile(owner.ID, workspace.ID, dto.CreateBrandProfileRequest{
+		Name: "brand-created",
+	})
+	require.NoError(t, err)
+	requireContentSetupCacheKeys(t, redisClient, "brand-profiles", 0)
+
+	close(blockingSet.release)
+	select {
+	case err := <-firstErr:
+		require.NoError(t, err)
+	case resp := <-firstResult:
+		require.Len(t, resp.Items, 1)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first brand profile list")
+	}
+
+	refreshed, err := s.WithContext(context.Background()).ListBrandProfiles(owner.ID, workspace.ID)
+	require.NoError(t, err)
+	require.Len(t, refreshed.Items, 2)
+}
+
 func newContentSetupRedisClient(t *testing.T) *redis.Client {
 	t.Helper()
 
@@ -284,4 +397,37 @@ func requireContentSetupItemIDs(t *testing.T, items []dto.ContentTemplate, ids .
 	for _, id := range ids {
 		require.Contains(t, seen, id)
 	}
+}
+
+type contentSetupBlockingSetHook struct {
+	resource string
+	started  chan struct{}
+	release  chan struct{}
+	once     sync.Once
+}
+
+func (h *contentSetupBlockingSetHook) DialHook(next redis.DialHook) redis.DialHook {
+	return next
+}
+
+func (h *contentSetupBlockingSetHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if strings.EqualFold(cmd.Name(), "set") && len(cmd.Args()) > 1 {
+			if key, ok := cmd.Args()[1].(string); ok && strings.HasPrefix(key, "mpp:dashboard:content-setup:v1:"+h.resource+":") {
+				h.once.Do(func() {
+					close(h.started)
+				})
+				select {
+				case <-h.release:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+		}
+		return next(ctx, cmd)
+	}
+}
+
+func (h *contentSetupBlockingSetHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
 }
