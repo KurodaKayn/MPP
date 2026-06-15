@@ -26,7 +26,10 @@ func (s *Service) ListContentTemplates(userID uuid.UUID, workspaceID uuid.UUID) 
 			return nil, err
 		}
 	}
+	return s.getCachedContentTemplates(userID, workspaceID)
+}
 
+func (s *Service) computeContentTemplates(userID uuid.UUID, workspaceID uuid.UUID) (*dto.ContentTemplatesResponse, error) {
 	var templates []models.ContentTemplate
 	if err := s.db.
 		Where("scope = ?", models.ContentTemplateScopeSystem).
@@ -123,6 +126,7 @@ func (s *Service) CreateContentTemplate(userID uuid.UUID, workspaceID uuid.UUID,
 	}); err != nil {
 		return nil, err
 	}
+	s.invalidateContentTemplateOptionsCache(userID, workspaceID, scope)
 	resp := contentTemplateFromModel(template)
 	return &resp, nil
 }
@@ -138,7 +142,10 @@ func (s *Service) ListBrandProfiles(userID uuid.UUID, workspaceID uuid.UUID) (*d
 	if _, err := workspaceProjectAccessRoleWithDB(s.db, workspaceID, userID); err != nil {
 		return nil, err
 	}
+	return s.getCachedBrandProfiles(userID, workspaceID)
+}
 
+func (s *Service) computeBrandProfiles(workspaceID uuid.UUID) (*dto.BrandProfilesResponse, error) {
 	var profiles []models.BrandProfile
 	if err := s.db.Where("workspace_id = ?", workspaceID).Order("updated_at desc, name asc").Find(&profiles).Error; err != nil {
 		return nil, err
@@ -192,6 +199,7 @@ func (s *Service) CreateBrandProfile(userID uuid.UUID, workspaceID uuid.UUID, re
 	if err := s.db.Create(&profile).Error; err != nil {
 		return nil, err
 	}
+	s.invalidateBrandProfileOptionsCache(workspaceID)
 	resp := brandProfileFromModel(profile)
 	return &resp, nil
 }
