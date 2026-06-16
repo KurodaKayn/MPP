@@ -56,6 +56,20 @@ module RedisKeyspaceInventory
       assert_includes report.fetch("warnings"), "1 inferred key patterns need owner review"
     end
 
+    def test_declares_asynq_global_process_metadata
+      report = RedisKeyspaceInventory.report([
+        {"key" => "asynq:queues", "type" => "set", "ttl_ms" => -1, "memory_bytes" => 80},
+        {"key" => "asynq:servers:worker-1:123", "type" => "hash", "ttl_ms" => -1, "memory_bytes" => 256},
+        {"key" => "asynq:workers:worker-1:123", "type" => "hash", "ttl_ms" => -1, "memory_bytes" => 256},
+      ], generated_at: "2026-06-16T00:00:00Z", max_keys: 100)
+
+      global = pattern(report, "asynq:*")
+      assert_equal "asynq task queues used by backend workers", global.fetch("owner")
+      assert_equal "declared", global.fetch("owner_source")
+      assert_equal 3, global.fetch("key_count")
+      assert_empty report.fetch("warnings")
+    end
+
     def test_cli_renders_fixture_report
       stdout, stderr, status = Open3.capture3(
         RbConfig.ruby,
