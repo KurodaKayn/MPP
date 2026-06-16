@@ -9,6 +9,12 @@ cluster. It combines:
 - `deploy/kubernetes/data-services/managed`
 - `deploy/kubernetes/external-secrets`
 
+Use this overlay directly only after replacing the checked-in placeholders, or
+copy/layer it into a provider-specific production overlay. The production setup
+guide documents the AWS, GCP, and Azure patch points for managed PostgreSQL,
+managed Redis, External Secrets Operator stores, ingress, TLS, and deployable
+validation.
+
 The checked-in values are renderable placeholders only:
 
 - App and browser runtime images use the immutable-looking
@@ -46,6 +52,9 @@ Before applying this overlay to production:
   `ClusterSecretStore`, and replace every `ExternalSecret` remote key with the
   production provider path. Add a `REDIS_PASSWORD` remote key when the managed
   Redis provider requires auth.
+- For provider-specific overlays, keep the shared runtime, app, and data-service
+  resources from this overlay and patch only provider hostnames, TLS/ingress
+  details, secret-store bindings, CA mounts, and immutable image tags.
 
 Render and validate:
 
