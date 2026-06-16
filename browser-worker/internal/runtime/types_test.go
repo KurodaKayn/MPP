@@ -31,20 +31,6 @@ func TestSessionReferenceInternalStreamURLWrapsIPv6Host(t *testing.T) {
 	assert.Equal(t, "http://[::1]:6080", reference.InternalStreamURL())
 }
 
-func TestSessionReferenceLegacyContainerIDOnlyForDocker(t *testing.T) {
-	dockerReference := SessionReference{
-		Driver:    DriverDocker,
-		RuntimeID: "container-123",
-	}
-	kubernetesReference := SessionReference{
-		Driver:    DriverKubernetes,
-		RuntimeID: "pod-123",
-	}
-
-	assert.Equal(t, "container-123", dockerReference.LegacyContainerID())
-	assert.Empty(t, kubernetesReference.LegacyContainerID())
-}
-
 func TestSessionReferenceJSONUsesStableNames(t *testing.T) {
 	reference := SessionReference{
 		Driver:    DriverDocker,

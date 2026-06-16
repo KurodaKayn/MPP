@@ -40,13 +40,6 @@ func (r SessionReference) InternalStreamURL() string {
 	return fmt.Sprintf("http://%s", net.JoinHostPort(r.StreamEndpoint.Host, fmt.Sprintf("%d", r.StreamEndpoint.Port)))
 }
 
-func (r SessionReference) LegacyContainerID() string {
-	if r.Driver != DriverDocker {
-		return ""
-	}
-	return r.RuntimeID
-}
-
 type Manager interface {
 	RuntimeDriver() string
 	StartSession(ctx context.Context, request StartSessionRequest) (SessionReference, error)

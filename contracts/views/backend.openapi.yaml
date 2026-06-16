@@ -111,6 +111,12 @@ components:
     BrowserWorkerStartSessionResponse:
       $ref: "../openapi.yaml#/components/schemas/BrowserWorkerStartSessionResponse"
 
+    BrowserWorkerRuntimeEndpoint:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerRuntimeEndpoint"
+
+    BrowserWorkerRuntimeReference:
+      $ref: "../openapi.yaml#/components/schemas/BrowserWorkerRuntimeReference"
+
     BrowserWorkerGetSessionResponse:
       $ref: "../openapi.yaml#/components/schemas/BrowserWorkerGetSessionResponse"
 

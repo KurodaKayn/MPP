@@ -163,8 +163,6 @@ func (s *Server) createSession(c echo.Context) error {
 		Platform:          req.Platform,
 		Status:            "ready",
 		RuntimeReference:  runtimeRef,
-		ContainerID:       runtimeRef.LegacyContainerID(),
-		CDPEndpointRef:    "internal-cdp:" + ref,
 		StreamEndpointRef: "",
 		InternalStreamURL: runtimeRef.InternalStreamURL(),
 		RequiredCookies:   req.RequiredCookies,
@@ -194,8 +192,7 @@ func (s *Server) createSession(c echo.Context) error {
 	return c.JSON(http.StatusCreated, session.StartWorkerSessionResponse{
 		WorkerSessionRef:  workerSession.ID,
 		Status:            contracts.BrowserWorkerSessionStatus(workerSession.Status),
-		ContainerID:       workerSession.ContainerID,
-		CDPEndpointRef:    workerSession.CDPEndpointRef,
+		RuntimeReference:  runtimeReferenceResponse(workerSession.RuntimeReference),
 		StreamEndpointRef: workerSession.StreamEndpointRef,
 		StartedAt:         startedAt,
 		ExpiresAt:         workerSession.ExpiresAt,
@@ -319,6 +316,29 @@ func cleanupSession(ctx context.Context, runtimes browserruntime.Manager, worker
 			log.Printf("Failed to stop session runtime %s/%s: %v", workerSession.RuntimeReference.Driver, workerSession.RuntimeReference.RuntimeID, err)
 		}
 	}
+}
+
+func runtimeReferenceResponse(reference browserruntime.SessionReference) contracts.BrowserWorkerRuntimeReference {
+	return contracts.BrowserWorkerRuntimeReference{
+		Driver:    reference.Driver,
+		RuntimeID: reference.RuntimeID,
+		CdpEndpoint: contracts.BrowserWorkerRuntimeEndpoint{
+			Host: reference.CDPEndpoint.Host,
+			Port: reference.CDPEndpoint.Port,
+		},
+		StreamEndpoint: contracts.BrowserWorkerRuntimeEndpoint{
+			Host: reference.StreamEndpoint.Host,
+			Port: reference.StreamEndpoint.Port,
+		},
+		CleanupLabels: cleanupLabelsPointer(reference.CleanupLabels),
+	}
+}
+
+func cleanupLabelsPointer(labels map[string]string) *map[string]string {
+	if labels == nil {
+		return nil
+	}
+	return &labels
 }
 
 func restoreCookiesAction(cookies []session.Cookie) chromedp.Action {
