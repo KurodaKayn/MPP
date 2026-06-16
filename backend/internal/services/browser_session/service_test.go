@@ -456,6 +456,36 @@ func TestBrowserSessionService_RedisStreamTokenIsConsumedOnce(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestBrowserSessionService_RedisLiveStateOmitsInternalEndpointRefs(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	client := setupBrowserSessionRedis(t, svc)
+	userID := uuid.New()
+	platform := "douyin"
+	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
+
+	resp, err := svc.StartSession(context.Background(), userID, platform)
+	require.NoError(t, err)
+
+	raw, err := client.Get(context.Background(), "mpp:browser:session:"+resp.SessionID.String()).Bytes()
+	require.NoError(t, err)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(raw, &payload))
+	require.NotContains(t, payload, "runtime_reference")
+	require.NotContains(t, payload, "container_id")
+	require.NotContains(t, payload, "cdp_endpoint_ref")
+	require.NotContains(t, payload, "stream_endpoint_ref")
+
+	var session models.RemoteBrowserSession
+	require.NoError(t, db.First(&session, resp.SessionID).Error)
+	require.NotEmpty(t, session.StreamEndpointRef)
+
+	streamURL, err := url.Parse(resp.StreamURL)
+	require.NoError(t, err)
+	streamEndpoint, err := svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamTokenFromPath(t, streamURL.Path), false)
+	require.NoError(t, err)
+	require.Equal(t, session.StreamEndpointRef, streamEndpoint)
+}
+
 func TestBrowserSessionService_CancelSessionDeletesAllRedisStreamTokens(t *testing.T) {
 	_, svc, _ := setupBrowserSessionTest(t)
 	client := setupBrowserSessionRedis(t, svc)
