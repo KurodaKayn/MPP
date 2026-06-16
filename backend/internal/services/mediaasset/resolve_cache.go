@@ -24,15 +24,10 @@ const (
 var errResolvedMediaAssetCacheStale = errors.New("resolved media asset cache stale")
 
 type resolvedMediaAssetCachePayload struct {
-	AssetID     string    `json:"asset_id"`
-	UserID      string    `json:"user_id"`
-	WorkspaceID string    `json:"workspace_id,omitempty"`
-	ProjectID   string    `json:"project_id,omitempty"`
-	Bucket      string    `json:"bucket"`
-	ObjectKey   string    `json:"object_key"`
-	Status      string    `json:"status"`
-	URL         string    `json:"url"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	Bucket    string    `json:"bucket"`
+	ObjectKey string    `json:"object_key"`
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 func (s *Service) cachedResolvedMediaAsset(assetID uuid.UUID, userID uuid.UUID) (dto.ResolvedMediaAsset, bool, error) {
@@ -50,11 +45,11 @@ func (s *Service) cachedResolvedMediaAsset(assetID uuid.UUID, userID uuid.UUID) 
 		return dto.ResolvedMediaAsset{}, false, nil
 	}
 
-	payload, ok := decodeResolvedMediaAssetCachePayload(cached, assetID, userID, time.Now().UTC())
+	payload, ok := decodeResolvedMediaAssetCachePayload(cached, time.Now().UTC())
 	if !ok {
 		return dto.ResolvedMediaAsset{}, false, nil
 	}
-	if err := s.authorizeCachedResolvedMediaAsset(payload, userID); err != nil {
+	if err := s.authorizeCachedResolvedMediaAsset(assetID, payload, userID); err != nil {
 		if errors.Is(err, errResolvedMediaAssetCacheStale) {
 			return dto.ResolvedMediaAsset{}, false, nil
 		}
@@ -87,19 +82,10 @@ func (s *Service) cacheResolvedMediaAsset(asset models.MediaAsset, userID uuid.U
 	}
 
 	payload := resolvedMediaAssetCachePayload{
-		AssetID:   asset.ID.String(),
-		UserID:    userID.String(),
 		Bucket:    asset.Bucket,
 		ObjectKey: asset.ObjectKey,
-		Status:    asset.Status,
 		URL:       item.URL,
 		ExpiresAt: item.ExpiresAt,
-	}
-	if asset.WorkspaceID != nil && *asset.WorkspaceID != uuid.Nil {
-		payload.WorkspaceID = asset.WorkspaceID.String()
-	}
-	if asset.ProjectID != nil && *asset.ProjectID != uuid.Nil {
-		payload.ProjectID = asset.ProjectID.String()
 	}
 
 	encoded, err := json.Marshal(payload)
@@ -109,9 +95,8 @@ func (s *Service) cacheResolvedMediaAsset(asset models.MediaAsset, userID uuid.U
 	_ = s.cache.Set(s.requestContext(), resolvedMediaAssetCacheKey(asset.ID, userID), encoded, ttl).Err()
 }
 
-func (s *Service) authorizeCachedResolvedMediaAsset(payload resolvedMediaAssetCachePayload, userID uuid.UUID) error {
-	assetID, err := uuid.Parse(payload.AssetID)
-	if err != nil || assetID == uuid.Nil {
+func (s *Service) authorizeCachedResolvedMediaAsset(assetID uuid.UUID, payload resolvedMediaAssetCachePayload, userID uuid.UUID) error {
+	if assetID == uuid.Nil {
 		return ErrInvalidMediaAsset
 	}
 	asset, err := s.mediaAssetForRead(assetID, userID)
@@ -127,24 +112,15 @@ func (s *Service) authorizeCachedResolvedMediaAsset(payload resolvedMediaAssetCa
 	return nil
 }
 
-func decodeResolvedMediaAssetCachePayload(cached []byte, assetID uuid.UUID, userID uuid.UUID, now time.Time) (resolvedMediaAssetCachePayload, bool) {
+func decodeResolvedMediaAssetCachePayload(cached []byte, now time.Time) (resolvedMediaAssetCachePayload, bool) {
 	var payload resolvedMediaAssetCachePayload
 	if err := json.Unmarshal(cached, &payload); err != nil {
-		return resolvedMediaAssetCachePayload{}, false
-	}
-	if payload.AssetID != assetID.String() || payload.UserID != userID.String() {
-		return resolvedMediaAssetCachePayload{}, false
-	}
-	if payload.Status != models.MediaAssetStatusReady {
 		return resolvedMediaAssetCachePayload{}, false
 	}
 	if strings.TrimSpace(payload.URL) == "" ||
 		strings.TrimSpace(payload.Bucket) == "" ||
 		strings.TrimSpace(payload.ObjectKey) == "" ||
 		!payload.ExpiresAt.After(now) {
-		return resolvedMediaAssetCachePayload{}, false
-	}
-	if strings.TrimSpace(payload.ProjectID) == "" && strings.TrimSpace(payload.WorkspaceID) == "" {
 		return resolvedMediaAssetCachePayload{}, false
 	}
 	return payload, true
