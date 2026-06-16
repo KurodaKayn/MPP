@@ -29,6 +29,10 @@ Required overlay inputs:
 - Patch the redis-exporter `REDIS_ADDR` to the managed Redis hostname, using
   `rediss://...` when the provider requires TLS. The exporter reads the same
   optional `REDIS_PASSWORD` Secret and feeds the Redis observability baseline.
+- Choose and record the managed Redis persistence policy in the environment
+  overlay or provider configuration. For production-like managed Redis, require
+  provider-backed persistence, scheduled snapshots, and a documented restore
+  point objective instead of relying on any in-cluster PVC.
 
 Do not store provider credentials in this package. Materialize them through a
 Kubernetes Secret or an external secret manager.

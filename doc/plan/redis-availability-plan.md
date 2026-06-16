@@ -8,12 +8,12 @@ Phase 1-2 target: pragmatic high availability. After a single Redis Pod, node, o
 
 Production final target: Redis Cluster. The final state must support multiple shards, multiple replicas, automatic failover, TLS/auth, backup and restore, maintenance windows, and clear SLA ownership. Prefer a provider-backed managed Redis Cluster. If managed Redis is unavailable, use a mature chart/operator to self-host Redis Cluster.
 
-Current overall progress: about `30%`.
+Current overall progress: about `33%`.
 
 | Phase | Weight | Current Completion | Status | Done | Next |
 | --- | ---: | ---: | --- | --- | --- |
 | Phase 0: responsibility and risk baseline | 10% | 100% | Done | Inventory script, responsibility labels, Redis SLO baseline, and [dependency map](../redis-dependency-map.md) added | Start Phase 1 single-instance hardening |
-| Phase 1: single-instance hardening | 15% | 40% | In Progress | Current single-instance deployment direction clear | Add persistent storage, probes, resources, and backup baseline |
+| Phase 1: single-instance hardening | 15% | 50% | In Progress | Current single-instance deployment direction clear; Redis persistence baseline added | Continue probes, resources, and backup baseline hardening |
 | Phase 2: self-hosted HA | 20% | 10% | Not Started | Initial HA direction chosen | Select Sentinel or equivalent failover mode and implement traffic switching |
 | Phase 3: app-side fault tolerance | 20% | 15% | Not Started | Retry and degradation areas identified | Implement timeout, retry, circuit breaker, and cache-miss protection |
 | Phase 4: production managed Redis HA | 15% | 0% | Not Started | Target direction chosen | Build parameterized Redis endpoint and migration runbook |
@@ -79,7 +79,7 @@ This phase keeps Redis single-instance, but makes it less fragile and easier to 
 
 | PR | Goal | Main Changes | Acceptance | Rollback | Out Of Scope |
 | --- | --- | --- | --- | --- | --- |
-| PR 1.1: Add Redis persistence baseline | Avoid unnecessary data loss on restart | Enable PVC, choose RDB/AOF policy by environment, document persistence mode | Redis restart keeps expected data class; ephemeral keys may expire normally | Disable persistence or revert volume config | No HA |
+| PR 1.1: Add Redis persistence baseline | Avoid unnecessary data loss on restart | Enable PVC-backed `/data`, version `redis-persistence-config`, choose RDB/AOF policy by environment, document persistence mode | Redis restart keeps expected data class; ephemeral keys may expire normally | Disable persistence or revert volume config | No HA |
 | PR 1.2: Add probes and resource limits | Reduce unhealthy Pod behavior | Add readiness/liveness probes, CPU/memory requests/limits, graceful termination | Pod fails readiness when Redis cannot serve; restart behavior verified | Revert deployment values | No topology change |
 | PR 1.3: Add backup and restore runbook | Make restore possible | Add scheduled backup for persistence files or managed snapshot equivalent; write restore steps | Restore tested in non-prod with recorded RTO/RPO | Disable schedule; keep last backup | No production cutover |
 | PR 1.4: Add Redis config hardening | Reduce self-inflicted outages | Tune `maxmemory-policy`, `timeout`, `tcp-keepalive`, `appendonly`, slowlog, auth if applicable | Config is versioned; memory pressure behavior known | Revert values | No Cluster-specific config |

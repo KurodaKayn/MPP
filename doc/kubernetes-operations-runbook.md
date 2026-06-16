@@ -752,6 +752,60 @@ Mitigation:
 - For managed Redis, follow the provider failover runbook before restarting MPP
   workloads.
 
+## Redis Persistence Baseline
+
+Persistence policy:
+
+| Environment | Mechanism | Policy | Restart expectation |
+| --- | --- | --- | --- |
+| `staging-self-hosted` | Redis StatefulSet with `redis-data` PVC mounted at `/data` | AOF enabled with `appendfsync everysec`; RDB snapshots use `save 900 1`, `save 300 10`, and `save 60 10000` | Normal Redis Pod restarts keep persisted keys that have not expired. Writes inside the last AOF fsync window may be lost after node or storage failure. |
+| `staging-managed` | Managed Redis provider | Provider persistence or snapshots must be selected in the staging provider configuration | Follow the provider restart and restore guarantees. Do not assume in-cluster PVC recovery. |
+| `production-managed` | Managed Redis provider | Provider-backed persistence or snapshots, retention, and restore point objective must be recorded before production use | Follow the provider restart, failover, and restore runbook. |
+
+Self-hosted checks:
+
+```bash
+kubectl get configmap -n "$MPP_APP_NS" redis-persistence-config -o yaml
+kubectl get statefulset -n "$MPP_APP_NS" redis -o jsonpath='{.spec.volumeClaimTemplates[*].metadata.name}{"\n"}'
+kubectl get pvc -n "$MPP_APP_NS" -l app.kubernetes.io/component=redis
+kubectl exec -n "$MPP_APP_NS" statefulset/redis -- sh -ec '
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    redis-cli --no-auth-warning -a "$REDIS_PASSWORD" CONFIG GET dir appendonly appendfsync save
+  else
+    redis-cli CONFIG GET dir appendonly appendfsync save
+  fi
+'
+```
+
+Non-production restart check:
+
+```bash
+kubectl exec -n "$MPP_APP_NS" statefulset/redis -- sh -ec '
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SET mpp:persistence:probe "$(date -u +%s)" EX 3600
+    redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SET mpp:persistence:ephemeral "$(date -u +%s)" EX 5
+  else
+    redis-cli SET mpp:persistence:probe "$(date -u +%s)" EX 3600
+    redis-cli SET mpp:persistence:ephemeral "$(date -u +%s)" EX 5
+  fi
+'
+kubectl delete pod -n "$MPP_APP_NS" -l app.kubernetes.io/component=redis
+kubectl rollout status statefulset/redis -n "$MPP_APP_NS"
+kubectl exec -n "$MPP_APP_NS" statefulset/redis -- sh -ec '
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    redis-cli --no-auth-warning -a "$REDIS_PASSWORD" GET mpp:persistence:probe
+    redis-cli --no-auth-warning -a "$REDIS_PASSWORD" GET mpp:persistence:ephemeral
+  else
+    redis-cli GET mpp:persistence:probe
+    redis-cli GET mpp:persistence:ephemeral
+  fi
+'
+```
+
+The probe key should remain after the restart. The short-TTL key may be absent;
+that is expected. Do not use this check in production without a maintenance
+window because it deletes the Redis Pod.
+
 ## Redis Keyspace Inventory
 
 Use `script/redis/keyspace_inventory.rb` to produce a factual Redis keyspace

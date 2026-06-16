@@ -15,6 +15,10 @@ Required overlay inputs:
   PostgreSQL StatefulSet.
 - Patch storage class, storage sizes, resource limits, and image tags for the
   target cluster.
+- Review the `redis-persistence-config` ConfigMap before applying an overlay.
+  The base policy stores Redis files on the `redis-data` PVC, enables AOF with
+  `appendfsync everysec`, and keeps the default RDB snapshot cadence for
+  restart recovery and backup snapshots.
 - Patch `mpp-data-backups` storage, backup CronJob schedules, and
   `BACKUP_RETENTION_DAYS` before keeping useful data in the StatefulSets.
 
@@ -23,6 +27,26 @@ publish-worker, and collab-service Pods; PostgreSQL ingress from those app Pods
 plus PgBouncer and the PostgreSQL backup CronJob; and Redis ingress from
 backend, publish-worker, browser-worker, collab-service, and the Redis backup
 CronJob Pods.
+
+Redis runs as a single-pod StatefulSet with persistent storage:
+
+- `redis-data-redis-0` mounts at `/data` and stores `dump.rdb` plus the AOF
+  directory.
+- `redis-persistence-config` is mounted read-only at `/usr/local/etc/redis` and
+  is the versioned source of the Redis persistence mode.
+- AOF is enabled with `appendfsync everysec`, so a normal Pod restart should
+  keep Redis-resident keys that have not expired. A node or storage failure may
+  still lose writes accepted inside the last fsync window.
+- RDB snapshots remain enabled with `save 900 1`, `save 300 10`, and
+  `save 60 10000`. They complement AOF and provide the snapshot source used by
+  the Redis backup CronJob.
+- Short-TTL keys can expire during or after restart. Queue-like, lock, session,
+  and idempotency keys must still follow their documented Redis responsibility
+  tier and recovery expectation.
+
+Environment overlays may patch `redis-persistence-config` only when the
+environment intentionally chooses a different RDB/AOF policy and documents the
+resulting data-loss expectation in that overlay.
 
 This package includes a small backup starter:
 
