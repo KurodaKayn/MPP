@@ -6,3 +6,4 @@ resources:
   - redis.yaml
   - backups.yaml
   - networkpolicy.yaml
+  - ../redis-exporter

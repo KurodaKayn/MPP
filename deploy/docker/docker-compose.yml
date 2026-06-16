@@ -370,6 +370,17 @@ services:
     volumes:
       - redis_data:/data
 
+  redis-exporter:
+    image: ${REDIS_EXPORTER_IMAGE:-oliver006/redis_exporter:v1.86.0}
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_EXPORTER_LOG_FORMAT: json
+      REDIS_EXPORTER_PING_ON_CONNECT: "true"
+    depends_on:
+      redis:
+        condition: service_healthy
+
   prometheus:
     image: prom/prometheus:v3.12.0
     command:
@@ -388,6 +399,7 @@ services:
       - browser-worker
       - collab-service
       - postgres-exporter
+      - redis-exporter
 
   postgres-exporter:
     image: ${POSTGRES_EXPORTER_IMAGE:-quay.io/prometheuscommunity/postgres-exporter:v0.19.1}

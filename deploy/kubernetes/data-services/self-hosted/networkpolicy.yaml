@@ -175,6 +175,10 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: redis-exporter
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
               app.kubernetes.io/component: redis-backup
       ports:
         - protocol: TCP
