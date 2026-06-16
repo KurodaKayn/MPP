@@ -29,16 +29,13 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 	// 1. Transition to capturing
 	s.writerDB(ctx).Model(&session).Update("status", models.BrowserSessionStatusCapturing)
 	_ = s.saveRedisLiveSession(ctx, browserSessionLiveState{
-		SessionID:         session.ID,
-		UserID:            session.UserID,
-		Platform:          session.Platform,
-		Status:            models.BrowserSessionStatusCapturing,
-		WorkerSessionRef:  session.WorkerSessionRef,
-		ContainerID:       session.ContainerID,
-		CDPEndpointRef:    session.CDPEndpointRef,
-		StreamEndpointRef: session.StreamEndpointRef,
-		CreatedAt:         session.CreatedAt,
-		ExpiresAt:         session.ExpiresAt,
+		SessionID:        session.ID,
+		UserID:           session.UserID,
+		Platform:         session.Platform,
+		Status:           models.BrowserSessionStatusCapturing,
+		WorkerSessionRef: session.WorkerSessionRef,
+		CreatedAt:        session.CreatedAt,
+		ExpiresAt:        session.ExpiresAt,
 	})
 
 	// 2. Ask worker to capture
@@ -49,17 +46,14 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 			"error_message": err.Error(),
 		})
 		_ = s.saveRedisLiveSession(ctx, browserSessionLiveState{
-			SessionID:         session.ID,
-			UserID:            session.UserID,
-			Platform:          session.Platform,
-			Status:            models.BrowserSessionStatusReady,
-			WorkerSessionRef:  session.WorkerSessionRef,
-			ContainerID:       session.ContainerID,
-			CDPEndpointRef:    session.CDPEndpointRef,
-			StreamEndpointRef: session.StreamEndpointRef,
-			Message:           err.Error(),
-			CreatedAt:         session.CreatedAt,
-			ExpiresAt:         session.ExpiresAt,
+			SessionID:        session.ID,
+			UserID:           session.UserID,
+			Platform:         session.Platform,
+			Status:           models.BrowserSessionStatusReady,
+			WorkerSessionRef: session.WorkerSessionRef,
+			Message:          err.Error(),
+			CreatedAt:        session.CreatedAt,
+			ExpiresAt:        session.ExpiresAt,
 		})
 		return nil, fmt.Errorf("capture failed: %w", err)
 	}
@@ -71,17 +65,14 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 		}
 		s.writerDB(ctx).Model(&session).Update("status", models.BrowserSessionStatusReady)
 		_ = s.saveRedisLiveSession(ctx, browserSessionLiveState{
-			SessionID:         session.ID,
-			UserID:            session.UserID,
-			Platform:          session.Platform,
-			Status:            models.BrowserSessionStatusReady,
-			WorkerSessionRef:  session.WorkerSessionRef,
-			ContainerID:       session.ContainerID,
-			CDPEndpointRef:    session.CDPEndpointRef,
-			StreamEndpointRef: session.StreamEndpointRef,
-			Message:           message,
-			CreatedAt:         session.CreatedAt,
-			ExpiresAt:         session.ExpiresAt,
+			SessionID:        session.ID,
+			UserID:           session.UserID,
+			Platform:         session.Platform,
+			Status:           models.BrowserSessionStatusReady,
+			WorkerSessionRef: session.WorkerSessionRef,
+			Message:          message,
+			CreatedAt:        session.CreatedAt,
+			ExpiresAt:        session.ExpiresAt,
 		})
 		return nil, fmt.Errorf("%w: %s", ErrLoginNotDetected, message)
 	}
@@ -104,17 +95,14 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 	if err != nil {
 		s.writerDB(ctx).Model(&session).Update("status", models.BrowserSessionStatusReady)
 		_ = s.saveRedisLiveSession(ctx, browserSessionLiveState{
-			SessionID:         session.ID,
-			UserID:            session.UserID,
-			Platform:          session.Platform,
-			Status:            models.BrowserSessionStatusReady,
-			WorkerSessionRef:  session.WorkerSessionRef,
-			ContainerID:       session.ContainerID,
-			CDPEndpointRef:    session.CDPEndpointRef,
-			StreamEndpointRef: session.StreamEndpointRef,
-			Message:           err.Error(),
-			CreatedAt:         session.CreatedAt,
-			ExpiresAt:         session.ExpiresAt,
+			SessionID:        session.ID,
+			UserID:           session.UserID,
+			Platform:         session.Platform,
+			Status:           models.BrowserSessionStatusReady,
+			WorkerSessionRef: session.WorkerSessionRef,
+			Message:          err.Error(),
+			CreatedAt:        session.CreatedAt,
+			ExpiresAt:        session.ExpiresAt,
 		})
 		return nil, err
 	}
@@ -123,17 +111,14 @@ func (s *BrowserSessionService) CompleteSession(ctx context.Context, userID uuid
 	if err != nil {
 		s.writerDB(ctx).Model(&session).Update("status", models.BrowserSessionStatusReady)
 		_ = s.saveRedisLiveSession(ctx, browserSessionLiveState{
-			SessionID:         session.ID,
-			UserID:            session.UserID,
-			Platform:          session.Platform,
-			Status:            models.BrowserSessionStatusReady,
-			WorkerSessionRef:  session.WorkerSessionRef,
-			ContainerID:       session.ContainerID,
-			CDPEndpointRef:    session.CDPEndpointRef,
-			StreamEndpointRef: session.StreamEndpointRef,
-			Message:           err.Error(),
-			CreatedAt:         session.CreatedAt,
-			ExpiresAt:         session.ExpiresAt,
+			SessionID:        session.ID,
+			UserID:           session.UserID,
+			Platform:         session.Platform,
+			Status:           models.BrowserSessionStatusReady,
+			WorkerSessionRef: session.WorkerSessionRef,
+			Message:          err.Error(),
+			CreatedAt:        session.CreatedAt,
+			ExpiresAt:        session.ExpiresAt,
 		})
 		return nil, fmt.Errorf("failed to save cookies: %w", err)
 	}

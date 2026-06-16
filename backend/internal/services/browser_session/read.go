@@ -27,9 +27,6 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 	} else if ok {
 		session.Status = state.Status
 		session.WorkerSessionRef = state.WorkerSessionRef
-		session.ContainerID = state.ContainerID
-		session.CDPEndpointRef = state.CDPEndpointRef
-		session.StreamEndpointRef = state.StreamEndpointRef
 		session.ErrorMessage = state.Message
 		session.ExpiresAt = state.ExpiresAt
 

@@ -2,7 +2,9 @@ package mediaasset_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +24,15 @@ import (
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 )
+
+func sortedPayloadKeys(values map[string]any) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
+}
 
 func TestCreateMediaUploadCreatesPendingAssetAndPresignsPut(t *testing.T) {
 	db, service, _ := setupMediaAssetService(t)
@@ -139,6 +150,64 @@ func TestResolveMediaAssetsUsesCachedResolvedAsset(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, first.Items, cached.Items)
 	require.Equal(t, 1, storage.PresignGetObjectCount())
+}
+
+func TestResolveMediaAssetsStoresMinimalCachePayload(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	redisClient, redisServer := newMediaAssetRedisClientWithServer(t)
+	service.UseRedis(redisClient)
+	owner, upload := createReadyMediaAsset(t, db, service, storage)
+
+	_, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+
+	keys := requireResolvedMediaAssetCacheKeys(t, redisServer, upload.AssetID, 1)
+	raw, err := redisClient.Get(context.Background(), keys[0]).Bytes()
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(raw, &payload))
+	require.Equal(t, []string{"bucket", "expires_at", "object_key", "url"}, sortedPayloadKeys(payload))
+	require.NotContains(t, payload, "asset_id")
+	require.NotContains(t, payload, "user_id")
+	require.NotContains(t, payload, "workspace_id")
+	require.NotContains(t, payload, "project_id")
+	require.NotContains(t, payload, "status")
+}
+
+func TestResolveMediaAssetsRefreshesStaleObjectKeyPayload(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	redisClient, redisServer := newMediaAssetRedisClientWithServer(t)
+	service.UseRedis(redisClient)
+	owner, upload := createReadyMediaAsset(t, db, service, storage)
+	finalKey := mediaAssetObjectKey(t, db, upload.AssetID)
+
+	_, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
+	keys := requireResolvedMediaAssetCacheKeys(t, redisServer, upload.AssetID, 1)
+
+	stalePayload := map[string]any{
+		"bucket":     "mpp-media",
+		"object_key": "stale/" + finalKey,
+		"url":        "fake://get/mpp-media/stale/" + finalKey,
+		"expires_at": time.Now().Add(5 * time.Minute).UTC(),
+	}
+	raw, err := json.Marshal(stalePayload)
+	require.NoError(t, err)
+	require.NoError(t, redisClient.Set(context.Background(), keys[0], raw, time.Minute).Err())
+
+	refreshed, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+	require.NoError(t, err)
+	require.Len(t, refreshed.Items, 1)
+	require.Equal(t, "fake://get/mpp-media/"+finalKey, refreshed.Items[0].URL)
+	require.Equal(t, 2, storage.PresignGetObjectCount())
 }
 
 func TestResolveMediaAssetsRefreshesExpiredCache(t *testing.T) {

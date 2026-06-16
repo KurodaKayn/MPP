@@ -137,16 +137,13 @@ func (s *BrowserSessionService) RegisterSession(ctx context.Context, session *mo
 	if s.redisClient != nil {
 		// Register in Redis live sessions
 		if err := s.saveRedisLiveSession(ctx, browserSessionLiveState{
-			SessionID:         session.ID,
-			UserID:            session.UserID,
-			Platform:          session.Platform,
-			Status:            session.Status,
-			WorkerSessionRef:  session.WorkerSessionRef,
-			ContainerID:       session.ContainerID,
-			CDPEndpointRef:    session.CDPEndpointRef,
-			StreamEndpointRef: session.StreamEndpointRef,
-			CreatedAt:         session.CreatedAt,
-			ExpiresAt:         session.ExpiresAt,
+			SessionID:        session.ID,
+			UserID:           session.UserID,
+			Platform:         session.Platform,
+			Status:           session.Status,
+			WorkerSessionRef: session.WorkerSessionRef,
+			CreatedAt:        session.CreatedAt,
+			ExpiresAt:        session.ExpiresAt,
 		}); err != nil {
 			return err
 		}

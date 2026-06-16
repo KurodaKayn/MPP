@@ -14,22 +14,19 @@ import (
 )
 
 type browserSessionLiveState struct {
-	SessionID         uuid.UUID `json:"session_id"`
-	UserID            uuid.UUID `json:"user_id"`
-	TenantID          string    `json:"tenant_id"`
-	Platform          string    `json:"platform"`
-	Status            string    `json:"status"`
-	WorkerSessionRef  string    `json:"worker_session_ref"`
-	ContainerID       string    `json:"container_id"`
-	CDPEndpointRef    string    `json:"cdp_endpoint_ref"`
-	StreamEndpointRef string    `json:"stream_endpoint_ref"`
-	CurrentURL        string    `json:"current_url"`
-	LoginDetected     bool      `json:"login_detected"`
-	MissingCookies    []string  `json:"missing_cookies"`
-	Message           string    `json:"message"`
-	CreatedAt         time.Time `json:"created_at"`
-	ExpiresAt         time.Time `json:"expires_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	SessionID        uuid.UUID `json:"session_id"`
+	UserID           uuid.UUID `json:"user_id"`
+	TenantID         string    `json:"tenant_id,omitempty"`
+	Platform         string    `json:"platform"`
+	Status           string    `json:"status"`
+	WorkerSessionRef string    `json:"worker_session_ref"`
+	CurrentURL       string    `json:"current_url,omitempty"`
+	LoginDetected    bool      `json:"login_detected,omitempty"`
+	MissingCookies   []string  `json:"missing_cookies,omitempty"`
+	Message          string    `json:"message,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 func (s *BrowserSessionService) cleanupRedisSession(ctx context.Context, userID uuid.UUID, platform string, sessionID uuid.UUID, workerSessionRef string) error {

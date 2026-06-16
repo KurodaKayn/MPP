@@ -187,17 +187,14 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 	session.StreamEndpointRef = resp.StreamEndpointRef
 
 	if err := s.saveRedisLiveSession(ctx, browserSessionLiveState{
-		SessionID:         sessionID,
-		UserID:            userID,
-		TenantID:          tenantID,
-		Platform:          platform,
-		Status:            models.BrowserSessionStatusReady,
-		WorkerSessionRef:  resp.WorkerSessionRef,
-		ContainerID:       resp.ContainerID,
-		CDPEndpointRef:    resp.CDPEndpointRef,
-		StreamEndpointRef: resp.StreamEndpointRef,
-		CreatedAt:         now,
-		ExpiresAt:         expiresAt,
+		SessionID:        sessionID,
+		UserID:           userID,
+		TenantID:         tenantID,
+		Platform:         platform,
+		Status:           models.BrowserSessionStatusReady,
+		WorkerSessionRef: resp.WorkerSessionRef,
+		CreatedAt:        now,
+		ExpiresAt:        expiresAt,
 	}); err != nil {
 		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
 		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, resp.WorkerSessionRef)
