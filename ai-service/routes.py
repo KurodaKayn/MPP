@@ -273,9 +273,8 @@ def parse_growth_response(
         parsed = json.loads(raw_content)
         response = GrowthOptimizationResponse.model_validate(parsed)
         response.usage = usage
-        return response
     except Exception:
-        return GrowthOptimizationResponse(
+        response = GrowthOptimizationResponse(
             quality_summary=(
                 "Generated fallback growth proposals. Review claims and platform fit "
                 "before applying."
@@ -283,6 +282,213 @@ def parse_growth_response(
             proposals=fallback_growth_proposals(request),
             usage=usage,
         )
+    apply_growth_quality_checks(response, request)
+    return response
+
+
+PLATFORM_LENGTH_LIMITS = {
+    "source": 8000,
+    "wechat": 5000,
+    "zhihu": 6000,
+    "x": 280,
+    "douyin": 2200,
+}
+
+CTA_SIGNALS = (
+    "?",
+    "comment",
+    "reply",
+    "share",
+    "save",
+    "follow",
+    "tell us",
+    "what do you think",
+    "留言",
+    "评论",
+    "转发",
+    "收藏",
+    "关注",
+    "你怎么看",
+)
+
+RISK_PHRASES = (
+    "guaranteed",
+    "guarantee",
+    "ensure",
+    "100%",
+    "risk-free",
+    "no risk",
+    "viral",
+    "guaranteed traffic",
+    "guaranteed views",
+    "一定",
+    "保证",
+    "必然",
+    "稳赚",
+    "无风险",
+    "爆火",
+    "必火",
+)
+
+
+def apply_growth_quality_checks(
+    response: GrowthOptimizationResponse,
+    request: GrowthOptimizationRequest,
+) -> None:
+    for proposal in response.proposals:
+        proposal.quality_checks = {
+            **proposal.quality_checks,
+            **growth_quality_checks_for(proposal, request),
+        }
+
+
+def growth_quality_checks_for(
+    proposal: GrowthProposal,
+    request: GrowthOptimizationRequest,
+) -> dict:
+    content = proposal.full_content or ""
+    platform = proposal.target_platform
+    banned_matches = banned_word_matches(content, request.brand_profile or {})
+    cta_result = cta_check(content, proposal, request.brand_profile or {})
+    risk_warnings = risk_statement_warnings(content)
+
+    return {
+        "brand_consistency": brand_consistency_check(
+            request.brand_profile or {},
+            banned_matches,
+            cta_result,
+        ),
+        "platform_format": platform_format_check(content, platform, proposal.proposal_type),
+        "banned_words": {
+            "status": "fail" if banned_matches else "pass",
+            "matches": banned_matches,
+        },
+        "length": length_check(content, platform, proposal.proposal_type),
+        "cta": cta_result,
+        "risk_statements": {
+            "status": "fail" if risk_warnings else "pass",
+            "warnings": risk_warnings,
+        },
+    }
+
+
+def brand_consistency_check(
+    brand_profile: dict,
+    banned_matches: list[str],
+    cta_result: dict,
+) -> dict:
+    if not brand_profile:
+        return {"status": "not_configured", "warnings": []}
+
+    warnings = []
+    if banned_matches:
+        warnings.append("Content contains brand-banned words.")
+    if cta_result["status"] == "warning":
+        warnings.append("Content is missing the configured brand CTA.")
+
+    return {
+        "status": "fail" if banned_matches else "warning" if warnings else "pass",
+        "voice": brand_profile.get("voice", ""),
+        "audience": brand_profile.get("audience", ""),
+        "warnings": warnings,
+    }
+
+
+def platform_format_check(content: str, platform: str, proposal_type: str) -> dict:
+    warnings = []
+    expected_format = platform_expected_format(platform, proposal_type)
+    stripped = content.strip()
+
+    if platform == "x":
+        if "<" in stripped and ">" in stripped:
+            warnings.append("X proposal should be plain text, not HTML.")
+        if stripped.count("\n") > 8:
+            warnings.append("X proposal uses too many line breaks for short-form scanning.")
+    elif platform == "douyin":
+        if len([line for line in stripped.splitlines() if line.strip()]) < 2:
+            warnings.append("Douyin proposal should use short visual beats.")
+    elif platform in {"wechat", "zhihu"} and not stripped:
+        warnings.append(f"{platform} proposal content is empty.")
+
+    return {
+        "status": "warning" if warnings else "pass",
+        "expected_format": expected_format,
+        "warnings": warnings,
+    }
+
+
+def platform_expected_format(platform: str, proposal_type: str) -> str:
+    if proposal_type == "title_candidates":
+        return "newline_separated_title_candidates"
+    return {
+        "wechat": "long_form_positive_article",
+        "zhihu": "structured_evidence_based_article",
+        "x": "plain_text_short_form",
+        "douyin": "short_beat_script",
+        "source": "source_article_rewrite",
+    }.get(platform, "platform_specific_text")
+
+
+def banned_word_matches(content: str, brand_profile: dict) -> list[str]:
+    banned_words = brand_profile.get("banned_words") or brand_profile.get("forbidden_words") or []
+    if isinstance(banned_words, str):
+        banned_words = [word.strip() for word in banned_words.split(",")]
+    content_lower = content.lower()
+    return sorted(
+        {
+            word
+            for word in banned_words
+            if isinstance(word, str) and word.strip() and word.strip().lower() in content_lower
+        }
+    )
+
+
+def length_check(content: str, platform: str, proposal_type: str) -> dict:
+    limit = (
+        240 if proposal_type == "title_candidates" else PLATFORM_LENGTH_LIMITS.get(platform, 5000)
+    )
+    count = len(content)
+    status = "pass"
+    if count > limit:
+        status = "fail"
+    elif count > int(limit * 0.9):
+        status = "warning"
+    return {
+        "status": status,
+        "characters": count,
+        "limit": limit,
+    }
+
+
+def cta_check(content: str, proposal: GrowthProposal, brand_profile: dict) -> dict:
+    if proposal.proposal_type == "title_candidates":
+        return {"status": "not_required", "present": False, "required": ""}
+
+    required_cta = str(brand_profile.get("cta") or "").strip()
+    content_lower = content.lower()
+    if required_cta:
+        present = required_cta.lower() in content_lower
+        return {
+            "status": "pass" if present else "warning",
+            "present": present,
+            "required": required_cta,
+        }
+
+    present = any(signal in content_lower for signal in CTA_SIGNALS)
+    return {
+        "status": "pass" if present else "warning",
+        "present": present,
+        "required": "generic engagement CTA",
+    }
+
+
+def risk_statement_warnings(content: str) -> list[str]:
+    content_lower = content.lower()
+    return [
+        f"Review unsupported risk or performance claim: {phrase}"
+        for phrase in RISK_PHRASES
+        if phrase.lower() in content_lower
+    ]
 
 
 def fallback_growth_proposals(

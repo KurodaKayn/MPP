@@ -42,6 +42,20 @@ def auth_headers():
     return {"Authorization": f"Bearer {INTERNAL_TOKEN}"}
 
 
+def sse_events(response_text: str) -> list[dict]:
+    events = []
+    for block in response_text.strip().split("\n\n"):
+        event = {}
+        for line in block.splitlines():
+            if line.startswith("event:"):
+                event["event"] = line.removeprefix("event:").strip()
+            elif line.startswith("data:"):
+                event["data"] = json.loads(line.removeprefix("data:").strip())
+        if event:
+            events.append(event)
+    return events
+
+
 def test_health_returns_status():
     response = client.get("/health")
 
@@ -310,3 +324,67 @@ def test_stream_growth_optimization_streams_valid_json_proposals(monkeypatch):
     assert "A rigorous Zhihu rewrite" in response.text
     assert "test-growth-model" in response.text
     assert '"total_tokens": 15' in response.text
+
+
+def test_stream_growth_optimization_adds_deterministic_quality_checks(monkeypatch):
+    fake_llm = FakeLLM(
+        invoke_content=json.dumps(
+            {
+                "model": "test-growth-model",
+                "prompt_version": "growth-v1",
+                "quality_summary": "Ready for review",
+                "proposals": [
+                    {
+                        "proposal_type": "prepublish_patch",
+                        "target_platform": "x",
+                        "summary": "x@growth-v1 concise proposal",
+                        "patch": "",
+                        "full_content": (
+                            "Forbidden claim with guaranteed traffic and no requested CTA."
+                        ),
+                        "quality_checks": {"audience_profile": "x@growth-v1"},
+                    }
+                ],
+                "usage": {
+                    "input_tokens": 1,
+                    "output_tokens": 2,
+                    "total_tokens": 3,
+                    "cost": 0,
+                    "currency": "USD",
+                },
+            }
+        )
+    )
+    monkeypatch.setattr(routes, "build_llm", lambda: fake_llm)
+
+    response = client.post(
+        "/growth/optimize/stream",
+        headers=auth_headers(),
+        json={
+            "title": "Launch note",
+            "source_content": "Source article",
+            "goal": "make it concise",
+            "target_platforms": ["x"],
+            "brand_profile": {
+                "voice": "precise",
+                "audience": "technical founders",
+                "banned_words": ["Forbidden"],
+                "cta": "Read the full report",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    proposal = next(
+        event["data"] for event in sse_events(response.text) if event["event"] == "proposal"
+    )
+    checks = proposal["quality_checks"]
+    assert checks["audience_profile"] == "x@growth-v1"
+    assert checks["brand_consistency"]["status"] == "fail"
+    assert checks["brand_consistency"]["voice"] == "precise"
+    assert checks["banned_words"] == {"status": "fail", "matches": ["Forbidden"]}
+    assert checks["cta"]["status"] == "warning"
+    assert checks["cta"]["required"] == "Read the full report"
+    assert checks["length"]["status"] == "pass"
+    assert checks["platform_format"]["expected_format"] == "plain_text_short_form"
+    assert checks["risk_statements"]["status"] == "fail"
