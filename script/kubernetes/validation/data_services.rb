@@ -332,6 +332,7 @@ module KubernetesValidation
             context.add_error("self-hosted backup scripts ConfigMap must include #{script_name}")
           end
         end
+        validate_redis_backup_script(context, scripts)
       end
 
       backup_pvc = context.require_document("PersistentVolumeClaim", "mpp-data-backups", "mpp-system")
@@ -366,6 +367,7 @@ module KubernetesValidation
       cronjob = context.require_document("CronJob", name, "mpp-system")
       return unless cronjob
 
+      context.add_error("self-hosted #{name} CronJob must define a schedule") if cronjob.spec["schedule"].to_s.empty?
       context.add_error("self-hosted #{name} CronJob must forbid concurrent runs") unless cronjob.spec["concurrencyPolicy"] == "Forbid"
 
       job_spec = cronjob.spec.dig("jobTemplate", "spec") || {}
@@ -394,6 +396,21 @@ module KubernetesValidation
       validate_backup_container_security(context, container, name)
       validate_backup_volume_mounts(context, container, name)
       validate_backup_secret_ref(context, container, name, secret_env, secret_key, optional_secret)
+    end
+
+    def validate_redis_backup_script(context, scripts)
+      script = scripts.data["redis-backup.sh"].to_s
+      return if script.empty?
+
+      {
+        "/backups/redis" => "self-hosted redis backup script must default BACKUP_ROOT to /backups/redis",
+        "--rdb \"$tmp_file\"" => "self-hosted redis backup script must stream RDB snapshots with redis-cli --rdb",
+        "REDISCLI_AUTH" => "self-hosted redis backup script must support optional REDIS_PASSWORD auth",
+        "mv \"$tmp_file\" \"$target_file\"" => "self-hosted redis backup script must atomically publish complete snapshots",
+        "find \"$backup_root\" -type f -name \"redis-*.rdb\"" => "self-hosted redis backup script must prune retained Redis snapshots",
+      }.each do |needle, message|
+        context.add_error(message) unless script.include?(needle)
+      end
     end
 
     def validate_backup_pod_security(context, pod_spec, name)

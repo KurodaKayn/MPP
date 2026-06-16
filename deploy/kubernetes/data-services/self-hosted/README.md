@@ -67,6 +67,11 @@ This package includes a small backup starter:
   Pod security settings, no mounted service account token, and local
   file-retention cleanup.
 
+Use the Redis backup and restore procedure in
+`doc/kubernetes-operations-runbook.md` before depending on these snapshots. The
+runbook records the non-production restore drill, observed RTO/RPO, and the
+Redis data classes that are expected to recover versus remain transient.
+
 This package also includes the shared `deploy/kubernetes/data-services/redis-exporter`
 base. The exporter reads Redis with the optional `REDIS_PASSWORD` Secret and is
 allowed through the Redis NetworkPolicy so the observability stack can export

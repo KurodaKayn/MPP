@@ -836,6 +836,96 @@ The probe key should remain after the restart. The short-TTL key may be absent;
 that is expected. Do not use this check in production without a maintenance
 window because it deletes the Redis Pod.
 
+## Redis Backup And Restore Runbook
+
+The self-hosted Redis backup path is the `redis-backup` CronJob in
+`deploy/kubernetes/data-services/self-hosted/backups.yaml`. It writes RDB
+snapshots to `/backups/redis` on the `mpp-data-backups` PVC and prunes old
+files by `BACKUP_RETENTION_DAYS`.
+
+Operator checklist:
+
+```bash
+kubectl get cronjob -n "$MPP_APP_NS" redis-backup
+kubectl get job -n "$MPP_APP_NS" -l app.kubernetes.io/component=redis-backup
+kubectl logs -n "$MPP_APP_NS" job/redis-backup --tail=200
+kubectl get pvc -n "$MPP_APP_NS" mpp-data-backups
+```
+
+Run an on-demand backup before maintenance or a restore drill:
+
+```bash
+kubectl create job -n "$MPP_APP_NS" --from=cronjob/redis-backup \
+  redis-backup-manual-$(date -u +%Y%m%d%H%M%S)
+```
+
+Restore procedure for a non-production self-hosted Redis snapshot:
+
+1. Stop all Redis writers. Scale `backend`, `publish-worker`, `browser-worker`,
+   and `collab-service` to zero or pause the environment.
+2. Copy the chosen `redis-*.rdb` snapshot into a clean Redis data directory as
+   `dump.rdb`.
+3. Start the replacement pod from a restore-only overlay or temporary config
+   that already sets `appendonly no`. Do not rely on `CONFIG SET appendonly no`
+   alone; that only changes the live process and is lost on restart.
+4. Quarantine or remove any retained AOF files on the mounted PVC, especially
+   `/data/appendonlydir`, before the replacement pod starts so Redis cannot
+   replay an old AOF over the selected `dump.rdb`.
+5. Verify the expected durable keys are present.
+6. Re-enable AOF and let Redis rewrite it after the restore is validated.
+7. Bring the app workloads back up.
+
+Example pod-level sequence:
+
+```bash
+kubectl exec -n "$MPP_APP_NS" statefulset/redis -- sh -ec '
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    export REDISCLI_AUTH="$REDIS_PASSWORD"
+    redis-cli --no-auth-warning SHUTDOWN SAVE || true
+  else
+    redis-cli SHUTDOWN SAVE || true
+  fi
+'
+# replace /data/dump.rdb from the selected backup snapshot
+# quarantine /data/appendonlydir or restore from a clean PVC snapshot before the new pod starts
+# deploy the restore-only overlay or temporary StatefulSet patch that sets appendonly no
+kubectl delete pod -n "$MPP_APP_NS" -l app.kubernetes.io/component=redis
+kubectl rollout status statefulset/redis -n "$MPP_APP_NS"
+kubectl exec -n "$MPP_APP_NS" statefulset/redis -- sh -ec '
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    export REDISCLI_AUTH="$REDIS_PASSWORD"
+    redis-cli --no-auth-warning GET mpp:persistence:probe
+    redis-cli --no-auth-warning CONFIG SET appendonly yes
+    redis-cli --no-auth-warning BGREWRITEAOF
+  else
+    redis-cli GET mpp:persistence:probe
+    redis-cli CONFIG SET appendonly yes
+    redis-cli BGREWRITEAOF
+  fi
+'
+```
+
+Do not restore into a live writer set. Restore is only safe after Redis writers
+are stopped, because in-flight queue, lock, and session state can be lost or
+replayed.
+
+Non-production restore drill result:
+
+- 2026-06-16: local `redis:7-alpine` drill using `redis-cli --rdb` backup and
+  RDB-first restore.
+- Result: restored durable key survived, short-TTL key was absent as expected.
+- Restore RTO: `~2s` from Redis start to key verification on the local Docker
+  drill.
+- RPO: last successful RDB snapshot, plus any writes accepted after that
+  snapshot and before restore start.
+
+Recovery expectations:
+
+- Durable session or configuration keys should return from the snapshot.
+- Short-TTL keys may expire before or during restore and are not guaranteed.
+- Queue-like or lock-like keys can be stale on restore and must be treated as
+  operator-recovered state, not a transactional replay guarantee.
+
 ## Redis Keyspace Inventory
 
 Use `script/redis/keyspace_inventory.rb` to produce a factual Redis keyspace
