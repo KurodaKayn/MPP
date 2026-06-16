@@ -8,11 +8,11 @@ Phase 1-2 target: pragmatic high availability. After a single Redis Pod, node, o
 
 Production final target: Redis Cluster. The final state must support multiple shards, multiple replicas, automatic failover, TLS/auth, backup and restore, maintenance windows, and clear SLA ownership. Prefer a provider-backed managed Redis Cluster. If managed Redis is unavailable, use a mature chart/operator to self-host Redis Cluster.
 
-Current overall progress: about `27%`.
+Current overall progress: about `30%`.
 
 | Phase | Weight | Current Completion | Status | Done | Next |
 | --- | ---: | ---: | --- | --- | --- |
-| Phase 0: responsibility and risk baseline | 10% | 75% | In Progress | Inventory script, responsibility labels, and Redis SLO baseline added | Add Redis dependency map |
+| Phase 0: responsibility and risk baseline | 10% | 100% | Done | Inventory script, responsibility labels, Redis SLO baseline, and [dependency map](../redis-dependency-map.md) added | Start Phase 1 single-instance hardening |
 | Phase 1: single-instance hardening | 15% | 40% | In Progress | Current single-instance deployment direction clear | Add persistent storage, probes, resources, and backup baseline |
 | Phase 2: self-hosted HA | 20% | 10% | Not Started | Initial HA direction chosen | Select Sentinel or equivalent failover mode and implement traffic switching |
 | Phase 3: app-side fault tolerance | 20% | 15% | Not Started | Retry and degradation areas identified | Implement timeout, retry, circuit breaker, and cache-miss protection |
@@ -71,7 +71,7 @@ This phase does not change Redis infrastructure. It builds facts first.
 | PR 0.1: Build Redis keyspace inventory | Know what Redis is used for | Add script or internal command to scan key patterns, TTL, memory usage, type, and owner | Inventory output includes key pattern, owner, TTL, type, memory, read/write service | Remove script or disable command | No Redis topology change |
 | PR 0.2: Define Redis responsibility labels | Classify risk | Add labels `R0-R4` in docs/config comments; map key patterns to labels | Every known key pattern has a tier and owner | Revert documentation/config metadata | No code behavior change |
 | PR 0.3: Add Redis SLO and alert baseline | Make Redis risk visible | Add metrics dashboard and alerts: availability, p95/p99 latency, connection errors, memory, evictions, blocked clients | Dashboard visible; alerts tested in non-prod | Remove alerts or lower severity | No failover or scaling change |
-| PR 0.4: Add Redis dependency map | Know blast radius | Document which services depend on Redis and which requests fail when Redis fails | Each service has Redis dependency and degradation behavior recorded | Revert document | No application fallback implementation |
+| PR 0.4: Add Redis dependency map | Know blast radius | Add [Redis dependency map](../redis-dependency-map.md) documenting which services depend on Redis and which requests fail when Redis fails | Each service has Redis dependency and degradation behavior recorded | Revert document | No application fallback implementation |
 
 ## 5. Phase 1: Single-Instance Reliability Hardening
 
