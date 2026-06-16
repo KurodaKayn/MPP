@@ -16,6 +16,7 @@ ruby script/kubernetes/test_app_secret_materializer.rb
 ruby script/kubernetes/test_overlay_image_pinner.rb
 ruby script/kubernetes/test_validate_rendered_manifests.rb
 ruby script/kubernetes/test_validate_rendered_schema.rb
+ruby script/redis/test_keyspace_inventory.rb
 
 cd script/kubernetes/smoke-test
 go test ./...

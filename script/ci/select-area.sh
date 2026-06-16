@@ -68,7 +68,7 @@ case "$area" in
     pattern="^(content-pipeline-service/|${shared_pattern})"
     ;;
   kubernetes)
-    pattern="^(deploy/kubernetes/|script/kubernetes/|script/env/|script/secret/|contracts/env\.schema\.yaml|${shared_pattern})"
+    pattern="^(deploy/kubernetes/|script/kubernetes/|script/env/|script/secret/|script/redis/|contracts/env\.schema\.yaml|${shared_pattern})"
     ;;
   *)
     echo "Unknown CI area: $area" >&2
