@@ -308,6 +308,15 @@ module RedisKeyspaceInventory
       ttl_policy: "asynq-managed; task retention and uniqueness TTLs vary by queue",
       notes: "Email, publish, and dashboard read-model queue internals.",
     },
+    {
+      pattern: "asynq:*",
+      regex: /\Aasynq:(?!\{).+\z/,
+      owner: "asynq task queues used by backend workers",
+      reads: ["backend", "publish-worker"],
+      writes: ["backend", "publish-worker"],
+      ttl_policy: "asynq-managed; process, worker, scheduler, and queue metadata may not use Redis TTLs",
+      notes: "Global Asynq queue registry plus server and worker process metadata.",
+    },
   ].freeze
 
   module_function
