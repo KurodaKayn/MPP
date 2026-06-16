@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import secrets
 from collections.abc import AsyncIterator
 from typing import Annotated
@@ -282,7 +283,10 @@ def parse_growth_response(
             proposals=fallback_growth_proposals(request),
             usage=usage,
         )
-    apply_growth_quality_checks(response, request)
+    try:
+        apply_growth_quality_checks(response, request)
+    except Exception:
+        logger.exception("Growth quality checks failed, returning unchecked response")
     return response
 
 
@@ -295,7 +299,6 @@ PLATFORM_LENGTH_LIMITS = {
 }
 
 CTA_SIGNALS = (
-    "?",
     "comment",
     "reply",
     "share",
@@ -314,7 +317,6 @@ CTA_SIGNALS = (
 RISK_PHRASES = (
     "guaranteed",
     "guarantee",
-    "ensure",
     "100%",
     "risk-free",
     "no risk",
@@ -330,12 +332,16 @@ RISK_PHRASES = (
     "必火",
 )
 
+HTML_TAG_PATTERN = re.compile(r"<\s*/?\s*[a-zA-Z][a-zA-Z0-9]*\b[^>]*>")
+
 
 def apply_growth_quality_checks(
     response: GrowthOptimizationResponse,
     request: GrowthOptimizationRequest,
 ) -> None:
     for proposal in response.proposals:
+        # Deterministic checks take precedence over model-provided checks with
+        # the same key so the LLM cannot bypass quality gates.
         proposal.quality_checks = {
             **proposal.quality_checks,
             **growth_quality_checks_for(proposal, request),
@@ -348,13 +354,14 @@ def growth_quality_checks_for(
 ) -> dict:
     content = proposal.full_content or ""
     platform = proposal.target_platform
-    banned_matches = banned_word_matches(content, request.brand_profile or {})
-    cta_result = cta_check(content, proposal, request.brand_profile or {})
+    brand_profile = request.brand_profile or {}
+    banned_matches = banned_word_matches(content, brand_profile)
+    cta_result = cta_check(content, proposal, brand_profile)
     risk_warnings = risk_statement_warnings(content)
 
     return {
         "brand_consistency": brand_consistency_check(
-            request.brand_profile or {},
+            brand_profile,
             banned_matches,
             cta_result,
         ),
@@ -400,7 +407,7 @@ def platform_format_check(content: str, platform: str, proposal_type: str) -> di
     stripped = content.strip()
 
     if platform == "x":
-        if "<" in stripped and ">" in stripped:
+        if HTML_TAG_PATTERN.search(stripped):
             warnings.append("X proposal should be plain text, not HTML.")
         if stripped.count("\n") > 8:
             warnings.append("X proposal uses too many line breaks for short-form scanning.")
@@ -433,14 +440,22 @@ def banned_word_matches(content: str, brand_profile: dict) -> list[str]:
     banned_words = brand_profile.get("banned_words") or brand_profile.get("forbidden_words") or []
     if isinstance(banned_words, str):
         banned_words = [word.strip() for word in banned_words.split(",")]
-    content_lower = content.lower()
+
     return sorted(
         {
-            word
+            word.strip()
             for word in banned_words
-            if isinstance(word, str) and word.strip() and word.strip().lower() in content_lower
+            if isinstance(word, str)
+            and word.strip()
+            and banned_word_in_content(word.strip(), content)
         }
     )
+
+
+def banned_word_in_content(word: str, content: str) -> bool:
+    if word.isascii() and re.fullmatch(r"[\w-]+", word):
+        return re.search(rf"(?<!\w){re.escape(word)}(?!\w)", content, re.IGNORECASE) is not None
+    return word.lower() in content.lower()
 
 
 def length_check(content: str, platform: str, proposal_type: str) -> dict:

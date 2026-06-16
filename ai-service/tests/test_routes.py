@@ -270,6 +270,12 @@ def test_stream_growth_optimization_emits_reviewable_proposals(monkeypatch):
     assert "Indirect metaphor or double-meaning title" in response.text
     assert "Plain title that directly states" in response.text
     assert '"status": "ready"' in response.text
+    fallback_proposal = next(
+        event["data"] for event in sse_events(response.text) if event["event"] == "proposal"
+    )
+    assert "brand_consistency" in fallback_proposal["quality_checks"]
+    assert "platform_format" in fallback_proposal["quality_checks"]
+    assert "risk_statements" in fallback_proposal["quality_checks"]
     assert fake_llm.messages is not None
     assert "wechat@growth-v1" in fake_llm.messages[-1].content
     assert "title_strategy" in fake_llm.messages[-1].content
@@ -388,3 +394,45 @@ def test_stream_growth_optimization_adds_deterministic_quality_checks(monkeypatc
     assert checks["length"]["status"] == "pass"
     assert checks["platform_format"]["expected_format"] == "plain_text_short_form"
     assert checks["risk_statements"]["status"] == "fail"
+
+
+def test_growth_quality_checks_avoid_common_false_positives():
+    proposal = routes.GrowthProposal(
+        proposal_type="prepublish_patch",
+        target_platform="x",
+        summary="x@growth-v1 concise proposal",
+        full_content="What changed in concatenated metrics? CPU usage < 5% after tuning.",
+    )
+    request = routes.GrowthOptimizationRequest(
+        title="Launch note",
+        source_content="Source article",
+        goal="make it concise",
+        target_platforms=["x"],
+        brand_profile={"banned_words": ["cat"]},
+    )
+
+    checks = routes.growth_quality_checks_for(proposal, request)
+
+    assert checks["banned_words"] == {"status": "pass", "matches": []}
+    assert checks["cta"]["status"] == "warning"
+    assert checks["platform_format"]["status"] == "pass"
+
+
+def test_growth_quality_checks_detect_html_tags_for_x():
+    proposal = routes.GrowthProposal(
+        proposal_type="prepublish_patch",
+        target_platform="x",
+        summary="x@growth-v1 concise proposal",
+        full_content="<p>HTML is not a plain-text X proposal.</p>",
+    )
+    request = routes.GrowthOptimizationRequest(
+        title="Launch note",
+        source_content="Source article",
+        goal="make it concise",
+        target_platforms=["x"],
+    )
+
+    checks = routes.growth_quality_checks_for(proposal, request)
+
+    assert checks["platform_format"]["status"] == "warning"
+    assert checks["platform_format"]["warnings"] == ["X proposal should be plain text, not HTML."]
