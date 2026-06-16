@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,7 +46,16 @@ func setupMiniRedis(t *testing.T) *redis.Client {
 
 func storeVerificationCode(t *testing.T, rdb *redis.Client, scene, email, code string) {
 	t.Helper()
-	require.NoError(t, rdb.Set(context.Background(), fmt.Sprintf("auth:code:%s:%s", scene, email), code, 0).Err())
+	require.NoError(t, rdb.Set(context.Background(), verificationCodeKey(scene, email), code, 0).Err())
+}
+
+func assertNoRedisKeyContains(t *testing.T, keys []string, values ...string) {
+	t.Helper()
+	for _, key := range keys {
+		for _, value := range values {
+			assert.NotContains(t, strings.ToLower(key), strings.ToLower(value))
+		}
+	}
 }
 
 func TestSendCode(t *testing.T) {
@@ -81,6 +89,24 @@ func TestSendCode(t *testing.T) {
 		rec = httptest.NewRecorder()
 		require.NoError(t, handler.SendCode(e.NewContext(req, rec)))
 		assert.Equal(t, http.StatusTooManyRequests, rec.Code)
+	})
+
+	t.Run("Register_RateLimitUsesCanonicalEmailKey", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/send-code", strings.NewReader(`{"email":" Canonical@example.com ", "scene":"register"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		require.NoError(t, handler.SendCode(e.NewContext(req, rec)))
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		req = httptest.NewRequest(http.MethodPost, "/api/auth/send-code", strings.NewReader(`{"email":"canonical@EXAMPLE.com", "scene":"register"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec = httptest.NewRecorder()
+		require.NoError(t, handler.SendCode(e.NewContext(req, rec)))
+		assert.Equal(t, http.StatusTooManyRequests, rec.Code)
+
+		keys, err := rdb.Keys(context.Background(), "auth:*").Result()
+		require.NoError(t, err)
+		assertNoRedisKeyContains(t, keys, "Canonical@example.com", "canonical@example.com")
 	})
 
 	t.Run("RequiresRedis", func(t *testing.T) {
@@ -139,8 +165,32 @@ func TestRegisterWithVerification(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, rec.Code)
 
 	// Code should be deleted after use
-	exists, _ := rdb.Exists(context.Background(), fmt.Sprintf("auth:code:register:%s", email)).Result()
+	exists, _ := rdb.Exists(context.Background(), verificationCodeKey("register", email)).Result()
 	assert.Equal(t, int64(0), exists)
+}
+
+func TestRegisterUsesCanonicalVerificationEmailKey(t *testing.T) {
+	db := setupHandlerTestDB(t)
+	rdb := setupMiniRedis(t)
+	handler := NewAuthHandler(db, rdb, &email.MockEmailService{}, []byte("test-secret"))
+	e := echo.New()
+
+	storeVerificationCode(t, rdb, "register", "canonical@example.com", "123456")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(`{"username":"canonical-user", "email":" Canonical@Example.COM ", "password":"Password1234", "code":"123456"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	require.NoError(t, handler.Register(e.NewContext(req, rec)))
+	assert.Equal(t, http.StatusCreated, rec.Code)
+
+	var user models.User
+	require.NoError(t, db.First(&user, "username = ?", "canonical-user").Error)
+	assert.Equal(t, "canonical@example.com", user.Email)
+
+	keys, err := rdb.Keys(context.Background(), "auth:*").Result()
+	require.NoError(t, err)
+	assertNoRedisKeyContains(t, keys, "Canonical@Example.COM", "canonical@example.com")
 }
 
 func TestResetPassword(t *testing.T) {
@@ -191,7 +241,7 @@ func TestResetPassword(t *testing.T) {
 			assert.Equal(t, http.StatusUnauthorized, rec.Code)
 		}
 
-		exists, err := rdb.Exists(context.Background(), "auth:code:forgot_password:user@example.com").Result()
+		exists, err := rdb.Exists(context.Background(), verificationCodeKey("forgot_password", userEmail)).Result()
 		require.NoError(t, err)
 		assert.Equal(t, int64(0), exists)
 
@@ -200,6 +250,27 @@ func TestResetPassword(t *testing.T) {
 		rec := httptest.NewRecorder()
 		require.NoError(t, handler.ResetPassword(e.NewContext(req, rec)))
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("InvalidCodeAttemptsUseCanonicalEmailKey", func(t *testing.T) {
+		attemptsEmail := " Attempts@Example.com "
+		storeVerificationCode(t, rdb, "forgot_password", attemptsEmail, "222222")
+
+		for _, requestEmail := range []string{" attempts@example.com ", "ATTEMPTS@EXAMPLE.COM"} {
+			req := httptest.NewRequest(http.MethodPost, "/api/auth/reset-password", strings.NewReader(`{"email":"`+requestEmail+`", "code":"000000", "password":"AnotherPassword1234"}`))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+			require.NoError(t, handler.ResetPassword(e.NewContext(req, rec)))
+			assert.Equal(t, http.StatusUnauthorized, rec.Code)
+		}
+
+		attempts, err := rdb.Get(context.Background(), verificationAttemptKey("forgot_password", attemptsEmail)).Int()
+		require.NoError(t, err)
+		assert.Equal(t, 2, attempts)
+
+		keys, err := rdb.Keys(context.Background(), "auth:*").Result()
+		require.NoError(t, err)
+		assertNoRedisKeyContains(t, keys, "attempts@example.com", "ATTEMPTS@EXAMPLE.COM")
 	})
 
 	t.Run("RequiresRedis", func(t *testing.T) {
@@ -252,7 +323,7 @@ func TestRegisterUsernameExists(t *testing.T) {
 
 	require.NoError(t, handler.Register(e.NewContext(req, rec)))
 	assert.Equal(t, http.StatusConflict, rec.Code)
-	exists, err := rdb.Exists(context.Background(), "auth:code:register:new@example.com").Result()
+	exists, err := rdb.Exists(context.Background(), verificationCodeKey("register", "new@example.com")).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), exists)
 }
