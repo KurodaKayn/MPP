@@ -319,6 +319,39 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_self_hosted_data_services_require_redis_backup_snapshot_script
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      config = document(documents, "ConfigMap", "mpp-data-backup-scripts", "mpp-system")
+      config["data"]["redis-backup.sh"] = config.dig("data", "redis-backup.sh")
+        .gsub("--rdb \"$tmp_file\"", "SAVE")
+        .gsub("mv \"$tmp_file\" \"$target_file\"", "cp \"$tmp_file\" \"$target_file\"")
+        .gsub("find \"$backup_root\" -type f -name \"redis-*.rdb\" -mtime +\"$retention_days\" -delete", "")
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted a weak redis backup script"
+    assert_includes stderr, "self-hosted redis backup script must stream RDB snapshots with redis-cli --rdb"
+    assert_includes stderr, "self-hosted redis backup script must atomically publish complete snapshots"
+    assert_includes stderr, "self-hosted redis backup script must prune retained Redis snapshots"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_self_hosted_data_services_require_redis_backup_schedule
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      cronjob = document(documents, "CronJob", "redis-backup", "mpp-system")
+      cronjob["spec"].delete("schedule")
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted redis backup without a schedule"
+    assert_includes stderr, "self-hosted redis-backup CronJob must define a schedule"
+  ensure
+    rendered&.unlink
+  end
+
   def test_self_hosted_data_services_require_backup_network_policy_sources
     rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
       policy = document(documents, "NetworkPolicy", "postgres-app-access", "mpp-system")
