@@ -98,6 +98,62 @@ expects External Secrets Operator to materialize the Secret at runtime. Create
 or patch the referenced secret store before applying app workloads, then replace
 the checked-in example hosts and image tags.
 
+## Provider-Specific Production Overlays
+
+Use `deploy/kubernetes/overlays/production-managed` as the base for a concrete
+cloud overlay such as `deploy/kubernetes/overlays/production-aws`,
+`deploy/kubernetes/overlays/production-gcp`, or
+`deploy/kubernetes/overlays/production-azure`. The provider overlay should stay
+thin: keep the shared app, runtime, NetworkPolicy, and observability behavior in
+the base packages, and patch only provider-owned endpoints, secret-store
+bindings, ingress details, and image tags.
+
+A production provider overlay must define:
+
+- The public host, TLS Secret name, and ingress class used by the cluster.
+- Immutable service image tags and the matching `BROWSER_RUNTIME_IMAGE`.
+- Managed PostgreSQL writer and reader hostnames in both the ExternalName
+  Services and `mpp-app-config` values.
+- `DB_SSLMODE=verify-full` for managed PostgreSQL unless the provider requires
+  a different verified mode. If the provider CA is not already trusted by the
+  app images, mount the CA bundle into every database client Pod and set
+  `DB_SSLROOTCERT` to that mounted path.
+- Managed Redis hostname and port in both the ExternalName Service and
+  `REDIS_ADDR`. Set `REDIS_TLS=true` and use a `rediss://` redis-exporter URL
+  when the provider requires TLS.
+- The production LLM endpoint, model name, object-storage settings, and X OAuth2
+  client ID and callback URL.
+- The External Secrets Operator `secretStoreRef` and every `remoteRef.key`
+  needed to materialize `mpp-app-secrets`.
+
+Provider notes:
+
+| Provider | PostgreSQL | Redis | Secrets | Ingress / TLS |
+| --- | --- | --- | --- | --- |
+| AWS / EKS | Use RDS or Aurora writer and reader endpoints. Keep `DB_HOST` and `DB_READER_HOST` equal to the provider hostnames when certificate hostname verification is enabled. | Use ElastiCache or MemoryDB endpoints. Keep `REDIS_ADDR` on the provider hostname when TLS is enabled. | Patch the ExternalSecret to the AWS Secrets Manager or Parameter Store `ClusterSecretStore` and remote key layout. | Use the installed ingress controller with ACM, cert-manager, or a pre-created TLS Secret. |
+| GCP / GKE | Use a Cloud SQL private IP/DNS endpoint, or patch a Cloud SQL Auth Proxy sidecar only when the environment standard requires it. | Use Memorystore endpoint and port. Patch `REDIS_TLS` according to the selected tier and provider configuration. | Patch the ExternalSecret to the Secret Manager store that uses Workload Identity. | Use the chosen GKE ingress controller, managed certificate integration, cert-manager, or a pre-created TLS Secret. |
+| Azure / AKS | Use Azure Database for PostgreSQL Flexible Server writer and replica hostnames. Set `DB_SSLROOTCERT` if the provider CA is not already trusted. | Use Azure Cache for Redis hostname and TLS port when TLS is required. | Patch the ExternalSecret to the Key Vault store that uses workload identity. | Use Application Gateway Ingress Controller, NGINX, cert-manager, or a pre-created TLS Secret. |
+
+Validate a provider overlay before applying it:
+
+```bash
+rendered="$(mktemp)"
+kubectl kustomize deploy/kubernetes/overlays/<provider-production> > "$rendered"
+MPP_KUBERNETES_VALIDATE_DEPLOYABLE=1 \
+  ruby script/kubernetes/validate-rendered-manifests.rb \
+  deploy/kubernetes/overlays/<provider-production> \
+  "$rendered"
+ruby script/kubernetes/validate-rendered-schema.rb \
+  deploy/kubernetes/overlays/<provider-production> \
+  "$rendered"
+kubectl apply --dry-run=server -f "$rendered"
+```
+
+Run the smoke harness after rollout. For the first production cutover, include
+the public readiness, authenticated dashboard, collaboration, and browser
+session probes so the provider-specific data-service, ingress, and runtime
+patches are all exercised.
+
 ## Images
 
 The `Container Images` GitHub Actions workflow publishes production images to
