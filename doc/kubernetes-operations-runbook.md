@@ -836,6 +836,90 @@ The probe key should remain after the restart. The short-TTL key may be absent;
 that is expected. Do not use this check in production without a maintenance
 window because it deletes the Redis Pod.
 
+## Redis Runtime Hardening
+
+The self-hosted Redis runtime policy is versioned in the
+`redis-persistence-config` ConfigMap alongside the persistence baseline.
+
+| Setting | Base value | Intent |
+| --- | --- | --- |
+| `maxmemory` | `384mb` | Keep Redis data memory below the default `512Mi` Pod limit so Redis returns explicit memory errors before Kubernetes kills the process. |
+| `maxmemory-policy` | `noeviction` | Protect the current mixed keyspace of locks, user-flow state, queue-like metadata, and caches from silent eviction. Writes fail under memory pressure instead. |
+| `timeout` | `0` | Keep pooled and pub/sub clients open; do not disconnect idle app clients at the Redis layer. |
+| `tcp-keepalive` | `300` | Let TCP keepalive detect dead peers without aggressive client churn. |
+| `appendonly` / `appendfsync` | `yes` / `everysec` | Match the persistence baseline and keep the one-second AOF fsync window explicit. |
+| `slowlog-log-slower-than` | `10000` | Record commands slower than 10ms. |
+| `slowlog-max-len` | `256` | Retain a bounded recent slow-command history for incident review. |
+
+Auth behavior:
+
+- Self-hosted Redis reads optional `REDIS_PASSWORD` from `mpp-app-secrets`.
+- When `REDIS_PASSWORD` is present, the StatefulSet starts Redis with
+  `--requirepass`, and probes plus shutdown hooks authenticate with that same
+  Secret.
+- When `REDIS_PASSWORD` is absent, self-hosted Redis runs without auth for the
+  current environment. Managed Redis environments must follow the provider auth
+  requirement and materialize `REDIS_PASSWORD` when auth is enabled.
+
+Runtime configuration check:
+
+```bash
+kubectl exec -n "$MPP_APP_NS" statefulset/redis -- sh -ec '
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    export REDISCLI_AUTH="$REDIS_PASSWORD"
+    redis-cli --no-auth-warning CONFIG GET \
+      maxmemory maxmemory-policy timeout tcp-keepalive \
+      appendonly appendfsync slowlog-log-slower-than slowlog-max-len requirepass
+    redis-cli --no-auth-warning SLOWLOG LEN
+  else
+    redis-cli CONFIG GET \
+      maxmemory maxmemory-policy timeout tcp-keepalive \
+      appendonly appendfsync slowlog-log-slower-than slowlog-max-len requirepass
+    redis-cli SLOWLOG LEN
+  fi
+'
+```
+
+Controlled non-production memory pressure rehearsal:
+
+```bash
+kubectl exec -n "$MPP_APP_NS" statefulset/redis -- sh -ec '
+  redis_cli() {
+    if [ -n "${REDIS_PASSWORD:-}" ]; then
+      redis-cli --no-auth-warning -a "$REDIS_PASSWORD" "$@"
+    else
+      redis-cli "$@"
+    fi
+  }
+
+  before_evictions="$(redis_cli INFO stats | awk -F: "/^evicted_keys:/ {print \$2}" | tr -d "\r")"
+  redis_cli SET mpp:memory-pressure:baseline ok EX 600
+  payload="$(yes x | head -c 1048576)"
+  i=0
+  until ! redis_cli SET "mpp:memory-pressure:$i" "$payload" EX 600 >/tmp/mpp-redis-pressure.out 2>&1; do
+    i=$((i + 1))
+  done
+
+  cat /tmp/mpp-redis-pressure.out
+  redis_cli GET mpp:memory-pressure:baseline
+  after_evictions="$(redis_cli INFO stats | awk -F: "/^evicted_keys:/ {print \$2}" | tr -d "\r")"
+  test "$before_evictions" = "$after_evictions"
+  redis_cli --scan --pattern "mpp:memory-pressure:*" | while IFS= read -r key; do
+    redis_cli DEL "$key" >/dev/null
+  done
+'
+```
+
+Expected rehearsal result:
+
+- The write loop eventually returns a Redis OOM error instead of killing the Pod.
+- `mpp:memory-pressure:baseline` remains readable.
+- `evicted_keys` does not increase because `maxmemory-policy` is `noeviction`.
+- Deleting the rehearsal keys restores write capacity.
+
+Run the memory pressure rehearsal only in non-production or an isolated restore
+environment. It intentionally fills Redis up to `maxmemory`.
+
 ## Redis Backup And Restore Runbook
 
 The self-hosted Redis backup path is the `redis-backup` CronJob in

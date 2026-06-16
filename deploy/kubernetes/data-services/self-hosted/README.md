@@ -17,8 +17,9 @@ Required overlay inputs:
   target cluster.
 - Review the `redis-persistence-config` ConfigMap before applying an overlay.
   The base policy stores Redis files on the `redis-data` PVC, enables AOF with
-  `appendfsync everysec`, and keeps the default RDB snapshot cadence for
-  restart recovery and backup snapshots.
+  `appendfsync everysec`, caps Redis data memory at `384mb` with `noeviction`,
+  keeps application idle clients open with TCP keepalive, and retains slow
+  command samples for investigation.
 - Patch `mpp-data-backups` storage, backup CronJob schedules, and
   `BACKUP_RETENTION_DAYS` before keeping useful data in the StatefulSets.
 
@@ -33,7 +34,13 @@ Redis runs as a single-pod StatefulSet with persistent storage:
 - `redis-data-redis-0` mounts at `/data` and stores `dump.rdb` plus the AOF
   directory.
 - `redis-persistence-config` is mounted read-only at `/usr/local/etc/redis` and
-  is the versioned source of the Redis persistence mode.
+  is the versioned source of the Redis persistence and runtime hardening mode.
+- `maxmemory 384mb` leaves process and AOF headroom under the default `512Mi`
+  container memory limit. `maxmemory-policy noeviction` makes memory pressure an
+  explicit write failure instead of silently evicting lock, session, queue-like,
+  or cache keys from the shared Redis instance.
+- `timeout 0` keeps application connection-pool and pub/sub clients open while
+  `tcp-keepalive 300` detects dead peers at the TCP layer.
 - Readiness and liveness probes run `redis-cli ping` with optional
   `REDIS_PASSWORD` support. Readiness fails when Redis stops serving commands,
   instead of only checking whether the TCP port is open.
@@ -49,6 +56,9 @@ Redis runs as a single-pod StatefulSet with persistent storage:
 - RDB snapshots remain enabled with `save 900 1`, `save 300 10`, and
   `save 60 10000`. They complement AOF and provide the snapshot source used by
   the Redis backup CronJob.
+- Slow commands are retained through `slowlog-log-slower-than 10000` and
+  `slowlog-max-len 256`, giving operators recent commands slower than 10ms
+  without creating an unbounded in-memory log.
 - Short-TTL keys can expire during or after restart. Queue-like, lock, session,
   and idempotency keys must still follow their documented Redis responsibility
   tier and recovery expectation.
