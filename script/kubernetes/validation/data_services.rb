@@ -47,6 +47,8 @@ module KubernetesValidation
         stateful_set.containers.each do |container|
           validate_container(context, container, "self-hosted #{name} container #{container['name']}")
         end
+
+        validate_self_hosted_redis_persistence(context, stateful_set) if name == "redis"
       end
 
       validate_self_hosted_read_replica(context)
@@ -128,6 +130,65 @@ module KubernetesValidation
       context.add_error("#{label} must define livenessProbe") unless container.key?("livenessProbe")
 
       validate_resources(context, container, label)
+    end
+
+    def validate_self_hosted_redis_persistence(context, stateful_set)
+      config = context.require_document("ConfigMap", "redis-persistence-config", "mpp-system")
+      if config
+        redis_config = redis_config_lines(config.data["redis.conf"])
+        {
+          "dir /data" => "self-hosted redis persistence config must write data under /data",
+          "appendonly yes" => "self-hosted redis persistence config must enable AOF",
+          "appendfsync everysec" => "self-hosted redis persistence config must fsync AOF every second",
+          "save 900 1" => "self-hosted redis persistence config must keep the long-window RDB snapshot policy",
+          "save 300 10" => "self-hosted redis persistence config must keep the medium-window RDB snapshot policy",
+          "save 60 10000" => "self-hosted redis persistence config must keep the burst RDB snapshot policy",
+        }.each do |line, message|
+          context.add_error(message) unless redis_config.include?(line)
+        end
+      end
+
+      redis_container = stateful_set.container("redis")
+      unless redis_container
+        context.add_error("self-hosted redis StatefulSet must define a redis container")
+        return
+      end
+
+      args_text = Array(redis_container["args"]).join("\n")
+      unless args_text.include?("redis-server /usr/local/etc/redis/redis.conf")
+        context.add_error("self-hosted redis container must start redis-server with redis.conf")
+      end
+
+      mounts = Array(redis_container["volumeMounts"])
+      config_mount = mounts.find do |mount|
+        mount["name"] == "redis-persistence-config" &&
+          mount["mountPath"] == "/usr/local/etc/redis" &&
+          mount["readOnly"] == true
+      end
+      data_mount = mounts.find { |mount| mount["name"] == "redis-data" && mount["mountPath"] == "/data" }
+      context.add_error("self-hosted redis container must mount persistence config read-only") unless config_mount
+      context.add_error("self-hosted redis container must mount persistent data at /data") unless data_mount
+
+      volumes = Array(stateful_set.pod_spec["volumes"])
+      config_volume = volumes.find { |volume| volume.dig("configMap", "name") == "redis-persistence-config" }
+      context.add_error("self-hosted redis StatefulSet must mount redis-persistence-config") unless config_volume
+
+      redis_pvc = Array(stateful_set.spec["volumeClaimTemplates"]).find do |claim|
+        claim.dig("metadata", "name") == "redis-data"
+      end
+      unless redis_pvc
+        context.add_error("self-hosted redis StatefulSet must define redis-data persistent storage")
+        return
+      end
+
+      access_modes = Array(redis_pvc.dig("spec", "accessModes"))
+      storage = redis_pvc.dig("spec", "resources", "requests", "storage")
+      context.add_error("self-hosted redis-data PVC must use ReadWriteOnce storage") unless access_modes.include?("ReadWriteOnce")
+      context.add_error("self-hosted redis-data PVC must request storage") if storage.to_s.empty?
+    end
+
+    def redis_config_lines(config)
+      config.to_s.lines.map(&:strip).reject { |line| line.empty? || line.start_with?("#") }
     end
 
     def validate_resources(context, container, label)
