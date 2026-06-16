@@ -43,6 +43,10 @@ if context.path_suffix?("deploy/kubernetes/data-services/managed")
   KubernetesValidation::DataServices.validate_managed(context)
 end
 
+if context.path_suffix?("deploy/kubernetes/data-services/redis-exporter")
+  KubernetesValidation::DataServices.validate_redis_exporter(context)
+end
+
 if context.path_suffix?("deploy/kubernetes/data-services/self-hosted")
   KubernetesValidation::DataServices.validate_self_hosted(context)
 end

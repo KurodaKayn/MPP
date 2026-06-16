@@ -10,6 +10,16 @@ module KubernetesValidation
       "ai-service-observability-metrics" => [["ai-service"], 8000, "shared-http-listener"],
       "collab-service-observability-metrics" => [["collab-service"], 8090, "shared-http-listener"],
       "content-pipeline-observability-metrics" => [["content-pipeline-service"], 9090, "dedicated-metrics-listener"],
+      "redis-exporter-observability-metrics" => [["redis-exporter"], 9121, "dedicated-metrics-listener"],
+    }.freeze
+
+    REDIS_ALERTS = {
+      "MPPRedisUnavailable" => "critical",
+      "MPPRedisLatencyP99High" => "warning",
+      "MPPRedisConnectionErrors" => "warning",
+      "MPPRedisMemoryPressureHigh" => "warning",
+      "MPPRedisEvictions" => "warning",
+      "MPPRedisBlockedClients" => "warning",
     }.freeze
 
     def validate(context)
@@ -63,7 +73,7 @@ module KubernetesValidation
     end
 
     def validate_pod_monitors(context)
-      ["mpp-http-services", "mpp-content-pipeline-service", "mpp-alloy"].each do |monitor|
+      ["mpp-http-services", "mpp-redis-exporter", "mpp-content-pipeline-service", "mpp-alloy"].each do |monitor|
         context.require_document("PodMonitor", monitor, "mpp-observability")
       end
     end
@@ -72,18 +82,35 @@ module KubernetesValidation
       rule = context.require_document("PrometheusRule", "mpp-browser-runtime-alerts", "mpp-observability")
       return unless rule
 
-      alerts = Array(rule.spec["groups"]).flat_map do |group|
-        Array(group["rules"]).map { |alert| alert["alert"] }
+      alert_rules = Array(rule.spec["groups"]).flat_map do |group|
+        Array(group["rules"])
       end
-      [
+      alerts = alert_rules.map { |alert| alert["alert"] }
+
+      required_alerts = [
         "MPPBrowserRuntimeStartupFailures",
         "MPPBrowserRuntimeCleanupFailures",
         "MPPBrowserRuntimeCleanupLagHigh",
         "MPPServiceReadinessFailures",
         "MPPRedisDependentServiceReadinessFailures",
         "MPPPublishWorkerJobFailures",
-      ].each do |alert|
+      ] + REDIS_ALERTS.keys
+
+      required_alerts.each do |alert|
         context.add_error("PrometheusRule is missing #{alert}") unless alerts.include?(alert)
+      end
+
+      REDIS_ALERTS.each do |alert_name, severity|
+        alert = alert_rules.find { |entry| entry["alert"] == alert_name }
+        next unless alert
+
+        labels = alert["labels"] || {}
+        unless labels["severity"] == severity
+          context.add_error("#{alert_name} must label severity=#{severity}")
+        end
+        unless labels["owner"] == "platform"
+          context.add_error("#{alert_name} must label owner=platform")
+        end
       end
     end
 

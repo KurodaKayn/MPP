@@ -284,6 +284,24 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_observability_redis_alerts_require_owner_and_severity
+    rendered = mutated_render("deploy/kubernetes/observability") do |documents|
+      rule = document(documents, "PrometheusRule", "mpp-browser-runtime-alerts", "mpp-observability")
+      alerts = rule.dig("spec", "groups").flat_map { |group| Array(group["rules"]) }
+      redis_alert = alerts.find { |alert| alert["alert"] == "MPPRedisUnavailable" }
+      redis_alert["labels"].delete("owner")
+      redis_alert["labels"]["severity"] = "warning"
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/observability", rendered.path)
+
+    refute status.success?, "observability validation unexpectedly accepted Redis alert metadata drift"
+    assert_includes stderr, "MPPRedisUnavailable must label severity=critical"
+    assert_includes stderr, "MPPRedisUnavailable must label owner=platform"
+  ensure
+    rendered&.unlink
+  end
+
   def test_self_hosted_data_services_reject_missing_backup_cronjob
     rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
       documents.reject! do |entry|
@@ -313,6 +331,22 @@ class ValidateRenderedManifestsTest < Minitest::Test
 
     refute status.success?, "self-hosted validation unexpectedly accepted missing backup NetworkPolicy source"
     assert_includes stderr, "self-hosted postgres NetworkPolicy must allow postgres-backup ingress"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_self_hosted_data_services_require_redis_exporter_network_policy_source
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      policy = document(documents, "NetworkPolicy", "redis-app-access", "mpp-system")
+      policy.dig("spec", "ingress", 0, "from").reject! do |entry|
+        entry.dig("podSelector", "matchLabels", "app.kubernetes.io/component") == "redis-exporter"
+      end
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted missing redis-exporter NetworkPolicy source"
+    assert_includes stderr, "self-hosted redis NetworkPolicy must allow redis-exporter ingress"
   ensure
     rendered&.unlink
   end
