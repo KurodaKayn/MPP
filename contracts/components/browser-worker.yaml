@@ -162,8 +162,7 @@ components:
       required:
         - worker_session_ref
         - status
-        - container_id
-        - cdp_endpoint_ref
+        - runtime_reference
         - stream_endpoint_ref
         - started_at
         - expires_at
@@ -173,12 +172,8 @@ components:
           x-go-name: WorkerSessionRef
         status:
           $ref: "#/components/schemas/BrowserWorkerSessionStatus"
-        container_id:
-          type: string
-          x-go-name: ContainerID
-        cdp_endpoint_ref:
-          type: string
-          x-go-name: CDPEndpointRef
+        runtime_reference:
+          $ref: "#/components/schemas/BrowserWorkerRuntimeReference"
         stream_endpoint_ref:
           type: string
           x-go-name: StreamEndpointRef
@@ -188,6 +183,41 @@ components:
         expires_at:
           type: string
           format: date-time
+
+    BrowserWorkerRuntimeEndpoint:
+      type: object
+      additionalProperties: false
+      required:
+        - host
+        - port
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+
+    BrowserWorkerRuntimeReference:
+      type: object
+      additionalProperties: false
+      required:
+        - driver
+        - runtime_id
+        - cdp_endpoint
+        - stream_endpoint
+      properties:
+        driver:
+          type: string
+        runtime_id:
+          type: string
+          x-go-name: RuntimeID
+        cdp_endpoint:
+          $ref: "#/components/schemas/BrowserWorkerRuntimeEndpoint"
+        stream_endpoint:
+          $ref: "#/components/schemas/BrowserWorkerRuntimeEndpoint"
+        cleanup_labels:
+          type: object
+          additionalProperties:
+            type: string
 
     BrowserWorkerGetSessionResponse:
       type: object

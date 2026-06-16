@@ -26,8 +26,6 @@ type WorkerSession struct {
 	Platform          string
 	Status            string
 	RuntimeReference  browserruntime.SessionReference
-	ContainerID       string
-	CDPEndpointRef    string
 	StreamEndpointRef string
 	InternalStreamURL string
 	RequiredCookies   []CookieRequirement

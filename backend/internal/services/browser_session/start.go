@@ -2,13 +2,16 @@ package browsersession
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 
+	"github.com/kurodakayn/mpp-backend/internal/contracts"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
@@ -28,6 +31,37 @@ func (s *BrowserSessionService) StartSessionForWorkspace(ctx context.Context, us
 
 func (s *BrowserSessionService) StartPreauthorizedSessionForWorkspace(ctx context.Context, userID uuid.UUID, tenantID string, workspaceID uuid.UUID, accountID uuid.UUID, platform string) (*dto.StartBrowserSessionResponse, error) {
 	return s.startSessionForWorkspace(ctx, userID, tenantID, workspaceID, accountID, platform, false)
+}
+
+func validateWorkerRuntimeReference(reference contracts.BrowserWorkerRuntimeReference) (datatypes.JSON, error) {
+	if strings.TrimSpace(reference.Driver) == "" {
+		return nil, fmt.Errorf("runtime reference driver is required")
+	}
+	if strings.TrimSpace(reference.RuntimeID) == "" {
+		return nil, fmt.Errorf("runtime reference runtime_id is required")
+	}
+	if err := validateWorkerRuntimeEndpoint("runtime reference cdp_endpoint", reference.CdpEndpoint); err != nil {
+		return nil, err
+	}
+	if err := validateWorkerRuntimeEndpoint("runtime reference stream_endpoint", reference.StreamEndpoint); err != nil {
+		return nil, err
+	}
+
+	runtimeReference, err := json.Marshal(reference)
+	if err != nil {
+		return nil, err
+	}
+	return datatypes.JSON(runtimeReference), nil
+}
+
+func validateWorkerRuntimeEndpoint(name string, endpoint contracts.BrowserWorkerRuntimeEndpoint) error {
+	if strings.TrimSpace(endpoint.Host) == "" {
+		return fmt.Errorf("%s.host is required", name)
+	}
+	if endpoint.Port <= 0 || endpoint.Port > 65535 {
+		return fmt.Errorf("%s.port is invalid: %d", name, endpoint.Port)
+	}
+	return nil
 }
 
 func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, userID uuid.UUID, tenantID string, workspaceID uuid.UUID, accountID uuid.UUID, platform string, authorizeTarget bool) (*dto.StartBrowserSessionResponse, error) {
@@ -168,11 +202,17 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 	}
 
 	// 5. Update session with worker info
+	runtimeReference, err := validateWorkerRuntimeReference(resp.RuntimeReference)
+	if err != nil {
+		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
+		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, resp.WorkerSessionRef)
+		_ = s.writerDB(ctx).Model(session).Update("status", models.BrowserSessionStatusFailed).Error
+		return nil, fmt.Errorf("worker returned invalid runtime reference: %w", err)
+	}
 	err = s.writerDB(ctx).Model(session).Updates(map[string]any{
 		"status":              models.BrowserSessionStatusReady,
 		"worker_session_ref":  resp.WorkerSessionRef,
-		"container_id":        resp.ContainerID,
-		"cdp_endpoint_ref":    resp.CDPEndpointRef,
+		"runtime_reference":   runtimeReference,
 		"stream_endpoint_ref": resp.StreamEndpointRef,
 	}).Error
 	if err != nil {
@@ -182,8 +222,7 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 	}
 	session.Status = models.BrowserSessionStatusReady
 	session.WorkerSessionRef = resp.WorkerSessionRef
-	session.ContainerID = resp.ContainerID
-	session.CDPEndpointRef = resp.CDPEndpointRef
+	session.RuntimeReference = runtimeReference
 	session.StreamEndpointRef = resp.StreamEndpointRef
 
 	if err := s.saveRedisLiveSession(ctx, browserSessionLiveState{

@@ -627,17 +627,16 @@ type PlatformAccount struct {
 }
 
 type RemoteBrowserSession struct {
-	ID                    uuid.UUID  `gorm:"type:uuid;primaryKey;index:idx_remote_browser_sessions_archive_status_created_id,priority:3"`
-	UserID                uuid.UUID  `gorm:"type:uuid;not null;index:idx_browser_sessions_user_platform"`
-	WorkspaceID           *uuid.UUID `gorm:"type:uuid;index"`
-	PlatformAccountID     *uuid.UUID `gorm:"type:uuid;index"`
-	Platform              string     `gorm:"not null;index:idx_browser_sessions_user_platform"`
-	Status                string     `gorm:"not null;index:idx_browser_sessions_user_platform;index:idx_remote_browser_sessions_archive_status_created_id,priority:1"`
-	WorkerSessionRef      string     `gorm:"not null;default:''"`
-	ContainerID           string     `gorm:"not null;default:''"`
-	CDPEndpointRef        string     `gorm:"not null;default:''"`
-	StreamEndpointRef     string     `gorm:"not null;default:''"`
-	ConnectTokenHash      string     `gorm:"not null"`
+	ID                    uuid.UUID      `gorm:"type:uuid;primaryKey;index:idx_remote_browser_sessions_archive_status_created_id,priority:3"`
+	UserID                uuid.UUID      `gorm:"type:uuid;not null;index:idx_browser_sessions_user_platform"`
+	WorkspaceID           *uuid.UUID     `gorm:"type:uuid;index"`
+	PlatformAccountID     *uuid.UUID     `gorm:"type:uuid;index"`
+	Platform              string         `gorm:"not null;index:idx_browser_sessions_user_platform"`
+	Status                string         `gorm:"not null;index:idx_browser_sessions_user_platform;index:idx_remote_browser_sessions_archive_status_created_id,priority:1"`
+	WorkerSessionRef      string         `gorm:"not null;default:''"`
+	RuntimeReference      datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	StreamEndpointRef     string         `gorm:"not null;default:''"`
+	ConnectTokenHash      string         `gorm:"not null"`
 	ConnectTokenExpiresAt time.Time
 	ErrorMessage          string    `gorm:"not null;default:''"`
 	CreatedAt             time.Time `gorm:"not null;index:idx_remote_browser_sessions_archive_status_created_id,priority:2"`

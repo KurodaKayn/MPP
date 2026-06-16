@@ -6,8 +6,10 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	browserruntime "github.com/kurodakayn/mpp-browser-worker/internal/runtime"
 	"github.com/kurodakayn/mpp-browser-worker/internal/session"
 )
 
@@ -55,4 +57,27 @@ func TestInternalBrowserSessionRoutesFailClosedWhenTokenMissing(t *testing.T) {
 	e.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+}
+
+func TestRuntimeReferenceResponseKeepsDriverNeutralRuntimeIdentity(t *testing.T) {
+	response := runtimeReferenceResponse(browserruntime.SessionReference{
+		Driver:    browserruntime.DriverKubernetes,
+		RuntimeID: "pod-123",
+		CDPEndpoint: browserruntime.Endpoint{
+			Host: "10.42.0.7",
+			Port: 9222,
+		},
+		StreamEndpoint: browserruntime.Endpoint{
+			Host: "10.42.0.7",
+			Port: 6080,
+		},
+		CleanupLabels: map[string]string{"session_id": "session-123"},
+	})
+
+	assert.Equal(t, browserruntime.DriverKubernetes, response.Driver)
+	assert.Equal(t, "pod-123", response.RuntimeID)
+	assert.Equal(t, "10.42.0.7", response.CdpEndpoint.Host)
+	assert.Equal(t, 9222, response.CdpEndpoint.Port)
+	require.NotNil(t, response.CleanupLabels)
+	assert.Equal(t, "session-123", (*response.CleanupLabels)["session_id"])
 }

@@ -342,6 +342,9 @@ func migrate(database *gorm.DB) error {
 		if err := preparePlatformAccountWorkspaceMigration(migrationDB); err != nil {
 			return err
 		}
+		if err := prepareRemoteBrowserSessionRuntimeReferenceMigration(migrationDB); err != nil {
+			return err
+		}
 		if err := migrationDB.AutoMigrate(
 			&models.User{},
 			&models.Workspace{},
@@ -500,6 +503,45 @@ func preparePlatformAccountWorkspaceMigration(database *gorm.DB) error {
 		return nil
 	}
 	return database.Exec(`DROP INDEX IF EXISTS idx_platform_accounts_user_platform`).Error
+}
+
+func prepareRemoteBrowserSessionRuntimeReferenceMigration(database *gorm.DB) error {
+	if database.Name() != "postgres" {
+		return nil
+	}
+	if !database.Migrator().HasTable(&models.RemoteBrowserSession{}) {
+		return nil
+	}
+	if !database.Migrator().HasColumn(&models.RemoteBrowserSession{}, "runtime_reference") {
+		if err := database.Exec(`ALTER TABLE remote_browser_sessions ADD COLUMN runtime_reference jsonb NOT NULL DEFAULT '{}'::jsonb`).Error; err != nil {
+			return err
+		}
+	}
+	if database.Migrator().HasColumn(&models.RemoteBrowserSession{}, "container_id") {
+		if err := database.Exec(`
+			UPDATE remote_browser_sessions
+			SET runtime_reference = jsonb_build_object(
+				'driver', 'docker',
+				'runtime_id', container_id,
+				'cdp_endpoint', jsonb_build_object('host', '', 'port', 0),
+				'stream_endpoint', jsonb_build_object('host', '', 'port', 0),
+				'cleanup_labels', '{}'::jsonb
+			)
+			WHERE container_id <> ''
+				AND (runtime_reference IS NULL OR runtime_reference = '{}'::jsonb)
+		`).Error; err != nil {
+			return err
+		}
+		if err := database.Exec(`ALTER TABLE remote_browser_sessions DROP COLUMN IF EXISTS container_id`).Error; err != nil {
+			return err
+		}
+	}
+	if database.Migrator().HasColumn(&models.RemoteBrowserSession{}, "cdp_endpoint_ref") {
+		if err := database.Exec(`ALTER TABLE remote_browser_sessions DROP COLUMN IF EXISTS cdp_endpoint_ref`).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func backfillPlatformAccountWorkspaces(database *gorm.DB) error {

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/kurodakayn/mpp-backend/internal/contracts"
 )
 
 type MockBrowserWorkerClient struct {
@@ -39,11 +41,26 @@ func (m *MockBrowserWorkerClient) CreateSession(_ context.Context, req StartWork
 	if m.streamBaseURL != "" {
 		streamEndpointRef = fmt.Sprintf("%s/stream/%s", m.streamBaseURL, ref)
 	}
+	cleanupLabels := map[string]string{
+		"session_id": req.SessionID.String(),
+		"platform":   req.Platform,
+	}
 	resp := &StartWorkerSessionResponse{
-		WorkerSessionRef:  ref,
-		Status:            "ready",
-		ContainerID:       "container-" + uuid.NewString(),
-		CDPEndpointRef:    "ws://private-cdp/" + ref,
+		WorkerSessionRef: ref,
+		Status:           "ready",
+		RuntimeReference: contracts.BrowserWorkerRuntimeReference{
+			Driver:    "mock",
+			RuntimeID: "runtime-" + uuid.NewString(),
+			CdpEndpoint: contracts.BrowserWorkerRuntimeEndpoint{
+				Host: "127.0.0.1",
+				Port: 9222,
+			},
+			StreamEndpoint: contracts.BrowserWorkerRuntimeEndpoint{
+				Host: "127.0.0.1",
+				Port: 6080,
+			},
+			CleanupLabels: &cleanupLabels,
+		},
 		StreamEndpointRef: streamEndpointRef,
 		StartedAt:         time.Now(),
 		ExpiresAt:         time.Now().Add(time.Duration(req.TTLSeconds) * time.Second),

@@ -80,8 +80,7 @@ CREATE TABLE remote_browser_sessions (
   platform text NOT NULL,
   status text NOT NULL,
   worker_session_ref text NOT NULL DEFAULT '',
-  container_id text NOT NULL DEFAULT '',
-  cdp_endpoint_ref text NOT NULL DEFAULT '',
+  runtime_reference jsonb NOT NULL DEFAULT '{}',
   stream_endpoint_ref text NOT NULL DEFAULT '',
   error_message text NOT NULL DEFAULT '',
   created_at timestamptz NOT NULL,
@@ -356,8 +355,13 @@ Response:
 {
   "worker_session_ref": "worker-session-id",
   "status": "ready",
-  "container_id": "container-id",
-  "cdp_endpoint_ref": "private-cdp-ref",
+  "runtime_reference": {
+    "driver": "docker",
+    "runtime_id": "runtime-id",
+    "cdp_endpoint": {"host": "runtime.internal", "port": 9222},
+    "stream_endpoint": {"host": "runtime.internal", "port": 6080},
+    "cleanup_labels": {"session_id": "session-id"}
+  },
   "stream_endpoint_ref": "private-stream-ref",
   "started_at": "2026-05-30T11:45:00Z",
   "expires_at": "2026-05-30T12:00:00Z"

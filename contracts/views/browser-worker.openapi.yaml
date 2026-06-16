@@ -30,6 +30,12 @@ components:
     BrowserWorkerStartSessionResponse:
       $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerStartSessionResponse"
 
+    BrowserWorkerRuntimeEndpoint:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerRuntimeEndpoint"
+
+    BrowserWorkerRuntimeReference:
+      $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerRuntimeReference"
+
     BrowserWorkerGetSessionResponse:
       $ref: "../components/browser-worker.yaml#/components/schemas/BrowserWorkerGetSessionResponse"
 

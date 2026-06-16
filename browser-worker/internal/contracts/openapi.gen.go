@@ -77,6 +77,21 @@ type BrowserWorkerRemoteAccountProfile struct {
 	Username       string `json:"username"`
 }
 
+// BrowserWorkerRuntimeEndpoint defines model for BrowserWorkerRuntimeEndpoint.
+type BrowserWorkerRuntimeEndpoint struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
+// BrowserWorkerRuntimeReference defines model for BrowserWorkerRuntimeReference.
+type BrowserWorkerRuntimeReference struct {
+	CdpEndpoint    BrowserWorkerRuntimeEndpoint `json:"cdp_endpoint"`
+	CleanupLabels  *map[string]string           `json:"cleanup_labels,omitempty"`
+	Driver         string                       `json:"driver"`
+	RuntimeID      string                       `json:"runtime_id"`
+	StreamEndpoint BrowserWorkerRuntimeEndpoint `json:"stream_endpoint"`
+}
+
 // BrowserWorkerSessionStatus defines model for BrowserWorkerSessionStatus.
 type BrowserWorkerSessionStatus string
 
@@ -103,13 +118,12 @@ type BrowserWorkerStartSessionRequest struct {
 
 // BrowserWorkerStartSessionResponse defines model for BrowserWorkerStartSessionResponse.
 type BrowserWorkerStartSessionResponse struct {
-	CDPEndpointRef    string                     `json:"cdp_endpoint_ref"`
-	ContainerID       string                     `json:"container_id"`
-	ExpiresAt         time.Time                  `json:"expires_at"`
-	StartedAt         time.Time                  `json:"started_at"`
-	Status            BrowserWorkerSessionStatus `json:"status"`
-	StreamEndpointRef string                     `json:"stream_endpoint_ref"`
-	WorkerSessionRef  string                     `json:"worker_session_ref"`
+	ExpiresAt         time.Time                     `json:"expires_at"`
+	RuntimeReference  BrowserWorkerRuntimeReference `json:"runtime_reference"`
+	StartedAt         time.Time                     `json:"started_at"`
+	Status            BrowserWorkerSessionStatus    `json:"status"`
+	StreamEndpointRef string                        `json:"stream_endpoint_ref"`
+	WorkerSessionRef  string                        `json:"worker_session_ref"`
 }
 
 // BrowserWorkerViewport defines model for BrowserWorkerViewport.
