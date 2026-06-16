@@ -865,25 +865,43 @@ Restore procedure for a non-production self-hosted Redis snapshot:
    and `collab-service` to zero or pause the environment.
 2. Copy the chosen `redis-*.rdb` snapshot into a clean Redis data directory as
    `dump.rdb`.
-3. Start Redis with `appendonly no` so the RDB snapshot is loaded first.
-4. Verify the expected durable keys are present.
-5. Re-enable AOF and let Redis rewrite it after the restore is validated.
-6. Bring the app workloads back up.
+3. Start the replacement pod from a restore-only overlay or temporary config
+   that already sets `appendonly no`. Do not rely on `CONFIG SET appendonly no`
+   alone; that only changes the live process and is lost on restart.
+4. Quarantine or remove any retained AOF files on the mounted PVC, especially
+   `/data/appendonlydir`, before the replacement pod starts so Redis cannot
+   replay an old AOF over the selected `dump.rdb`.
+5. Verify the expected durable keys are present.
+6. Re-enable AOF and let Redis rewrite it after the restore is validated.
+7. Bring the app workloads back up.
 
 Example pod-level sequence:
 
 ```bash
 kubectl exec -n "$MPP_APP_NS" statefulset/redis -- sh -ec '
-  redis-cli CONFIG SET appendonly no
-  redis-cli SHUTDOWN SAVE || true
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    export REDISCLI_AUTH="$REDIS_PASSWORD"
+    redis-cli --no-auth-warning SHUTDOWN SAVE || true
+  else
+    redis-cli SHUTDOWN SAVE || true
+  fi
 '
 # replace /data/dump.rdb from the selected backup snapshot
+# quarantine /data/appendonlydir or restore from a clean PVC snapshot before the new pod starts
+# deploy the restore-only overlay or temporary StatefulSet patch that sets appendonly no
 kubectl delete pod -n "$MPP_APP_NS" -l app.kubernetes.io/component=redis
 kubectl rollout status statefulset/redis -n "$MPP_APP_NS"
 kubectl exec -n "$MPP_APP_NS" statefulset/redis -- sh -ec '
-  redis-cli GET mpp:persistence:probe
-  redis-cli CONFIG SET appendonly yes
-  redis-cli BGREWRITEAOF
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    export REDISCLI_AUTH="$REDIS_PASSWORD"
+    redis-cli --no-auth-warning GET mpp:persistence:probe
+    redis-cli --no-auth-warning CONFIG SET appendonly yes
+    redis-cli --no-auth-warning BGREWRITEAOF
+  else
+    redis-cli GET mpp:persistence:probe
+    redis-cli CONFIG SET appendonly yes
+    redis-cli BGREWRITEAOF
+  fi
 '
 ```
 
