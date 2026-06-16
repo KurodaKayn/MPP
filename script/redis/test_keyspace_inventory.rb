@@ -32,6 +32,10 @@ module RedisKeyspaceInventory
       project_cache = pattern(report, "mpp:dashboard:projects:list:v2:{params_hash}")
       assert_equal "backend project service", project_cache.fetch("owner")
       assert_equal "declared", project_cache.fetch("owner_source")
+      assert_equal "R2", project_cache.fetch("responsibility_tier")
+      assert_equal "performance cache", project_cache.fetch("responsibility_label")
+      assert_equal "Loss causes a cold cache or short-lived stale read protection fallback.", project_cache.fetch("loss_tolerance")
+      assert_equal "Recompute from PostgreSQL on cache miss; generation counters and short TTLs bound stale cache exposure.", project_cache.fetch("recovery_expectation")
       assert_equal 2, project_cache.fetch("key_count")
       assert_equal({"string" => 2}, project_cache.fetch("redis_types"))
       assert_equal 10_000, project_cache.dig("observed_ttl_ms", "min")
@@ -40,8 +44,11 @@ module RedisKeyspaceInventory
       assert_equal 1, project_cache.fetch("samples").length
 
       cleanup = pattern(report, "mpp:browser:cleanup")
+      assert_equal "R3", cleanup.fetch("responsibility_tier")
       assert_equal "zset", cleanup.fetch("redis_types").keys.fetch(0)
       assert_equal 1, cleanup.dig("observed_ttl_ms", "without_expire_count")
+
+      assert_equal "critical coordination", report.fetch("responsibility_tiers").fetch("R0")
     end
 
     def test_infers_unknown_patterns_without_hiding_them
@@ -52,7 +59,11 @@ module RedisKeyspaceInventory
       unknown = pattern(report, "custom:tenant:{uuid}:job:{number}")
       assert_equal "unknown", unknown.fetch("owner")
       assert_equal "inferred", unknown.fetch("owner_source")
+      assert_equal "unclassified", unknown.fetch("responsibility_tier")
+      assert_equal "unclassified", unknown.fetch("responsibility_label")
+      assert_equal "unknown", unknown.fetch("loss_tolerance")
       assert_equal "unknown", unknown.fetch("ttl_policy")
+      assert_equal "Review the observed pattern before assigning a Redis responsibility tier.", unknown.fetch("recovery_expectation")
       assert_includes report.fetch("warnings"), "1 inferred key patterns need owner review"
     end
 
@@ -66,8 +77,21 @@ module RedisKeyspaceInventory
       global = pattern(report, "asynq:*")
       assert_equal "asynq task queues used by backend workers", global.fetch("owner")
       assert_equal "declared", global.fetch("owner_source")
+      assert_equal "R4", global.fetch("responsibility_tier")
       assert_equal 3, global.fetch("key_count")
       assert_empty report.fetch("warnings")
+    end
+
+    def test_declared_patterns_have_responsibility_metadata
+      tiers = RedisKeyspaceInventory::RESPONSIBILITY_TIERS.keys
+
+      RedisKeyspaceInventory::DECLARED_PATTERNS.each do |pattern|
+        assert_includes tiers, pattern.fetch(:responsibility_tier), pattern.fetch(:pattern)
+        assert_kind_of String, pattern.fetch(:loss_tolerance)
+        assert_kind_of String, pattern.fetch(:recovery_expectation)
+        refute_empty pattern.fetch(:loss_tolerance)
+        refute_empty pattern.fetch(:recovery_expectation)
+      end
     end
 
     def test_cli_renders_fixture_report
