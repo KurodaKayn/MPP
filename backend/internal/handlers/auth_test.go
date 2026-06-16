@@ -127,6 +127,15 @@ func TestSendCode(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, rec.Code)
 	})
 
+	t.Run("Register_EmailExistsCaseInsensitive", func(t *testing.T) {
+		createTestUser(t, db, "mixed-register", "MixedRegister@Example.com", "Pass1234")
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/send-code", strings.NewReader(`{"email":"mixedregister@example.com", "scene":"register"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		require.NoError(t, handler.SendCode(e.NewContext(req, rec)))
+		assert.Equal(t, http.StatusConflict, rec.Code)
+	})
+
 	t.Run("ForgotPassword_Success", func(t *testing.T) {
 		createTestUser(t, db, "user2", "user2@example.com", "Pass1234")
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/send-code", strings.NewReader(`{"email":"user2@example.com", "scene":"forgot_password"}`))
@@ -136,6 +145,16 @@ func TestSendCode(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, "user2@example.com", mockEmail.LastTo)
 		assert.Equal(t, "MPP Password Reset Verification Code", mockEmail.LastSubject)
+	})
+
+	t.Run("ForgotPassword_FindsMixedCaseStoredEmail", func(t *testing.T) {
+		createTestUser(t, db, "mixed-forgot", "MixedForgot@Example.com", "Pass1234")
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/send-code", strings.NewReader(`{"email":" mixedforgot@example.com ", "scene":"forgot_password"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		require.NoError(t, handler.SendCode(e.NewContext(req, rec)))
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "mixedforgot@example.com", mockEmail.LastTo)
 	})
 
 	t.Run("ForgotPassword_UserNotFound", func(t *testing.T) {
@@ -273,6 +292,24 @@ func TestResetPassword(t *testing.T) {
 		assertNoRedisKeyContains(t, keys, "attempts@example.com", "ATTEMPTS@EXAMPLE.COM")
 	})
 
+	t.Run("SuccessWithMixedCaseStoredEmail", func(t *testing.T) {
+		mixedEmail := "MixedReset@Example.com"
+		createTestUser(t, db, "mixed-reset", mixedEmail, "OldPassword123")
+		storeVerificationCode(t, rdb, "forgot_password", mixedEmail, "333333")
+
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/reset-password", strings.NewReader(`{"email":" mixedreset@example.com ", "code":"333333", "password":"MixedPassword1234"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+
+		require.NoError(t, handler.ResetPassword(e.NewContext(req, rec)))
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		var user models.User
+		require.NoError(t, db.First(&user, "email = ?", mixedEmail).Error)
+		err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte("MixedPassword1234"))
+		assert.NoError(t, err)
+	})
+
 	t.Run("RequiresRedis", func(t *testing.T) {
 		handlerWithoutRedis := NewAuthHandler(db, nil, &email.MockEmailService{}, []byte("test-secret"))
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/reset-password", strings.NewReader(`{"email":"user@example.com", "code":"123456", "password":"AnotherPassword1234"}`))
@@ -324,6 +361,25 @@ func TestRegisterUsernameExists(t *testing.T) {
 	require.NoError(t, handler.Register(e.NewContext(req, rec)))
 	assert.Equal(t, http.StatusConflict, rec.Code)
 	exists, err := rdb.Exists(context.Background(), verificationCodeKey("register", "new@example.com")).Result()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), exists)
+}
+
+func TestRegisterEmailExistsCaseInsensitive(t *testing.T) {
+	db := setupHandlerTestDB(t)
+	createTestUser(t, db, "mixed-existing", "MixedExisting@Example.com", "Password1234")
+	rdb := setupMiniRedis(t)
+	handler := NewAuthHandler(db, rdb, &email.MockEmailService{}, []byte("test-secret"))
+	storeVerificationCode(t, rdb, "register", "mixedexisting@example.com", "123456")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(`{"username":"new-mixed-user", "email":" mixedexisting@example.com ", "password":"Password1234", "code":"123456"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	require.NoError(t, handler.Register(e.NewContext(req, rec)))
+	assert.Equal(t, http.StatusConflict, rec.Code)
+	exists, err := rdb.Exists(context.Background(), verificationCodeKey("register", "mixedexisting@example.com")).Result()
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), exists)
 }
