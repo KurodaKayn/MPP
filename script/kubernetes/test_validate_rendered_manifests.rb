@@ -399,6 +399,62 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_self_hosted_data_services_require_redis_memory_pressure_policy
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      config = document(documents, "ConfigMap", "redis-persistence-config", "mpp-system")
+      config["data"]["redis.conf"] = config.dig("data", "redis.conf")
+        .gsub("maxmemory 384mb", "maxmemory 0")
+        .gsub("maxmemory-policy noeviction", "maxmemory-policy allkeys-lru")
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted weak redis memory policy"
+    assert_includes stderr, "self-hosted redis runtime config maxmemory must be greater than zero"
+    assert_includes stderr, "self-hosted redis runtime config must keep maxmemory at 384mb"
+    assert_includes stderr, "self-hosted redis runtime config must use noeviction"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_self_hosted_data_services_require_redis_connection_runtime_settings
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      config = document(documents, "ConfigMap", "redis-persistence-config", "mpp-system")
+      config["data"]["redis.conf"] = config.dig("data", "redis.conf")
+        .gsub("timeout 0", "timeout -1")
+        .gsub("tcp-keepalive 300", "tcp-keepalive 0")
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted weak redis connection settings"
+    assert_includes stderr, "self-hosted redis runtime config must set non-negative timeout"
+    assert_includes stderr, "self-hosted redis runtime config must enable tcp-keepalive"
+    assert_includes stderr, "self-hosted redis runtime config must keep idle timeout disabled"
+    assert_includes stderr, "self-hosted redis runtime config must keep tcp-keepalive at 300 seconds"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_self_hosted_data_services_require_redis_slowlog_settings
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      config = document(documents, "ConfigMap", "redis-persistence-config", "mpp-system")
+      config["data"]["redis.conf"] = config.dig("data", "redis.conf")
+        .gsub("slowlog-log-slower-than 10000", "slowlog-log-slower-than -1")
+        .gsub("slowlog-max-len 256", "slowlog-max-len 0")
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted weak redis slowlog settings"
+    assert_includes stderr, "self-hosted redis runtime config must set non-negative slowlog-log-slower-than"
+    assert_includes stderr, "self-hosted redis runtime config must retain slowlog entries"
+    assert_includes stderr, "self-hosted redis runtime config must log commands slower than 10ms"
+    assert_includes stderr, "self-hosted redis runtime config must retain 256 slowlog entries"
+  ensure
+    rendered&.unlink
+  end
+
   def test_staging_self_hosted_overlay_allows_documented_redis_policy_override
     rendered = mutated_render("deploy/kubernetes/overlays/staging-self-hosted") do |documents|
       config = document(documents, "ConfigMap", "redis-persistence-config", "mpp-system")
