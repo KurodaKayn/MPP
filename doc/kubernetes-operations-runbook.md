@@ -752,6 +752,51 @@ Mitigation:
 - For managed Redis, follow the provider failover runbook before restarting MPP
   workloads.
 
+## Redis Keyspace Inventory
+
+Use `script/redis/keyspace_inventory.rb` to produce a factual Redis keyspace
+inventory for non-production environments. The command is read-only: against
+Redis it uses `SCAN`, `TYPE`, `PTTL`, and `MEMORY USAGE`; fixture mode reads a
+local JSON sample only. Live Redis scans require `redis-cli` on the operator
+machine or inside the environment where the script runs.
+
+Dry-run with the committed fixture:
+
+```bash
+ruby script/redis/keyspace_inventory.rb \
+  --fixture script/redis/fixtures/keyspace_inventory_sample.json
+```
+
+Run against non-production Redis with bounded load:
+
+```bash
+REDIS_ADDR=redis.example.invalid:6379 \
+REDIS_PASSWORD=... \
+REDIS_DB=0 \
+ruby script/redis/keyspace_inventory.rb \
+  --match 'mpp:*' \
+  --scan-count 100 \
+  --max-keys 10000 \
+  --sample-limit 3 \
+  > redis-keyspace-inventory.json
+```
+
+Safety limits:
+
+| Limit | Default | Purpose |
+| --- | ---: | --- |
+| `--match` | `*` | Restrict scanned keyspace for focused non-production runs. |
+| `--scan-count` | `100` | Keeps each incremental SCAN batch small. |
+| `--max-keys` | `10000` | Stops the scan before it can walk an unexpectedly large database. |
+| `--sample-limit` | `3` | Keeps report size stable while still showing representative keys. |
+| `--command-timeout` | `5` seconds | Bounds per-key metadata calls. |
+
+The JSON report is stable for comparison between runs. It contains the observed
+key pattern, declared or inferred owner, read/write services where known, TTL
+policy plus observed TTL range, Redis data type counts, memory usage totals, and
+sample keys. Unknown patterns are preserved with `owner: "unknown"` so the
+responsibility baseline can classify them instead of losing evidence.
+
 ## PostgreSQL Incident
 
 Symptoms:
