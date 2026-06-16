@@ -96,13 +96,13 @@ func (h *AuthHandler) SendCode(c echo.Context) error {
 	switch req.Scene {
 	case "register":
 		var count int64
-		h.db.Model(&models.User{}).Where("email = ?", req.Email).Count(&count)
+		h.db.Model(&models.User{}).Where("LOWER(email) = LOWER(?)", req.Email).Count(&count)
 		if count > 0 {
 			return sendError(c, http.StatusConflict, "email_exists", "email already registered")
 		}
 	case "forgot_password":
 		var count int64
-		h.db.Model(&models.User{}).Where("email = ?", req.Email).Count(&count)
+		h.db.Model(&models.User{}).Where("LOWER(email) = LOWER(?)", req.Email).Count(&count)
 		if count == 0 {
 			return sendError(c, http.StatusNotFound, "user_not_found", "no user found with this email")
 		}
@@ -184,7 +184,7 @@ func (h *AuthHandler) ResetPassword(c echo.Context) error {
 
 	// Find user
 	var user models.User
-	if err := h.db.Where("email = ?", req.Email).First(&user).Error; err != nil {
+	if err := h.db.Where("LOWER(email) = LOWER(?)", req.Email).First(&user).Error; err != nil {
 		return sendError(c, http.StatusNotFound, "user_not_found", "user not found")
 	}
 
@@ -304,7 +304,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 
 	// Check if username or email already exists
 	var existingUser models.User
-	err := h.db.Where("username = ? OR email = ?", req.Username, req.Email).First(&existingUser).Error
+	err := h.db.Where("username = ? OR LOWER(email) = LOWER(?)", req.Username, req.Email).First(&existingUser).Error
 	if err == nil {
 		if existingUser.Username == req.Username {
 			return sendError(c, http.StatusConflict, "user_exists", "username already exists")
