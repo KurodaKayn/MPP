@@ -136,15 +136,11 @@ module KubernetesValidation
       config = context.require_document("ConfigMap", "redis-persistence-config", "mpp-system")
       if config
         redis_config = redis_config_lines(config.data["redis.conf"])
-        {
-          "dir /data" => "self-hosted redis persistence config must write data under /data",
-          "appendonly yes" => "self-hosted redis persistence config must enable AOF",
-          "appendfsync everysec" => "self-hosted redis persistence config must fsync AOF every second",
-          "save 900 1" => "self-hosted redis persistence config must keep the long-window RDB snapshot policy",
-          "save 300 10" => "self-hosted redis persistence config must keep the medium-window RDB snapshot policy",
-          "save 60 10000" => "self-hosted redis persistence config must keep the burst RDB snapshot policy",
-        }.each do |line, message|
-          context.add_error(message) unless redis_config.include?(line)
+        validate_redis_persistence_common_policy(context, redis_config)
+        if context.path_suffix?("deploy/kubernetes/data-services/self-hosted")
+          validate_base_redis_persistence_policy(context, redis_config)
+        else
+          validate_overlay_redis_persistence_policy(context, redis_config)
         end
       end
 
@@ -187,8 +183,63 @@ module KubernetesValidation
       context.add_error("self-hosted redis-data PVC must request storage") if storage.to_s.empty?
     end
 
+    def validate_redis_persistence_common_policy(context, redis_config)
+      unless redis_config.include?("dir /data")
+        context.add_error("self-hosted redis persistence config must write data under /data")
+      end
+    end
+
+    def validate_base_redis_persistence_policy(context, redis_config)
+      {
+        "appendonly yes" => "self-hosted redis persistence config must enable AOF",
+        "appendfsync everysec" => "self-hosted redis persistence config must fsync AOF every second",
+        "save 900 1" => "self-hosted redis persistence config must keep the long-window RDB snapshot policy",
+        "save 300 10" => "self-hosted redis persistence config must keep the medium-window RDB snapshot policy",
+        "save 60 10000" => "self-hosted redis persistence config must keep the burst RDB snapshot policy",
+      }.each do |line, message|
+        context.add_error(message) unless redis_config.include?(line)
+      end
+    end
+
+    def validate_overlay_redis_persistence_policy(context, redis_config)
+      appendonly = redis_config_value(redis_config, "appendonly")
+      if appendonly.nil?
+        context.add_error("self-hosted redis persistence config must explicitly choose appendonly yes or no")
+        return
+      end
+
+      unless ["yes", "no"].include?(appendonly)
+        context.add_error("self-hosted redis persistence config appendonly must be yes or no")
+      end
+
+      if appendonly == "yes"
+        appendfsync = redis_config_value(redis_config, "appendfsync")
+        unless ["always", "everysec", "no"].include?(appendfsync)
+          context.add_error("self-hosted redis persistence config must choose a valid appendfsync policy when AOF is enabled")
+        end
+      end
+
+      unless appendonly == "yes" || active_redis_save_policy?(redis_config)
+        context.add_error("self-hosted redis persistence config must enable AOF or at least one RDB save policy")
+      end
+    end
+
     def redis_config_lines(config)
       config.to_s.lines.map(&:strip).reject { |line| line.empty? || line.start_with?("#") }
+    end
+
+    def redis_config_value(redis_config, key)
+      line = redis_config.reverse.find { |entry| entry.start_with?("#{key} ") }
+      line&.split(/\s+/, 2)&.fetch(1, nil)&.delete_prefix('"')&.delete_suffix('"')
+    end
+
+    def active_redis_save_policy?(redis_config)
+      redis_config.any? do |line|
+        next false unless line.start_with?("save ")
+
+        value = line.split(/\s+/, 2).fetch(1, "").delete_prefix('"').delete_suffix('"')
+        !value.empty?
+      end
     end
 
     def validate_resources(context, container, label)

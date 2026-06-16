@@ -366,6 +366,21 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_staging_self_hosted_overlay_allows_documented_redis_policy_override
+    rendered = mutated_render("deploy/kubernetes/overlays/staging-self-hosted") do |documents|
+      config = document(documents, "ConfigMap", "redis-persistence-config", "mpp-system")
+      config["data"]["redis.conf"] = config.dig("data", "redis.conf")
+        .gsub("appendfsync everysec", "appendfsync always")
+        .gsub("save 900 1\nsave 300 10\nsave 60 10000", "save 600 1")
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/overlays/staging-self-hosted", rendered.path)
+
+    assert status.success?, "staging self-hosted validation rejected a documented Redis policy override: #{stderr}"
+  ensure
+    rendered&.unlink
+  end
+
   def test_self_hosted_data_services_require_redis_persistence_config_mount
     rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
       stateful_set = document(documents, "StatefulSet", "redis", "mpp-system")
