@@ -17,6 +17,10 @@ The checked-in values are intentionally non-production:
 - PostgreSQL TLS is disabled because this overlay uses the self-hosted
   PostgreSQL Service.
 - App Pods connect to PostgreSQL through the in-cluster PgBouncer writer pool.
+- Redis uses the self-hosted StatefulSet persistence baseline: the
+  `redis-data` PVC stores `/data`, AOF is enabled with `appendfsync everysec`,
+  and RDB snapshots keep the base `900/1`, `300/10`, and `60/10000` save
+  cadence.
 
 Before applying this overlay to a shared staging cluster:
 
@@ -29,6 +33,9 @@ Before applying this overlay to a shared staging cluster:
   render the `mpp-app-secrets` manifest from a temporary env file.
 - Patch storage classes, storage sizes, PgBouncer pool sizing, and data-service
   resource limits if the cluster defaults are not appropriate.
+- Patch `redis-persistence-config` only if staging intentionally chooses a
+  different Redis data-loss profile. Document any change from the base
+  AOF-plus-RDB policy in this file before applying it.
 - Patch the `mpp-data-backups` PVC, `postgres-backup` and `redis-backup`
   schedules, and `BACKUP_RETENTION_DAYS` before keeping useful staging data in
   the StatefulSets.

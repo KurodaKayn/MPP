@@ -16,6 +16,30 @@ spec:
       port: 6379
       targetPort: redis
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-persistence-config
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/part-of: mpp
+data:
+  redis.conf: |
+    dir /data
+    dbfilename dump.rdb
+
+    appendonly yes
+    appendfsync everysec
+    appenddirname appendonlydir
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+
+    save 900 1
+    save 300 10
+    save 60 10000
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -73,9 +97,9 @@ spec:
           args:
             - |
               if [ -n "${REDIS_PASSWORD:-}" ]; then
-                exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"
+                exec redis-server /usr/local/etc/redis/redis.conf --requirepass "$REDIS_PASSWORD"
               fi
-              exec redis-server --appendonly yes
+              exec redis-server /usr/local/etc/redis/redis.conf
           readinessProbe:
             exec:
               command:
@@ -114,8 +138,15 @@ spec:
               cpu: 500m
               memory: 512Mi
           volumeMounts:
+            - name: redis-persistence-config
+              mountPath: /usr/local/etc/redis
+              readOnly: true
             - name: redis-data
               mountPath: /data
+      volumes:
+        - name: redis-persistence-config
+          configMap:
+            name: redis-persistence-config
   volumeClaimTemplates:
     - metadata:
         name: redis-data

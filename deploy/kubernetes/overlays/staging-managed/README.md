@@ -18,6 +18,9 @@ The checked-in values are intentionally non-production:
   managed read replica.
 - `mpp-app-secrets` is generated from example literals so the overlay can
   render and validate without committing real credentials.
+- Redis persistence is a managed-provider responsibility in this overlay. The
+  provider instance must enable durable persistence or snapshots appropriate for
+  staging before useful staging data is kept there.
 
 Before applying this overlay to a shared staging cluster:
 
@@ -34,6 +37,9 @@ Before applying this overlay to a shared staging cluster:
   when reader connections inherit `DB_SSLMODE=verify-full`.
 - Keep `REDIS_ADDR` equal to the managed Redis provider hostname and port when
   `REDIS_TLS=true` so Redis certificate hostname verification succeeds.
+- Record the managed Redis persistence mode, snapshot retention, and restore
+  point objective in the staging provider configuration or this README before
+  treating Redis restarts as recoverable.
 - Replace every generated Secret literal through your staging secret workflow;
   `ruby script/kubernetes/render-app-secret.rb --require-redis-password` can
   render the `mpp-app-secrets` manifest from a temporary env file.

@@ -27,6 +27,9 @@ The checked-in values are renderable placeholders only:
 - `mpp-app-secrets` is generated only at runtime by External Secrets Operator.
   The checked-in `ExternalSecret` references a placeholder
   `mpp-production-secrets` `ClusterSecretStore` and placeholder remote keys.
+- Redis persistence is a production provider responsibility in this overlay.
+  Production Redis must have provider-backed persistence or snapshots enabled
+  before application traffic depends on it.
 
 Before applying this overlay to production:
 
@@ -44,6 +47,9 @@ Before applying this overlay to production:
   when reader connections inherit `DB_SSLMODE=verify-full`.
 - Keep `REDIS_ADDR` equal to the managed Redis provider hostname and port when
   `REDIS_TLS=true` so Redis certificate hostname verification succeeds.
+- Record the production Redis persistence mode, snapshot retention, restore
+  point objective, and provider restore procedure with the production change
+  record before applying this overlay.
 - Replace `LLM_MODEL=replace-with-production-model` with the provider model
   used by production.
 - Replace `X_OAUTH2_CLIENT_ID` and keep `X_OAUTH2_REDIRECT_URL` aligned to the

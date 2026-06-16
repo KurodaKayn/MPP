@@ -335,6 +335,67 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_self_hosted_data_services_require_redis_persistence_config
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      documents.reject! do |entry|
+        entry["kind"] == "ConfigMap" &&
+          entry.dig("metadata", "name") == "redis-persistence-config" &&
+          entry.dig("metadata", "namespace") == "mpp-system"
+      end
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted missing redis persistence config"
+    assert_includes stderr, "rendered manifests are missing ConfigMap/mpp-system/redis-persistence-config"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_self_hosted_data_services_require_redis_aof_policy
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      config = document(documents, "ConfigMap", "redis-persistence-config", "mpp-system")
+      config["data"]["redis.conf"] = config.dig("data", "redis.conf").gsub("appendonly yes", "appendonly no")
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted disabled redis AOF"
+    assert_includes stderr, "self-hosted redis persistence config must enable AOF"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_staging_self_hosted_overlay_allows_documented_redis_policy_override
+    rendered = mutated_render("deploy/kubernetes/overlays/staging-self-hosted") do |documents|
+      config = document(documents, "ConfigMap", "redis-persistence-config", "mpp-system")
+      config["data"]["redis.conf"] = config.dig("data", "redis.conf")
+        .gsub("appendfsync everysec", "appendfsync always")
+        .gsub("save 900 1\nsave 300 10\nsave 60 10000", "save 600 1")
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/overlays/staging-self-hosted", rendered.path)
+
+    assert status.success?, "staging self-hosted validation rejected a documented Redis policy override: #{stderr}"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_self_hosted_data_services_require_redis_persistence_config_mount
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      stateful_set = document(documents, "StatefulSet", "redis", "mpp-system")
+      container = stateful_set.dig("spec", "template", "spec", "containers").find { |entry| entry["name"] == "redis" }
+      container["volumeMounts"].reject! { |entry| entry["name"] == "redis-persistence-config" }
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted missing redis config mount"
+    assert_includes stderr, "self-hosted redis container must mount persistence config read-only"
+  ensure
+    rendered&.unlink
+  end
+
   def test_self_hosted_data_services_require_redis_exporter_network_policy_source
     rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
       policy = document(documents, "NetworkPolicy", "redis-app-access", "mpp-system")
