@@ -250,18 +250,20 @@ Pod and Pod log discovery for `mpp-system` and `mpp-browser-runtime`, sends logs
 to `LOKI_WRITE_URL`, and preserves structured request fields such as trace ID,
 route, status, and latency when services emit JSON request logs.
 
-The package also adds PodMonitor resources for application metrics and
-PrometheusRule alerts for browser runtime startup failures, cleanup failures,
-cleanup lag, service readiness failures, Redis-dependent readiness failures,
-and publish-worker job failures. It labels `mpp-observability` as a
+The package also adds PodMonitor resources for application metrics and Redis
+exporter metrics, plus PrometheusRule alerts for browser runtime startup
+failures, cleanup failures, cleanup lag, service readiness failures,
+Redis-dependent readiness failures, Redis availability, Redis p95/p99 latency,
+Redis connection errors, Redis memory pressure, Redis evictions, blocked
+clients, and publish-worker job failures. It labels `mpp-observability` as a
 metrics-scraper namespace and allows that namespace to scrape app metrics. If
 Prometheus runs elsewhere, add `mpp.kurodakayn.dev/metrics-scraper=true` to its
 namespace only when that namespace is trusted to reach the selected app ports.
 The NetworkPolicies are L4 port allowlists, so backend, publish-worker,
 browser-worker, AI, and collaboration metrics reuse their shared HTTP listeners;
-only content-pipeline exposes a dedicated metrics listener. Install the
-Prometheus Operator CRDs before applying this package, or omit it from overlays
-that use another metrics discovery mechanism.
+content-pipeline and redis-exporter expose dedicated metrics listeners. Install
+the Prometheus Operator CRDs before applying this package, or omit it from
+overlays that use another metrics discovery mechanism.
 
 ## Validate
 

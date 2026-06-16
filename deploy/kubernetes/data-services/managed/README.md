@@ -26,6 +26,9 @@ Required overlay inputs:
 - Provide `DB_PASSWORD` and, when Redis auth is enabled, `REDIS_PASSWORD` in
   `mpp-app-secrets`.
 - Set `REDIS_TLS=true` when the managed Redis endpoint requires TLS.
+- Patch the redis-exporter `REDIS_ADDR` to the managed Redis hostname, using
+  `rediss://...` when the provider requires TLS. The exporter reads the same
+  optional `REDIS_PASSWORD` Secret and feeds the Redis observability baseline.
 
 Do not store provider credentials in this package. Materialize them through a
 Kubernetes Secret or an external secret manager.
