@@ -24,6 +24,20 @@ import (
 func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *browsersession.BrowserSessionService, *publisher.MockBrowserWorkerClient) {
 	t.Helper()
 
+	db := setupBrowserSessionDB(t)
+	worker := publisher.NewMockBrowserWorkerClient()
+	t.Cleanup(func() {
+		require.NoError(t, worker.Close())
+	})
+	store := publisher.NewCookieStore(db)
+	svc := browsersession.NewBrowserSessionService(db, worker, store)
+
+	return db, svc, worker
+}
+
+func setupBrowserSessionDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
@@ -45,14 +59,7 @@ func setupBrowserSessionTest(t *testing.T) (*gorm.DB, *browsersession.BrowserSes
 	`).Error
 	require.NoError(t, err)
 
-	worker := publisher.NewMockBrowserWorkerClient()
-	t.Cleanup(func() {
-		require.NoError(t, worker.Close())
-	})
-	store := publisher.NewCookieStore(db)
-	svc := browsersession.NewBrowserSessionService(db, worker, store)
-
-	return db, svc, worker
+	return db
 }
 
 func setupBrowserSessionRedis(t *testing.T, svc *browsersession.BrowserSessionService) *redis.Client {
@@ -91,6 +98,32 @@ func (f *fakeDashboardAccountCacheInvalidator) InvalidateDashboardAccountCache(_
 		workspaceID: workspaceID,
 		platform:    platform,
 	})
+}
+
+type stubBrowserWorkerClient struct {
+	createResp *publisher.StartWorkerSessionResponse
+	stopped    []string
+}
+
+func (s *stubBrowserWorkerClient) CreateSession(context.Context, publisher.StartWorkerSessionRequest) (*publisher.StartWorkerSessionResponse, error) {
+	return s.createResp, nil
+}
+
+func (s *stubBrowserWorkerClient) GetSession(context.Context, string) (*publisher.GetWorkerSessionResponse, error) {
+	return &publisher.GetWorkerSessionResponse{}, nil
+}
+
+func (s *stubBrowserWorkerClient) CaptureSession(context.Context, string) (*publisher.CaptureWorkerSessionResponse, error) {
+	return &publisher.CaptureWorkerSessionResponse{}, nil
+}
+
+func (s *stubBrowserWorkerClient) StartDouyinPublish(context.Context, string, publisher.StartDouyinPublishRequest) error {
+	return nil
+}
+
+func (s *stubBrowserWorkerClient) StopSession(_ context.Context, ref string) error {
+	s.stopped = append(s.stopped, ref)
+	return nil
 }
 
 func TestBrowserSessionService_FullLifecycle(t *testing.T) {
@@ -253,6 +286,34 @@ func TestBrowserSessionService_StartSessionRejectsUnauthorizedPlatformAccount(t 
 	var attackerSessions int64
 	require.NoError(t, db.Model(&models.RemoteBrowserSession{}).Where("user_id = ?", attackerID).Count(&attackerSessions).Error)
 	assert.Zero(t, attackerSessions)
+}
+
+func TestBrowserSessionService_StartSessionRejectsInvalidRuntimeReference(t *testing.T) {
+	db := setupBrowserSessionDB(t)
+	worker := &stubBrowserWorkerClient{
+		createResp: &publisher.StartWorkerSessionResponse{
+			WorkerSessionRef:  "worker-invalid-runtime",
+			Status:            "ready",
+			StreamEndpointRef: "http://127.0.0.1:9/stream/worker-invalid-runtime",
+			StartedAt:         time.Now(),
+			ExpiresAt:         time.Now().Add(15 * time.Minute),
+		},
+	}
+	svc := browsersession.NewBrowserSessionService(db, worker, nil)
+	userID := uuid.New()
+
+	resp, err := svc.StartSession(context.Background(), userID, "douyin")
+
+	require.Error(t, err)
+	require.Nil(t, resp)
+	assert.Contains(t, err.Error(), "worker returned invalid runtime reference")
+	assert.Equal(t, []string{"worker-invalid-runtime"}, worker.stopped)
+
+	var session models.RemoteBrowserSession
+	require.NoError(t, db.Where("user_id = ?", userID).First(&session).Error)
+	assert.Equal(t, models.BrowserSessionStatusFailed, session.Status)
+	assert.Empty(t, session.WorkerSessionRef)
+	assert.Empty(t, session.StreamEndpointRef)
 }
 
 func TestBrowserSessionService_StartSessionRejectsUnauthorizedWorkspace(t *testing.T) {
