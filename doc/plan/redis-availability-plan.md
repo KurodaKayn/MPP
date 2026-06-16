@@ -8,12 +8,12 @@ Phase 1-2 target: pragmatic high availability. After a single Redis Pod, node, o
 
 Production final target: Redis Cluster. The final state must support multiple shards, multiple replicas, automatic failover, TLS/auth, backup and restore, maintenance windows, and clear SLA ownership. Prefer a provider-backed managed Redis Cluster. If managed Redis is unavailable, use a mature chart/operator to self-host Redis Cluster.
 
-Current overall progress: about `33%`.
+Current overall progress: about `35%`.
 
 | Phase | Weight | Current Completion | Status | Done | Next |
 | --- | ---: | ---: | --- | --- | --- |
 | Phase 0: responsibility and risk baseline | 10% | 100% | Done | Inventory script, responsibility labels, Redis SLO baseline, and [dependency map](../redis-dependency-map.md) added | Start Phase 1 single-instance hardening |
-| Phase 1: single-instance hardening | 15% | 50% | In Progress | Current single-instance deployment direction clear; Redis persistence baseline added | Continue probes, resources, and backup baseline hardening |
+| Phase 1: single-instance hardening | 15% | 65% | In Progress | Current single-instance deployment direction clear; Redis persistence baseline, probes, resources, and graceful termination added | Continue backup, config, and capacity guardrail hardening |
 | Phase 2: self-hosted HA | 20% | 10% | Not Started | Initial HA direction chosen | Select Sentinel or equivalent failover mode and implement traffic switching |
 | Phase 3: app-side fault tolerance | 20% | 15% | Not Started | Retry and degradation areas identified | Implement timeout, retry, circuit breaker, and cache-miss protection |
 | Phase 4: production managed Redis HA | 15% | 0% | Not Started | Target direction chosen | Build parameterized Redis endpoint and migration runbook |

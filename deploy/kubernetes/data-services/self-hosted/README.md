@@ -34,6 +34,15 @@ Redis runs as a single-pod StatefulSet with persistent storage:
   directory.
 - `redis-persistence-config` is mounted read-only at `/usr/local/etc/redis` and
   is the versioned source of the Redis persistence mode.
+- Readiness and liveness probes run `redis-cli ping` with optional
+  `REDIS_PASSWORD` support. Readiness fails when Redis stops serving commands,
+  instead of only checking whether the TCP port is open.
+- The default Redis container requests `100m` CPU and `256Mi` memory, with
+  limits of `500m` CPU and `512Mi` memory. Patch these values in the target
+  overlay when cluster capacity or workload size needs different headroom.
+- Redis gets a 60-second termination grace period. The `preStop` hook runs
+  `SHUTDOWN SAVE` with optional password auth so normal Pod deletion or restart
+  asks Redis to flush before Kubernetes forcefully terminates the container.
 - AOF is enabled with `appendfsync everysec`, so a normal Pod restart should
   keep Redis-resident keys that have not expired. A node or storage failure may
   still lose writes accepted inside the last fsync window.
