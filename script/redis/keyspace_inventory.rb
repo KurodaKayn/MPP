@@ -19,6 +19,86 @@ module RedisKeyspaceInventory
 
   KeySample = Struct.new(:key, :type, :ttl_ms, :memory_bytes, keyword_init: true)
 
+  RESPONSIBILITY_TIERS = {
+    "R0" => "critical coordination",
+    "R1" => "user continuity",
+    "R2" => "performance cache",
+    "R3" => "ephemeral signal",
+    "R4" => "queue-like usage",
+  }.freeze
+
+  AUTH_VERIFICATION_RESPONSIBILITY = {
+    responsibility_tier: "R1",
+    loss_tolerance: "Loss is tolerable only by restarting the pending verification step.",
+    recovery_expectation: "Prompt the user to request a fresh code or retry the auth flow; PostgreSQL remains authoritative for durable account state.",
+  }.freeze
+
+  RATE_LIMIT_RESPONSIBILITY = {
+    responsibility_tier: "R3",
+    loss_tolerance: "Loss may temporarily reset throttling counters and allow extra requests.",
+    recovery_expectation: "Allow counters to rebuild from new traffic and watch abuse or cost alerts during the affected window.",
+  }.freeze
+
+  STREAM_GATE_RESPONSIBILITY = {
+    responsibility_tier: "R0",
+    loss_tolerance: "Loss can admit more concurrent streams than configured until leases rebuild.",
+    recovery_expectation: "Keep existing streams alive where possible; new admissions recreate leases while expired members are pruned by score.",
+  }.freeze
+
+  BROWSER_COORDINATION_RESPONSIBILITY = {
+    responsibility_tier: "R0",
+    loss_tolerance: "Loss can permit duplicate browser sessions or quota over-admission for a user or tenant.",
+    recovery_expectation: "Use session rows, worker lookups, and heartbeat checks to expire stale sessions before admitting replacements.",
+  }.freeze
+
+  BROWSER_SESSION_RESPONSIBILITY = {
+    responsibility_tier: "R1",
+    loss_tolerance: "Loss interrupts live remote-browser continuity but does not delete durable account or project data.",
+    recovery_expectation: "Mark missing or stale live sessions expired and have the user start a new browser session.",
+  }.freeze
+
+  BROWSER_STREAM_TOKEN_RESPONSIBILITY = {
+    responsibility_tier: "R1",
+    loss_tolerance: "Loss invalidates the pending browser stream handoff for that session.",
+    recovery_expectation: "Issue a new short-lived stream token from the durable browser session row when the session is still active.",
+  }.freeze
+
+  BROWSER_CLEANUP_RESPONSIBILITY = {
+    responsibility_tier: "R3",
+    loss_tolerance: "Loss delays Redis cleanup indexing for expired browser sessions.",
+    recovery_expectation: "Rely on per-session TTLs and database expiry checks; recreate cleanup members as sessions are refreshed or replaced.",
+  }.freeze
+
+  BROWSER_HEARTBEAT_RESPONSIBILITY = {
+    responsibility_tier: "R3",
+    loss_tolerance: "Loss can make a live worker look stale until the next heartbeat refresh.",
+    recovery_expectation: "Treat the heartbeat as a liveness hint and verify the worker directly before expiring a session.",
+  }.freeze
+
+  PUBLISH_LOCK_RESPONSIBILITY = {
+    responsibility_tier: "R0",
+    loss_tolerance: "Loss can allow duplicate publish execution for the same project and platform.",
+    recovery_expectation: "Re-check publication state and PostgreSQL outbox records before running work; workers reacquire the lock before processing.",
+  }.freeze
+
+  DASHBOARD_CACHE_RESPONSIBILITY = {
+    responsibility_tier: "R2",
+    loss_tolerance: "Loss causes a cold cache or short-lived stale read protection fallback.",
+    recovery_expectation: "Recompute from PostgreSQL on cache miss; generation counters and short TTLs bound stale cache exposure.",
+  }.freeze
+
+  OAUTH2_STATE_RESPONSIBILITY = {
+    responsibility_tier: "R1",
+    loss_tolerance: "Loss invalidates a pending X OAuth2 authorization callback.",
+    recovery_expectation: "Ask the user to restart account connection; no durable platform account credential is committed before callback success.",
+  }.freeze
+
+  ASYNQ_QUEUE_RESPONSIBILITY = {
+    responsibility_tier: "R4",
+    loss_tolerance: "Queued task loss is not tolerated unless the durable domain record can replay the work.",
+    recovery_expectation: "Replay publish work from PostgreSQL outbox or scheduled publication state; manually assess email and read-model tasks if queue data is lost.",
+  }.freeze
+
   DECLARED_PATTERNS = [
     {
       pattern: "auth:code:{scene}:{email_hash}",
@@ -28,7 +108,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "10 minutes",
       notes: "Email verification and password reset code.",
-    },
+    }.merge(AUTH_VERIFICATION_RESPONSIBILITY),
     {
       pattern: "auth:code_attempts:{scene}:{email_hash}",
       regex: /\Aauth:code_attempts:[^:]+:[0-9a-f]{64}\z/,
@@ -37,7 +117,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "10 minutes after first failed attempt",
       notes: "Failed verification attempt counter.",
-    },
+    }.merge(AUTH_VERIFICATION_RESPONSIBILITY),
     {
       pattern: "auth:last_send:{scene}:{email_hash}",
       regex: /\Aauth:last_send:[^:]+:[0-9a-f]{64}\z/,
@@ -46,7 +126,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "60 seconds",
       notes: "Verification email resend throttle.",
-    },
+    }.merge(AUTH_VERIFICATION_RESPONSIBILITY),
     {
       pattern: "mpp:ratelimit:{scope}:{identifier}:{category}:{bucket}",
       regex: /\Ampp:ratelimit:.+\z/,
@@ -55,7 +135,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "request bucket window, usually 1 minute or 24 hours",
       notes: "Application API rate limit counters.",
-    },
+    }.merge(RATE_LIMIT_RESPONSIBILITY),
     {
       pattern: "mpp:stream:conn:{connection_id}",
       regex: /\Ampp:stream:conn:[0-9a-f]{32}\z/,
@@ -64,7 +144,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "stream lease TTL, defaults to 10 minutes for AI and 16 minutes for browser streams",
       notes: "Individual stream lease payload.",
-    },
+    }.merge(STREAM_GATE_RESPONSIBILITY),
     {
       pattern: "mpp:stream:{kind}:user:{user_id}",
       regex: /\Ampp:stream:[^:]+:user:[^:]+\z/,
@@ -73,7 +153,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "members expire by score; key may have no Redis TTL",
       notes: "Per-user stream concurrency zset.",
-    },
+    }.merge(STREAM_GATE_RESPONSIBILITY),
     {
       pattern: "mpp:stream:{kind}:tenant:{tenant_id}",
       regex: /\Ampp:stream:[^:]+:tenant:[^:]+\z/,
@@ -82,7 +162,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "members expire by score; key may have no Redis TTL",
       notes: "Per-tenant stream concurrency zset.",
-    },
+    }.merge(STREAM_GATE_RESPONSIBILITY),
     {
       pattern: "mpp:stream:{kind}:ip:{ip_hash}",
       regex: /\Ampp:stream:[^:]+:ip:[0-9a-f]{64}\z/,
@@ -91,7 +171,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "members expire by score; key may have no Redis TTL",
       notes: "Per-IP stream concurrency zset.",
-    },
+    }.merge(STREAM_GATE_RESPONSIBILITY),
     {
       pattern: "mpp:stream:{kind}:global",
       regex: /\Ampp:stream:[^:]+:global\z/,
@@ -100,7 +180,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "members expire by score; key may have no Redis TTL",
       notes: "Global stream concurrency zset.",
-    },
+    }.merge(STREAM_GATE_RESPONSIBILITY),
     {
       pattern: "mpp:browser:active:{user_id}:{platform}",
       regex: /\Ampp:browser:active:[0-9a-f-]{36}:[^:]+\z/,
@@ -109,7 +189,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "browser session TTL plus 1 minute grace",
       notes: "One active remote browser session per user and platform.",
-    },
+    }.merge(BROWSER_COORDINATION_RESPONSIBILITY),
     {
       pattern: "mpp:browser:session:{session_id}",
       regex: /\Ampp:browser:session:[0-9a-f-]{36}\z/,
@@ -118,7 +198,7 @@ module RedisKeyspaceInventory
       writes: ["backend", "browser-worker"],
       ttl_policy: "browser session TTL plus 1 minute grace",
       notes: "Remote browser live session JSON state.",
-    },
+    }.merge(BROWSER_SESSION_RESPONSIBILITY),
     {
       pattern: "mpp:browser:stream-token:{session_id}:{token_hash}",
       regex: /\Ampp:browser:stream-token:[0-9a-f-]{36}:[^:]+\z/,
@@ -127,7 +207,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "min(5 minutes, remaining session TTL)",
       notes: "Single-use browser stream token metadata.",
-    },
+    }.merge(BROWSER_STREAM_TOKEN_RESPONSIBILITY),
     {
       pattern: "mpp:browser:stream-current:{session_id}",
       regex: /\Ampp:browser:stream-current:[0-9a-f-]{36}\z/,
@@ -136,7 +216,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "min(5 minutes, remaining session TTL)",
       notes: "Pointer to current browser stream token hash.",
-    },
+    }.merge(BROWSER_STREAM_TOKEN_RESPONSIBILITY),
     {
       pattern: "mpp:browser:cleanup",
       regex: /\Ampp:browser:cleanup\z/,
@@ -145,7 +225,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "no Redis TTL; members scored by session expiration",
       notes: "Sorted-set cleanup index for expired browser sessions.",
-    },
+    }.merge(BROWSER_CLEANUP_RESPONSIBILITY),
     {
       pattern: "mpp:browser:worker-heartbeat:{worker_session_ref}",
       regex: /\Ampp:browser:worker-heartbeat:.+\z/,
@@ -154,7 +234,7 @@ module RedisKeyspaceInventory
       writes: ["browser-worker"],
       ttl_policy: "45 seconds",
       notes: "Browser worker liveness heartbeat.",
-    },
+    }.merge(BROWSER_HEARTBEAT_RESPONSIBILITY),
     {
       pattern: "mpp:browser:quota:user:{user_id}",
       regex: /\Ampp:browser:quota:user:[0-9a-f-]{36}\z/,
@@ -163,7 +243,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "browser session TTL plus 1 minute grace",
       notes: "Per-user remote browser session concurrency zset.",
-    },
+    }.merge(BROWSER_COORDINATION_RESPONSIBILITY),
     {
       pattern: "mpp:browser:quota:tenant:{tenant_id}",
       regex: /\Ampp:browser:quota:tenant:[^:]+\z/,
@@ -172,7 +252,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "browser session TTL plus 1 minute grace",
       notes: "Per-tenant remote browser session concurrency zset.",
-    },
+    }.merge(BROWSER_COORDINATION_RESPONSIBILITY),
     {
       pattern: "mpp:publish:lock:{project_id}:{platform}",
       regex: /\Ampp:publish:lock:[0-9a-f-]{36}:[^:]+\z/,
@@ -181,7 +261,7 @@ module RedisKeyspaceInventory
       writes: ["backend", "publish-worker"],
       ttl_policy: "30 minutes, refreshed while publishing",
       notes: "Publish job idempotency and mutual-exclusion lock.",
-    },
+    }.merge(PUBLISH_LOCK_RESPONSIBILITY),
     {
       pattern: "mpp:dashboard:projects:list:v2:{params_hash}",
       regex: /\Ampp:dashboard:projects:list:v2:[0-9a-f]{64}\z/,
@@ -190,7 +270,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "15 seconds",
       notes: "Dashboard project list cache.",
-    },
+    }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
       pattern: "mpp:dashboard:projects:list-generation:v2",
       regex: /\Ampp:dashboard:projects:list-generation:v2\z/,
@@ -199,7 +279,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "no Redis TTL",
       notes: "Project list cache generation counter.",
-    },
+    }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
       pattern: "mpp:dashboard:content-setup:v1:{resource}:user:{user_id}:workspace:{workspace_id}:generation:{generation}",
       regex: /\Ampp:dashboard:content-setup:v1:(content-templates|brand-profiles):user:[0-9a-f-]{36}:workspace:[0-9a-f-]{36}:generation:.+\z/,
@@ -208,7 +288,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "15 seconds",
       notes: "Content setup options cache.",
-    },
+    }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
       pattern: "mpp:dashboard:content-setup:v1:generation:{resource}:user:{user_id}",
       regex: /\Ampp:dashboard:content-setup:v1:generation:[^:]+:user:[0-9a-f-]{36}\z/,
@@ -217,7 +297,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "no Redis TTL",
       notes: "Per-user content setup cache generation counter.",
-    },
+    }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
       pattern: "mpp:dashboard:content-setup:v1:generation:{resource}:workspace:{workspace_id}",
       regex: /\Ampp:dashboard:content-setup:v1:generation:[^:]+:workspace:[0-9a-f-]{36}\z/,
@@ -226,7 +306,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "no Redis TTL",
       notes: "Per-workspace content setup cache generation counter.",
-    },
+    }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
       pattern: "mpp:dashboard:stats:global:v1:{generation}",
       regex: /\Ampp:dashboard:stats:global:v1:[^:]+\z/,
@@ -235,7 +315,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "15 seconds",
       notes: "Global dashboard stats cache.",
-    },
+    }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
       pattern: "mpp:dashboard:stats:user:v1:{user_id}:{generation}",
       regex: /\Ampp:dashboard:stats:user:v1:[0-9a-f-]{36}:[^:]+\z/,
@@ -244,7 +324,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "15 seconds",
       notes: "User-scoped dashboard stats cache.",
-    },
+    }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
       pattern: "mpp:dashboard:stats:workspace:v1:{workspace_id}:{generation}",
       regex: /\Ampp:dashboard:stats:workspace:v1:[0-9a-f-]{36}:[^:]+\z/,
@@ -253,7 +333,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "15 seconds",
       notes: "Workspace-scoped dashboard stats cache.",
-    },
+    }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
       pattern: "mpp:dashboard:stats-generation:v1",
       regex: /\Ampp:dashboard:stats-generation:v1\z/,
@@ -262,7 +342,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "no Redis TTL",
       notes: "Global stats cache generation counter.",
-    },
+    }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
       pattern: "mpp:dashboard:stats-generation:scoped:v1",
       regex: /\Ampp:dashboard:stats-generation:scoped:v1\z/,
@@ -271,7 +351,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "no Redis TTL",
       notes: "Scoped stats cache generation counter.",
-    },
+    }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
       pattern: "mpp:dashboard:accounts:v1:{workspace_id}:{platform}",
       regex: /\Ampp:dashboard:accounts:v1:[0-9a-f-]{36}:[^:]+\z/,
@@ -280,7 +360,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "15 seconds",
       notes: "Dashboard platform account cache.",
-    },
+    }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
       pattern: "mpp:x_oauth2_state:{state}",
       regex: /\Ampp:x_oauth2_state:.+\z/,
@@ -289,7 +369,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "10 minutes",
       notes: "Pending X OAuth2 state and PKCE verifier.",
-    },
+    }.merge(OAUTH2_STATE_RESPONSIBILITY),
     {
       pattern: "mpp:dashboard:media-assets:resolve:v1:{asset_id}:actor:{user_id}",
       regex: /\Ampp:dashboard:media-assets:resolve:v1:[0-9a-f-]{36}:actor:[0-9a-f-]{36}\z/,
@@ -298,7 +378,7 @@ module RedisKeyspaceInventory
       writes: ["backend"],
       ttl_policy: "15 seconds or shorter than signed URL expiry",
       notes: "Resolved media asset URL cache.",
-    },
+    }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
       pattern: "asynq:{queue}:*",
       regex: /\Aasynq:\{[^}]+\}:.+\z/,
@@ -307,7 +387,7 @@ module RedisKeyspaceInventory
       writes: ["backend", "publish-worker"],
       ttl_policy: "asynq-managed; task retention and uniqueness TTLs vary by queue",
       notes: "Email, publish, and dashboard read-model queue internals.",
-    },
+    }.merge(ASYNQ_QUEUE_RESPONSIBILITY),
     {
       pattern: "asynq:*",
       regex: /\Aasynq:(?!\{).+\z/,
@@ -316,7 +396,7 @@ module RedisKeyspaceInventory
       writes: ["backend", "publish-worker"],
       ttl_policy: "asynq-managed; process, worker, scheduler, and queue metadata may not use Redis TTLs",
       notes: "Global Asynq queue registry plus server and worker process metadata.",
-    },
+    }.merge(ASYNQ_QUEUE_RESPONSIBILITY),
   ].freeze
 
   module_function
@@ -345,6 +425,7 @@ module RedisKeyspaceInventory
         "sample_limit_per_pattern" => inventory_options.fetch(:sample_limit),
         "write_operations" => [],
       },
+      "responsibility_tiers" => RESPONSIBILITY_TIERS,
       "summary" => {
         "keys_observed" => normalized.length,
         "patterns_observed" => grouped.length,
@@ -389,6 +470,10 @@ module RedisKeyspaceInventory
       "owner_source" => metadata.fetch(:owner_source),
       "reads" => metadata.fetch(:reads),
       "writes" => metadata.fetch(:writes),
+      "responsibility_tier" => metadata.fetch(:responsibility_tier),
+      "responsibility_label" => responsibility_label(metadata.fetch(:responsibility_tier)),
+      "loss_tolerance" => metadata.fetch(:loss_tolerance),
+      "recovery_expectation" => metadata.fetch(:recovery_expectation),
       "ttl_policy" => metadata.fetch(:ttl_policy),
       "redis_types" => Hash.new(0),
       "key_count" => 0,
@@ -462,9 +547,16 @@ module RedisKeyspaceInventory
       owner_source: "inferred",
       reads: [],
       writes: [],
+      responsibility_tier: "unclassified",
+      loss_tolerance: "unknown",
+      recovery_expectation: "Review the observed pattern before assigning a Redis responsibility tier.",
       ttl_policy: "unknown",
       notes: "Pattern inferred from observed key shape; review owner and TTL policy.",
     }
+  end
+
+  def responsibility_label(tier)
+    RESPONSIBILITY_TIERS.fetch(tier, "unclassified")
   end
 
   def inferred_pattern(key)
