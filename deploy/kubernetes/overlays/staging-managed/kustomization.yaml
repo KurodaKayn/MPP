@@ -35,6 +35,16 @@ patches:
         path: /spec/externalName
         value: redis.staging.cache.example.invalid
   - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: redis-exporter
+      namespace: mpp-system
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: rediss://redis.staging.cache.example.invalid:6379
+  - target:
       group: networking.k8s.io
       version: v1
       kind: Ingress

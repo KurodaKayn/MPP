@@ -9,9 +9,12 @@ It provides:
 - Alloy Pod discovery for `mpp-system` and `mpp-browser-runtime` logs.
 - PodMonitor resources for HTTP service metrics, content-pipeline metrics, and
   Alloy self metrics.
+- PodMonitor resources for Redis exporter metrics when a Redis data-service
+  package is installed.
 - PrometheusRule alerts for browser runtime startup failures, cleanup failures,
   cleanup lag, service readiness failures, Redis-dependent readiness failures,
-  and publish-worker job failures.
+  Redis availability, p95/p99 latency, connection errors, memory pressure,
+  evictions, blocked clients, and publish-worker job failures.
 
 Required overlay inputs:
 
@@ -25,9 +28,14 @@ Required overlay inputs:
   Treat that namespace label as a trusted metrics boundary: Kubernetes
   NetworkPolicy is layer 4 only, so shared HTTP listener targets allow the
   labeled namespace to reach the full service port rather than only `/metrics`.
-  Content-pipeline uses a dedicated metrics listener on `9090`.
+  Content-pipeline uses a dedicated metrics listener on `9090`, and
+  redis-exporter uses a dedicated metrics listener on `9121`.
 - Add this package to the same environment overlay that deploys
   `browser-runtime-control` and `app-baseline`.
+
+Redis metrics come from the `deploy/kubernetes/data-services/redis-exporter`
+package, which connects to the `redis` Service and exports availability,
+latency, memory, eviction, and blocked-client metrics.
 
 The Alloy configuration keeps Docker discovery out of Kubernetes deployments and
 uses Pod labels for `service`, `namespace`, `pod`, `container`, `platform`, and

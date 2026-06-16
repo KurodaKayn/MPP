@@ -803,6 +803,20 @@ keys. Unknown patterns are preserved with `owner: "unknown"` and
 `responsibility_tier: "unclassified"` so the responsibility baseline can
 classify them instead of losing evidence.
 
+## Redis SLO Baseline
+
+The Redis SLO baseline lives in `deploy/kubernetes/data-services/redis-exporter`
+and `deploy/kubernetes/observability`. The dashboard covers availability,
+p95/p99 command latency, blocked clients, memory usage, memory pressure, and
+evictions. Alerts page on Redis unavailability, elevated p99 latency,
+connection or command errors, memory pressure, evictions, and blocked clients.
+
+Non-production simulation record:
+
+- 2026-06-16: `docker run --rm --entrypoint promtool -v <tmp>:/work:ro prom/prometheus:v3.12.0 test rules /work/redis-alerts.test.yml`
+- Result: `SUCCESS` for synthetic Redis unavailability, p99 latency, connection
+  errors, memory pressure, evictions, and blocked-clients alert cases.
+
 ### Redis Responsibility Tiers
 
 `script/redis/keyspace_inventory.rb` is the source of declared Redis pattern

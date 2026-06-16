@@ -34,6 +34,11 @@ This package includes a small backup starter:
   Pod security settings, no mounted service account token, and local
   file-retention cleanup.
 
+This package also includes the shared `deploy/kubernetes/data-services/redis-exporter`
+base. The exporter reads Redis with the optional `REDIS_PASSWORD` Secret and is
+allowed through the Redis NetworkPolicy so the observability stack can export
+availability, latency, memory, eviction, and blocked-client metrics.
+
 The backup PVC is still in-cluster storage. For production-like self-hosted
 use, copy backup artifacts to external object storage or pair the PVC with
 storage-provider snapshots before depending on it for disaster recovery.

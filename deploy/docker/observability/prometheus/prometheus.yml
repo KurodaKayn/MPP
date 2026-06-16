@@ -61,6 +61,14 @@ scrape_configs:
         labels:
           service: postgres
 
+  - job_name: redis-exporter
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - redis-exporter:9121
+        labels:
+          service: redis
+
   - job_name: loki
     metrics_path: /metrics
     static_configs:

@@ -43,6 +43,37 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
+  name: mpp-redis-exporter
+  namespace: mpp-observability
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: mpp
+spec:
+  namespaceSelector:
+    matchNames:
+      - mpp-system
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: redis-exporter
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      relabelings:
+        - sourceLabels:
+            - __meta_kubernetes_namespace
+          targetLabel: namespace
+        - sourceLabels:
+            - __meta_kubernetes_pod_name
+          targetLabel: pod
+        - targetLabel: service
+          replacement: redis
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
   name: mpp-content-pipeline-service
   namespace: mpp-observability
   labels:

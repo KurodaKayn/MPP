@@ -16,6 +16,8 @@ module KubernetesValidation
           context.add_error("managed #{name} Service must be labeled as external-provider managed")
         end
       end
+
+      validate_redis_exporter(context)
     end
 
     def validate_self_hosted(context)
@@ -49,11 +51,76 @@ module KubernetesValidation
 
       validate_self_hosted_read_replica(context)
       validate_self_hosted_backups(context)
+      validate_redis_exporter(context)
       validate_self_hosted_network_policy(context, "postgres", 5432, ["backend", "publish-worker", "collab-service", "pgbouncer", "postgres-reader", "postgres-backup"])
       validate_self_hosted_network_policy(context, "postgres-reader", 5432, ["pgbouncer-reader"])
       validate_self_hosted_network_policy(context, "pgbouncer", 5432, ["backend", "publish-worker", "collab-service"])
       validate_self_hosted_network_policy(context, "pgbouncer-reader", 5432, ["backend", "publish-worker", "collab-service"])
-      validate_self_hosted_network_policy(context, "redis", 6379, ["backend", "publish-worker", "browser-worker", "collab-service", "redis-backup"])
+      validate_self_hosted_network_policy(context, "redis", 6379, ["backend", "publish-worker", "browser-worker", "collab-service", "redis-exporter", "redis-backup"])
+    end
+
+    def validate_redis_exporter(context)
+      service = context.require_document("Service", "redis-exporter", "mpp-system")
+      if service
+        service_port = Array(service.spec["ports"]).find { |entry| entry["name"] == "metrics" && entry["port"] == 9121 }
+        context.add_error("redis-exporter Service must expose named metrics port 9121") unless service_port
+      end
+
+      deployment = context.require_document("Deployment", "redis-exporter", "mpp-system")
+      return unless deployment
+
+      pod_spec = deployment.pod_spec
+      pod_security = pod_spec["securityContext"] || {}
+      context.add_error("redis-exporter Deployment must not mount service account tokens") unless pod_spec["automountServiceAccountToken"] == false
+      context.add_error("redis-exporter Deployment must run as non-root") unless pod_security["runAsNonRoot"] == true
+      unless pod_security.dig("seccompProfile", "type") == "RuntimeDefault"
+        context.add_error("redis-exporter Deployment must use RuntimeDefault seccomp")
+      end
+
+      container = deployment.container("redis-exporter")
+      return context.add_error("redis-exporter Deployment is missing redis-exporter container") unless container
+
+      context.add_error("redis-exporter container must use oliver006/redis_exporter:v1.86.0") unless container["image"] == "oliver006/redis_exporter:v1.86.0"
+      validate_resources(context, container, "redis-exporter container")
+      validate_redis_exporter_security(context, container)
+      validate_redis_exporter_env(context, container)
+      validate_redis_exporter_probes(context, container)
+    end
+
+    def validate_redis_exporter_security(context, container)
+      security = container["securityContext"] || {}
+      context.add_error("redis-exporter container must forbid privilege escalation") unless security["allowPrivilegeEscalation"] == false
+      drops = Array(security.dig("capabilities", "drop"))
+      context.add_error("redis-exporter container must drop all Linux capabilities") unless drops.include?("ALL")
+    end
+
+    def validate_redis_exporter_env(context, container)
+      env = Array(container["env"]).each_with_object({}) do |entry, result|
+        result[entry["name"]] = entry
+      end
+
+      redis_addr = env.dig("REDIS_ADDR", "value").to_s
+      unless redis_addr.start_with?("redis://", "rediss://")
+        context.add_error("redis-exporter REDIS_ADDR must use redis:// or rediss://")
+      end
+
+      secret = env.dig("REDIS_PASSWORD", "valueFrom", "secretKeyRef")
+      unless secret
+        context.add_error("redis-exporter must read REDIS_PASSWORD from mpp-app-secrets")
+        return
+      end
+      context.add_error("redis-exporter must read REDIS_PASSWORD from mpp-app-secrets") unless secret["name"] == "mpp-app-secrets"
+      context.add_error("redis-exporter must read REDIS_PASSWORD from REDIS_PASSWORD") unless secret["key"] == "REDIS_PASSWORD"
+      context.add_error("redis-exporter REDIS_PASSWORD optional flag is wrong") unless secret["optional"] == true
+    end
+
+    def validate_redis_exporter_probes(context, container)
+      ["readinessProbe", "livenessProbe"].each do |probe_name|
+        probe = container[probe_name] || {}
+        unless probe.dig("httpGet", "path") == "/metrics" && probe.dig("httpGet", "port") == "metrics"
+          context.add_error("redis-exporter container #{probe_name} must check /metrics on the metrics port")
+        end
+      end
     end
 
     def validate_container(context, container, label)

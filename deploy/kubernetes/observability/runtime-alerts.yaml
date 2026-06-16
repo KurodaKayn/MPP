@@ -53,6 +53,73 @@ spec:
           annotations:
             summary: Redis-dependent service readiness checks are failing
             description: A service that requires Redis for production operation is returning readiness failures.
+    - name: mpp.redis-slo
+      rules:
+        - alert: MPPRedisUnavailable
+          expr: max(redis_up{service="redis"}) < 1 or absent(redis_up{service="redis"})
+          for: 5m
+          labels:
+            severity: critical
+            owner: platform
+          annotations:
+            summary: Redis exporter reports Redis unavailable
+            description: redis-exporter cannot reach Redis, or Redis metrics are absent, for at least 5 minutes.
+        - alert: MPPRedisLatencyP99High
+          expr: max(redis_latency_percentiles_usec{service="redis",quantile="0.99"}) / 1000000 > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+          annotations:
+            summary: Redis p99 command latency is high
+            description: Redis p99 command latency reported by Redis latency histograms is above 50 ms.
+        - alert: MPPRedisConnectionErrors
+          expr: |
+            (
+              (sum(rate(redis_rejected_connections_total{service="redis"}[5m])) or vector(0))
+              + (sum(rate(redis_commands_rejected_calls_total{service="redis"}[5m])) or vector(0))
+              + (sum(rate(redis_commands_failed_calls_total{service="redis"}[5m])) or vector(0))
+            ) > 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+          annotations:
+            summary: Redis connection or command errors are occurring
+            description: Redis is rejecting connections, rejecting commands, or reporting failed command calls.
+        - alert: MPPRedisMemoryPressureHigh
+          expr: |
+            (redis_memory_used_bytes{service="redis"} / redis_memory_max_bytes{service="redis"} > 0.85)
+            and redis_memory_max_bytes{service="redis"} > 0
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+          annotations:
+            summary: Redis memory pressure is high
+            description: Redis used memory is above 85% of configured maxmemory.
+        - alert: MPPRedisEvictions
+          expr: |
+            (
+              (sum(rate(redis_evicted_keys_total{service="redis"}[5m])) or vector(0))
+              + (sum(rate(redis_evicted_clients_total{service="redis"}[5m])) or vector(0))
+            ) > 0
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+          annotations:
+            summary: Redis evictions are occurring
+            description: Redis is evicting keys or clients, indicating memory or client pressure.
+        - alert: MPPRedisBlockedClients
+          expr: max(redis_blocked_clients{service="redis"}) > 0
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+          annotations:
+            summary: Redis blocked clients are present
+            description: Redis has blocked clients for at least 5 minutes.
     - name: mpp.publish-worker
       rules:
         - alert: MPPPublishWorkerJobFailures

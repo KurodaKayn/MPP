@@ -122,6 +122,35 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: redis-exporter-observability-metrics
+  namespace: mpp-system
+  annotations:
+    mpp.kurodakayn.dev/networkpolicy-layer: "l4-port-allowlist"
+    mpp.kurodakayn.dev/metrics-scraper-trust: "trusted-namespace"
+    mpp.kurodakayn.dev/metrics-port-scope: "dedicated-metrics-listener"
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: mpp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: redis-exporter
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              mpp.kurodakayn.dev/metrics-scraper: "true"
+      ports:
+        - protocol: TCP
+          port: 9121
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: content-pipeline-observability-metrics
   namespace: mpp-system
   annotations:
