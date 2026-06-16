@@ -17,6 +17,7 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services/compiler"
 )
 
 const (
@@ -28,17 +29,26 @@ const (
 var ErrInvalidGrowthOptimizationRequest = errors.New("invalid growth optimization request")
 
 type GrowthOptimizationService struct {
-	db        *gorm.DB
-	assembler *AIContextAssembler
-	optimizer GrowthOptimizer
+	db            *gorm.DB
+	assembler     *AIContextAssembler
+	optimizer     GrowthOptimizer
+	draftCompiler compiler.ProjectDraftCompiler
 }
 
 func NewGrowthOptimizationService(db *gorm.DB, optimizer GrowthOptimizer) *GrowthOptimizationService {
 	return &GrowthOptimizationService{
-		db:        db,
-		assembler: NewAIContextAssembler(db),
-		optimizer: optimizer,
+		db:            db,
+		assembler:     NewAIContextAssembler(db),
+		optimizer:     optimizer,
+		draftCompiler: compiler.NewContentPipelineDraftCompiler(),
 	}
+}
+
+func (s *GrowthOptimizationService) SetDraftCompiler(draftCompiler compiler.ProjectDraftCompiler) {
+	if s == nil {
+		return
+	}
+	s.draftCompiler = draftCompiler
 }
 
 type GrowthOptimizationProposalEvent struct {
@@ -134,16 +144,43 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 	run.Status = "ready"
 	run.UpdatedAt = time.Now()
 
+	publications, err := s.growthCandidatePublications(ctx, projectID, req.TargetPlatforms)
+	if err != nil {
+		s.markRunTerminal(context.WithoutCancel(ctx), &run, "failed", err.Error())
+		return nil, err
+	}
+
+	requestedPlatforms := make(map[string]struct{}, len(req.TargetPlatforms))
+	for _, platform := range req.TargetPlatforms {
+		requestedPlatforms[platform] = struct{}{}
+	}
+
 	var proposals []models.AIProposal
 	for _, event := range proposalEvents {
+		event.TargetPlatform = strings.TrimSpace(event.TargetPlatform)
+		event.ProposalType = strings.TrimSpace(event.ProposalType)
+		if event.ProposalType == "" || event.TargetPlatform == "" {
+			continue
+		}
+		if _, ok := requestedPlatforms[event.TargetPlatform]; !ok {
+			continue
+		}
+		if event.ProposalType == "prepublish_patch" {
+			adaptedContent, err := s.compileGrowthCandidate(ctx, projectID, req.Title, event, publications)
+			if err != nil {
+				continue
+			}
+			event.QualityChecks = withContentPipelineQualityChecks(event.QualityChecks, adaptedContent)
+		}
+
 		proposal := models.AIProposal{
 			ID:                uuid.New(),
 			WorkspaceID:       snapshot.WorkspaceID,
 			ProjectID:         projectID,
 			RunID:             &run.ID,
 			ContextSnapshotID: snapshot.ID,
-			ProposalType:      strings.TrimSpace(event.ProposalType),
-			TargetPlatform:    strings.TrimSpace(event.TargetPlatform),
+			ProposalType:      event.ProposalType,
+			TargetPlatform:    event.TargetPlatform,
 			Status:            "proposed",
 			Summary:           strings.TrimSpace(event.Summary),
 			Patch:             event.Patch,
@@ -151,14 +188,11 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 			QualityChecks:     jsonMap(event.QualityChecks),
 			CreatedAt:         time.Now(),
 		}
-		if proposal.ProposalType == "" || proposal.TargetPlatform == "" {
-			continue
-		}
 		proposals = append(proposals, proposal)
 	}
 	if len(proposals) == 0 {
-		s.markRunTerminal(context.WithoutCancel(ctx), &run, "failed", "growth optimizer returned no proposals")
-		return nil, fmt.Errorf("%w: no proposals returned", ErrAIServiceUnavailable)
+		s.markRunTerminal(context.WithoutCancel(ctx), &run, "failed", "growth optimizer returned no compilable proposals")
+		return nil, fmt.Errorf("%w: no compilable proposals returned", ErrAIServiceUnavailable)
 	}
 
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -172,6 +206,47 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 	}
 
 	return mapGrowthRunResponse(run, proposals)
+}
+
+func (s *GrowthOptimizationService) growthCandidatePublications(ctx context.Context, projectID uuid.UUID, platforms []string) ([]models.ProjectPlatformPublication, error) {
+	var publications []models.ProjectPlatformPublication
+	if err := s.db.WithContext(ctx).
+		Where("project_id = ? AND platform IN ?", projectID, platforms).
+		Find(&publications).Error; err != nil {
+		return nil, err
+	}
+	return publications, nil
+}
+
+func (s *GrowthOptimizationService) compileGrowthCandidate(ctx context.Context, projectID uuid.UUID, title string, event GrowthOptimizationProposalEvent, publications []models.ProjectPlatformPublication) ([]byte, error) {
+	draftCompiler := s.draftCompiler
+	if draftCompiler == nil {
+		draftCompiler = compiler.NewContentPipelineDraftCompiler()
+	}
+
+	project := &models.Project{
+		ID:            projectID,
+		Title:         strings.TrimSpace(title),
+		SourceContent: strings.TrimSpace(event.FullContent),
+	}
+	compiled, err := draftCompiler.CompileProjectDrafts(ctx, project, publications, []string{event.TargetPlatform})
+	if err != nil {
+		return nil, err
+	}
+	adaptedContent := compiled[event.TargetPlatform]
+	if len(adaptedContent) == 0 {
+		return nil, fmt.Errorf("content pipeline did not compile %q growth candidate", event.TargetPlatform)
+	}
+	return adaptedContent, nil
+}
+
+func withContentPipelineQualityChecks(qualityChecks map[string]any, adaptedContent []byte) map[string]any {
+	if qualityChecks == nil {
+		qualityChecks = make(map[string]any, 2)
+	}
+	qualityChecks["content_pipeline_status"] = "compiled"
+	qualityChecks["content_pipeline_adapted_content"] = json.RawMessage(adaptedContent)
+	return qualityChecks
 }
 
 func (s *GrowthOptimizationService) markRunTerminal(ctx context.Context, run *models.AIGrowthOptimizationRun, status string, message string) {
