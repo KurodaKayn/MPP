@@ -169,6 +169,8 @@ module KubernetesValidation
       config_volume = volumes.find { |volume| volume.dig("configMap", "name") == "redis-persistence-config" }
       context.add_error("self-hosted redis StatefulSet must mount redis-persistence-config") unless config_volume
 
+      validate_self_hosted_redis_runtime_hardening(context, stateful_set, redis_container)
+
       redis_pvc = Array(stateful_set.spec["volumeClaimTemplates"]).find do |claim|
         claim.dig("metadata", "name") == "redis-data"
       end
@@ -181,6 +183,35 @@ module KubernetesValidation
       storage = redis_pvc.dig("spec", "resources", "requests", "storage")
       context.add_error("self-hosted redis-data PVC must use ReadWriteOnce storage") unless access_modes.include?("ReadWriteOnce")
       context.add_error("self-hosted redis-data PVC must request storage") if storage.to_s.empty?
+    end
+
+    def validate_self_hosted_redis_runtime_hardening(context, stateful_set, redis_container)
+      grace_period = stateful_set.pod_spec["terminationGracePeriodSeconds"].to_i
+      if grace_period < 60
+        context.add_error("self-hosted redis StatefulSet must allow at least 60 seconds for graceful termination")
+      end
+
+      ["readinessProbe", "livenessProbe"].each do |probe_name|
+        validate_redis_ping_probe(context, redis_container, probe_name)
+      end
+
+      pre_stop_command = Array(redis_container.dig("lifecycle", "preStop", "exec", "command")).join("\n")
+      unless pre_stop_command.include?("redis-cli") && pre_stop_command.match?(/\bSHUTDOWN\s+SAVE\b/i)
+        context.add_error("self-hosted redis container must run SHUTDOWN SAVE before termination")
+      end
+      unless pre_stop_command.include?("REDIS_PASSWORD")
+        context.add_error("self-hosted redis shutdown hook must support optional REDIS_PASSWORD")
+      end
+    end
+
+    def validate_redis_ping_probe(context, container, probe_name)
+      command = Array(container.dig(probe_name, "exec", "command")).join("\n")
+      unless command.include?("redis-cli") && command.match?(/\bping\b/i)
+        context.add_error("self-hosted redis container #{probe_name} must run redis-cli PING")
+      end
+      unless command.include?("REDIS_PASSWORD")
+        context.add_error("self-hosted redis container #{probe_name} must support optional REDIS_PASSWORD")
+      end
     end
 
     def validate_redis_persistence_common_policy(context, redis_config)

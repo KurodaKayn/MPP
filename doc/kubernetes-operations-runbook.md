@@ -777,6 +777,36 @@ kubectl exec -n "$MPP_APP_NS" statefulset/redis -- sh -ec '
 '
 ```
 
+Health and graceful shutdown check:
+
+```bash
+kubectl get statefulset -n "$MPP_APP_NS" redis -o jsonpath='{.spec.template.spec.terminationGracePeriodSeconds}{"\n"}'
+kubectl get pod -n "$MPP_APP_NS" -l app.kubernetes.io/component=redis
+kubectl exec -n "$MPP_APP_NS" statefulset/redis -- sh -ec '
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping
+  else
+    redis-cli ping
+  fi
+'
+```
+
+Controlled non-production readiness failure:
+
+```bash
+redis_pod="$(kubectl get pod -n "$MPP_APP_NS" -l app.kubernetes.io/component=redis -o jsonpath='{.items[0].metadata.name}')"
+kubectl exec -n "$MPP_APP_NS" "$redis_pod" -- sh -ec 'kill -STOP 1'
+until [ "$(kubectl get pod -n "$MPP_APP_NS" "$redis_pod" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')" = "False" ]; do
+  sleep 5
+done
+kubectl exec -n "$MPP_APP_NS" "$redis_pod" -- sh -ec 'kill -CONT 1'
+kubectl wait -n "$MPP_APP_NS" --for=condition=Ready pod/"$redis_pod" --timeout=120s
+```
+
+Run the failure check only in non-production. It verifies that the readiness
+probe fails when Redis stops serving commands, and that the Pod becomes ready
+again after the process resumes.
+
 Non-production restart check:
 
 ```bash

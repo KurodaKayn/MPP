@@ -396,6 +396,45 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_self_hosted_data_services_require_redis_ping_readiness
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      stateful_set = document(documents, "StatefulSet", "redis", "mpp-system")
+      container = stateful_set.dig("spec", "template", "spec", "containers").find { |entry| entry["name"] == "redis" }
+      container["readinessProbe"] = {
+        "tcpSocket" => { "port" => "redis" },
+        "initialDelaySeconds" => 5,
+        "periodSeconds" => 10,
+        "timeoutSeconds" => 3,
+        "failureThreshold" => 6,
+      }
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted TCP-only redis readiness"
+    assert_includes stderr, "self-hosted redis container readinessProbe must run redis-cli PING"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_self_hosted_data_services_require_redis_graceful_shutdown
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      stateful_set = document(documents, "StatefulSet", "redis", "mpp-system")
+      pod_spec = stateful_set.dig("spec", "template", "spec")
+      pod_spec["terminationGracePeriodSeconds"] = 10
+      container = pod_spec["containers"].find { |entry| entry["name"] == "redis" }
+      container.delete("lifecycle")
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted missing redis graceful shutdown"
+    assert_includes stderr, "self-hosted redis StatefulSet must allow at least 60 seconds for graceful termination"
+    assert_includes stderr, "self-hosted redis container must run SHUTDOWN SAVE before termination"
+  ensure
+    rendered&.unlink
+  end
+
   def test_self_hosted_data_services_require_redis_exporter_network_policy_source
     rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
       policy = document(documents, "NetworkPolicy", "redis-app-access", "mpp-system")

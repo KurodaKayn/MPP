@@ -64,6 +64,7 @@ spec:
         app.kubernetes.io/part-of: mpp
     spec:
       automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
       securityContext:
         fsGroup: 999
         fsGroupChangePolicy: OnRootMismatch
@@ -100,6 +101,18 @@ spec:
                 exec redis-server /usr/local/etc/redis/redis.conf --requirepass "$REDIS_PASSWORD"
               fi
               exec redis-server /usr/local/etc/redis/redis.conf
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -ec
+                  - |
+                    if [ -n "${REDIS_PASSWORD:-}" ]; then
+                      redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SHUTDOWN SAVE || true
+                    else
+                      redis-cli SHUTDOWN SAVE || true
+                    fi
           readinessProbe:
             exec:
               command:
