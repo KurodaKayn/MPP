@@ -796,10 +796,39 @@ Safety limits:
 | `--command-timeout` | `5` seconds | Bounds per-key metadata calls. |
 
 The JSON report is stable for comparison between runs. It contains the observed
-key pattern, declared or inferred owner, read/write services where known, TTL
-policy plus observed TTL range, Redis data type counts, memory usage totals, and
-sample keys. Unknown patterns are preserved with `owner: "unknown"` so the
-responsibility baseline can classify them instead of losing evidence.
+key pattern, declared or inferred owner, read/write services where known,
+responsibility tier, loss tolerance, recovery expectation, TTL policy plus
+observed TTL range, Redis data type counts, memory usage totals, and sample
+keys. Unknown patterns are preserved with `owner: "unknown"` and
+`responsibility_tier: "unclassified"` so the responsibility baseline can
+classify them instead of losing evidence.
+
+### Redis Responsibility Tiers
+
+`script/redis/keyspace_inventory.rb` is the source of declared Redis pattern
+metadata. Every declared pattern must record `responsibility_tier`, `owner`,
+`ttl_policy`, `loss_tolerance`, and `recovery_expectation`. Treat
+`owner_source: "inferred"` or `responsibility_tier: "unclassified"` as a review
+blocker for any new Redis family.
+
+| Tier | Label | Use When | Review Expectation |
+| --- | --- | --- | --- |
+| `R0` | Critical coordination | Redis gates concurrency, lock ownership, idempotency, or mutual exclusion. | Confirm the durable source of truth and how work is prevented from running twice after Redis loss. |
+| `R1` | User continuity | Redis holds short-lived user flow state that cannot be recomputed without user action. | Confirm the user-facing retry path and that durable account or project state is not lost. |
+| `R2` | Performance cache | Redis stores data that is recomputed from PostgreSQL, object storage, or another durable service. | Confirm TTL, invalidation, and stale-read bounds. |
+| `R3` | Ephemeral signal | Redis stores hints such as heartbeat, cleanup, or throttle state. | Confirm stale signals are revalidated before destructive action. |
+| `R4` | Queue-like usage | Redis stores queued, scheduled, retained, or worker-owned task state. | Confirm replay, reconciliation, or operator recovery from durable domain records. |
+
+Classification guidance:
+
+- Prefer the highest-impact tier when a pattern serves multiple purposes. For
+  example, a cache key that also guards idempotency should be `R0`, not `R2`.
+- Assign ownership to the service or library responsible for writes and
+  recovery, not merely the service that reads the key.
+- Review expected TTLs against observed `PTTL` output. Keys with no Redis TTL
+  must still describe how stale members are pruned or regenerated.
+- For new Redis usage, add the declared pattern and responsibility metadata
+  before merging the feature that writes the key.
 
 ## PostgreSQL Incident
 
