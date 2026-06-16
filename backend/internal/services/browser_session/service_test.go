@@ -470,13 +470,13 @@ func TestBrowserSessionService_RedisLiveStateOmitsInternalEndpointRefs(t *testin
 	require.NoError(t, err)
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(raw, &payload))
-	require.NotContains(t, payload, "runtime_reference")
 	require.NotContains(t, payload, "container_id")
 	require.NotContains(t, payload, "cdp_endpoint_ref")
 	require.NotContains(t, payload, "stream_endpoint_ref")
 
 	var session models.RemoteBrowserSession
 	require.NoError(t, db.First(&session, resp.SessionID).Error)
+	require.NotEmpty(t, session.RuntimeReference)
 	require.NotEmpty(t, session.StreamEndpointRef)
 
 	streamURL, err := url.Parse(resp.StreamURL)

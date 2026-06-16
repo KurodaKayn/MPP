@@ -2,12 +2,14 @@ package browsersession
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -168,11 +170,17 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 	}
 
 	// 5. Update session with worker info
+	runtimeReference, err := json.Marshal(resp.RuntimeReference)
+	if err != nil {
+		_ = s.workerClient.StopSession(ctx, resp.WorkerSessionRef)
+		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, resp.WorkerSessionRef)
+		_ = s.writerDB(ctx).Model(session).Update("status", models.BrowserSessionStatusFailed).Error
+		return nil, fmt.Errorf("worker returned invalid runtime reference: %w", err)
+	}
 	err = s.writerDB(ctx).Model(session).Updates(map[string]any{
 		"status":              models.BrowserSessionStatusReady,
 		"worker_session_ref":  resp.WorkerSessionRef,
-		"container_id":        resp.ContainerID,
-		"cdp_endpoint_ref":    resp.CDPEndpointRef,
+		"runtime_reference":   datatypes.JSON(runtimeReference),
 		"stream_endpoint_ref": resp.StreamEndpointRef,
 	}).Error
 	if err != nil {
@@ -182,8 +190,7 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 	}
 	session.Status = models.BrowserSessionStatusReady
 	session.WorkerSessionRef = resp.WorkerSessionRef
-	session.ContainerID = resp.ContainerID
-	session.CDPEndpointRef = resp.CDPEndpointRef
+	session.RuntimeReference = datatypes.JSON(runtimeReference)
 	session.StreamEndpointRef = resp.StreamEndpointRef
 
 	if err := s.saveRedisLiveSession(ctx, browserSessionLiveState{
