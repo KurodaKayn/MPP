@@ -774,12 +774,16 @@ REDIS_ADDR=redis.example.invalid:6379 \
 REDIS_PASSWORD=... \
 REDIS_DB=0 \
 ruby script/redis/keyspace_inventory.rb \
-  --match 'mpp:*' \
   --scan-count 100 \
   --max-keys 10000 \
   --sample-limit 3 \
   > redis-keyspace-inventory.json
 ```
+
+Keep the default `--match '*'` for the first baseline so non-`mpp:*` families
+such as `auth:*` verification keys and `asynq:*` worker queue metadata are not
+missed. Use `--match` only for targeted follow-up scans, or run one scan per
+family such as `auth:*`, `mpp:*`, and `asynq:*`.
 
 Safety limits:
 
