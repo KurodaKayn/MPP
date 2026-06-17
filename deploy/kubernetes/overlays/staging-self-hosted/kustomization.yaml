@@ -4,6 +4,7 @@ resources:
   - ../../browser-runtime-control
   - ../../app-baseline
   - ../../data-services/self-hosted
+  - ../../data-services/redis-ha-nonprod
 
 patches:
   - path: runtime-image-patch.yaml
