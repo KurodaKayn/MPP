@@ -1517,6 +1517,11 @@ Promotion checklist:
 - Container Images workflow completed for the target Git SHA.
 - For production-managed releases, pin the overlay with
   `ruby script/kubernetes/pin-overlay-images.rb --overlay deploy/kubernetes/overlays/production-managed --git-sha <full-git-sha>`.
+- For provider-specific production overlays, run the `Kubernetes Image
+  Promotion` workflow with the target overlay, full Git SHA, and image
+  namespace, then review and apply the generated `promotion.patch`. Enable
+  strict deployable validation only when the overlay already uses production
+  hosts, secrets, and immutable images.
 - All app and browser runtime image tags use `sha-<full-git-sha>`.
 - The staging overlay has run successfully with the target images.
 - Kubernetes render validation passes.
