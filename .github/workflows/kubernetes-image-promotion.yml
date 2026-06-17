@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: kubernetes-image-promotion-${{ inputs.overlay }}
@@ -56,6 +57,17 @@ jobs:
       - name: Install kubeconform
         run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        if: startsWith(inputs.image_namespace, 'ghcr.io/')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Pin overlay images
         shell: bash
         env:
@@ -69,6 +81,30 @@ jobs:
             --overlay "$PROMOTION_OVERLAY" \
             --git-sha "$PROMOTION_GIT_SHA" \
             --image-namespace "$PROMOTION_IMAGE_NAMESPACE"
+
+      - name: Verify promoted image tags
+        shell: bash
+        env:
+          PROMOTION_GIT_SHA: ${{ inputs.git_sha }}
+          PROMOTION_IMAGE_NAMESPACE: ${{ inputs.image_namespace }}
+        run: |
+          set -euo pipefail
+
+          tag="sha-${PROMOTION_GIT_SHA}"
+          repositories=(
+            mpp-frontend
+            mpp-backend
+            mpp-browser-worker
+            mpp-browser-runtime
+            mpp-ai-service
+            mpp-content-pipeline-service
+            mpp-collab-service
+          )
+
+          for repository in "${repositories[@]}"; do
+            image="${PROMOTION_IMAGE_NAMESPACE}/${repository}:${tag}"
+            docker buildx imagetools inspect "$image" >/dev/null
+          done
 
       - name: Render and validate overlay
         shell: bash
