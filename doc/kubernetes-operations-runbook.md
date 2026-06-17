@@ -977,6 +977,225 @@ The probe key should remain after the restart. The short-TTL key may be absent;
 that is expected. Do not use this check in production without a maintenance
 window because it deletes the Redis Pod.
 
+## Production HA Redis Cutover
+
+Use this procedure for Phase 2 production cutover from the existing self-hosted
+Redis StatefulSet to the self-hosted HA Redis topology. Do not use it for
+managed Redis or Redis Cluster migrations.
+
+Prerequisites:
+
+- #311 client failover validation is complete in non-production.
+- #312 migration rehearsal is complete in non-production, with the report
+  attached to the change record.
+- The approved maintenance window, operator, rollback owner, and escalation
+  contact are recorded.
+- `mpp-app-secrets` contains `REDIS_PASSWORD`, and both the existing Redis and
+  HA Redis Pods read the same value.
+- The source Redis backup or storage snapshot for the cutover window exists
+  and its restore path is known.
+- The target overlay renders and validates:
+
+```bash
+rendered="$(mktemp)"
+kubectl kustomize deploy/kubernetes/overlays/production-self-hosted-ha > "$rendered"
+MPP_KUBERNETES_VALIDATE_DEPLOYABLE=1 \
+  ruby script/kubernetes/validate-rendered-manifests.rb \
+  deploy/kubernetes/overlays/production-self-hosted-ha \
+  "$rendered"
+```
+
+Production prechecks:
+
+```bash
+kubectl get configmap -n "$MPP_APP_NS" mpp-app-config \
+  -o jsonpath='{.data.APP_ENV}{" "}{.data.REDIS_ENDPOINT_MODE}{" "}{.data.REDIS_ADDR}{"\n"}'
+kubectl get secret -n "$MPP_APP_NS" mpp-app-secrets \
+  -o jsonpath='{.data.REDIS_PASSWORD}' | wc -c
+kubectl rollout status statefulset/redis -n "$MPP_APP_NS" --timeout=5m
+```
+
+Prepare the HA target without changing application Redis traffic:
+
+```bash
+kubectl apply -k deploy/kubernetes/data-services/redis-ha-production
+kubectl rollout status statefulset/redis-ha-primary -n "$MPP_APP_NS" --timeout=5m
+kubectl rollout status statefulset/redis-ha-replica -n "$MPP_APP_NS" --timeout=5m
+kubectl rollout status statefulset/redis-ha-sentinel -n "$MPP_APP_NS" --timeout=5m
+kubectl get svc -n "$MPP_APP_NS" redis redis-ha-primary redis-ha-replicas redis-ha-sentinel
+kubectl get configmap -n "$MPP_APP_NS" mpp-app-config \
+  -o jsonpath='{.data.REDIS_ENDPOINT_MODE}{" "}{.data.REDIS_ADDR}{"\n"}'
+```
+
+Expected result: `mpp-app-config` still reports `direct redis:6379`; only the
+HA Redis target has been added.
+
+Confirm the HA target is healthy:
+
+```bash
+kubectl exec -n "$MPP_APP_NS" statefulset/redis-ha-replica -- sh -ec '
+  redis_cli() {
+    if [ -n "${REDIS_PASSWORD:-}" ]; then
+      redis-cli --raw --no-auth-warning -a "$REDIS_PASSWORD" "$@"
+    else
+      redis-cli --raw "$@"
+    fi
+  }
+  redis_cli INFO replication | tr -d "\r" | grep -E "role:|master_link_status:"
+'
+kubectl exec -n "$MPP_APP_NS" statefulset/redis-ha-sentinel -- sh -ec '
+  redis-cli -p 26379 SENTINEL get-master-addr-by-name mpp-redis-ha
+  redis-cli -p 26379 SENTINEL ckquorum mpp-redis-ha
+'
+```
+
+Freeze or control risky writes according to the change record before the final
+copy. At minimum, pause non-critical publish execution and avoid starting new
+remote-browser login sessions while the final Redis copy runs. If the product
+cannot pause a flow cleanly, keep the window short, record the accepted risk,
+and prepare user retry messaging for R1 user-continuity keys.
+
+Capture a pre-cutover keyspace inventory from the existing Redis:
+
+```bash
+kubectl exec -n "$MPP_APP_NS" statefulset/redis -- sh -ec '
+  if [ -n "${REDIS_PASSWORD:-}" ]; then
+    export REDISCLI_AUTH="$REDIS_PASSWORD"
+  fi
+  redis-cli --no-auth-warning DBSIZE
+'
+
+REDIS_ADDR=redis:6379 \
+ruby script/redis/keyspace_inventory.rb \
+  --max-keys 50000 \
+  > redis-production-before-cutover.json
+```
+
+Review the inventory before copying data:
+
+- No pattern with `responsibility_tier: "unclassified"` is accepted without an
+  owner decision in the change record.
+- R0 keys have a durable source of truth or fail-closed behavior documented.
+- R1 keys have a user retry path for expired or missing state.
+- R4 keys have replay, reconciliation, or operator recovery from durable domain
+  records.
+- Short-TTL R3 keys may expire during the window; record that as expected if it
+  appears in the migration report.
+
+Migrate production Redis data while app traffic still uses direct mode:
+
+```bash
+MPP_APP_NS="$MPP_APP_NS" \
+MPP_REDIS_MIGRATION_ALLOW_PRODUCTION=1 \
+MPP_REDIS_MIGRATION_ALLOW_TARGET_FLUSH=1 \
+ruby script/kubernetes/redis-ha-migration-rehearsal.rb \
+  --allow-production \
+  --allow-target-flush \
+  --max-keys 50000 \
+  --sample-limit 100 \
+  --ttl-tolerance-ms 10000 \
+  --report redis-production-ha-cutover-migration.json
+```
+
+Expected migration result:
+
+- `summary.source_vs_target_key_count_diff=0`, or the only differences are
+  documented short-TTL expirations.
+- `summary.sample_value_matches` equals `summary.sampled_keys`.
+- `summary.sample_ttl_mismatches=0`, except for documented expected TTL drift.
+- `warnings` is empty or explicitly accepted by the rollback owner.
+
+Switch app configuration to the HA endpoint:
+
+```bash
+kubectl apply -k deploy/kubernetes/overlays/production-self-hosted-ha
+kubectl rollout restart deployment/backend deployment/publish-worker \
+  deployment/browser-worker deployment/collab-service -n "$MPP_APP_NS"
+kubectl rollout status deployment/backend -n "$MPP_APP_NS" --timeout=5m
+kubectl rollout status deployment/publish-worker -n "$MPP_APP_NS" --timeout=5m
+kubectl rollout status deployment/browser-worker -n "$MPP_APP_NS" --timeout=5m
+kubectl rollout status deployment/collab-service -n "$MPP_APP_NS" --timeout=5m
+```
+
+Confirm the running Pods use Sentinel mode and keep the old direct endpoint for
+rollback:
+
+```bash
+kubectl get configmap -n "$MPP_APP_NS" mpp-app-config \
+  -o jsonpath='{.data.REDIS_ENDPOINT_MODE}{" "}{.data.REDIS_SENTINEL_ADDRS}{" "}{.data.REDIS_ADDR}{"\n"}'
+kubectl logs -n "$MPP_APP_NS" deployment/backend --tail=200 | grep -i redis || true
+kubectl logs -n "$MPP_APP_NS" deployment/publish-worker --tail=200 | grep -i redis || true
+kubectl logs -n "$MPP_APP_NS" deployment/browser-worker --tail=200 | grep -i redis || true
+kubectl logs -n "$MPP_APP_NS" deployment/collab-service --tail=200 | grep -i redis || true
+```
+
+Monitor for the full validation window:
+
+- Redis availability, p99 command latency, memory headroom, evictions, blocked
+  clients, connected clients, and exporter scrape health.
+- Application Redis errors in `backend`, `publish-worker`, `browser-worker`,
+  and `collab-service`.
+- Publish failures, browser-session failures, auth-code failures, rate-limit
+  anomalies, and collaboration sync errors.
+- Cache hit rate or cold-cache amplification where available.
+
+Run a production failover drill after cutover or inside the agreed validation
+window:
+
+```bash
+MPP_APP_NS="$MPP_APP_NS" \
+MPP_REDIS_FAILOVER_ALLOW_PRODUCTION=1 \
+MPP_REDIS_SENTINEL_MASTER_NAME=mpp-redis-ha \
+MPP_REDIS_FAILOVER_TARGET_SECONDS=300 \
+script/kubernetes/redis-ha-failover-drill.sh
+```
+
+Expected result:
+
+- Sentinel elects a new master.
+- App readiness recovers.
+- The backend write/read probe succeeds.
+- `observed_recovery_seconds` is less than or equal to `300`.
+
+Rollback before declaring the soak successful:
+
+```bash
+kubectl patch configmap mpp-app-config -n "$MPP_APP_NS" --type merge -p \
+  '{"data":{"REDIS_ENDPOINT_MODE":"direct","REDIS_ADDR":"redis:6379"}}'
+kubectl rollout restart deployment/backend deployment/publish-worker \
+  deployment/browser-worker deployment/collab-service -n "$MPP_APP_NS"
+kubectl rollout status deployment/backend -n "$MPP_APP_NS" --timeout=5m
+kubectl rollout status deployment/publish-worker -n "$MPP_APP_NS" --timeout=5m
+kubectl rollout status deployment/browser-worker -n "$MPP_APP_NS" --timeout=5m
+kubectl rollout status deployment/collab-service -n "$MPP_APP_NS" --timeout=5m
+```
+
+If the old Redis data must be restored, first stop Redis writers, then follow
+the Redis restore procedure in this runbook using the pre-cutover snapshot.
+Do not delete `redis-ha-*` PVCs until the rollback decision and data retention
+requirements are closed.
+
+Record after cutover:
+
+```text
+Change record:
+Overlay path:
+Git SHA:
+Operator:
+Rollback owner:
+Window start:
+Window end:
+Source Redis backup/snapshot:
+Migration report:
+Pre-cutover inventory:
+Post-cutover failover drill result:
+Observed recovery seconds:
+Redis alerts during window:
+Application errors during window:
+Rollback decision:
+Follow-up issues:
+```
+
 ## Redis Runtime Hardening
 
 The self-hosted Redis runtime policy is versioned in the
@@ -1658,6 +1877,8 @@ Promotion checklist:
 - Container Images workflow completed for the target Git SHA.
 - For production-managed releases, pin the overlay with
   `ruby script/kubernetes/pin-overlay-images.rb --overlay deploy/kubernetes/overlays/production-managed --git-sha <full-git-sha>`.
+- For Phase 2 production self-hosted HA Redis cutovers, pin the overlay with
+  `ruby script/kubernetes/pin-overlay-images.rb --overlay deploy/kubernetes/overlays/production-self-hosted-ha --git-sha <full-git-sha>`.
 - For provider-specific production overlays, run the `Kubernetes Image
   Promotion` workflow with the target overlay, full Git SHA, and image
   namespace, then review and apply the generated `promotion.patch`. The
