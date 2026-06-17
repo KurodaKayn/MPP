@@ -97,6 +97,7 @@ module KubernetesValidation
       "pgbouncer-app-access",
       "pgbouncer-reader-app-access",
       "redis-app-access",
+      "redis-ha-internal-access",
     ].freeze
 
     module_function

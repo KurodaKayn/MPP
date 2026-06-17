@@ -6,6 +6,7 @@ and Redis in-cluster. It combines:
 - `deploy/kubernetes/browser-runtime-control`
 - `deploy/kubernetes/app-baseline`
 - `deploy/kubernetes/data-services/self-hosted`
+- `deploy/kubernetes/data-services/redis-ha-nonprod`
 
 The checked-in values are intentionally non-production:
 
@@ -23,6 +24,10 @@ The checked-in values are intentionally non-production:
   cadence. It also inherits `maxmemory 384mb`, `maxmemory-policy noeviction`,
   `timeout 0`, `tcp-keepalive 300`, and bounded slowlog retention from the
   self-hosted data-services base.
+- HA Redis validation resources deploy beside the existing Redis instance as
+  `redis-ha-primary`, `redis-ha-replica`, and `redis-ha-sentinel`. They do not
+  change `REDIS_ADDR=redis:6379`, so app traffic stays on the existing
+  single-instance Redis while the HA topology is validated.
 
 Before applying this overlay to a shared staging cluster:
 
@@ -38,6 +43,9 @@ Before applying this overlay to a shared staging cluster:
 - Patch `redis-persistence-config` only if staging intentionally chooses a
   different Redis data-loss profile. Document any change from the base
   AOF-plus-RDB policy in this file before applying it.
+- Remove `../../data-services/redis-ha-nonprod` from this overlay to roll back
+  the parallel HA validation topology. The existing `redis` Service and
+  application Redis traffic are unaffected.
 - Patch the `mpp-data-backups` PVC, `postgres-backup` and `redis-backup`
   schedules, and `BACKUP_RETENTION_DAYS` before keeping useful staging data in
   the StatefulSets.
