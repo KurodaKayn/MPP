@@ -87,30 +87,49 @@ spec:
           annotations:
             summary: Redis connection or command errors are occurring
             description: Redis is rejecting connections, rejecting commands, or reporting failed command calls.
-        - alert: MPPRedisMemoryPressureHigh
+        - alert: MPPRedisMemoryHeadroomLow
           expr: |
-            (redis_memory_used_bytes{service="redis"} / redis_memory_max_bytes{service="redis"} > 0.85)
-            and redis_memory_max_bytes{service="redis"} > 0
+            (
+              (
+                max(redis_memory_max_bytes{service="redis"})
+                - max(redis_memory_used_bytes{service="redis"})
+              )
+              / max(redis_memory_max_bytes{service="redis"}) < 0.15
+            )
+            and max(redis_memory_max_bytes{service="redis"}) > 0
           for: 15m
           labels:
             severity: warning
             owner: platform
           annotations:
-            summary: Redis memory pressure is high
-            description: Redis used memory is above 85% of configured maxmemory.
-        - alert: MPPRedisEvictions
+            summary: Redis memory headroom is low
+            description: Redis has less than 15% memory headroom below configured maxmemory for at least 15 minutes.
+        - alert: MPPRedisUnexpectedKeyEvictions
           expr: |
-            (
-              (sum(rate(redis_evicted_keys_total{service="redis"}[5m])) or vector(0))
-              + (sum(rate(redis_evicted_clients_total{service="redis"}[5m])) or vector(0))
-            ) > 0
+            sum(rate(redis_evicted_keys_total{service="redis"}[5m])) > 0
+            and on()
+            max(redis_instance_info{service="redis",maxmemory_policy="noeviction"}) == 1
           for: 5m
           labels:
             severity: warning
             owner: platform
           annotations:
-            summary: Redis evictions are occurring
-            description: Redis is evicting keys or clients, indicating memory or client pressure.
+            summary: Redis is evicting keys while noeviction is configured
+            description: Redis key evictions are occurring even though the configured maxmemory policy is noeviction.
+        - alert: MPPRedisConnectionCountHigh
+          expr: |
+            (
+              max(redis_connected_clients{service="redis"})
+              / max(redis_config_maxclients{service="redis"})
+            ) > 0.8
+            and max(redis_config_maxclients{service="redis"}) > 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+          annotations:
+            summary: Redis connection usage is high
+            description: Redis connected clients are above 80% of configured maxclients.
         - alert: MPPRedisBlockedClients
           expr: max(redis_blocked_clients{service="redis"}) > 0
           for: 5m

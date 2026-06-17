@@ -17,9 +17,32 @@ module KubernetesValidation
       "MPPRedisUnavailable" => "critical",
       "MPPRedisLatencyP99High" => "warning",
       "MPPRedisConnectionErrors" => "warning",
-      "MPPRedisMemoryPressureHigh" => "warning",
-      "MPPRedisEvictions" => "warning",
+      "MPPRedisMemoryHeadroomLow" => "warning",
+      "MPPRedisUnexpectedKeyEvictions" => "warning",
+      "MPPRedisConnectionCountHigh" => "warning",
       "MPPRedisBlockedClients" => "warning",
+    }.freeze
+
+    REDIS_ALERT_EXPR_REQUIREMENTS = {
+      "MPPRedisLatencyP99High" => [
+        "redis_latency_percentiles_usec",
+        'quantile="0.99"',
+      ],
+      "MPPRedisMemoryHeadroomLow" => [
+        "redis_memory_max_bytes",
+        "redis_memory_used_bytes",
+        "< 0.15",
+      ],
+      "MPPRedisUnexpectedKeyEvictions" => [
+        "redis_evicted_keys_total",
+        "redis_instance_info",
+        'maxmemory_policy="noeviction"',
+      ],
+      "MPPRedisConnectionCountHigh" => [
+        "redis_connected_clients",
+        "redis_config_maxclients",
+        "> 0.8",
+      ],
     }.freeze
 
     def validate(context)
@@ -110,6 +133,18 @@ module KubernetesValidation
         end
         unless labels["owner"] == "platform"
           context.add_error("#{alert_name} must label owner=platform")
+        end
+      end
+
+      REDIS_ALERT_EXPR_REQUIREMENTS.each do |alert_name, required_fragments|
+        alert = alert_rules.find { |entry| entry["alert"] == alert_name }
+        next unless alert
+
+        expr = alert["expr"].to_s
+        required_fragments.each do |fragment|
+          next if expr.include?(fragment)
+
+          context.add_error("#{alert_name} expression must include #{fragment}")
         end
       end
     end

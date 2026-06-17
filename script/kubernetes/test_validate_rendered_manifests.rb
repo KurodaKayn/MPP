@@ -302,6 +302,26 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_observability_redis_capacity_alerts_require_guardrail_signals
+    rendered = mutated_render("deploy/kubernetes/observability") do |documents|
+      rule = document(documents, "PrometheusRule", "mpp-browser-runtime-alerts", "mpp-observability")
+      alerts = rule.dig("spec", "groups").flat_map { |group| Array(group["rules"]) }
+      eviction_alert = alerts.find { |alert| alert["alert"] == "MPPRedisUnexpectedKeyEvictions" }
+      connection_alert = alerts.find { |alert| alert["alert"] == "MPPRedisConnectionCountHigh" }
+      eviction_alert["expr"] = "sum(rate(redis_evicted_keys_total{service=\"redis\"}[5m])) > 0"
+      connection_alert["expr"] = connection_alert["expr"].gsub("redis_config_maxclients", "redis_max_clients")
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/observability", rendered.path)
+
+    refute status.success?, "observability validation unexpectedly accepted weak Redis capacity alerts"
+    assert_includes stderr, "MPPRedisUnexpectedKeyEvictions expression must include redis_instance_info"
+    assert_includes stderr, "MPPRedisUnexpectedKeyEvictions expression must include maxmemory_policy=\"noeviction\""
+    assert_includes stderr, "MPPRedisConnectionCountHigh expression must include redis_config_maxclients"
+  ensure
+    rendered&.unlink
+  end
+
   def test_self_hosted_data_services_reject_missing_backup_cronjob
     rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
       documents.reject! do |entry|

@@ -13,8 +13,9 @@ It provides:
   package is installed.
 - PrometheusRule alerts for browser runtime startup failures, cleanup failures,
   cleanup lag, service readiness failures, Redis-dependent readiness failures,
-  Redis availability, p95/p99 latency, connection errors, memory pressure,
-  evictions, blocked clients, and publish-worker job failures.
+  Redis availability, p99 command latency, connection errors, memory headroom,
+  key evictions under the configured `noeviction` policy, connection count
+  pressure, blocked clients, and publish-worker job failures.
 
 Required overlay inputs:
 
@@ -35,7 +36,10 @@ Required overlay inputs:
 
 Redis metrics come from the `deploy/kubernetes/data-services/redis-exporter`
 package, which connects to the `redis` Service and exports availability,
-latency, memory, eviction, and blocked-client metrics.
+latency, memory, eviction, connection, and blocked-client metrics. The Redis
+connection-count guardrail depends on exporter access to `CONFIG GET maxclients`;
+if `redis_config_maxclients` is absent, fix the Redis exporter ACL or provider
+configuration before relying on that alert.
 
 The Alloy configuration keeps Docker discovery out of Kubernetes deployments and
 uses Pod labels for `service`, `namespace`, `pod`, `container`, `platform`, and

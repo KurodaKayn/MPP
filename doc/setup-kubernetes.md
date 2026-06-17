@@ -322,8 +322,9 @@ route, status, and latency when services emit JSON request logs.
 The package also adds PodMonitor resources for application metrics and Redis
 exporter metrics, plus PrometheusRule alerts for browser runtime startup
 failures, cleanup failures, cleanup lag, service readiness failures,
-Redis-dependent readiness failures, Redis availability, Redis p95/p99 latency,
-Redis connection errors, Redis memory pressure, Redis evictions, blocked
+Redis-dependent readiness failures, Redis availability, Redis p99 command
+latency, Redis connection errors, low Redis memory headroom, unexpected Redis
+key evictions under `noeviction`, Redis connection count pressure, blocked
 clients, and publish-worker job failures. It labels `mpp-observability` as a
 metrics-scraper namespace and allows that namespace to scrape app metrics. If
 Prometheus runs elsewhere, add `mpp.kurodakayn.dev/metrics-scraper=true` to its
