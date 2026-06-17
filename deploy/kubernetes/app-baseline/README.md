@@ -14,7 +14,9 @@ Required overlay inputs:
 - PostgreSQL TLS policy through `DB_SSLMODE`; the baseline defaults to
   `verify-full` for managed production databases. Set `DB_SSLROOTCERT` when a
   provider or private CA requires a custom root certificate path.
-- A reachable Redis endpoint through `REDIS_ADDR` or an in-cluster Service.
+- A reachable Redis endpoint through `REDIS_ENDPOINT_MODE=direct` and
+  `REDIS_ADDR`, or through `REDIS_ENDPOINT_MODE=sentinel` with
+  `REDIS_SENTINEL_ADDRS` and `REDIS_SENTINEL_MASTER_NAME`.
 - Public collaboration routing through `COLLAB_WEBSOCKET_URL_BASE`.
 - Public HTTP routing through the `mpp-public-gateway` Ingress. The baseline
   routes `/collab` to `collab-service` for WebSocket traffic and all remaining
