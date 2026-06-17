@@ -417,7 +417,7 @@ module KubernetesValidation
         .flat_map { |entry| Array(entry.dig("podSelector", "matchExpressions")) }
         .select { |entry| entry["key"] == "app.kubernetes.io/component" }
         .flat_map { |entry| Array(entry["values"]) }
-      ["redis-ha-primary", "redis-ha-replica", "redis-ha-sentinel"].each do |component|
+      ["redis-ha-primary", "redis-ha-replica", "redis-ha-sentinel", "backend", "publish-worker", "browser-worker", "collab-service"].each do |component|
         unless from_components.include?(component)
           context.add_error("non-prod HA Redis NetworkPolicy must allow #{component} ingress")
         end
@@ -430,8 +430,22 @@ module KubernetesValidation
 
     def validate_redis_ha_keeps_existing_traffic(context)
       app_config = context.document("ConfigMap", "mpp-app-config", "mpp-system")
-      if app_config && app_config.data["REDIS_ADDR"] != "redis:6379"
-        context.add_error("non-prod HA Redis validation must keep app REDIS_ADDR on existing redis:6379")
+      if app_config
+        case app_config.data["REDIS_ENDPOINT_MODE"]
+        when nil, "", "direct"
+          if app_config.data["REDIS_ADDR"] != "redis:6379"
+            context.add_error("non-prod HA Redis validation must keep app REDIS_ADDR on existing redis:6379")
+          end
+        when "sentinel"
+          if app_config.data["REDIS_SENTINEL_ADDRS"].to_s != "redis-ha-sentinel:26379"
+            context.add_error("non-prod HA Redis validation must point REDIS_SENTINEL_ADDRS at redis-ha-sentinel:26379")
+          end
+          if app_config.data["REDIS_SENTINEL_MASTER_NAME"].to_s != "mpp-redis-ha"
+            context.add_error("non-prod HA Redis validation must keep REDIS_SENTINEL_MASTER_NAME on mpp-redis-ha")
+          end
+        else
+          context.add_error("non-prod HA Redis validation must use direct or sentinel endpoint mode")
+        end
       end
 
       existing_redis = context.document("Service", "redis", "mpp-system")
