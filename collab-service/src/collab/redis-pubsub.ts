@@ -208,13 +208,15 @@ export function redisClientOptionsFromConfig(
 export function redisSentinelOptionsFromConfig(
   config: CollabConfig,
 ): RedisSentinelOptions {
+  const socket = config.REDIS_TLS ? { tls: true } : undefined;
   return {
     name: config.REDIS_SENTINEL_MASTER_NAME,
     sentinelRootNodes: redisSentinelRootNodesFromConfig(config),
+    sentinelClientOptions: socket ? { socket } : undefined,
     nodeClientOptions: {
       database: config.REDIS_DB,
       password: config.REDIS_PASSWORD || undefined,
-      socket: config.REDIS_TLS ? { tls: true } : undefined,
+      socket,
     },
   };
 }

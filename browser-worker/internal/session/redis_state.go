@@ -15,15 +15,16 @@ import (
 )
 
 const (
-	redisEndpointModeEnv      = "REDIS_ENDPOINT_MODE"
-	redisAddrEnv              = "REDIS_ADDR"
-	redisPasswordEnv          = "REDIS_PASSWORD"
-	redisDBEnv                = "REDIS_DB"
-	redisTLSEnv               = "REDIS_TLS"
-	redisSentinelAddrsEnv     = "REDIS_SENTINEL_ADDRS"
-	redisSentinelMasterEnv    = "REDIS_SENTINEL_MASTER_NAME"
-	redisEndpointModeDirect   = "direct"
-	redisEndpointModeSentinel = "sentinel"
+	redisEndpointModeEnv       = "REDIS_ENDPOINT_MODE"
+	redisAddrEnv               = "REDIS_ADDR"
+	redisPasswordEnv           = "REDIS_PASSWORD"
+	redisDBEnv                 = "REDIS_DB"
+	redisTLSEnv                = "REDIS_TLS"
+	redisSentinelAddrsEnv      = "REDIS_SENTINEL_ADDRS"
+	redisSentinelMasterEnv     = "REDIS_SENTINEL_MASTER_NAME"
+	redisEndpointModeDirect    = "direct"
+	redisEndpointModeSentinel  = "sentinel"
+	redisSentinelMasterDefault = "mpp-redis-ha"
 
 	browserSessionKeyPrefix       = "mpp:browser:session:"
 	browserSessionHeartbeatPrefix = "mpp:browser:worker-heartbeat:"
@@ -112,11 +113,11 @@ func redisConnectionConfigFromEnv() (redisConnectionConfig, error) {
 	case redisEndpointModeSentinel:
 		config.SentinelAddrs = redisCSVEnv(redisSentinelAddrsEnv)
 		config.SentinelMasterName = strings.TrimSpace(os.Getenv(redisSentinelMasterEnv))
+		if config.SentinelMasterName == "" {
+			config.SentinelMasterName = redisSentinelMasterDefault
+		}
 		if len(config.SentinelAddrs) == 0 {
 			return redisConnectionConfig{}, fmt.Errorf("%s must be set when %s=sentinel", redisSentinelAddrsEnv, redisEndpointModeEnv)
-		}
-		if config.SentinelMasterName == "" {
-			return redisConnectionConfig{}, fmt.Errorf("%s must be set when %s=sentinel", redisSentinelMasterEnv, redisEndpointModeEnv)
 		}
 	}
 

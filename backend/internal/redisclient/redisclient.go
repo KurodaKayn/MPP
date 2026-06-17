@@ -31,8 +31,9 @@ const (
 var ErrNotConfigured = errors.New("redis is not configured")
 
 const (
-	endpointModeDirect   = "direct"
-	endpointModeSentinel = "sentinel"
+	endpointModeDirect    = "direct"
+	endpointModeSentinel  = "sentinel"
+	sentinelMasterDefault = "mpp-redis-ha"
 )
 
 type Config struct {
@@ -83,11 +84,11 @@ func ConfigFromEnv() (Config, error) {
 	case endpointModeSentinel:
 		config.SentinelAddrs = csvEnv(sentinelAddrsEnv)
 		config.SentinelMasterName = strings.TrimSpace(os.Getenv(sentinelMasterEnv))
+		if config.SentinelMasterName == "" {
+			config.SentinelMasterName = sentinelMasterDefault
+		}
 		if len(config.SentinelAddrs) == 0 {
 			return Config{}, fmt.Errorf("%s must be set when %s=sentinel", sentinelAddrsEnv, endpointModeEnv)
-		}
-		if config.SentinelMasterName == "" {
-			return Config{}, fmt.Errorf("%s must be set when %s=sentinel", sentinelMasterEnv, endpointModeEnv)
 		}
 	}
 
