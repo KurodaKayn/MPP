@@ -1,8 +1,12 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "pathname"
 require "tempfile"
 require "yaml"
+
+require_relative "image_namespace"
+require_relative "overlay_classification"
 
 module KubernetesOverlayImages
   DEFAULT_IMAGE_NAMESPACE = "ghcr.io/kurodakayn"
@@ -69,7 +73,7 @@ module KubernetesOverlayImages
     def initialize(overlay:, git_sha:, image_namespace: DEFAULT_IMAGE_NAMESPACE, writer: AtomicYamlWriter.new)
       @overlay = overlay.to_s
       @git_sha = git_sha.to_s
-      @image_namespace = normalize_image_namespace(image_namespace)
+      @image_namespace = KubernetesImageNamespace.normalize(image_namespace)
       @writer = writer
       @errors = []
     end
@@ -114,11 +118,7 @@ module KubernetesOverlayImages
       unless git_sha.match?(/\A[0-9a-f]{40}\z/)
         add_error("git SHA must be 40 lowercase hexadecimal characters")
       end
-      if image_namespace.empty?
-        add_error("image namespace must be set")
-      elsif image_namespace.match?(/\s/) || image_namespace.include?("@")
-        add_error("image namespace must not contain whitespace or digests")
-      end
+      KubernetesImageNamespace.validation_errors(image_namespace).each { |message| add_error(message) }
     end
 
     def validate_kustomization(document)
@@ -189,11 +189,18 @@ module KubernetesOverlayImages
       path = entry["path"]
       return nil unless path.is_a?(String)
 
+      if unsafe_patch_path?(path)
+        add_error("#{kustomization_path_label} runtime image patch path must stay inside the overlay directory: #{path}")
+        return nil
+      end
+
       patch_path = File.expand_path(path, overlay)
       return nil unless File.file?(patch_path)
 
       document = load_patch_document(patch_path)
-      RuntimePatch.new(entry:, document:, path: patch_path) if document.is_a?(Hash) && runtime_image_env(document)
+      return nil unless document.is_a?(Hash) && runtime_image_env(document)
+
+      RuntimePatch.new(entry:, document:, path: patch_path)
     rescue Psych::Exception
       nil
     end
@@ -225,12 +232,12 @@ module KubernetesOverlayImages
       "sha-#{git_sha}"
     end
 
-    def normalize_image_namespace(value)
-      value.to_s.strip.sub(%r{/+\z}, "")
+    def unsafe_patch_path?(path)
+      Pathname.new(path).absolute? || path.split(/[\/\\]/).include?("..")
     end
 
     def production_overlay?
-      File.basename(overlay).include?("production")
+      KubernetesOverlayClassification.production_overlay_path?(overlay)
     end
 
     def load_yaml(path)

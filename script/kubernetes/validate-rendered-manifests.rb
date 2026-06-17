@@ -9,6 +9,7 @@ require_relative "validation/observability"
 require_relative "validation/data_services"
 require_relative "validation/external_secrets"
 require_relative "validation/environment_overlays"
+require_relative "overlay_classification"
 
 package_dir, rendered_path = ARGV
 
@@ -74,11 +75,14 @@ if context.path_suffix?("deploy/kubernetes/overlays/staging-managed")
   KubernetesValidation::EnvironmentOverlays.validate_staging_managed(context)
 end
 
-if context.path_suffix?("deploy/kubernetes/overlays/production-managed")
+if KubernetesOverlayClassification.production_overlay_package?(context.package_dir)
   KubernetesValidation::AppBaseline.validate_workloads(context)
   KubernetesValidation::BrowserRuntimeControl.validate(context)
   KubernetesValidation::DataServices.validate_managed(context)
-  KubernetesValidation::EnvironmentOverlays.validate_production_managed(context)
+  KubernetesValidation::EnvironmentOverlays.validate_production_managed(
+    context,
+    overlay: File.basename(context.package_dir),
+  )
 end
 
 unless context.valid?

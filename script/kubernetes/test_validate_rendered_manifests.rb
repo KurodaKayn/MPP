@@ -96,7 +96,8 @@ class ValidateRenderedManifestsTest < Minitest::Test
       kubernetes_copy = File.join(dir, "deploy", "kubernetes")
       FileUtils.mkdir_p(File.dirname(kubernetes_copy))
       FileUtils.cp_r("deploy/kubernetes", kubernetes_copy)
-      overlay = File.join(kubernetes_copy, "overlays", "production-managed")
+      overlay = File.join(kubernetes_copy, "overlays", "gcp-production")
+      FileUtils.cp_r(File.join(kubernetes_copy, "overlays", "production-managed"), overlay)
 
       _stdout, stderr, status = Open3.capture3(
         RbConfig.ruby,
@@ -117,6 +118,44 @@ class ValidateRenderedManifestsTest < Minitest::Test
     ensure
       rendered&.unlink
     end
+  end
+
+  def test_provider_production_overlay_runs_strict_deployable_validation
+    Dir.mktmpdir("mpp-provider-overlay") do |dir|
+      kubernetes_copy = File.join(dir, "deploy", "kubernetes")
+      FileUtils.mkdir_p(File.dirname(kubernetes_copy))
+      FileUtils.cp_r("deploy/kubernetes", kubernetes_copy)
+      overlay = File.join(kubernetes_copy, "overlays", "gcp-production")
+      FileUtils.cp_r(File.join(kubernetes_copy, "overlays", "production-managed"), overlay)
+
+      rendered = render_overlay(overlay)
+      _stdout, stderr, status = run_validator(
+        overlay,
+        rendered.path,
+        { "MPP_KUBERNETES_VALIDATE_DEPLOYABLE" => "1" },
+      )
+
+      refute status.success?, "provider production overlay unexpectedly passed deployable validation"
+      assert_includes stderr, "gcp-production mpp-app-config DB_HOST must not use example.invalid"
+      assert_includes stderr, "gcp-production Ingress host must not use example.invalid"
+    ensure
+      rendered&.unlink
+    end
+  end
+
+  def test_environment_overlay_validation_rejects_invalid_image_namespace
+    rendered = render_overlay(PRODUCTION_MANAGED_OVERLAY)
+
+    _stdout, stderr, status = run_validator(
+      PRODUCTION_MANAGED_OVERLAY,
+      rendered.path,
+      { "MPP_IMAGE_NAMESPACE" => "https://registry.internal.example/mpp" },
+    )
+
+    refute status.success?, "production-managed validation unexpectedly accepted invalid image namespace"
+    assert_includes stderr, "production-managed image namespace must not include a URL scheme"
+  ensure
+    rendered&.unlink
   end
 
   def test_external_secrets_package_renders_app_secret_contract
