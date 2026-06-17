@@ -21,6 +21,7 @@ type fakeGrowthOptimizer struct {
 	lastRequest dto.CreateAIGrowthOptimizationRunRequest
 	body        string
 	err         error
+	onStream    func()
 }
 
 func (f *fakeGrowthOptimizer) StreamGrowthOptimization(_ context.Context, req dto.CreateAIGrowthOptimizationRunRequest) (*AIServiceStream, error) {
@@ -28,10 +29,24 @@ func (f *fakeGrowthOptimizer) StreamGrowthOptimization(_ context.Context, req dt
 	if f.err != nil {
 		return nil, f.err
 	}
+	if f.onStream != nil {
+		f.onStream()
+	}
 	return &AIServiceStream{
 		Body:        io.NopCloser(strings.NewReader(f.body)),
 		ContentType: "text/event-stream; charset=utf-8",
 	}, nil
+}
+
+func growthProposalStream(platform string, fullContent string) string {
+	return strings.Join([]string{
+		`event: proposal`,
+		fmt.Sprintf(`data: {"proposal_type":"prepublish_patch","target_platform":%q,"summary":"Platform proposal","patch":"","full_content":%q,"quality_checks":{"audience_profile":"%s@growth-v1"}}`, platform, fullContent, platform),
+		``,
+		`event: status`,
+		`data: {"status":"ready","model":"test-model","prompt_version":"growth-v1","quality_summary":"Review before applying","usage":{"total_tokens":12}}`,
+		``,
+	}, "\n")
 }
 
 func TestGrowthOptimizationServiceCreatesReadyRunAndProposal(t *testing.T) {
@@ -109,6 +124,11 @@ func TestGrowthOptimizationServiceCreatesReadyRunAndProposal(t *testing.T) {
 	require.Equal(t, "wechat@growth-v1", resp.Proposals[0].QualityChecks["audience_profile"])
 	require.Equal(t, "compiled", resp.Proposals[0].QualityChecks["content_pipeline_status"])
 	require.NotEmpty(t, resp.Proposals[0].QualityChecks["content_pipeline_adapted_content"])
+	baseVersions, ok := resp.Proposals[0].QualityChecks["proposal_base_versions"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "pass", baseVersions["status"])
+	require.NotEmpty(t, baseVersions["source"])
+	require.NotEmpty(t, baseVersions["platform_drafts"])
 	require.Equal(t, "Launch note", optimizer.lastRequest.Title)
 	require.Equal(t, "Original article", optimizer.lastRequest.SourceContent)
 	require.Equal(t, "Optimized draft", compiler.LastProject.SourceContent)
@@ -176,7 +196,154 @@ func TestGrowthOptimizationServiceRejectsUncompiledProposal(t *testing.T) {
 		TargetPlatforms: []string{"wechat"},
 	})
 
-	require.ErrorIs(t, err, ErrAIServiceUnavailable)
+	require.ErrorIs(t, err, ErrGrowthProposalConflict)
+
+	var persistedRun models.AIGrowthOptimizationRun
+	require.NoError(t, db.First(&persistedRun, "project_id = ?", projectID).Error)
+	require.Equal(t, "failed", persistedRun.Status)
+
+	var proposalCount int64
+	require.NoError(t, db.Model(&models.AIProposal{}).Where("run_id = ?", persistedRun.ID).Count(&proposalCount).Error)
+	require.Zero(t, proposalCount)
+}
+
+func TestGrowthOptimizationServiceRejectsStaleSourceBaseVersion(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(
+		&models.AIContextSnapshot{},
+		&models.AIGrowthOptimizationRun{},
+		&models.AIProposal{},
+		&models.ProjectComment{},
+		&models.MediaAsset{},
+	))
+
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	projectID := uuid.New()
+	require.NoError(t, db.Create(&models.User{
+		ID:           userID,
+		Username:     "growth-stale-source-user",
+		Email:        "growth-stale-source@example.com",
+		PasswordHash: "hash",
+	}).Error)
+	require.NoError(t, db.Create(&models.Workspace{
+		ID:          workspaceID,
+		OwnerUserID: userID,
+		Name:        "Growth Stale Source Workspace",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}).Error)
+	require.NoError(t, db.Create(&models.Project{
+		ID:            projectID,
+		UserID:        userID,
+		WorkspaceID:   &workspaceID,
+		Title:         "Stale source note",
+		SourceContent: "Original article",
+		Status:        models.ProjectStatusDraft,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}).Error)
+
+	optimizer := &fakeGrowthOptimizer{
+		body: growthProposalStream("wechat", "Optimized draft"),
+		onStream: func() {
+			require.NoError(t, db.Model(&models.Project{}).
+				Where("id = ?", projectID).
+				Updates(map[string]any{
+					"source_content": "Concurrent article update",
+					"updated_at":     time.Now().Add(time.Second),
+				}).Error)
+		},
+	}
+
+	service := NewGrowthOptimizationService(db, optimizer)
+	service.SetDraftCompiler(&testsupport.FakeProjectDraftCompiler{})
+	_, err := service.CreateRun(t.Context(), projectID, userID, dto.CreateAIGrowthOptimizationRunRequest{
+		Goal:            "improve platform fit",
+		TargetPlatforms: []string{"wechat"},
+	})
+
+	require.ErrorIs(t, err, ErrGrowthProposalConflict)
+	require.Contains(t, err.Error(), "base version changed")
+
+	var persistedRun models.AIGrowthOptimizationRun
+	require.NoError(t, db.First(&persistedRun, "project_id = ?", projectID).Error)
+	require.Equal(t, "failed", persistedRun.Status)
+
+	var proposalCount int64
+	require.NoError(t, db.Model(&models.AIProposal{}).Where("run_id = ?", persistedRun.ID).Count(&proposalCount).Error)
+	require.Zero(t, proposalCount)
+}
+
+func TestGrowthOptimizationServiceRejectsStalePlatformDraftBaseVersion(t *testing.T) {
+	db := testsupport.SetupTestDB()
+	require.NoError(t, db.AutoMigrate(
+		&models.AIContextSnapshot{},
+		&models.AIGrowthOptimizationRun{},
+		&models.AIProposal{},
+		&models.ProjectComment{},
+		&models.MediaAsset{},
+	))
+
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	projectID := uuid.New()
+	require.NoError(t, db.Create(&models.User{
+		ID:           userID,
+		Username:     "growth-stale-draft-user",
+		Email:        "growth-stale-draft@example.com",
+		PasswordHash: "hash",
+	}).Error)
+	require.NoError(t, db.Create(&models.Workspace{
+		ID:          workspaceID,
+		OwnerUserID: userID,
+		Name:        "Growth Stale Draft Workspace",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}).Error)
+	require.NoError(t, db.Create(&models.Project{
+		ID:            projectID,
+		UserID:        userID,
+		WorkspaceID:   &workspaceID,
+		Title:         "Stale draft note",
+		SourceContent: "Original article",
+		Status:        models.ProjectStatusDraft,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}).Error)
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ID:             uuid.New(),
+		ProjectID:      projectID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusDraft,
+		DraftStatus:    models.PublicationDraftStatusReady,
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"Base draft"}`),
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}).Error)
+
+	optimizer := &fakeGrowthOptimizer{
+		body: growthProposalStream("wechat", "Optimized draft"),
+		onStream: func() {
+			require.NoError(t, db.Model(&models.ProjectPlatformPublication{}).
+				Where("project_id = ? AND platform = ?", projectID, "wechat").
+				Updates(map[string]any{
+					"adapted_content": datatypes.JSON(`{"format":"html","html":"Concurrent draft"}`),
+					"updated_at":      time.Now().Add(time.Second),
+				}).Error)
+		},
+	}
+
+	service := NewGrowthOptimizationService(db, optimizer)
+	service.SetDraftCompiler(&testsupport.FakeProjectDraftCompiler{})
+	_, err := service.CreateRun(t.Context(), projectID, userID, dto.CreateAIGrowthOptimizationRunRequest{
+		Goal:            "improve platform fit",
+		TargetPlatforms: []string{"wechat"},
+	})
+
+	require.ErrorIs(t, err, ErrGrowthProposalConflict)
+	require.Contains(t, err.Error(), "base version changed")
 
 	var persistedRun models.AIGrowthOptimizationRun
 	require.NoError(t, db.First(&persistedRun, "project_id = ?", projectID).Error)
@@ -246,4 +413,85 @@ func TestMapGrowthRunResponseRejectsCorruptJSON(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "decode growth run target platforms")
+}
+
+func TestStableJSONHashCanonicalizesObjectKeyOrder(t *testing.T) {
+	left := stableJSONHash([]byte(`{"format":"html","blocks":[{"type":"text","value":"A"}]}`))
+	right := stableJSONHash([]byte(`{"blocks":[{"value":"A","type":"text"}],"format":"html"}`))
+
+	require.Equal(t, left, right)
+}
+
+func TestCompareGrowthProposalBaseVersionsIgnoresMetadataOnlyUpdatedAt(t *testing.T) {
+	base := growthProposalBaseVersionCheck{
+		Status: "pass",
+		Source: growthSourceBaseVersion{
+			VersionID:         uuid.NewString(),
+			VersionNumber:     3,
+			TitleHash:         stableStringHash("Title"),
+			SourceContentHash: stableStringHash("Source"),
+			UpdatedAt:         "2026-06-17T01:00:00Z",
+		},
+		PlatformDrafts: map[string]growthPlatformBaseVersion{
+			"wechat": {
+				AdaptedContentHash: stableJSONHash([]byte(`{"format":"html","html":"Draft"}`)),
+				Status:             models.PublicationStatusDraft,
+				DraftStatus:        models.PublicationDraftStatusReady,
+				SyncRequired:       false,
+				UpdatedAt:          "2026-06-17T01:00:00Z",
+			},
+		},
+	}
+	current := base
+	current.Source.UpdatedAt = "2026-06-17T02:00:00Z"
+	current.PlatformDrafts = map[string]growthPlatformBaseVersion{
+		"wechat": base.PlatformDrafts["wechat"],
+	}
+	draft := current.PlatformDrafts["wechat"]
+	draft.UpdatedAt = "2026-06-17T02:00:00Z"
+	current.PlatformDrafts["wechat"] = draft
+
+	check := compareGrowthProposalBaseVersions(base, current)
+
+	require.Equal(t, "pass", check.Status)
+	require.Empty(t, check.Warnings)
+}
+
+func TestCompareGrowthProposalBaseVersionsDetectsContentChanges(t *testing.T) {
+	base := growthProposalBaseVersionCheck{
+		Status: "pass",
+		Source: growthSourceBaseVersion{
+			TitleHash:         stableStringHash("Title"),
+			SourceContentHash: stableStringHash("Source"),
+		},
+		PlatformDrafts: map[string]growthPlatformBaseVersion{
+			"wechat": {
+				AdaptedContentHash: stableJSONHash([]byte(`{"html":"Draft"}`)),
+				Status:             models.PublicationStatusDraft,
+			},
+		},
+	}
+	current := base
+	current.Source.SourceContentHash = stableStringHash("Changed source")
+	current.PlatformDrafts = map[string]growthPlatformBaseVersion{
+		"wechat": {
+			AdaptedContentHash: stableJSONHash([]byte(`{"html":"Changed draft"}`)),
+			Status:             models.PublicationStatusDraft,
+		},
+	}
+
+	check := compareGrowthProposalBaseVersions(base, current)
+
+	require.Equal(t, "stale", check.Status)
+	require.ElementsMatch(t, []string{
+		"source content changed since proposal generation started",
+		"wechat draft changed since proposal generation started",
+	}, check.Warnings)
+}
+
+func TestWithBaseVersionQualityChecksPreservesExistingChecks(t *testing.T) {
+	checks := withBaseVersionQualityChecks(map[string]any{"brand_consistency": "pass"}, growthProposalBaseVersionCheck{Status: "pass"})
+
+	require.Equal(t, "pass", checks["brand_consistency"])
+	require.Equal(t, growthProposalBaseVersionCheck{Status: "pass"}, checks["proposal_base_versions"])
 }

@@ -306,6 +306,9 @@ func (h *Handler) CreateAIGrowthOptimizationRun(c echo.Context) error {
 		if errors.Is(err, aisvc.ErrInvalidGrowthOptimizationRequest) {
 			return sendError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		}
+		if errors.Is(err, aisvc.ErrGrowthProposalConflict) {
+			return sendError(c, http.StatusConflict, "proposal_conflict", err.Error())
+		}
 		if errors.Is(err, aisvc.ErrAIServiceUnavailable) {
 			return sendError(c, http.StatusServiceUnavailable, "ai_unavailable", err.Error())
 		}
