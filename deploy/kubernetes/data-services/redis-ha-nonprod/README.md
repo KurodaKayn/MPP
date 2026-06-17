@@ -73,6 +73,22 @@ verification-code key through `backend`, confirms a second request reads the
 rate-limit key, and prints the observed recovery time. The Phase 2 target is
 recovery within 300 seconds.
 
+Before switching app traffic, rehearse moving data from the existing Redis
+StatefulSet into HA Redis:
+
+```bash
+MPP_APP_NS=mpp-system \
+MPP_REDIS_MIGRATION_ALLOW_TARGET_FLUSH=1 \
+ruby script/kubernetes/redis-ha-migration-rehearsal.rb \
+  --report redis-ha-migration-rehearsal.json
+```
+
+The rehearsal copies source keys with Redis `MIGRATE COPY REPLACE`, samples
+restored values and TTLs, and emits a JSON count and TTL diff report. It
+refuses production `APP_ENV` values and expects the app ConfigMap to remain on
+`REDIS_ENDPOINT_MODE=direct` with `REDIS_ADDR=redis:6379`; no endpoint cutover
+is performed.
+
 Rollback is intentionally simple: switch the app ConfigMap back to direct mode,
 remove this package from the non-production overlay if the HA topology itself
 must be rolled back, apply the overlay again, and delete leftover `redis-ha-*`
