@@ -866,6 +866,25 @@ Expected result:
 - `get-master-addr-by-name` returns a Redis host and port `6379`.
 - `ckquorum` returns `OK`.
 
+Failover drill:
+
+```bash
+MPP_REDIS_SENTINEL_MASTER_NAME=mpp-redis-ha \
+  MPP_REDIS_FAILOVER_TARGET_SECONDS=300 \
+  script/kubernetes/redis-ha-failover-drill.sh
+```
+
+The drill validates three things:
+
+- Sentinel reports a new master after the failover command.
+- `backend`, `publish-worker`, and `browser-worker` all return `ready`
+  again after reconnecting through the Sentinel endpoint.
+- `backend` can write a new verification-code Redis key after the failover and
+  then read the rate-limit key on a second request.
+
+Record the observed recovery time from the script output. Phase 2 acceptance
+targets 1-5 minutes after a single Redis Pod, node, or short network failure.
+
 Application endpoint switch:
 
 1. Patch `mpp-app-config` so `REDIS_ENDPOINT_MODE=sentinel`,
@@ -887,6 +906,10 @@ Rollback:
    again.
 5. Delete leftover `redis-ha-*` PVCs only after confirming validation data is no
    longer needed.
+
+If the drill fails, keep `REDIS_ADDR=redis:6379`, revert `REDIS_ENDPOINT_MODE`
+to `direct`, restart the app Pods, and inspect the script diagnostics for the
+first failing probe.
 
 No production traffic is cut over by this validation topology. If the HA
 resources fail to start, keep or restore `REDIS_ENDPOINT_MODE=direct`, delete

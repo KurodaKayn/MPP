@@ -60,6 +60,19 @@ REDIS_ADDR: redis:6379
 `REDIS_ADDR` stays as the direct-mode rollback endpoint. To switch back, set
 `REDIS_ENDPOINT_MODE=direct` and confirm `REDIS_ADDR=redis:6379`.
 
+After switching non-production app Pods to Sentinel mode, run the client
+failover drill:
+
+```bash
+MPP_APP_NS=mpp-system script/kubernetes/redis-ha-failover-drill.sh
+```
+
+The drill triggers Sentinel failover, waits for a new master, verifies
+`backend`, `publish-worker`, and `browser-worker` readiness, writes a
+verification-code key through `backend`, confirms a second request reads the
+rate-limit key, and prints the observed recovery time. The Phase 2 target is
+recovery within 300 seconds.
+
 Rollback is intentionally simple: switch the app ConfigMap back to direct mode,
 remove this package from the non-production overlay if the HA topology itself
 must be rolled back, apply the overlay again, and delete leftover `redis-ha-*`
