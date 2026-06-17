@@ -7,7 +7,8 @@ require_relative "external_secrets"
 module KubernetesValidation
   module EnvironmentOverlays
     DEPLOYABLE_VALIDATION_ENV = "MPP_KUBERNETES_VALIDATE_DEPLOYABLE"
-    RUNTIME_IMAGE_REPOSITORY = "ghcr.io/kurodakayn/mpp-browser-runtime"
+    IMAGE_NAMESPACE_ENV = "MPP_IMAGE_NAMESPACE"
+    DEFAULT_IMAGE_NAMESPACE = "ghcr.io/kurodakayn"
     ALL_ZERO_SHA_TAG = "sha-0000000000000000000000000000000000000000"
     EXAMPLE_COOKIE_ENCRYPTION_KEY = "12345678901234567890123456789012"
     EXAMPLE_SECRET_PREFIX = "staging-example-"
@@ -18,18 +19,15 @@ module KubernetesValidation
     ].freeze
     REQUIRED_EXTERNAL_SECRET_KEYS = ExternalSecrets::REQUIRED_APP_SECRET_KEYS
     OPTIONAL_EXTERNAL_SECRET_KEYS = ExternalSecrets::OPTIONAL_APP_SECRET_KEYS
-    APP_IMAGES = {
-      "frontend" => ["frontend", "ghcr.io/kurodakayn/mpp-frontend"],
-      "backend" => ["backend", "ghcr.io/kurodakayn/mpp-backend"],
-      "publish-worker" => ["publish-worker", "ghcr.io/kurodakayn/mpp-backend"],
-      "browser-worker" => ["browser-worker", "ghcr.io/kurodakayn/mpp-browser-worker"],
-      "ai-service" => ["ai-service", "ghcr.io/kurodakayn/mpp-ai-service"],
-      "content-pipeline-service" => [
-        "content-pipeline-service",
-        "ghcr.io/kurodakayn/mpp-content-pipeline-service",
-      ],
-      "collab-service" => ["collab-service", "ghcr.io/kurodakayn/mpp-collab-service"],
-    }.freeze
+    APP_IMAGES = [
+      ["frontend", "frontend", "mpp-frontend"],
+      ["backend", "backend", "mpp-backend"],
+      ["publish-worker", "publish-worker", "mpp-backend"],
+      ["browser-worker", "browser-worker", "mpp-browser-worker"],
+      ["ai-service", "ai-service", "mpp-ai-service"],
+      ["content-pipeline-service", "content-pipeline-service", "mpp-content-pipeline-service"],
+      ["collab-service", "collab-service", "mpp-collab-service"],
+    ].freeze
 
     module_function
 
@@ -230,11 +228,16 @@ module KubernetesValidation
 
       env = deployment.containers.flat_map { |container| Array(container["env"]) }
       runtime_image = env.find { |entry| entry["name"] == "BROWSER_RUNTIME_IMAGE" }&.fetch("value", nil).to_s
-      validate_sha_image(context, runtime_image, "#{overlay} BROWSER_RUNTIME_IMAGE", RUNTIME_IMAGE_REPOSITORY)
+      validate_sha_image(
+        context,
+        runtime_image,
+        "#{overlay} BROWSER_RUNTIME_IMAGE",
+        image_repository("mpp-browser-runtime"),
+      )
     end
 
     def validate_app_images(context, overlay)
-      APP_IMAGES.each do |deployment_name, (container_name, repository)|
+      APP_IMAGES.each do |deployment_name, container_name, repository|
         deployment = context.require_document("Deployment", deployment_name, "mpp-system")
         next unless deployment
 
@@ -248,7 +251,7 @@ module KubernetesValidation
           context,
           container["image"].to_s,
           "#{overlay} Deployment #{deployment_name} image",
-          repository,
+          image_repository(repository),
         )
       end
     end
@@ -390,6 +393,14 @@ module KubernetesValidation
 
     def deployable_validation?
       ["1", "true", "yes"].include?(ENV.fetch(DEPLOYABLE_VALIDATION_ENV, "").downcase)
+    end
+
+    def image_namespace
+      ENV.fetch(IMAGE_NAMESPACE_ENV, DEFAULT_IMAGE_NAMESPACE).to_s.strip.sub(%r{/+\z}, "")
+    end
+
+    def image_repository(repository)
+      "#{image_namespace}/#{repository}"
     end
   end
 end

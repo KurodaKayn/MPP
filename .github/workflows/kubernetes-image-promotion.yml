@@ -75,6 +75,7 @@ jobs:
         env:
           PROMOTION_OVERLAY: ${{ inputs.overlay }}
           PROMOTION_DEPLOYABLE_VALIDATION: ${{ inputs.deployable_validation }}
+          PROMOTION_IMAGE_NAMESPACE: ${{ inputs.image_namespace }}
         run: |
           set -euo pipefail
 
@@ -82,10 +83,12 @@ jobs:
           kubectl kustomize "$PROMOTION_OVERLAY" > "$rendered"
           ruby script/kubernetes/validate-rendered-schema.rb "$PROMOTION_OVERLAY" "$rendered"
           if [[ "$PROMOTION_DEPLOYABLE_VALIDATION" == "true" ]]; then
-            MPP_KUBERNETES_VALIDATE_DEPLOYABLE=1 \
+            MPP_IMAGE_NAMESPACE="$PROMOTION_IMAGE_NAMESPACE" \
+              MPP_KUBERNETES_VALIDATE_DEPLOYABLE=1 \
               ruby script/kubernetes/validate-rendered-manifests.rb "$PROMOTION_OVERLAY" "$rendered"
           else
-            ruby script/kubernetes/validate-rendered-manifests.rb "$PROMOTION_OVERLAY" "$rendered"
+            MPP_IMAGE_NAMESPACE="$PROMOTION_IMAGE_NAMESPACE" \
+              ruby script/kubernetes/validate-rendered-manifests.rb "$PROMOTION_OVERLAY" "$rendered"
           fi
 
       - name: Write promotion patch

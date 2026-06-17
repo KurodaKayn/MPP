@@ -1,9 +1,11 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require "fileutils"
 require "open3"
 require "rbconfig"
 require "tempfile"
+require "tmpdir"
 require "yaml"
 
 class ValidateRenderedManifestsTest < Minitest::Test
@@ -54,6 +56,37 @@ class ValidateRenderedManifestsTest < Minitest::Test
     assert status.success?, "production-managed validation failed: #{stderr}"
   ensure
     rendered&.unlink
+  end
+
+  def test_production_managed_validation_accepts_promoted_provider_namespace
+    image_namespace = "registry.internal.example/mpp"
+    git_sha = "1234567890abcdef1234567890abcdef12345678"
+
+    Dir.mktmpdir("mpp-provider-overlay") do |dir|
+      kubernetes_copy = File.join(dir, "deploy", "kubernetes")
+      FileUtils.mkdir_p(File.dirname(kubernetes_copy))
+      FileUtils.cp_r("deploy/kubernetes", kubernetes_copy)
+      overlay = File.join(kubernetes_copy, "overlays", "production-managed")
+
+      _stdout, stderr, status = Open3.capture3(
+        RbConfig.ruby,
+        "script/kubernetes/pin-overlay-images.rb",
+        "--overlay",
+        overlay,
+        "--git-sha",
+        git_sha,
+        "--image-namespace",
+        image_namespace,
+      )
+      assert status.success?, stderr
+
+      rendered = render_overlay(overlay)
+      _stdout, stderr, status = run_validator(overlay, rendered.path, { "MPP_IMAGE_NAMESPACE" => image_namespace })
+
+      assert status.success?, "production-managed provider namespace validation failed: #{stderr}"
+    ensure
+      rendered&.unlink
+    end
   end
 
   def test_external_secrets_package_renders_app_secret_contract
