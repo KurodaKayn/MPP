@@ -169,6 +169,7 @@ describe("redisSentinelOptionsFromConfig", () => {
       REDIS_SENTINEL_MASTER_NAME: "mpp-redis-ha",
       REDIS_PASSWORD: "redis-secret",
       REDIS_DB: "2",
+      REDIS_TLS: "true",
     });
 
     const options = redisSentinelOptionsFromConfig(config);
@@ -181,6 +182,10 @@ describe("redisSentinelOptionsFromConfig", () => {
     expect(options.nodeClientOptions).toMatchObject({
       database: 2,
       password: "redis-secret",
+      socket: { tls: true },
+    });
+    expect(options.sentinelClientOptions).toMatchObject({
+      socket: { tls: true },
     });
   });
 

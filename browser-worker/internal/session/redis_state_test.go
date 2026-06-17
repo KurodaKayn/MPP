@@ -33,7 +33,6 @@ func TestRedisConnectionConfigFromEnvUsesSentinelEndpoint(t *testing.T) {
 	clearRedisEnv(t)
 	t.Setenv(redisEndpointModeEnv, redisEndpointModeSentinel)
 	t.Setenv(redisSentinelAddrsEnv, " redis-ha-sentinel:26379,redis-ha-sentinel-1:26379 ")
-	t.Setenv(redisSentinelMasterEnv, "mpp-redis-ha")
 	t.Setenv(redisPasswordEnv, "redis-secret")
 	t.Setenv(redisDBEnv, "4")
 
@@ -42,12 +41,12 @@ func TestRedisConnectionConfigFromEnvUsesSentinelEndpoint(t *testing.T) {
 
 	require.Equal(t, redisEndpointModeSentinel, config.EndpointMode)
 	require.Equal(t, []string{"redis-ha-sentinel:26379", "redis-ha-sentinel-1:26379"}, config.SentinelAddrs)
-	require.Equal(t, "mpp-redis-ha", config.SentinelMasterName)
+	require.Equal(t, redisSentinelMasterDefault, config.SentinelMasterName)
 	require.Equal(t, "redis-secret", config.Password)
 	require.Equal(t, 4, config.DB)
 
 	options := redisFailoverOptions(config)
-	require.Equal(t, "mpp-redis-ha", options.MasterName)
+	require.Equal(t, redisSentinelMasterDefault, options.MasterName)
 	require.Equal(t, []string{"redis-ha-sentinel:26379", "redis-ha-sentinel-1:26379"}, options.SentinelAddrs)
 	require.Equal(t, "redis-secret", options.Password)
 	require.Equal(t, 4, options.DB)
@@ -62,28 +61,26 @@ func TestRedisConnectionConfigFromEnvKeepsRedisOptionalForDirectMode(t *testing.
 	require.ErrorIs(t, err, errRedisNotConfigured)
 }
 
-func TestRedisConnectionConfigFromEnvRejectsIncompleteSentinelEndpoint(t *testing.T) {
-	tests := []struct {
-		name    string
-		envName string
-		value   string
-	}{
-		{name: "missing sentinel addrs", envName: redisSentinelMasterEnv, value: "mpp-redis-ha"},
-		{name: "missing sentinel master", envName: redisSentinelAddrsEnv, value: "redis-ha-sentinel:26379"},
-	}
+func TestRedisConnectionConfigFromEnvUsesSentinelMasterOverride(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(redisEndpointModeEnv, redisEndpointModeSentinel)
+	t.Setenv(redisSentinelAddrsEnv, "redis-ha-sentinel:26379")
+	t.Setenv(redisSentinelMasterEnv, "custom-master")
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			clearRedisEnv(t)
-			t.Setenv(redisEndpointModeEnv, redisEndpointModeSentinel)
-			t.Setenv(tt.envName, tt.value)
+	config, err := redisConnectionConfigFromEnv()
+	require.NoError(t, err)
 
-			_, err := redisConnectionConfigFromEnv()
+	require.Equal(t, "custom-master", config.SentinelMasterName)
+}
 
-			require.Error(t, err)
-			require.Contains(t, err.Error(), redisEndpointModeEnv)
-		})
-	}
+func TestRedisConnectionConfigFromEnvRejectsMissingSentinelAddrs(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(redisEndpointModeEnv, redisEndpointModeSentinel)
+
+	_, err := redisConnectionConfigFromEnv()
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), redisEndpointModeEnv)
 }
 
 func clearRedisEnv(t *testing.T) {

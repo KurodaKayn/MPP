@@ -781,6 +781,24 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_redis_ha_nonprod_requires_direct_rollback_addr_in_sentinel_mode
+    overlay = "deploy/kubernetes/overlays/staging-self-hosted"
+    rendered = mutated_render(overlay) do |documents|
+      app_config = document(documents, "ConfigMap", "mpp-app-config", "mpp-system")
+      app_config["data"]["REDIS_ENDPOINT_MODE"] = "sentinel"
+      app_config["data"]["REDIS_SENTINEL_ADDRS"] = "redis-ha-sentinel:26379"
+      app_config["data"]["REDIS_SENTINEL_MASTER_NAME"] = "mpp-redis-ha"
+      app_config["data"]["REDIS_ADDR"] = "redis-ha-primary:6379"
+    end
+
+    _stdout, stderr, status = run_validator(overlay, rendered.path)
+
+    refute status.success?, "non-prod HA Redis validation unexpectedly accepted missing direct rollback address"
+    assert_includes stderr, "non-prod HA Redis validation must keep app REDIS_ADDR on existing redis:6379"
+  ensure
+    rendered&.unlink
+  end
+
   private
 
   def run_validator(overlay, rendered_path, env = {})
