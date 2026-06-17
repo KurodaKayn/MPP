@@ -27,6 +27,56 @@ class RedisHAMigrationRehearsalScriptTest < Minitest::Test
     assert status.success?, stderr
     assert_includes stdout, "non-production Redis HA migration rehearsal"
     assert_includes stdout, "--allow-target-flush"
+    assert_includes stdout, "--allow-production"
+  end
+
+  def test_script_refuses_production_without_explicit_allowance
+    Dir.mktmpdir("redis-ha-migration-rehearsal-prod-test") do |dir|
+      kubectl = File.join(dir, "kubectl")
+      File.write(kubectl, fake_kubectl("", redis_password: "", app_env: "production"))
+      FileUtils.chmod("+x", kubectl)
+
+      original_path = ENV["PATH"]
+      ENV["PATH"] = "#{dir}:#{original_path}"
+      _stdout, stderr, status = Open3.capture3(
+        {"PATH" => ENV.fetch("PATH"), "MPP_REDIS_MIGRATION_ALLOW_PRODUCTION" => ""},
+        RbConfig.ruby,
+        SCRIPT,
+      )
+
+      refute status.success?
+      assert_includes stderr, "refusing to run against APP_ENV=production"
+    ensure
+      ENV["PATH"] = original_path
+    end
+  end
+
+  def test_script_reports_production_not_refused_when_explicitly_allowed
+    Dir.mktmpdir("redis-ha-migration-rehearsal-prod-allowed-test") do |dir|
+      command_log = File.join(dir, "commands.log")
+      kubectl = File.join(dir, "kubectl")
+      File.write(kubectl, fake_kubectl(command_log, redis_password: "", app_env: "production"))
+      FileUtils.chmod("+x", kubectl)
+
+      original_path = ENV["PATH"]
+      ENV["PATH"] = "#{dir}:#{original_path}"
+      stdout, stderr, status = Open3.capture3(
+        {"PATH" => ENV.fetch("PATH")},
+        RbConfig.ruby,
+        SCRIPT,
+        "--allow-production",
+        "--allow-target-flush",
+        "--sample-limit",
+        "0",
+      )
+
+      assert status.success?, stderr
+      report = JSON.parse(stdout)
+      assert_equal "production", report.dig("safety", "app_env")
+      assert_equal false, report.dig("safety", "production_refused")
+    ensure
+      ENV["PATH"] = original_path
+    end
   end
 
   def test_fake_kubectl_rehearsal_imports_and_reports_ttl_diff
@@ -99,11 +149,12 @@ class RedisHAMigrationRehearsalScriptTest < Minitest::Test
 
   private
 
-  def fake_kubectl(command_log, redis_password:)
+  def fake_kubectl(command_log, redis_password:, app_env: "staging")
     <<~RUBY
       #!/usr/bin/env ruby
       command_log = #{command_log.inspect}
       redis_password = #{redis_password.inspect}
+      app_env = #{app_env.inspect}
       args = ARGV.dup
 
       def endpoint(args)
@@ -132,7 +183,7 @@ class RedisHAMigrationRehearsalScriptTest < Minitest::Test
         jsonpath = args.last
         case jsonpath
         when /APP_ENV/
-          print "staging"
+          print app_env
         when /REDIS_ENDPOINT_MODE/
           print "direct"
         when /REDIS_ADDR/

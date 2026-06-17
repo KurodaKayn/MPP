@@ -24,18 +24,20 @@ deploy/kubernetes/app-baseline
 deploy/kubernetes/observability
 deploy/kubernetes/data-services/managed
 deploy/kubernetes/data-services/self-hosted
+deploy/kubernetes/data-services/redis-ha-production
 deploy/kubernetes/external-secrets
 deploy/kubernetes/overlays/staging-managed
 deploy/kubernetes/overlays/staging-self-hosted
 deploy/kubernetes/overlays/production-managed
+deploy/kubernetes/overlays/production-self-hosted-ha
 deploy/kubernetes/validation/app-baseline
 ```
 
 Use `browser-runtime-control` with every Kubernetes browser-runtime deployment.
 Use `app-baseline` for the long-running application services. Add
 `observability` when the cluster has Loki, Alloy, and Prometheus Operator CRDs.
-Choose exactly one data-service mode: `managed` for production, or
-`self-hosted` for small test clusters and demos.
+Choose exactly one data-service mode for a given overlay: `managed` for the
+managed production path, or `self-hosted` for small test clusters and demos.
 Use `external-secrets` when production should materialize `mpp-app-secrets`
 through External Secrets Operator.
 Use `overlays/staging-managed` as a renderable starter when staging should use
@@ -44,6 +46,10 @@ staging should run PostgreSQL and Redis inside the cluster.
 Use `overlays/production-managed` as the production starter for managed
 PostgreSQL and Redis deployments that materialize `mpp-app-secrets` through an
 external secret manager or controlled bootstrap workflow.
+Use `overlays/production-self-hosted-ha` only for the Phase 2 production
+cutover from the existing self-hosted Redis StatefulSet to self-hosted Redis
+primary-replica plus Sentinel; managed Redis and Redis Cluster migrations use
+separate runbooks.
 
 ## Required Overlays
 
@@ -97,6 +103,12 @@ raw `mpp-app-secrets` values. It includes an `ExternalSecret` starter that
 expects External Secrets Operator to materialize the Secret at runtime. Create
 or patch the referenced secret store before applying app workloads, then replace
 the checked-in example hosts and image tags.
+The included `deploy/kubernetes/overlays/production-self-hosted-ha` overlay
+wires the same app baseline to self-hosted PostgreSQL, the existing direct
+Redis rollback endpoint, and the production HA Redis package. It is intended
+for an approved Phase 2 maintenance window after non-production failover and
+migration validation have passed; follow the production HA Redis cutover
+section in `doc/kubernetes-operations-runbook.md`.
 
 ## Provider-Specific Production Overlays
 
@@ -182,17 +194,22 @@ tag. Production overlays should pin the `sha-*` tags for app images and set
 the Deployment command selects the runtime role.
 
 Use the image pinner to promote one Git SHA across the production-managed
-overlay:
+overlay, or across the production self-hosted HA overlay during a Phase 2 Redis
+cutover:
 
 ```bash
 ruby script/kubernetes/pin-overlay-images.rb \
   --overlay deploy/kubernetes/overlays/production-managed \
   --git-sha <full-git-sha>
+
+ruby script/kubernetes/pin-overlay-images.rb \
+  --overlay deploy/kubernetes/overlays/production-self-hosted-ha \
+  --git-sha <full-git-sha>
 ```
 
 The helper updates every app image plus the `BROWSER_RUNTIME_IMAGE` patch in
-`deploy/kubernetes/overlays/production-managed/kustomization.yaml` to the GHCR
-image namespace used by the repository image publishing workflow. For provider
+the target production overlay `kustomization.yaml` to the GHCR image namespace
+used by the repository image publishing workflow. For provider
 registries, pass `--image-namespace <registry>/<namespace>` or set
 `MPP_IMAGE_NAMESPACE`; provider-specific production overlays are supported when
 their overlay directory name uses `production` as a hyphen-delimited token, for

@@ -64,6 +64,17 @@ module KubernetesValidation
       validate_managed_services(context, overlay)
     end
 
+    def validate_production_self_hosted_ha(context, overlay: "production-self-hosted-ha")
+      validate_image_namespace(context, overlay)
+      validate_production_self_hosted_ha_config(context, overlay)
+      ExternalSecrets.validate_app_secret_contract(context, overlay)
+      validate_external_secret_contract(context, overlay)
+      validate_ingress(context, overlay)
+      validate_runtime_image(context, overlay)
+      validate_app_images(context, overlay)
+      validate_self_hosted_services(context, overlay)
+    end
+
     def validate_self_hosted_config(context, overlay)
       config = context.require_document("ConfigMap", "mpp-app-config", "mpp-system")
       return unless config
@@ -129,6 +140,29 @@ module KubernetesValidation
       end
       if deployable_validation? && example_host?(redis_addr_host)
         context.add_error("#{overlay} mpp-app-config REDIS_ADDR must not use example.invalid in deployable validation")
+      end
+
+      validate_common_config(context, config, overlay)
+    end
+
+    def validate_production_self_hosted_ha_config(context, overlay)
+      config = context.require_document("ConfigMap", "mpp-app-config", "mpp-system")
+      return unless config
+
+      {
+        "APP_ENV" => "production",
+        "DB_HOST" => "pgbouncer",
+        "DB_READER_HOST" => "pgbouncer-reader",
+        "DB_SSLMODE" => "disable",
+        "REDIS_ENDPOINT_MODE" => "sentinel",
+        "REDIS_ADDR" => "redis:6379",
+        "REDIS_TLS" => "false",
+        "REDIS_SENTINEL_ADDRS" => "redis-ha-sentinel:26379",
+        "REDIS_SENTINEL_MASTER_NAME" => "mpp-redis-ha",
+      }.each do |key, value|
+        unless config.data[key] == value
+          context.add_error("#{overlay} mpp-app-config #{key} must be #{value}")
+        end
       end
 
       validate_common_config(context, config, overlay)
@@ -281,6 +315,26 @@ module KubernetesValidation
 
         service_port = Array(service.spec["ports"]).find { |entry| entry["port"] == port }
         context.add_error("#{overlay} managed #{name} Service must expose port #{port}") unless service_port
+      end
+    end
+
+    def validate_self_hosted_services(context, overlay)
+      {
+        "postgres" => 5432,
+        "postgres-reader" => 5432,
+        "redis" => 6379,
+        "redis-ha-primary" => 6379,
+        "redis-ha-replicas" => 6379,
+        "redis-ha-sentinel" => 26379,
+      }.each do |name, port|
+        service = context.require_document("Service", name, "mpp-system")
+        next unless service
+
+        if service.spec["type"] == "ExternalName"
+          context.add_error("#{overlay} #{name} Service must be in-cluster, not ExternalName")
+        end
+        service_port = Array(service.spec["ports"]).find { |entry| entry["port"] == port }
+        context.add_error("#{overlay} #{name} Service must expose port #{port}") unless service_port
       end
     end
 

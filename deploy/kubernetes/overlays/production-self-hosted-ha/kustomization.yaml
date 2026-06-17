@@ -1,0 +1,103 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../browser-runtime-control
+  - ../../app-baseline
+  - ../../data-services/self-hosted
+  - ../../data-services/redis-ha-production
+  - ../../external-secrets
+
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: browser-worker
+        namespace: mpp-system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: browser-worker
+                env:
+                  - name: BROWSER_RUNTIME_IMAGE
+                    value: ghcr.io/kurodakayn/mpp-browser-runtime:sha-0000000000000000000000000000000000000000
+  - target:
+      group: external-secrets.io
+      version: v1
+      kind: ExternalSecret
+      name: mpp-app-secrets
+      namespace: mpp-system
+    patch: |-
+      - op: add
+        path: /spec/data/-
+        value:
+          secretKey: REDIS_PASSWORD
+          remoteRef:
+            key: mpp/production/REDIS_PASSWORD
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: redis-exporter
+      namespace: mpp-system
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: redis://redis-ha-primary.mpp-system.svc.cluster.local:6379
+  - target:
+      group: networking.k8s.io
+      version: v1
+      kind: Ingress
+      name: mpp-public-gateway
+      namespace: mpp-system
+    patch: |-
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: mpp.example.invalid
+      - op: replace
+        path: /spec/rules/0/host
+        value: mpp.example.invalid
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: mpp-app-config
+    namespace: mpp-system
+    behavior: merge
+    literals:
+      - APP_ENV=production
+      - DB_HOST=pgbouncer
+      - DB_READER_HOST=pgbouncer-reader
+      - DB_SSLMODE=disable
+      - REDIS_ENDPOINT_MODE=sentinel
+      - REDIS_ADDR=redis:6379
+      - REDIS_TLS=false
+      - REDIS_SENTINEL_ADDRS=redis-ha-sentinel:26379
+      - REDIS_SENTINEL_MASTER_NAME=mpp-redis-ha
+      - COLLAB_WEBSOCKET_URL_BASE=wss://mpp.example.invalid
+      - LLM_PROVIDER_URL=https://llm.production.example.invalid/v1
+      - LLM_MODEL=replace-with-production-model
+      - X_OAUTH2_CLIENT_ID=replace-with-x-oauth2-client-id
+      - X_OAUTH2_REDIRECT_URL=https://mpp.example.invalid/api/user/dashboard/settings/x/oauth2/callback
+
+images:
+  - name: registry.example.invalid/kurodakayn/mpp-frontend
+    newName: ghcr.io/kurodakayn/mpp-frontend
+    newTag: sha-0000000000000000000000000000000000000000
+  - name: registry.example.invalid/kurodakayn/mpp-backend
+    newName: ghcr.io/kurodakayn/mpp-backend
+    newTag: sha-0000000000000000000000000000000000000000
+  - name: registry.example.invalid/kurodakayn/mpp-browser-worker
+    newName: ghcr.io/kurodakayn/mpp-browser-worker
+    newTag: sha-0000000000000000000000000000000000000000
+  - name: registry.example.invalid/kurodakayn/mpp-ai-service
+    newName: ghcr.io/kurodakayn/mpp-ai-service
+    newTag: sha-0000000000000000000000000000000000000000
+  - name: registry.example.invalid/kurodakayn/mpp-content-pipeline-service
+    newName: ghcr.io/kurodakayn/mpp-content-pipeline-service
+    newTag: sha-0000000000000000000000000000000000000000
+  - name: registry.example.invalid/kurodakayn/mpp-collab-service
+    newName: ghcr.io/kurodakayn/mpp-collab-service
+    newTag: sha-0000000000000000000000000000000000000000

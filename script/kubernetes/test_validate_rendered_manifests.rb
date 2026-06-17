@@ -15,6 +15,7 @@ class ValidateRenderedManifestsTest < Minitest::Test
   ].freeze
   EXTERNAL_SECRETS_PACKAGE = "deploy/kubernetes/external-secrets"
   PRODUCTION_MANAGED_OVERLAY = "deploy/kubernetes/overlays/production-managed"
+  PRODUCTION_SELF_HOSTED_HA_OVERLAY = "deploy/kubernetes/overlays/production-self-hosted-ha"
 
   def test_deployable_validation_rejects_checked_in_staging_examples
     STAGING_OVERLAYS.each do |overlay|
@@ -84,6 +85,31 @@ class ValidateRenderedManifestsTest < Minitest::Test
     _stdout, stderr, status = run_validator(PRODUCTION_MANAGED_OVERLAY, rendered.path)
 
     assert status.success?, "production-managed validation failed: #{stderr}"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_production_self_hosted_ha_overlay_uses_sentinel_with_direct_rollback
+    rendered = render_overlay(PRODUCTION_SELF_HOSTED_HA_OVERLAY)
+    documents = parse_documents(File.read(rendered.path))
+    app_config = document(documents, "ConfigMap", "mpp-app-config", "mpp-system")
+    external_secret = document(documents, "ExternalSecret", "mpp-app-secrets", "mpp-system")
+    redis_exporter = document(documents, "Deployment", "redis-exporter", "mpp-system")
+    redis_exporter_env = redis_exporter.dig("spec", "template", "spec", "containers")
+      .find { |entry| entry["name"] == "redis-exporter" }
+      .fetch("env")
+
+    assert_equal "production", app_config.dig("data", "APP_ENV")
+    assert_equal "sentinel", app_config.dig("data", "REDIS_ENDPOINT_MODE")
+    assert_equal "redis-ha-sentinel:26379", app_config.dig("data", "REDIS_SENTINEL_ADDRS")
+    assert_equal "redis:6379", app_config.dig("data", "REDIS_ADDR")
+    assert external_secret.dig("spec", "data").any? { |entry| entry["secretKey"] == "REDIS_PASSWORD" }
+    assert_equal "redis://redis-ha-primary.mpp-system.svc.cluster.local:6379",
+                 redis_exporter_env.find { |entry| entry["name"] == "REDIS_ADDR" }.fetch("value")
+
+    _stdout, stderr, status = run_validator(PRODUCTION_SELF_HOSTED_HA_OVERLAY, rendered.path)
+
+    assert status.success?, "production-self-hosted-ha validation failed: #{stderr}"
   ensure
     rendered&.unlink
   end

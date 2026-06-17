@@ -7,6 +7,7 @@ TARGET_SECONDS="${MPP_REDIS_FAILOVER_TARGET_SECONDS:-300}"
 POLL_SECONDS="${MPP_REDIS_FAILOVER_POLL_SECONDS:-5}"
 REQUEST_TIMEOUT="${MPP_REDIS_FAILOVER_REQUEST_TIMEOUT:-10}"
 DRILL_ID="${MPP_REDIS_FAILOVER_DRILL_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
+ALLOW_PRODUCTION="${MPP_REDIS_FAILOVER_ALLOW_PRODUCTION:-}"
 
 last_master=""
 last_ready_detail=""
@@ -29,6 +30,7 @@ Environment:
   MPP_REDIS_FAILOVER_POLL_SECONDS        Probe interval. Default: 5
   MPP_REDIS_FAILOVER_REQUEST_TIMEOUT     In-Pod HTTP probe timeout. Default: 10
   MPP_REDIS_FAILOVER_DRILL_ID            Optional stable drill id for probe emails
+  MPP_REDIS_FAILOVER_ALLOW_PRODUCTION    Set to 1 only inside the approved production validation window
 USAGE
 }
 
@@ -256,7 +258,9 @@ validate_nonprod_config() {
 
   case "$app_env" in
     production|prod)
-      fail "refusing to run against APP_ENV=$app_env"
+      if ! env_flag_enabled "$ALLOW_PRODUCTION"; then
+        fail "refusing to run against APP_ENV=$app_env; set MPP_REDIS_FAILOVER_ALLOW_PRODUCTION=1 inside the approved production validation window"
+      fi
       ;;
     "")
       fail "mpp-app-config APP_ENV must be set before running this drill"
@@ -273,6 +277,17 @@ validate_nonprod_config() {
     fail "mpp-app-config REDIS_ADDR must stay redis:6379 for direct rollback; got ${redis_addr:-<empty>}"
 
   log "config ok: APP_ENV=$app_env REDIS_ENDPOINT_MODE=$endpoint_mode REDIS_SENTINEL_ADDRS=$sentinel_addrs REDIS_ADDR=$redis_addr"
+}
+
+env_flag_enabled() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|y|on)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 preflight() {
