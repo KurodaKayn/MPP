@@ -72,6 +72,30 @@ module KubernetesValidation
       validate_self_hosted_network_policy(context, "redis", 6379, ["backend", "publish-worker", "browser-worker", "collab-service", "redis-exporter", "redis-backup"])
     end
 
+    def validate_redis_ha_nonprod(context)
+      validate_redis_ha_services(context)
+      validate_redis_ha_config(context)
+      validate_redis_ha_stateful_set(
+        context,
+        name: "redis-ha-primary",
+        component: "redis-ha-primary",
+        service_name: "redis-ha-primary-headless",
+        replicas: 1,
+        data_claim: "redis-ha-primary-data",
+      )
+      validate_redis_ha_stateful_set(
+        context,
+        name: "redis-ha-replica",
+        component: "redis-ha-replica",
+        service_name: "redis-ha-replicas-headless",
+        replicas: 2,
+        data_claim: "redis-ha-replica-data",
+      )
+      validate_redis_ha_sentinel(context)
+      validate_redis_ha_network_policy(context)
+      validate_redis_ha_keeps_existing_traffic(context)
+    end
+
     def validate_redis_exporter(context)
       service = context.require_document("Service", "redis-exporter", "mpp-system")
       if service
@@ -98,6 +122,325 @@ module KubernetesValidation
       validate_redis_exporter_security(context, container)
       validate_redis_exporter_env(context, container)
       validate_redis_exporter_probes(context, container)
+    end
+
+    def validate_redis_ha_services(context)
+      {
+        "redis-ha-primary" => ["redis-ha-primary", 6379, "redis"],
+        "redis-ha-primary-headless" => ["redis-ha-primary", 6379, "redis"],
+        "redis-ha-replicas" => ["redis-ha-replica", 6379, "redis"],
+        "redis-ha-replicas-headless" => ["redis-ha-replica", 6379, "redis"],
+        "redis-ha-sentinel" => ["redis-ha-sentinel", 26379, "sentinel"],
+        "redis-ha-sentinel-headless" => ["redis-ha-sentinel", 26379, "sentinel"],
+      }.each do |name, (component, port, port_name)|
+        service = context.require_document("Service", name, "mpp-system")
+        next unless service
+
+        selector = service.spec["selector"] || {}
+        unless selector["app.kubernetes.io/component"] == component
+          context.add_error("non-prod HA Redis #{name} Service must select #{component} Pods")
+        end
+
+        if name.end_with?("-headless") && service.spec["clusterIP"] != "None"
+          context.add_error("non-prod HA Redis #{name} Service must be headless")
+        end
+
+        service_port = Array(service.spec["ports"]).find do |entry|
+          entry["name"] == port_name && entry["port"] == port
+        end
+        context.add_error("non-prod HA Redis #{name} Service must expose #{port_name} port #{port}") unless service_port
+      end
+    end
+
+    def validate_redis_ha_config(context)
+      config = context.require_document("ConfigMap", "redis-ha-config", "mpp-system")
+      return unless config
+
+      redis_config = redis_config_lines(config.data["redis.conf"])
+      validate_redis_runtime_common_policy(context, redis_config)
+      validate_redis_persistence_common_policy(context, redis_config)
+      validate_overlay_redis_persistence_policy(context, redis_config)
+
+      {
+        "replica-read-only yes" => "non-prod HA Redis config must keep replicas read-only",
+        "repl-diskless-sync yes" => "non-prod HA Redis config must enable diskless replica sync",
+      }.each do |line, message|
+        context.add_error(message) unless redis_config.include?(line)
+      end
+    end
+
+    def validate_redis_ha_stateful_set(context, name:, component:, service_name:, replicas:, data_claim:)
+      stateful_set = context.require_document("StatefulSet", name, "mpp-system")
+      return unless stateful_set
+
+      context.add_error("non-prod HA Redis #{name} StatefulSet must use #{service_name}") unless stateful_set.spec["serviceName"] == service_name
+      context.add_error("non-prod HA Redis #{name} StatefulSet must run #{replicas} replicas") unless stateful_set.spec["replicas"] == replicas
+
+      selector_component = stateful_set.spec.dig("selector", "matchLabels", "app.kubernetes.io/component")
+      pod_component = stateful_set.pod_labels["app.kubernetes.io/component"]
+      unless selector_component == component && pod_component == component
+        context.add_error("non-prod HA Redis #{name} StatefulSet must select #{component} Pods")
+      end
+
+      validate_redis_ha_pod_security(context, stateful_set, "non-prod HA Redis #{name} StatefulSet")
+      validate_redis_ha_scheduling_spread(context, stateful_set, "non-prod HA Redis #{name} StatefulSet")
+
+      redis_container = stateful_set.container("redis")
+      unless redis_container
+        context.add_error("non-prod HA Redis #{name} StatefulSet must define a redis container")
+        return
+      end
+
+      context.add_error("non-prod HA Redis #{name} container must use redis:7-alpine") unless redis_container["image"] == "docker.io/library/redis:7-alpine"
+      validate_resources(context, redis_container, "non-prod HA Redis #{name} container")
+      validate_redis_ha_container_security(context, redis_container, "non-prod HA Redis #{name} container")
+      validate_redis_ha_config_mount(context, stateful_set, redis_container, name)
+      validate_redis_ha_password_ref(context, redis_container, "non-prod HA Redis #{name} container")
+      validate_redis_ping_probe(context, redis_container, "livenessProbe")
+      validate_redis_ha_readiness(context, redis_container, name)
+      validate_redis_ha_graceful_shutdown(context, stateful_set, redis_container, name)
+      validate_redis_ha_data_claim(context, stateful_set, data_claim, name)
+
+      args_text = Array(redis_container["args"]).join("\n")
+      if name == "redis-ha-primary"
+        unless args_text.include?("--masterauth") && args_text.include?("--requirepass")
+          context.add_error("non-prod HA Redis primary must configure auth for clients and replicas")
+        end
+      else
+        unless args_text.include?("--replicaof") && args_text.include?("redis-ha-primary")
+          context.add_error("non-prod HA Redis replica must replicate from redis-ha-primary")
+        end
+      end
+    end
+
+    def validate_redis_ha_sentinel(context)
+      stateful_set = context.require_document("StatefulSet", "redis-ha-sentinel", "mpp-system")
+      return unless stateful_set
+
+      context.add_error("non-prod HA Redis sentinel StatefulSet must use redis-ha-sentinel-headless") unless stateful_set.spec["serviceName"] == "redis-ha-sentinel-headless"
+      context.add_error("non-prod HA Redis sentinel StatefulSet must run 3 replicas") unless stateful_set.spec["replicas"] == 3
+      context.add_error("non-prod HA Redis sentinel StatefulSet must start Pods in parallel") unless stateful_set.spec["podManagementPolicy"] == "Parallel"
+
+      selector_component = stateful_set.spec.dig("selector", "matchLabels", "app.kubernetes.io/component")
+      pod_component = stateful_set.pod_labels["app.kubernetes.io/component"]
+      unless selector_component == "redis-ha-sentinel" && pod_component == "redis-ha-sentinel"
+        context.add_error("non-prod HA Redis sentinel StatefulSet must select redis-ha-sentinel Pods")
+      end
+
+      validate_redis_ha_pod_security(context, stateful_set, "non-prod HA Redis sentinel StatefulSet")
+      validate_redis_ha_scheduling_spread(context, stateful_set, "non-prod HA Redis sentinel StatefulSet")
+
+      container = stateful_set.container("sentinel")
+      unless container
+        context.add_error("non-prod HA Redis sentinel StatefulSet must define a sentinel container")
+        return
+      end
+
+      context.add_error("non-prod HA Redis sentinel container must use redis:7-alpine") unless container["image"] == "docker.io/library/redis:7-alpine"
+      validate_resources(context, container, "non-prod HA Redis sentinel container")
+      validate_redis_ha_container_security(context, container, "non-prod HA Redis sentinel container")
+      validate_redis_ha_password_ref(context, container, "non-prod HA Redis sentinel container")
+
+      args_text = Array(container["args"]).join("\n")
+      {
+        "sentinel monitor" => "non-prod HA Redis sentinel must monitor the HA master",
+        "redis-ha-primary" => "non-prod HA Redis sentinel must discover redis-ha-primary",
+        "sentinel auth-pass" => "non-prod HA Redis sentinel must support REDIS_PASSWORD auth",
+        "--sentinel" => "non-prod HA Redis sentinel must start redis-server in sentinel mode",
+      }.each do |needle, message|
+        context.add_error(message) unless args_text.include?(needle)
+      end
+
+      env = Array(container["env"]).each_with_object({}) { |entry, result| result[entry["name"]] = entry["value"] }
+      context.add_error("non-prod HA Redis sentinel master name must be mpp-redis-ha") unless env["REDIS_SENTINEL_MASTER_NAME"] == "mpp-redis-ha"
+      context.add_error("non-prod HA Redis sentinel quorum must be 2") unless env["REDIS_SENTINEL_QUORUM"] == "2"
+
+      readiness = Array(container.dig("readinessProbe", "exec", "command")).join("\n")
+      unless readiness.include?("SENTINEL get-master-addr-by-name") && readiness.include?("SENTINEL ckquorum")
+        context.add_error("non-prod HA Redis sentinel readiness must verify master discovery and quorum")
+      end
+
+      liveness = Array(container.dig("livenessProbe", "exec", "command")).join("\n")
+      unless liveness.include?("redis-cli") && liveness.include?("-p 26379") && liveness.match?(/\bping\b/i)
+        context.add_error("non-prod HA Redis sentinel livenessProbe must ping Sentinel")
+      end
+    end
+
+    def validate_redis_ha_pod_security(context, workload, label)
+      pod_spec = workload.pod_spec
+      pod_security = pod_spec["securityContext"] || {}
+      context.add_error("#{label} must not mount service account tokens") unless pod_spec["automountServiceAccountToken"] == false
+      context.add_error("#{label} must run as non-root") unless pod_security["runAsNonRoot"] == true
+      unless pod_security["fsGroupChangePolicy"] == "OnRootMismatch"
+        context.add_error("#{label} must use OnRootMismatch fsGroup changes")
+      end
+      unless pod_security.dig("seccompProfile", "type") == "RuntimeDefault"
+        context.add_error("#{label} must use RuntimeDefault seccomp")
+      end
+    end
+
+    def validate_redis_ha_scheduling_spread(context, workload, label)
+      pod_spec = workload.pod_spec
+      spread = Array(pod_spec["topologySpreadConstraints"]).find do |entry|
+        entry["topologyKey"] == "kubernetes.io/hostname" &&
+          entry["whenUnsatisfiable"] == "ScheduleAnyway" &&
+          redis_ha_component_values(entry.dig("labelSelector", "matchExpressions")).sort == redis_ha_components
+      end
+      unless spread
+        context.add_error("#{label} must prefer hostname topology spread across HA Redis Pods")
+      end
+
+      anti_affinity_terms = Array(
+        pod_spec.dig("affinity", "podAntiAffinity", "preferredDuringSchedulingIgnoredDuringExecution"),
+      )
+      anti_affinity = anti_affinity_terms.find do |entry|
+        term = entry["podAffinityTerm"] || {}
+        term["topologyKey"] == "kubernetes.io/hostname" &&
+          redis_ha_component_values(term.dig("labelSelector", "matchExpressions")).sort == redis_ha_components
+      end
+      unless anti_affinity
+        context.add_error("#{label} must prefer hostname anti-affinity across HA Redis Pods")
+      end
+    end
+
+    def validate_redis_ha_container_security(context, container, label)
+      security = container["securityContext"] || {}
+      context.add_error("#{label} must forbid privilege escalation") unless security["allowPrivilegeEscalation"] == false
+      drops = Array(security.dig("capabilities", "drop"))
+      context.add_error("#{label} must drop all Linux capabilities") unless drops.include?("ALL")
+    end
+
+    def validate_redis_ha_config_mount(context, stateful_set, container, name)
+      mounts = Array(container["volumeMounts"])
+      config_mount = mounts.find do |mount|
+        mount["name"] == "redis-ha-config" &&
+          mount["mountPath"] == "/usr/local/etc/redis" &&
+          mount["readOnly"] == true
+      end
+      context.add_error("non-prod HA Redis #{name} container must mount redis-ha-config read-only") unless config_mount
+
+      volumes = Array(stateful_set.pod_spec["volumes"])
+      config_volume = volumes.find { |volume| volume.dig("configMap", "name") == "redis-ha-config" }
+      context.add_error("non-prod HA Redis #{name} StatefulSet must mount redis-ha-config") unless config_volume
+    end
+
+    def validate_redis_ha_password_ref(context, container, label)
+      env = Array(container["env"])
+      secret = env.find { |entry| entry["name"] == "REDIS_PASSWORD" }&.dig("valueFrom", "secretKeyRef")
+      unless secret
+        context.add_error("#{label} must read REDIS_PASSWORD from mpp-app-secrets")
+        return
+      end
+
+      context.add_error("#{label} must read REDIS_PASSWORD from mpp-app-secrets") unless secret["name"] == "mpp-app-secrets"
+      context.add_error("#{label} must read REDIS_PASSWORD from REDIS_PASSWORD") unless secret["key"] == "REDIS_PASSWORD"
+      context.add_error("#{label} REDIS_PASSWORD optional flag is wrong") unless secret["optional"] == true
+    end
+
+    def validate_redis_ha_readiness(context, container, name)
+      command = Array(container.dig("readinessProbe", "exec", "command")).join("\n")
+      unless command.include?("redis-cli") && command.match?(/\bping\b/i)
+        context.add_error("non-prod HA Redis #{name} readinessProbe must run redis-cli PING")
+      end
+      unless command.include?("REDIS_PASSWORD")
+        context.add_error("non-prod HA Redis #{name} readinessProbe must support optional REDIS_PASSWORD")
+      end
+
+      unless command.include?("ROLE") && command.include?('role="$(redis_cli ROLE | head -n 1)"')
+        context.add_error("non-prod HA Redis #{name} readinessProbe must inspect the current Redis role")
+      end
+      unless command.include?('[ "$role" = "master" ]')
+        context.add_error("non-prod HA Redis #{name} readinessProbe must accept promoted master role")
+      end
+      unless command.include?('[ "$role" = "slave" ]') &&
+             command.include?('[ "$role" = "replica" ]') &&
+             command.include?("INFO replication") &&
+             command.include?("master_link_status:up")
+        context.add_error("non-prod HA Redis #{name} readinessProbe must verify healthy replica links")
+      end
+    end
+
+    def redis_ha_component_values(match_expressions)
+      Array(match_expressions)
+        .select { |entry| entry["key"] == "app.kubernetes.io/component" }
+        .flat_map { |entry| Array(entry["values"]) }
+        .sort
+    end
+
+    def redis_ha_components
+      ["redis-ha-primary", "redis-ha-replica", "redis-ha-sentinel"]
+    end
+
+    def validate_redis_ha_graceful_shutdown(context, stateful_set, container, name)
+      if stateful_set.pod_spec["terminationGracePeriodSeconds"].to_i < 60
+        context.add_error("non-prod HA Redis #{name} StatefulSet must allow at least 60 seconds for graceful termination")
+      end
+
+      pre_stop_command = Array(container.dig("lifecycle", "preStop", "exec", "command")).join("\n")
+      unless pre_stop_command.include?("redis-cli") && pre_stop_command.match?(/\bSHUTDOWN\s+SAVE\b/i)
+        context.add_error("non-prod HA Redis #{name} container must run SHUTDOWN SAVE before termination")
+      end
+      unless pre_stop_command.include?("REDIS_PASSWORD")
+        context.add_error("non-prod HA Redis #{name} shutdown hook must support optional REDIS_PASSWORD")
+      end
+    end
+
+    def validate_redis_ha_data_claim(context, stateful_set, data_claim, name)
+      pvc = Array(stateful_set.spec["volumeClaimTemplates"]).find do |claim|
+        claim.dig("metadata", "name") == data_claim
+      end
+      unless pvc
+        context.add_error("non-prod HA Redis #{name} StatefulSet must define #{data_claim} persistent storage")
+        return
+      end
+
+      access_modes = Array(pvc.dig("spec", "accessModes"))
+      storage = pvc.dig("spec", "resources", "requests", "storage")
+      context.add_error("non-prod HA Redis #{data_claim} PVC must use ReadWriteOnce storage") unless access_modes.include?("ReadWriteOnce")
+      context.add_error("non-prod HA Redis #{data_claim} PVC must request storage") if storage.to_s.empty?
+    end
+
+    def validate_redis_ha_network_policy(context)
+      policy = context.require_document("NetworkPolicy", "redis-ha-internal-access", "mpp-system")
+      return unless policy
+
+      selector = policy.spec.dig("podSelector", "matchExpressions") || []
+      component_expression = selector.find { |entry| entry["key"] == "app.kubernetes.io/component" }
+      components = Array(component_expression&.fetch("values", nil))
+      ["redis-ha-primary", "redis-ha-replica", "redis-ha-sentinel"].each do |component|
+        unless components.include?(component)
+          context.add_error("non-prod HA Redis NetworkPolicy must select #{component} Pods")
+        end
+      end
+
+      from_components = Array(policy.spec["ingress"]).flat_map { |rule| Array(rule["from"]) }
+        .flat_map { |entry| Array(entry.dig("podSelector", "matchExpressions")) }
+        .select { |entry| entry["key"] == "app.kubernetes.io/component" }
+        .flat_map { |entry| Array(entry["values"]) }
+      ["redis-ha-primary", "redis-ha-replica", "redis-ha-sentinel"].each do |component|
+        unless from_components.include?(component)
+          context.add_error("non-prod HA Redis NetworkPolicy must allow #{component} ingress")
+        end
+      end
+
+      ports = Array(policy.spec["ingress"]).flat_map { |rule| Array(rule["ports"]) }.map { |entry| entry["port"] }
+      context.add_error("non-prod HA Redis NetworkPolicy must allow Redis port 6379") unless ports.include?(6379)
+      context.add_error("non-prod HA Redis NetworkPolicy must allow Sentinel port 26379") unless ports.include?(26379)
+    end
+
+    def validate_redis_ha_keeps_existing_traffic(context)
+      app_config = context.document("ConfigMap", "mpp-app-config", "mpp-system")
+      if app_config && app_config.data["REDIS_ADDR"] != "redis:6379"
+        context.add_error("non-prod HA Redis validation must keep app REDIS_ADDR on existing redis:6379")
+      end
+
+      existing_redis = context.document("Service", "redis", "mpp-system")
+      return unless existing_redis
+
+      selector = existing_redis.spec["selector"] || {}
+      unless selector["app.kubernetes.io/component"] == "redis"
+        context.add_error("non-prod HA Redis validation must leave existing redis Service on the old Redis Pods")
+      end
     end
 
     def validate_redis_exporter_security(context, container)

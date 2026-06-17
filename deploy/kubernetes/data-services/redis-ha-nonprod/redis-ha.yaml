@@ -1,0 +1,655 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-ha-primary
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-primary
+    app.kubernetes.io/part-of: mpp
+spec:
+  selector:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-primary
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-ha-primary-headless
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-primary
+    app.kubernetes.io/part-of: mpp
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-primary
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-ha-replicas
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-replica
+    app.kubernetes.io/part-of: mpp
+spec:
+  selector:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-replica
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-ha-replicas-headless
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-replica
+    app.kubernetes.io/part-of: mpp
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-replica
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-ha-sentinel
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-sentinel
+    app.kubernetes.io/part-of: mpp
+spec:
+  selector:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-sentinel
+  ports:
+    - name: sentinel
+      port: 26379
+      targetPort: sentinel
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-ha-sentinel-headless
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-sentinel
+    app.kubernetes.io/part-of: mpp
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-sentinel
+  ports:
+    - name: sentinel
+      port: 26379
+      targetPort: sentinel
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-ha-config
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha
+    app.kubernetes.io/part-of: mpp
+data:
+  redis.conf: |
+    dir /data
+    dbfilename dump.rdb
+    protected-mode no
+
+    maxmemory 384mb
+    maxmemory-policy noeviction
+
+    timeout 0
+    tcp-keepalive 300
+
+    appendonly yes
+    appendfsync everysec
+    appenddirname appendonlydir
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+
+    save 900 1
+    save 300 10
+    save 60 10000
+
+    repl-diskless-sync yes
+    replica-read-only yes
+
+    slowlog-log-slower-than 10000
+    slowlog-max-len 256
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-ha-primary
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-primary
+    app.kubernetes.io/part-of: mpp
+spec:
+  serviceName: redis-ha-primary-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: redis-ha-primary
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: redis-ha-primary
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: mpp
+                  matchExpressions:
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - redis-ha-primary
+                        - redis-ha-replica
+                        - redis-ha-sentinel
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - redis-ha-primary
+                  - redis-ha-replica
+                  - redis-ha-sentinel
+      containers:
+        - name: redis
+          image: docker.io/library/redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: redis
+              containerPort: 6379
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: REDIS_PASSWORD
+                  optional: true
+          command:
+            - sh
+            - -ec
+          args:
+            - |
+              if [ -n "${REDIS_PASSWORD:-}" ]; then
+                exec redis-server /usr/local/etc/redis/redis.conf --requirepass "$REDIS_PASSWORD" --masterauth "$REDIS_PASSWORD"
+              fi
+              exec redis-server /usr/local/etc/redis/redis.conf
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -ec
+                  - |
+                    if [ -n "${REDIS_PASSWORD:-}" ]; then
+                      redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SHUTDOWN SAVE || true
+                    else
+                      redis-cli SHUTDOWN SAVE || true
+                    fi
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - |
+                  redis_cli() {
+                    if [ -n "${REDIS_PASSWORD:-}" ]; then
+                      redis-cli --raw --no-auth-warning -a "$REDIS_PASSWORD" "$@"
+                    else
+                      redis-cli --raw "$@"
+                    fi
+                  }
+                  redis_cli ping | grep -q PONG
+                  role="$(redis_cli ROLE | head -n 1)"
+                  if [ "$role" = "master" ]; then
+                    exit 0
+                  fi
+                  if [ "$role" = "slave" ] || [ "$role" = "replica" ]; then
+                    redis_cli INFO replication | tr -d '\r' | grep -q '^master_link_status:up$'
+                    exit 0
+                  fi
+                  exit 1
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - |
+                  if [ -n "${REDIS_PASSWORD:-}" ]; then
+                    redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping
+                  else
+                    redis-cli ping
+                  fi
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: redis-ha-config
+              mountPath: /usr/local/etc/redis
+              readOnly: true
+            - name: redis-ha-primary-data
+              mountPath: /data
+      volumes:
+        - name: redis-ha-config
+          configMap:
+            name: redis-ha-config
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-ha-primary-data
+        labels:
+          app.kubernetes.io/name: mpp
+          app.kubernetes.io/component: redis-ha-primary
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-ha-replica
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-replica
+    app.kubernetes.io/part-of: mpp
+spec:
+  serviceName: redis-ha-replicas-headless
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: redis-ha-replica
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: redis-ha-replica
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: mpp
+                  matchExpressions:
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - redis-ha-primary
+                        - redis-ha-replica
+                        - redis-ha-sentinel
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - redis-ha-primary
+                  - redis-ha-replica
+                  - redis-ha-sentinel
+      containers:
+        - name: redis
+          image: docker.io/library/redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: redis
+              containerPort: 6379
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: REDIS_PASSWORD
+                  optional: true
+            - name: REDIS_PRIMARY_SERVICE
+              value: redis-ha-primary.mpp-system.svc.cluster.local
+          command:
+            - sh
+            - -ec
+          args:
+            - |
+              primary="${REDIS_PRIMARY_SERVICE:-redis-ha-primary.mpp-system.svc.cluster.local}"
+              if [ -n "${REDIS_PASSWORD:-}" ]; then
+                exec redis-server /usr/local/etc/redis/redis.conf --replicaof "$primary" 6379 --masterauth "$REDIS_PASSWORD" --requirepass "$REDIS_PASSWORD"
+              fi
+              exec redis-server /usr/local/etc/redis/redis.conf --replicaof "$primary" 6379
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -ec
+                  - |
+                    if [ -n "${REDIS_PASSWORD:-}" ]; then
+                      redis-cli --no-auth-warning -a "$REDIS_PASSWORD" SHUTDOWN SAVE || true
+                    else
+                      redis-cli SHUTDOWN SAVE || true
+                    fi
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - |
+                  redis_cli() {
+                    if [ -n "${REDIS_PASSWORD:-}" ]; then
+                      redis-cli --raw --no-auth-warning -a "$REDIS_PASSWORD" "$@"
+                    else
+                      redis-cli --raw "$@"
+                    fi
+                  }
+                  redis_cli ping | grep -q PONG
+                  role="$(redis_cli ROLE | head -n 1)"
+                  if [ "$role" = "master" ]; then
+                    exit 0
+                  fi
+                  if [ "$role" = "slave" ] || [ "$role" = "replica" ]; then
+                    redis_cli INFO replication | tr -d '\r' | grep -q '^master_link_status:up$'
+                    exit 0
+                  fi
+                  exit 1
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 9
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - |
+                  if [ -n "${REDIS_PASSWORD:-}" ]; then
+                    redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping
+                  else
+                    redis-cli ping
+                  fi
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: redis-ha-config
+              mountPath: /usr/local/etc/redis
+              readOnly: true
+            - name: redis-ha-replica-data
+              mountPath: /data
+      volumes:
+        - name: redis-ha-config
+          configMap:
+            name: redis-ha-config
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-ha-replica-data
+        labels:
+          app.kubernetes.io/name: mpp
+          app.kubernetes.io/component: redis-ha-replica
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-ha-sentinel
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-ha-sentinel
+    app.kubernetes.io/part-of: mpp
+spec:
+  podManagementPolicy: Parallel
+  serviceName: redis-ha-sentinel-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: redis-ha-sentinel
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: redis-ha-sentinel
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: mpp
+                  matchExpressions:
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - redis-ha-primary
+                        - redis-ha-replica
+                        - redis-ha-sentinel
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - redis-ha-primary
+                  - redis-ha-replica
+                  - redis-ha-sentinel
+      containers:
+        - name: sentinel
+          image: docker.io/library/redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: sentinel
+              containerPort: 26379
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: REDIS_PASSWORD
+                  optional: true
+            - name: REDIS_SENTINEL_MASTER_NAME
+              value: mpp-redis-ha
+            - name: REDIS_SENTINEL_QUORUM
+              value: "2"
+            - name: REDIS_PRIMARY_SERVICE
+              value: redis-ha-primary.mpp-system.svc.cluster.local
+          command:
+            - sh
+            - -ec
+          args:
+            - |
+              master_name="${REDIS_SENTINEL_MASTER_NAME:-mpp-redis-ha}"
+              quorum="${REDIS_SENTINEL_QUORUM:-2}"
+              primary="${REDIS_PRIMARY_SERVICE:-redis-ha-primary.mpp-system.svc.cluster.local}"
+              cat > /data/sentinel.conf <<EOF
+              port 26379
+              dir /data
+              protected-mode no
+              sentinel monitor ${master_name} ${primary} 6379 ${quorum}
+              sentinel resolve-hostnames yes
+              sentinel announce-hostnames yes
+              sentinel down-after-milliseconds ${master_name} 10000
+              sentinel failover-timeout ${master_name} 60000
+              sentinel parallel-syncs ${master_name} 1
+              EOF
+              if [ -n "${REDIS_PASSWORD:-}" ]; then
+                echo "sentinel auth-pass ${master_name} ${REDIS_PASSWORD}" >> /data/sentinel.conf
+              fi
+              exec redis-server /data/sentinel.conf --sentinel
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - |
+                  master_name="${REDIS_SENTINEL_MASTER_NAME:-mpp-redis-ha}"
+                  redis-cli -p 26379 ping | grep -q PONG
+                  master_addr="$(redis-cli -p 26379 SENTINEL get-master-addr-by-name "$master_name" | tr '\n' ' ')"
+                  test -n "$master_addr"
+                  echo "$master_addr" | grep -q '6379'
+                  redis-cli -p 26379 SENTINEL ckquorum "$master_name" | grep -q '^OK'
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - redis-cli -p 26379 ping | grep -q PONG
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: sentinel-data
+              mountPath: /data
+      volumes:
+        - name: sentinel-data
+          emptyDir: {}
