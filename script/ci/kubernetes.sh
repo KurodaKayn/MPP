@@ -14,6 +14,7 @@ done
 ruby script/env/generate_examples.rb --check
 ruby script/kubernetes/test_app_secret_materializer.rb
 ruby script/kubernetes/test_overlay_image_pinner.rb
+ruby script/kubernetes/test_redis_ha_failover_drill.rb
 ruby script/kubernetes/test_redis_capacity_alerts.rb
 ruby script/kubernetes/test_validate_rendered_manifests.rb
 ruby script/kubernetes/test_validate_rendered_schema.rb
