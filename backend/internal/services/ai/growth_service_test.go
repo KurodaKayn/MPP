@@ -196,7 +196,7 @@ func TestGrowthOptimizationServiceRejectsUncompiledProposal(t *testing.T) {
 		TargetPlatforms: []string{"wechat"},
 	})
 
-	require.ErrorIs(t, err, ErrAIServiceUnavailable)
+	require.ErrorIs(t, err, ErrGrowthProposalConflict)
 
 	var persistedRun models.AIGrowthOptimizationRun
 	require.NoError(t, db.First(&persistedRun, "project_id = ?", projectID).Error)
@@ -263,7 +263,7 @@ func TestGrowthOptimizationServiceRejectsStaleSourceBaseVersion(t *testing.T) {
 		TargetPlatforms: []string{"wechat"},
 	})
 
-	require.ErrorIs(t, err, ErrAIServiceUnavailable)
+	require.ErrorIs(t, err, ErrGrowthProposalConflict)
 	require.Contains(t, err.Error(), "base version changed")
 
 	var persistedRun models.AIGrowthOptimizationRun
@@ -342,7 +342,7 @@ func TestGrowthOptimizationServiceRejectsStalePlatformDraftBaseVersion(t *testin
 		TargetPlatforms: []string{"wechat"},
 	})
 
-	require.ErrorIs(t, err, ErrAIServiceUnavailable)
+	require.ErrorIs(t, err, ErrGrowthProposalConflict)
 	require.Contains(t, err.Error(), "base version changed")
 
 	var persistedRun models.AIGrowthOptimizationRun
@@ -413,4 +413,85 @@ func TestMapGrowthRunResponseRejectsCorruptJSON(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "decode growth run target platforms")
+}
+
+func TestStableJSONHashCanonicalizesObjectKeyOrder(t *testing.T) {
+	left := stableJSONHash([]byte(`{"format":"html","blocks":[{"type":"text","value":"A"}]}`))
+	right := stableJSONHash([]byte(`{"blocks":[{"value":"A","type":"text"}],"format":"html"}`))
+
+	require.Equal(t, left, right)
+}
+
+func TestCompareGrowthProposalBaseVersionsIgnoresMetadataOnlyUpdatedAt(t *testing.T) {
+	base := growthProposalBaseVersionCheck{
+		Status: "pass",
+		Source: growthSourceBaseVersion{
+			VersionID:         uuid.NewString(),
+			VersionNumber:     3,
+			TitleHash:         stableStringHash("Title"),
+			SourceContentHash: stableStringHash("Source"),
+			UpdatedAt:         "2026-06-17T01:00:00Z",
+		},
+		PlatformDrafts: map[string]growthPlatformBaseVersion{
+			"wechat": {
+				AdaptedContentHash: stableJSONHash([]byte(`{"format":"html","html":"Draft"}`)),
+				Status:             models.PublicationStatusDraft,
+				DraftStatus:        models.PublicationDraftStatusReady,
+				SyncRequired:       false,
+				UpdatedAt:          "2026-06-17T01:00:00Z",
+			},
+		},
+	}
+	current := base
+	current.Source.UpdatedAt = "2026-06-17T02:00:00Z"
+	current.PlatformDrafts = map[string]growthPlatformBaseVersion{
+		"wechat": base.PlatformDrafts["wechat"],
+	}
+	draft := current.PlatformDrafts["wechat"]
+	draft.UpdatedAt = "2026-06-17T02:00:00Z"
+	current.PlatformDrafts["wechat"] = draft
+
+	check := compareGrowthProposalBaseVersions(base, current)
+
+	require.Equal(t, "pass", check.Status)
+	require.Empty(t, check.Warnings)
+}
+
+func TestCompareGrowthProposalBaseVersionsDetectsContentChanges(t *testing.T) {
+	base := growthProposalBaseVersionCheck{
+		Status: "pass",
+		Source: growthSourceBaseVersion{
+			TitleHash:         stableStringHash("Title"),
+			SourceContentHash: stableStringHash("Source"),
+		},
+		PlatformDrafts: map[string]growthPlatformBaseVersion{
+			"wechat": {
+				AdaptedContentHash: stableJSONHash([]byte(`{"html":"Draft"}`)),
+				Status:             models.PublicationStatusDraft,
+			},
+		},
+	}
+	current := base
+	current.Source.SourceContentHash = stableStringHash("Changed source")
+	current.PlatformDrafts = map[string]growthPlatformBaseVersion{
+		"wechat": {
+			AdaptedContentHash: stableJSONHash([]byte(`{"html":"Changed draft"}`)),
+			Status:             models.PublicationStatusDraft,
+		},
+	}
+
+	check := compareGrowthProposalBaseVersions(base, current)
+
+	require.Equal(t, "stale", check.Status)
+	require.ElementsMatch(t, []string{
+		"source content changed since proposal generation started",
+		"wechat draft changed since proposal generation started",
+	}, check.Warnings)
+}
+
+func TestWithBaseVersionQualityChecksPreservesExistingChecks(t *testing.T) {
+	checks := withBaseVersionQualityChecks(map[string]any{"brand_consistency": "pass"}, growthProposalBaseVersionCheck{Status: "pass"})
+
+	require.Equal(t, "pass", checks["brand_consistency"])
+	require.Equal(t, growthProposalBaseVersionCheck{Status: "pass"}, checks["proposal_base_versions"])
 }
