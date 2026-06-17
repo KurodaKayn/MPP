@@ -8,6 +8,7 @@ require_relative "overlay_image_pinner"
 options = {
   overlay: nil,
   git_sha: ENV.fetch("GITHUB_SHA", ""),
+  image_namespace: ENV.fetch("MPP_IMAGE_NAMESPACE", KubernetesOverlayImages::DEFAULT_IMAGE_NAMESPACE),
 }
 
 parser = OptionParser.new do |opts|
@@ -18,6 +19,9 @@ parser = OptionParser.new do |opts|
   end
   opts.on("--git-sha SHA", "Full 40-character Git SHA. Defaults to GITHUB_SHA.") do |value|
     options[:git_sha] = value
+  end
+  opts.on("--image-namespace VALUE", "Target image namespace. Defaults to MPP_IMAGE_NAMESPACE or ghcr.io/kurodakayn.") do |value|
+    options[:image_namespace] = value
   end
   opts.on("-h", "--help", "Show this help.") do
     puts opts
@@ -35,6 +39,7 @@ end
 pinner = KubernetesOverlayImages::Pinner.new(
   overlay: options[:overlay],
   git_sha: options[:git_sha],
+  image_namespace: options[:image_namespace],
 )
 result = pinner.pin
 
