@@ -104,6 +104,30 @@ mod tests {
 
     use super::*;
 
+    async fn spawn_resolver(app: Router) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test resolver should bind");
+        let addr = listener
+            .local_addr()
+            .expect("test resolver address should be available");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("test resolver should serve");
+        });
+        format!("http://{addr}/internal/media/resolve")
+    }
+
+    async fn resolve_with_app(app: Router, object_ref: &str) -> Result<String, Status> {
+        let config = ObjectRefResolverConfig {
+            url: spawn_resolver(app).await,
+            internal_token: "test-internal-token".to_string(),
+        };
+
+        resolve_object_ref_url(&Client::new(), &config, object_ref).await
+    }
+
     #[tokio::test]
     async fn resolves_object_ref_with_internal_token() {
         let seen = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
@@ -137,19 +161,8 @@ mod tests {
                 }
             }),
         );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("test resolver should bind");
-        let addr = listener
-            .local_addr()
-            .expect("test resolver address should be available");
-        tokio::spawn(async move {
-            axum::serve(listener, app)
-                .await
-                .expect("test resolver should serve");
-        });
         let config = ObjectRefResolverConfig {
-            url: format!("http://{addr}/internal/media/resolve"),
+            url: spawn_resolver(app).await,
             internal_token: "test-internal-token".to_string(),
         };
 
@@ -172,5 +185,83 @@ mod tests {
                 .1
                 .contains("mpp://media/11111111-1111-4111-8111-111111111111")
         );
+    }
+
+    #[tokio::test]
+    async fn rejects_empty_object_ref_before_calling_resolver() {
+        let config = ObjectRefResolverConfig {
+            url: "http://127.0.0.1:9/internal/media/resolve".to_string(),
+            internal_token: "test-internal-token".to_string(),
+        };
+
+        let err = resolve_object_ref_url(&Client::new(), &config, "   ")
+            .await
+            .expect_err("empty object ref should be rejected");
+
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn maps_resolver_auth_failures_to_failed_precondition() {
+        for status in [StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN] {
+            let app = Router::new().route(
+                "/internal/media/resolve",
+                post(move || async move { (status, "token rejected") }),
+            );
+
+            let err = resolve_with_app(app, "mpp://media/11111111-1111-4111-8111-111111111111")
+                .await
+                .expect_err("auth failure should reject resolver configuration");
+
+            assert_eq!(err.code(), tonic::Code::FailedPrecondition);
+        }
+    }
+
+    #[tokio::test]
+    async fn maps_resolver_server_failures_to_unavailable() {
+        let app = Router::new().route(
+            "/internal/media/resolve",
+            post(|| async { (StatusCode::INTERNAL_SERVER_ERROR, "boom") }),
+        );
+
+        let err = resolve_with_app(app, "mpp://media/11111111-1111-4111-8111-111111111111")
+            .await
+            .expect_err("server failure should be unavailable");
+
+        assert_eq!(err.code(), tonic::Code::Unavailable);
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_resolver_json() {
+        let app = Router::new().route(
+            "/internal/media/resolve",
+            post(|| async { (StatusCode::OK, [("content-type", "application/json")], "{") }),
+        );
+
+        let err = resolve_with_app(app, "mpp://media/11111111-1111-4111-8111-111111111111")
+            .await
+            .expect_err("invalid resolver response should be unavailable");
+
+        assert_eq!(err.code(), tonic::Code::Unavailable);
+    }
+
+    #[tokio::test]
+    async fn rejects_empty_resolver_url() {
+        let app = Router::new().route(
+            "/internal/media/resolve",
+            post(|| async {
+                (
+                    StatusCode::OK,
+                    [("content-type", "application/json")],
+                    r#"{"url":"  "}"#,
+                )
+            }),
+        );
+
+        let err = resolve_with_app(app, "mpp://media/11111111-1111-4111-8111-111111111111")
+            .await
+            .expect_err("empty resolver URL should be unavailable");
+
+        assert_eq!(err.code(), tonic::Code::Unavailable);
     }
 }
