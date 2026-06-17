@@ -27,6 +27,22 @@ type WechatConfig struct {
 
 const defaultCoverImagePath = "Assets/132461906_p0_master1200.jpg"
 
+type wechatClient interface {
+	UploadImage(imageBytes []byte, filename string) (*pkgwechat.MediaResponse, error)
+	UploadThumb(imageBytes []byte, filename string) (*pkgwechat.MediaResponse, error)
+	CreateDraft(articles []pkgwechat.Article) (string, error)
+	Publish(mediaID string) (string, int, error)
+}
+
+var (
+	newWechatClient = func(appID, appSecret string) wechatClient {
+		return pkgwechat.NewClient(appID, appSecret)
+	}
+	downloadAndProcessWechatMedia            = media.DownloadAndProcess
+	downloadAndProcessWechatMediaForPlatform = media.DownloadAndProcessForPlatform
+	readProcessedWechatObject                = media.ReadProcessedObject
+)
+
 func (w *WechatPublisher) ValidateConfig(config []byte) error {
 	var cfg WechatConfig
 	if err := json.Unmarshal(config, &cfg); err != nil {
@@ -44,7 +60,7 @@ func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 		return "", "", fmt.Errorf("failed to parse wechat config: %w", err)
 	}
 
-	client := pkgwechat.NewClient(cfg.AppID, cfg.AppSecret)
+	client := newWechatClient(cfg.AppID, cfg.AppSecret)
 	sourceHTML := extractWechatHTML(pub.AdaptedContent)
 
 	// 1. Upload compiled inline image assets to WeChat and replace source URLs in HTML.
@@ -101,11 +117,11 @@ func (w *WechatPublisher) Publish(ctx context.Context, pub *models.ProjectPlatfo
 
 func loadCoverImage(ctx context.Context, coverImageURL string) ([]byte, error) {
 	if strings.TrimSpace(coverImageURL) != "" {
-		coverObjectRef, err := media.DownloadAndProcessForPlatform(coverImageURL, "wechat", "cover")
+		coverObjectRef, err := downloadAndProcessWechatMediaForPlatform(coverImageURL, "wechat", "cover")
 		if err != nil {
 			return nil, fmt.Errorf("failed to download wechat cover image: %w", err)
 		}
-		coverData, err := media.ReadProcessedObject(ctx, coverObjectRef)
+		coverData, err := readProcessedWechatObject(ctx, coverObjectRef)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read wechat cover image: %w", err)
 		}
@@ -119,16 +135,16 @@ func loadCoverImage(ctx context.Context, coverImageURL string) ([]byte, error) {
 	return coverData, nil
 }
 
-func processWechatInlineImages(ctx context.Context, sourceHTML string, adaptedContent []byte, client *pkgwechat.Client) (string, error) {
+func processWechatInlineImages(ctx context.Context, sourceHTML string, adaptedContent []byte, client wechatClient) (string, error) {
 	if processedHTML, ok, err := processWechatInlineImagesFromCompiledAssets(ctx, sourceHTML, adaptedContent, client); ok || err != nil {
 		return processedHTML, err
 	}
 
 	return htmlutil.ProcessHTMLImages(
 		sourceHTML,
-		media.DownloadAndProcess,
+		downloadAndProcessWechatMedia,
 		func(objectRef string) (string, error) {
-			imgData, err := media.ReadProcessedObject(ctx, objectRef)
+			imgData, err := readProcessedWechatObject(ctx, objectRef)
 			if err != nil {
 				return "", err
 			}
@@ -141,7 +157,7 @@ func processWechatInlineImages(ctx context.Context, sourceHTML string, adaptedCo
 	)
 }
 
-func processWechatInlineImagesFromCompiledAssets(ctx context.Context, sourceHTML string, adaptedContent []byte, client *pkgwechat.Client) (string, bool, error) {
+func processWechatInlineImagesFromCompiledAssets(ctx context.Context, sourceHTML string, adaptedContent []byte, client wechatClient) (string, bool, error) {
 	imageSources := publishercontent.ExtractImageAssetSources(adaptedContent)
 	if len(imageSources) == 0 {
 		return "", false, nil
@@ -151,10 +167,10 @@ func processWechatInlineImagesFromCompiledAssets(ctx context.Context, sourceHTML
 		sourceHTML,
 		imageSources,
 		func(source string) (string, error) {
-			return media.DownloadAndProcessForPlatform(source, "wechat", "inline_image")
+			return downloadAndProcessWechatMediaForPlatform(source, "wechat", "inline_image")
 		},
 		func(objectRef string) (string, error) {
-			imgData, err := media.ReadProcessedObject(ctx, objectRef)
+			imgData, err := readProcessedWechatObject(ctx, objectRef)
 			if err != nil {
 				return "", err
 			}
