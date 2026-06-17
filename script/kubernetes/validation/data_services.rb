@@ -96,6 +96,30 @@ module KubernetesValidation
       validate_redis_ha_keeps_existing_traffic(context)
     end
 
+    def validate_redis_ha_production(context)
+      validate_redis_ha_services(context)
+      validate_redis_ha_config(context)
+      validate_redis_ha_stateful_set(
+        context,
+        name: "redis-ha-primary",
+        component: "redis-ha-primary",
+        service_name: "redis-ha-primary-headless",
+        replicas: 1,
+        data_claim: "redis-ha-primary-data",
+      )
+      validate_redis_ha_stateful_set(
+        context,
+        name: "redis-ha-replica",
+        component: "redis-ha-replica",
+        service_name: "redis-ha-replicas-headless",
+        replicas: 2,
+        data_claim: "redis-ha-replica-data",
+      )
+      validate_redis_ha_sentinel(context)
+      validate_redis_ha_network_policy(context)
+      validate_redis_ha_production_traffic(context)
+    end
+
     def validate_redis_exporter(context)
       service = context.require_document("Service", "redis-exporter", "mpp-system")
       if service
@@ -455,6 +479,64 @@ module KubernetesValidation
       selector = existing_redis.spec["selector"] || {}
       unless selector["app.kubernetes.io/component"] == "redis"
         context.add_error("non-prod HA Redis validation must leave existing redis Service on the old Redis Pods")
+      end
+    end
+
+    def validate_redis_ha_production_traffic(context)
+      app_config = context.document("ConfigMap", "mpp-app-config", "mpp-system")
+      if app_config
+        unless app_config.data["APP_ENV"] == "production"
+          context.add_error("production HA Redis cutover must run with APP_ENV=production")
+        end
+        unless app_config.data["REDIS_ENDPOINT_MODE"] == "sentinel"
+          context.add_error("production HA Redis cutover must use REDIS_ENDPOINT_MODE=sentinel")
+        end
+        unless app_config.data["REDIS_SENTINEL_ADDRS"].to_s == "redis-ha-sentinel:26379"
+          context.add_error("production HA Redis cutover must point REDIS_SENTINEL_ADDRS at redis-ha-sentinel:26379")
+        end
+        unless app_config.data["REDIS_SENTINEL_MASTER_NAME"].to_s == "mpp-redis-ha"
+          context.add_error("production HA Redis cutover must keep REDIS_SENTINEL_MASTER_NAME on mpp-redis-ha")
+        end
+        unless app_config.data["REDIS_ADDR"] == "redis:6379"
+          context.add_error("production HA Redis cutover must keep REDIS_ADDR=redis:6379 as the direct rollback endpoint")
+        end
+        unless app_config.data["REDIS_TLS"] == "false"
+          context.add_error("production HA Redis cutover must keep REDIS_TLS=false for in-cluster self-hosted Redis")
+        end
+      end
+
+      existing_redis = context.document("Service", "redis", "mpp-system")
+      if existing_redis
+        selector = existing_redis.spec["selector"] || {}
+        unless selector["app.kubernetes.io/component"] == "redis"
+          context.add_error("production HA Redis cutover must leave the old redis Service available for rollback")
+        end
+      end
+
+      exporter = context.document("Deployment", "redis-exporter", "mpp-system")
+      if exporter
+        container = exporter.container("redis-exporter")
+        env = Array(container&.fetch("env", nil)).each_with_object({}) do |entry, result|
+          result[entry["name"]] = entry["value"]
+        end
+        unless env["REDIS_ADDR"].to_s == "redis://redis-ha-primary.mpp-system.svc.cluster.local:6379"
+          context.add_error("production HA Redis cutover must monitor redis-ha-primary through redis-exporter")
+        end
+      end
+
+      validate_redis_ha_production_network_policy(context)
+    end
+
+    def validate_redis_ha_production_network_policy(context)
+      policy = context.document("NetworkPolicy", "redis-ha-internal-access", "mpp-system")
+      return unless policy
+
+      from_components = Array(policy.spec["ingress"]).flat_map { |rule| Array(rule["from"]) }
+        .flat_map { |entry| Array(entry.dig("podSelector", "matchExpressions")) }
+        .select { |entry| entry["key"] == "app.kubernetes.io/component" }
+        .flat_map { |entry| Array(entry["values"]) }
+      unless from_components.include?("redis-exporter")
+        context.add_error("production HA Redis NetworkPolicy must allow redis-exporter ingress")
       end
     end
 

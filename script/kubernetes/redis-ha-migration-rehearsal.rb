@@ -103,6 +103,7 @@ module RedisHAMigrationRehearsal
         sample_limit: non_negative_integer(ENV.fetch("MPP_REDIS_MIGRATION_SAMPLE_LIMIT", DEFAULT_SAMPLE_LIMIT).to_i, "MPP_REDIS_MIGRATION_SAMPLE_LIMIT"),
         ttl_tolerance_ms: non_negative_integer(ENV.fetch("MPP_REDIS_MIGRATION_TTL_TOLERANCE_MS", DEFAULT_TTL_TOLERANCE_MS).to_i, "MPP_REDIS_MIGRATION_TTL_TOLERANCE_MS"),
         allow_target_flush: env_flag?("MPP_REDIS_MIGRATION_ALLOW_TARGET_FLUSH"),
+        allow_production: env_flag?("MPP_REDIS_MIGRATION_ALLOW_PRODUCTION"),
         report_path: ENV["MPP_REDIS_MIGRATION_REPORT"],
       }
     end
@@ -181,6 +182,7 @@ module RedisHAMigrationRehearsal
         opts.on("--sample-limit COUNT", Integer, "Validate this many restored values and TTLs. Defaults to #{DEFAULT_SAMPLE_LIMIT}.") { |value| @config[:sample_limit] = non_negative_integer(value, "sample-limit") }
         opts.on("--ttl-tolerance-ms MS", Integer, "Accepted TTL drift for sampled keys. Defaults to #{DEFAULT_TTL_TOLERANCE_MS}.") { |value| @config[:ttl_tolerance_ms] = non_negative_integer(value, "ttl-tolerance-ms") }
         opts.on("--allow-target-flush", "Discard existing HA Redis rehearsal data before import. Same as MPP_REDIS_MIGRATION_ALLOW_TARGET_FLUSH=1.") { @config[:allow_target_flush] = true }
+        opts.on("--allow-production", "Allow APP_ENV=production after the production cutover window has been approved. Same as MPP_REDIS_MIGRATION_ALLOW_PRODUCTION=1.") { @config[:allow_production] = true }
         opts.on("--report PATH", "Also write the JSON report to PATH.") { |value| @config[:report_path] = value }
         opts.on("-h", "--help", "Show help.") do
           puts opts
@@ -193,7 +195,9 @@ module RedisHAMigrationRehearsal
       require_kubectl
       app_config = app_config_values
       app_env = app_config.fetch(:app_env)
-      raise CommandError, "refusing to run against APP_ENV=#{app_env}" if PRODUCTION_ENVS.include?(app_env.downcase)
+      if PRODUCTION_ENVS.include?(app_env.downcase) && !@config.fetch(:allow_production)
+        raise CommandError, "refusing to run against APP_ENV=#{app_env}; set MPP_REDIS_MIGRATION_ALLOW_PRODUCTION=1 or pass --allow-production inside the approved production cutover window"
+      end
       raise CommandError, "mpp-app-config APP_ENV must be set before running this rehearsal" if app_env.empty?
       unless app_config.fetch(:redis_endpoint_mode) == "direct" && app_config.fetch(:redis_addr) == "redis:6379"
         raise CommandError, "rehearsal must run before endpoint cutover with REDIS_ENDPOINT_MODE=direct and REDIS_ADDR=redis:6379"

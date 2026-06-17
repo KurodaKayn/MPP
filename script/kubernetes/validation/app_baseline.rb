@@ -393,7 +393,8 @@ module KubernetesValidation
 
     def validate_expected_network_policy_set(context)
       expected = APP_NETWORK_POLICIES.dup
-      if context.path_suffix?("deploy/kubernetes/overlays/staging-self-hosted")
+      if context.path_suffix?("deploy/kubernetes/overlays/staging-self-hosted") ||
+         context.path_suffix?("deploy/kubernetes/overlays/production-self-hosted-ha")
         expected.concat(SELF_HOSTED_DATA_NETWORK_POLICIES)
       end
 
