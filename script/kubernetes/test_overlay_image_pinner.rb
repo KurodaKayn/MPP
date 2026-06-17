@@ -102,11 +102,28 @@ module KubernetesOverlayImages
         kustomization_path = File.join(overlay, "kustomization.yaml")
         before = File.read(kustomization_path)
 
-        result = Pinner.new(overlay: overlay, git_sha: SHA, image_namespace: "registry.example/mpp @sha").pin
+        result = Pinner.new(overlay: overlay, git_sha: SHA, image_namespace: "https://registry.example/mpp").pin
 
         refute result.valid?
-        assert_includes result.errors.join("\n"), "image namespace must not contain whitespace or digests"
+        assert_includes result.errors.join("\n"), "image namespace must not include a URL scheme"
         assert_equal before, File.read(kustomization_path)
+      end
+    end
+
+    def test_rejects_runtime_patch_paths_outside_overlay
+      Dir.mktmpdir("mpp-overlay-image-pinner") do |dir|
+        overlay = File.join(dir, "gcp-production")
+        FileUtils.cp_r("deploy/kubernetes/overlays/staging-managed", overlay)
+        kustomization_path = File.join(overlay, "kustomization.yaml")
+        kustomization = load_yaml(kustomization_path)
+        kustomization.fetch("patches").find { |entry| entry["path"] == "runtime-image-patch.yaml" }["path"] =
+          "../runtime-image-patch.yaml"
+        File.write(kustomization_path, YAML.dump(kustomization))
+
+        result = Pinner.new(overlay: overlay, git_sha: SHA).pin
+
+        refute result.valid?
+        assert_includes result.errors.join("\n"), "runtime image patch path must stay inside the overlay directory"
       end
     end
 
