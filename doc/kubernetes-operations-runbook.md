@@ -1065,15 +1065,33 @@ classify them instead of losing evidence.
 
 The Redis SLO baseline lives in `deploy/kubernetes/data-services/redis-exporter`
 and `deploy/kubernetes/observability`. The dashboard covers availability,
-p95/p99 command latency, blocked clients, memory usage, memory pressure, and
-evictions. Alerts page on Redis unavailability, elevated p99 latency,
-connection or command errors, memory pressure, evictions, and blocked clients.
+p95/p99 command latency, blocked clients, memory usage, memory headroom,
+connections, and evictions. Alerts page on Redis unavailability, elevated p99
+latency, connection or command errors, low memory headroom, key evictions under
+the configured eviction policy, connection count pressure, and blocked clients.
+
+Capacity guardrails:
+
+| Alert | Threshold | Primary signal | Expected operator response |
+| --- | --- | --- | --- |
+| `MPPRedisMemoryHeadroomLow` | Less than 15% headroom below `maxmemory` for 15 minutes | `redis_memory_max_bytes - redis_memory_used_bytes` | Check top key families with the keyspace inventory, stop runaway writers, delete only documented disposable keys, or raise `maxmemory` and the Pod memory limit together in a reviewed overlay. |
+| `MPPRedisUnexpectedKeyEvictions` | Any sustained key eviction while `maxmemory_policy="noeviction"` | `redis_evicted_keys_total` gated by `redis_instance_info{maxmemory_policy="noeviction"}` | Treat as policy drift or provider behavior drift. Confirm `CONFIG GET maxmemory-policy`, inspect recent Redis restarts or provider changes, and preserve lock/session/queue-like keys before deleting data. |
+| `MPPRedisConnectionCountHigh` | More than 80% of `maxclients` for 10 minutes | `redis_connected_clients / redis_config_maxclients` | Identify client growth by workload, check app connection-pool settings, restart only leaking clients, and raise `maxclients` only with file descriptor and provider limits checked. |
+| `MPPRedisLatencyP99High` | p99 command latency above 50ms for 10 minutes | `redis_latency_percentiles_usec{quantile="0.99"}` | Check slowlog and hot commands, correlate with memory pressure, backup, or traffic bursts, and shed non-critical Redis work before restarting Redis. |
+
+`MPPRedisConnectionCountHigh` depends on Redis exporter access to the
+`CONFIG GET maxclients` command. If `redis_config_maxclients` is absent, fix the
+exporter ACL or provider configuration before treating the guardrail as
+complete.
 
 Non-production simulation record:
 
 - 2026-06-16: `docker run --rm --entrypoint promtool -v <tmp>:/work:ro prom/prometheus:v3.12.0 test rules /work/redis-alerts.test.yml`
 - Result: `SUCCESS` for synthetic Redis unavailability, p99 latency, connection
   errors, memory pressure, evictions, and blocked-clients alert cases.
+- 2026-06-17: `ruby script/kubernetes/test_redis_capacity_alerts.rb`
+- Result: `SUCCESS` for synthetic Redis memory headroom, noeviction-bound key
+  eviction, connection count, and p99 command latency alert cases.
 
 ### Redis Responsibility Tiers
 
