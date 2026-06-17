@@ -113,11 +113,14 @@ rescue Errno::ENOENT
 end
 
 Dir.mktmpdir("mpp-redis-capacity-alerts-", Dir.pwd) do |dir|
+  File.chmod(0o755, dir)
+
   rule_file = File.join(dir, "redis-capacity-rules.yml")
   test_file = File.join(dir, "redis-capacity-alerts.test.yml")
 
   File.write(rule_file, build_rule_document.to_yaml)
   File.write(test_file, build_promtool_test(File.basename(rule_file)).to_yaml)
+  File.chmod(0o644, rule_file, test_file)
 
   stdout, stderr, status = run_promtool(test_file)
   unless status.success?
