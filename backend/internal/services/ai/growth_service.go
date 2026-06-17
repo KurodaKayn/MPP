@@ -2,7 +2,10 @@ package ai
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -96,6 +99,11 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 		return nil, ErrInvalidGrowthOptimizationRequest
 	}
 
+	baseVersions, err := s.growthProposalBaseVersions(ctx, projectID, req.TargetPlatforms)
+	if err != nil {
+		return nil, err
+	}
+
 	targetPlatformsJSON, err := json.Marshal(req.TargetPlatforms)
 	if err != nil {
 		return nil, err
@@ -132,6 +140,18 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 	if err != nil {
 		s.markRunTerminal(context.WithoutCancel(ctx), &run, terminalGrowthRunStatus(err), err.Error())
 		return nil, err
+	}
+
+	currentVersions, err := s.growthProposalBaseVersions(ctx, projectID, req.TargetPlatforms)
+	if err != nil {
+		s.markRunTerminal(context.WithoutCancel(ctx), &run, "failed", err.Error())
+		return nil, err
+	}
+	baseVersionCheck := compareGrowthProposalBaseVersions(baseVersions, currentVersions)
+	if baseVersionCheck.Status != "pass" {
+		message := "growth proposal base version changed before proposals were persisted"
+		s.markRunTerminal(context.WithoutCancel(ctx), &run, "failed", message)
+		return nil, fmt.Errorf("%w: %s", ErrAIServiceUnavailable, message)
 	}
 	if status.Model != "" {
 		run.Model = status.Model
@@ -172,6 +192,7 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 			}
 			event.QualityChecks = withContentPipelineQualityChecks(event.QualityChecks, adaptedContent)
 		}
+		event.QualityChecks = withBaseVersionQualityChecks(event.QualityChecks, baseVersionCheck)
 
 		proposal := models.AIProposal{
 			ID:                uuid.New(),
@@ -206,6 +227,145 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 	}
 
 	return mapGrowthRunResponse(run, proposals)
+}
+
+type growthProposalBaseVersionCheck struct {
+	Status         string                               `json:"status"`
+	Source         growthSourceBaseVersion              `json:"source"`
+	PlatformDrafts map[string]growthPlatformBaseVersion `json:"platform_drafts"`
+	Warnings       []string                             `json:"warnings,omitempty"`
+}
+
+type growthSourceBaseVersion struct {
+	VersionID         string `json:"version_id,omitempty"`
+	VersionNumber     int    `json:"version_number"`
+	TitleHash         string `json:"title_hash"`
+	SourceContentHash string `json:"source_content_hash"`
+	UpdatedAt         string `json:"updated_at,omitempty"`
+}
+
+type growthPlatformBaseVersion struct {
+	AdaptedContentHash string `json:"adapted_content_hash"`
+	Status             string `json:"status"`
+	DraftStatus        string `json:"draft_status"`
+	SyncRequired       bool   `json:"sync_required"`
+	UpdatedAt          string `json:"updated_at,omitempty"`
+}
+
+func (s *GrowthOptimizationService) growthProposalBaseVersions(ctx context.Context, projectID uuid.UUID, platforms []string) (growthProposalBaseVersionCheck, error) {
+	var project models.Project
+	if err := s.db.WithContext(ctx).
+		Select("id", "title", "source_content", "updated_at").
+		First(&project, "id = ?", projectID).Error; err != nil {
+		return growthProposalBaseVersionCheck{}, err
+	}
+
+	var latestVersion models.ProjectVersion
+	versionRef := growthSourceBaseVersion{}
+	err := s.db.WithContext(ctx).
+		Select("id", "version_number").
+		Where("project_id = ?", projectID).
+		Order("version_number desc").
+		First(&latestVersion).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return growthProposalBaseVersionCheck{}, err
+	}
+	if err == nil {
+		versionRef.VersionID = latestVersion.ID.String()
+		versionRef.VersionNumber = latestVersion.VersionNumber
+	}
+	versionRef.TitleHash = stableStringHash(project.Title)
+	versionRef.SourceContentHash = stableStringHash(project.SourceContent)
+	versionRef.UpdatedAt = formatOptionalTime(project.UpdatedAt)
+
+	var publications []models.ProjectPlatformPublication
+	if err := s.db.WithContext(ctx).
+		Select("platform", "adapted_content", "status", "draft_status", "sync_required", "updated_at").
+		Where("project_id = ? AND platform IN ?", projectID, platforms).
+		Find(&publications).Error; err != nil {
+		return growthProposalBaseVersionCheck{}, err
+	}
+
+	platformRefs := make(map[string]growthPlatformBaseVersion, len(publications))
+	for _, publication := range publications {
+		platformRefs[publication.Platform] = growthPlatformBaseVersion{
+			AdaptedContentHash: stableJSONHash(publication.AdaptedContent),
+			Status:             publication.Status,
+			DraftStatus:        publication.DraftStatus,
+			SyncRequired:       publication.SyncRequired,
+			UpdatedAt:          formatOptionalTime(publication.UpdatedAt),
+		}
+	}
+
+	return growthProposalBaseVersionCheck{
+		Status:         "pass",
+		Source:         versionRef,
+		PlatformDrafts: platformRefs,
+	}, nil
+}
+
+func compareGrowthProposalBaseVersions(base, current growthProposalBaseVersionCheck) growthProposalBaseVersionCheck {
+	check := base
+	check.Status = "pass"
+	check.Warnings = nil
+
+	if base.Source != current.Source {
+		check.Status = "stale"
+		check.Warnings = append(check.Warnings, "source content changed since proposal generation started")
+	}
+
+	for platform, baseDraft := range base.PlatformDrafts {
+		currentDraft, ok := current.PlatformDrafts[platform]
+		if !ok {
+			check.Status = "stale"
+			check.Warnings = append(check.Warnings, fmt.Sprintf("%s draft was removed since proposal generation started", platform))
+			continue
+		}
+		if baseDraft != currentDraft {
+			check.Status = "stale"
+			check.Warnings = append(check.Warnings, fmt.Sprintf("%s draft changed since proposal generation started", platform))
+		}
+	}
+	for platform := range current.PlatformDrafts {
+		if _, ok := base.PlatformDrafts[platform]; !ok {
+			check.Status = "stale"
+			check.Warnings = append(check.Warnings, fmt.Sprintf("%s draft was created since proposal generation started", platform))
+		}
+	}
+
+	return check
+}
+
+func withBaseVersionQualityChecks(qualityChecks map[string]any, check growthProposalBaseVersionCheck) map[string]any {
+	if qualityChecks == nil {
+		qualityChecks = make(map[string]any, 1)
+	}
+	qualityChecks["proposal_base_versions"] = check
+	return qualityChecks
+}
+
+func stableStringHash(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+
+func stableJSONHash(raw []byte) string {
+	if len(raw) == 0 {
+		raw = []byte(`{}`)
+	}
+	var compacted bytes.Buffer
+	if err := json.Compact(&compacted, raw); err == nil {
+		raw = compacted.Bytes()
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+func formatOptionalTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }
 
 func (s *GrowthOptimizationService) growthCandidatePublications(ctx context.Context, projectID uuid.UUID, platforms []string) ([]models.ProjectPlatformPublication, error) {
