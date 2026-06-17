@@ -765,6 +765,22 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_redis_ha_nonprod_allows_application_endpoint_switching
+    rendered = mutated_render("deploy/kubernetes/data-services/redis-ha-nonprod") do |documents|
+      policy = document(documents, "NetworkPolicy", "redis-ha-internal-access", "mpp-system")
+      expression = policy.dig("spec", "ingress", 0, "from", 0, "podSelector", "matchExpressions")
+        .find { |entry| entry["key"] == "app.kubernetes.io/component" }
+      expression["values"].delete("backend")
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/redis-ha-nonprod", rendered.path)
+
+    refute status.success?, "non-prod HA Redis validation unexpectedly accepted missing app ingress"
+    assert_includes stderr, "non-prod HA Redis NetworkPolicy must allow backend ingress"
+  ensure
+    rendered&.unlink
+  end
+
   private
 
   def run_validator(overlay, rendered_path, env = {})
