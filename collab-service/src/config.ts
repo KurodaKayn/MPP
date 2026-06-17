@@ -31,7 +31,7 @@ const EnvDurationMillis = (fallback: string) =>
       }),
   );
 
-const EnvSchema = z.object({
+const BaseEnvSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
@@ -70,14 +70,33 @@ const EnvSchema = z.object({
   ),
   DB_CONN_MAX_LIFETIME: EnvDurationMillis("30m"),
   DB_CONN_MAX_IDLE_TIME: EnvDurationMillis("5m"),
+  REDIS_ENDPOINT_MODE: z.enum(["direct", "sentinel"]).default("direct"),
   REDIS_ADDR: z.string().default("redis:6379"),
   REDIS_PASSWORD: z.string().default(""),
   REDIS_DB: z.coerce.number().int().nonnegative().default(0),
   REDIS_TLS: EnvBoolean.default(false),
+  REDIS_SENTINEL_ADDRS: z.string().default(""),
+  REDIS_SENTINEL_MASTER_NAME: z.preprocess(
+    EmptyStringAsUndefined,
+    z.string().default("mpp-redis-ha"),
+  ),
   COLLAB_REDIS_SYNC_ENABLED: EnvBoolean.default(true),
   COLLAB_REDIS_CHANNEL_PREFIX: z.string().default("mpp:collab:doc"),
   BACKEND_INTERNAL_URL: z.string().url().default("http://backend:8080"),
   COLLAB_TOKEN_SECRET: z.string().optional(),
+});
+
+const EnvSchema = BaseEnvSchema.superRefine((config, ctx) => {
+  if (
+    config.REDIS_ENDPOINT_MODE === "sentinel" &&
+    config.REDIS_SENTINEL_ADDRS.trim() === ""
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["REDIS_SENTINEL_ADDRS"],
+      message: "must be set when REDIS_ENDPOINT_MODE=sentinel",
+    });
+  }
 });
 
 export type CollabConfig = z.infer<typeof EnvSchema>;

@@ -25,9 +25,10 @@ The checked-in values are intentionally non-production:
   `timeout 0`, `tcp-keepalive 300`, and bounded slowlog retention from the
   self-hosted data-services base.
 - HA Redis validation resources deploy beside the existing Redis instance as
-  `redis-ha-primary`, `redis-ha-replica`, and `redis-ha-sentinel`. They do not
-  change `REDIS_ADDR=redis:6379`, so app traffic stays on the existing
-  single-instance Redis while the HA topology is validated.
+  `redis-ha-primary`, `redis-ha-replica`, and `redis-ha-sentinel`. The checked-in
+  overlay keeps `REDIS_ENDPOINT_MODE=direct` and `REDIS_ADDR=redis:6379`, so app
+  traffic stays on the existing single-instance Redis while the HA topology is
+  validated.
 
 Before applying this overlay to a shared staging cluster:
 
@@ -43,9 +44,15 @@ Before applying this overlay to a shared staging cluster:
 - Patch `redis-persistence-config` only if staging intentionally chooses a
   different Redis data-loss profile. Document any change from the base
   AOF-plus-RDB policy in this file before applying it.
+- To point app traffic at the non-production HA Redis endpoint, patch
+  `mpp-app-config` to `REDIS_ENDPOINT_MODE=sentinel`,
+  `REDIS_SENTINEL_ADDRS=redis-ha-sentinel:26379`, and
+  `REDIS_SENTINEL_MASTER_NAME=mpp-redis-ha`. Keep `REDIS_ADDR=redis:6379` as the
+  direct-mode rollback endpoint.
+- To roll app traffic back from HA Redis, set `REDIS_ENDPOINT_MODE=direct` and
+  confirm `REDIS_ADDR=redis:6379`; no business logic change is required.
 - Remove `../../data-services/redis-ha-nonprod` from this overlay to roll back
-  the parallel HA validation topology. The existing `redis` Service and
-  application Redis traffic are unaffected.
+  the parallel HA validation topology after app traffic is back on direct mode.
 - Patch the `mpp-data-backups` PVC, `postgres-backup` and `redis-backup`
   schedules, and `BACKUP_RETENTION_DAYS` before keeping useful staging data in
   the StatefulSets.

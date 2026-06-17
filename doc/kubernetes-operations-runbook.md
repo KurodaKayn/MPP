@@ -816,7 +816,8 @@ The `staging-self-hosted` overlay includes the parallel
 - `redis-ha-replica`: two Redis replica Pods.
 - `redis-ha-sentinel`: three Redis Sentinel Pods with quorum `2`.
 
-It does not change the application Redis endpoint. `mpp-app-config` must keep
+The checked-in overlay does not change the application Redis endpoint.
+`mpp-app-config` keeps `REDIS_ENDPOINT_MODE=direct` and
 `REDIS_ADDR=redis:6379`, and the existing `redis` Service must continue
 selecting `app.kubernetes.io/component=redis`.
 
@@ -828,7 +829,7 @@ kubectl rollout status statefulset/redis-ha-primary -n "$MPP_APP_NS"
 kubectl rollout status statefulset/redis-ha-replica -n "$MPP_APP_NS"
 kubectl rollout status statefulset/redis-ha-sentinel -n "$MPP_APP_NS"
 kubectl get svc -n "$MPP_APP_NS" redis redis-ha-primary redis-ha-replicas redis-ha-sentinel
-kubectl get configmap -n "$MPP_APP_NS" mpp-app-config -o jsonpath='{.data.REDIS_ADDR}{"\n"}'
+kubectl get configmap -n "$MPP_APP_NS" mpp-app-config -o jsonpath='{.data.REDIS_ENDPOINT_MODE}{" "}{.data.REDIS_ADDR}{" "}{.data.REDIS_SENTINEL_ADDRS}{"\n"}'
 ```
 
 Replication health:
@@ -865,18 +866,32 @@ Expected result:
 - `get-master-addr-by-name` returns a Redis host and port `6379`.
 - `ckquorum` returns `OK`.
 
+Application endpoint switch:
+
+1. Patch `mpp-app-config` so `REDIS_ENDPOINT_MODE=sentinel`,
+   `REDIS_SENTINEL_ADDRS=redis-ha-sentinel:26379`, and
+   `REDIS_SENTINEL_MASTER_NAME=mpp-redis-ha`.
+2. Keep `REDIS_ADDR=redis:6379` as the direct-mode rollback endpoint.
+3. Restart `backend`, `publish-worker`, `browser-worker`, and `collab-service`
+   Pods so each Redis client is rebuilt from the new endpoint config.
+4. Confirm `/ready` stays healthy and Sentinel reports a master.
+
 Rollback:
 
-1. Remove `../../data-services/redis-ha-nonprod` from the non-production
-   overlay.
-2. Apply the overlay again.
-3. Confirm `REDIS_ADDR` still points at `redis:6379`.
-4. Delete leftover `redis-ha-*` PVCs only after confirming validation data is no
+1. Set `REDIS_ENDPOINT_MODE=direct`.
+2. Confirm `REDIS_ADDR=redis:6379`.
+3. Restart `backend`, `publish-worker`, `browser-worker`, and `collab-service`
+   Pods so each Redis client reconnects to the direct endpoint.
+4. Remove `../../data-services/redis-ha-nonprod` from the non-production overlay
+   only if the HA topology itself must be rolled back, then apply the overlay
+   again.
+5. Delete leftover `redis-ha-*` PVCs only after confirming validation data is no
    longer needed.
 
-No application traffic is cut over by this validation topology. If the HA
-resources fail to start, delete the HA package or its rendered `redis-ha-*`
-objects and continue using the existing `redis` StatefulSet and Service.
+No production traffic is cut over by this validation topology. If the HA
+resources fail to start, keep or restore `REDIS_ENDPOINT_MODE=direct`, delete
+the HA package or its rendered `redis-ha-*` objects, and continue using the
+existing `redis` StatefulSet and Service.
 
 Non-production restart check:
 

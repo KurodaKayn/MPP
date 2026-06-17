@@ -5,6 +5,8 @@ import { encodeStateAsUpdate } from "yjs";
 import { loadConfig } from "../config.js";
 import {
   redisClientOptionsFromConfig,
+  redisSentinelOptionsFromConfig,
+  redisSentinelRootNodesFromConfig,
   RedisCollabPubSub,
 } from "./redis-pubsub.js";
 
@@ -154,5 +156,57 @@ describe("redisClientOptionsFromConfig", () => {
     const options = redisClientOptionsFromConfig(config);
 
     expect(options.url).toBe("rediss://redis.example.invalid:6379");
+  });
+});
+
+describe("redisSentinelOptionsFromConfig", () => {
+  it("builds sentinel options from config", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      REDIS_ENDPOINT_MODE: "sentinel",
+      REDIS_SENTINEL_ADDRS:
+        " redis-ha-sentinel:26379,redis-ha-sentinel-1:26379 ",
+      REDIS_SENTINEL_MASTER_NAME: "mpp-redis-ha",
+      REDIS_PASSWORD: "redis-secret",
+      REDIS_DB: "2",
+      REDIS_TLS: "true",
+    });
+
+    const options = redisSentinelOptionsFromConfig(config);
+
+    expect(options.name).toBe("mpp-redis-ha");
+    expect(options.sentinelRootNodes).toEqual([
+      { host: "redis-ha-sentinel", port: 26379 },
+      { host: "redis-ha-sentinel-1", port: 26379 },
+    ]);
+    expect(options.nodeClientOptions).toMatchObject({
+      database: 2,
+      password: "redis-secret",
+      socket: { tls: true },
+    });
+    expect(options.sentinelClientOptions).toMatchObject({
+      socket: { tls: true },
+    });
+  });
+
+  it("rejects sentinel mode without sentinel addrs", () => {
+    expect(() =>
+      loadConfig({
+        NODE_ENV: "test",
+        REDIS_ENDPOINT_MODE: "sentinel",
+      }),
+    ).toThrow(/REDIS_SENTINEL_ADDRS/);
+  });
+
+  it("rejects invalid sentinel hostport entries", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      REDIS_ENDPOINT_MODE: "sentinel",
+      REDIS_SENTINEL_ADDRS: "redis-ha-sentinel",
+    });
+
+    expect(() => redisSentinelRootNodesFromConfig(config)).toThrow(
+      /REDIS_SENTINEL_ADDRS/,
+    );
   });
 });

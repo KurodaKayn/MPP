@@ -7,8 +7,9 @@ This package deploys a parallel Redis HA topology for non-production validation:
 - `redis-ha-sentinel`: three Redis Sentinel Pods with quorum `2`.
 
 It intentionally does not create or change the `redis` Service used by
-application workloads. Non-production apps keep using `REDIS_ADDR=redis:6379`
-until a later endpoint-abstraction and cutover PR points traffic elsewhere.
+application workloads. Non-production apps keep using
+`REDIS_ENDPOINT_MODE=direct` and `REDIS_ADDR=redis:6379` unless the app
+ConfigMap is explicitly switched to the Sentinel endpoint.
 
 Apply it by including this package from a non-production overlay, such as
 `deploy/kubernetes/overlays/staging-self-hosted`. Do not include it in managed
@@ -47,7 +48,19 @@ kubectl exec -n "$MPP_APP_NS" statefulset/redis-ha-sentinel -- sh -ec '
 '
 ```
 
-Rollback is intentionally simple: remove this package from the non-production
-overlay, apply the overlay again, and delete leftover `redis-ha-*` PVCs if the
-validation data is no longer useful. Application workloads continue to use the
-existing `redis` Service during and after rollback.
+Application endpoint switch:
+
+```yaml
+REDIS_ENDPOINT_MODE: sentinel
+REDIS_SENTINEL_ADDRS: redis-ha-sentinel:26379
+REDIS_SENTINEL_MASTER_NAME: mpp-redis-ha
+REDIS_ADDR: redis:6379
+```
+
+`REDIS_ADDR` stays as the direct-mode rollback endpoint. To switch back, set
+`REDIS_ENDPOINT_MODE=direct` and confirm `REDIS_ADDR=redis:6379`.
+
+Rollback is intentionally simple: switch the app ConfigMap back to direct mode,
+remove this package from the non-production overlay if the HA topology itself
+must be rolled back, apply the overlay again, and delete leftover `redis-ha-*`
+PVCs only after the validation data is no longer useful.

@@ -10,7 +10,7 @@ import (
 )
 
 func TestPoolConfigFromEnvUsesZeroValueDefaults(t *testing.T) {
-	clearPoolEnv(t)
+	clearRedisEnv(t)
 
 	config, err := poolConfigFromEnv()
 
@@ -23,6 +23,7 @@ func TestPoolConfigFromEnvUsesZeroValueDefaults(t *testing.T) {
 }
 
 func TestNewFromEnvAppliesPoolOverrides(t *testing.T) {
+	clearRedisEnv(t)
 	redisServer := miniredis.RunT(t)
 	t.Setenv(addrEnv, redisServer.Addr())
 	t.Setenv(dbEnv, "2")
@@ -48,6 +49,92 @@ func TestNewFromEnvAppliesPoolOverrides(t *testing.T) {
 	require.Equal(t, 30*time.Minute, options.ConnMaxLifetime)
 }
 
+func TestConfigFromEnvKeepsRedisOptionalForDirectMode(t *testing.T) {
+	tests := []struct {
+		name    string
+		envName string
+		value   string
+	}{
+		{name: "invalid db", envName: dbEnv, value: "not-a-number"},
+		{name: "invalid pool size", envName: poolSizeEnv, value: "not-a-number"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearRedisEnv(t)
+			t.Setenv(tt.envName, tt.value)
+
+			_, err := ConfigFromEnv()
+
+			require.ErrorIs(t, err, ErrNotConfigured)
+		})
+	}
+}
+
+func TestConfigFromEnvBuildsSentinelEndpoint(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(endpointModeEnv, endpointModeSentinel)
+	t.Setenv(sentinelAddrsEnv, " redis-ha-sentinel:26379,redis-ha-sentinel-1:26379 ")
+	t.Setenv(passwordEnv, "redis-secret")
+	t.Setenv(dbEnv, "3")
+	t.Setenv(tlsEnv, "true")
+	t.Setenv(poolSizeEnv, "24")
+	t.Setenv(minIdleConnsEnv, "3")
+	t.Setenv(maxIdleConnsEnv, "9")
+
+	config, err := ConfigFromEnv()
+	require.NoError(t, err)
+
+	require.Equal(t, endpointModeSentinel, config.EndpointMode)
+	require.Equal(t, []string{"redis-ha-sentinel:26379", "redis-ha-sentinel-1:26379"}, config.SentinelAddrs)
+	require.Equal(t, sentinelMasterDefault, config.SentinelMasterName)
+	require.Equal(t, "redis-secret", config.Password)
+	require.Equal(t, 3, config.DB)
+	require.True(t, config.TLS)
+
+	options := failoverOptions(config)
+	require.Equal(t, sentinelMasterDefault, options.MasterName)
+	require.Equal(t, []string{"redis-ha-sentinel:26379", "redis-ha-sentinel-1:26379"}, options.SentinelAddrs)
+	require.Equal(t, "redis-secret", options.Password)
+	require.Equal(t, 3, options.DB)
+	require.NotNil(t, options.TLSConfig)
+	require.Equal(t, 24, options.PoolSize)
+	require.Equal(t, 3, options.MinIdleConns)
+	require.Equal(t, 9, options.MaxIdleConns)
+}
+
+func TestConfigFromEnvUsesSentinelMasterOverride(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(endpointModeEnv, endpointModeSentinel)
+	t.Setenv(sentinelAddrsEnv, "redis-ha-sentinel:26379")
+	t.Setenv(sentinelMasterEnv, "custom-master")
+
+	config, err := ConfigFromEnv()
+	require.NoError(t, err)
+
+	require.Equal(t, "custom-master", config.SentinelMasterName)
+}
+
+func TestConfigFromEnvRejectsMissingSentinelAddrs(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(endpointModeEnv, endpointModeSentinel)
+
+	_, err := ConfigFromEnv()
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), endpointModeEnv)
+}
+
+func TestConfigFromEnvRejectsUnknownEndpointMode(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(endpointModeEnv, "cluster")
+
+	_, err := ConfigFromEnv()
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), endpointModeEnv)
+}
+
 func TestPoolConfigFromEnvRejectsInvalidValues(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -65,7 +152,7 @@ func TestPoolConfigFromEnvRejectsInvalidValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			clearPoolEnv(t)
+			clearRedisEnv(t)
 			t.Setenv(tt.envName, tt.value)
 
 			_, err := poolConfigFromEnv()
@@ -76,12 +163,23 @@ func TestPoolConfigFromEnvRejectsInvalidValues(t *testing.T) {
 	}
 }
 
-func clearPoolEnv(t *testing.T) {
+func clearRedisEnv(t *testing.T) {
 	t.Helper()
 
-	t.Setenv(poolSizeEnv, "")
-	t.Setenv(minIdleConnsEnv, "")
-	t.Setenv(maxIdleConnsEnv, "")
-	t.Setenv(connMaxIdleTimeEnv, "")
-	t.Setenv(connMaxLifetimeEnv, "")
+	for _, name := range []string{
+		endpointModeEnv,
+		addrEnv,
+		passwordEnv,
+		dbEnv,
+		tlsEnv,
+		sentinelAddrsEnv,
+		sentinelMasterEnv,
+		poolSizeEnv,
+		minIdleConnsEnv,
+		maxIdleConnsEnv,
+		connMaxIdleTimeEnv,
+		connMaxLifetimeEnv,
+	} {
+		t.Setenv(name, "")
+	}
 }

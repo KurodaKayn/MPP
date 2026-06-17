@@ -14,10 +14,13 @@ import (
 )
 
 const (
+	endpointModeEnv    = "REDIS_ENDPOINT_MODE"
 	addrEnv            = "REDIS_ADDR"
 	passwordEnv        = "REDIS_PASSWORD"
 	dbEnv              = "REDIS_DB"
 	tlsEnv             = "REDIS_TLS"
+	sentinelAddrsEnv   = "REDIS_SENTINEL_ADDRS"
+	sentinelMasterEnv  = "REDIS_SENTINEL_MASTER_NAME"
 	poolSizeEnv        = "REDIS_POOL_SIZE"
 	minIdleConnsEnv    = "REDIS_MIN_IDLE_CONNS"
 	maxIdleConnsEnv    = "REDIS_MAX_IDLE_CONNS"
@@ -26,6 +29,23 @@ const (
 )
 
 var ErrNotConfigured = errors.New("redis is not configured")
+
+const (
+	endpointModeDirect    = "direct"
+	endpointModeSentinel  = "sentinel"
+	sentinelMasterDefault = "mpp-redis-ha"
+)
+
+type Config struct {
+	EndpointMode       string
+	Addr               string
+	Password           string
+	DB                 int
+	TLS                bool
+	SentinelAddrs      []string
+	SentinelMasterName string
+	pool               poolConfig
+}
 
 type poolConfig struct {
 	PoolSize        int
@@ -36,37 +56,94 @@ type poolConfig struct {
 }
 
 func NewFromEnv(ctx context.Context) (*redis.Client, error) {
-	addr := strings.TrimSpace(os.Getenv(addrEnv))
-	if addr == "" {
-		return nil, ErrNotConfigured
+	config, err := ConfigFromEnv()
+	if err != nil {
+		return nil, err
+	}
+
+	return New(ctx, config)
+}
+
+func ConfigFromEnv() (Config, error) {
+	endpointMode, err := endpointModeFromEnv()
+	if err != nil {
+		return Config{}, err
+	}
+
+	config := Config{
+		EndpointMode: endpointMode,
+		Addr:         strings.TrimSpace(os.Getenv(addrEnv)),
+		Password:     strings.TrimSpace(os.Getenv(passwordEnv)),
+		TLS:          envFlagEnabled(tlsEnv),
+	}
+	switch endpointMode {
+	case endpointModeDirect:
+		if config.Addr == "" {
+			return Config{}, ErrNotConfigured
+		}
+	case endpointModeSentinel:
+		config.SentinelAddrs = csvEnv(sentinelAddrsEnv)
+		config.SentinelMasterName = strings.TrimSpace(os.Getenv(sentinelMasterEnv))
+		if config.SentinelMasterName == "" {
+			config.SentinelMasterName = sentinelMasterDefault
+		}
+		if len(config.SentinelAddrs) == 0 {
+			return Config{}, fmt.Errorf("%s must be set when %s=sentinel", sentinelAddrsEnv, endpointModeEnv)
+		}
 	}
 
 	db, err := redisDBFromEnv()
 	if err != nil {
-		return nil, err
+		return Config{}, err
 	}
 	pool, err := poolConfigFromEnv()
 	if err != nil {
-		return nil, err
+		return Config{}, err
 	}
+	config.DB = db
+	config.pool = pool
 
-	options := &redis.Options{
-		Addr:     addr,
-		Password: strings.TrimSpace(os.Getenv(passwordEnv)),
-		DB:       db,
-	}
-	applyPoolConfig(options, pool)
-	if envFlagEnabled(tlsEnv) {
-		options.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
-	}
+	return config, nil
+}
 
-	client := redis.NewClient(options)
+func New(ctx context.Context, config Config) (*redis.Client, error) {
+	client := newClient(config)
 	if err := pingWithRetry(ctx, client); err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
 
 	return client, nil
+}
+
+func newClient(config Config) *redis.Client {
+	if config.EndpointMode == endpointModeSentinel {
+		return redis.NewFailoverClient(failoverOptions(config))
+	}
+	return redis.NewClient(options(config))
+}
+
+func options(config Config) *redis.Options {
+	options := &redis.Options{
+		Addr:      config.Addr,
+		Password:  config.Password,
+		DB:        config.DB,
+		TLSConfig: tlsConfig(config.TLS),
+	}
+	applyPoolConfig(options, config.pool)
+	return options
+}
+
+func failoverOptions(config Config) *redis.FailoverOptions {
+	options := &redis.FailoverOptions{
+		MasterName:    config.SentinelMasterName,
+		SentinelAddrs: append([]string(nil), config.SentinelAddrs...),
+		Password:      config.Password,
+		DB:            config.DB,
+		TLSConfig:     tlsConfig(config.TLS),
+	}
+	applyFailoverPoolConfig(options, config.pool)
+	return options
 }
 
 func applyPoolConfig(options *redis.Options, config poolConfig) {
@@ -78,6 +155,28 @@ func applyPoolConfig(options *redis.Options, config poolConfig) {
 	options.MaxIdleConns = config.MaxIdleConns
 	options.ConnMaxIdleTime = config.ConnMaxIdleTime
 	options.ConnMaxLifetime = config.ConnMaxLifetime
+}
+
+func applyFailoverPoolConfig(options *redis.FailoverOptions, config poolConfig) {
+	if options == nil {
+		return
+	}
+	options.PoolSize = config.PoolSize
+	options.MinIdleConns = config.MinIdleConns
+	options.MaxIdleConns = config.MaxIdleConns
+	options.ConnMaxIdleTime = config.ConnMaxIdleTime
+	options.ConnMaxLifetime = config.ConnMaxLifetime
+}
+
+func endpointModeFromEnv() (string, error) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(endpointModeEnv))) {
+	case "", endpointModeDirect:
+		return endpointModeDirect, nil
+	case endpointModeSentinel:
+		return endpointModeSentinel, nil
+	default:
+		return "", fmt.Errorf("%s must be one of: %s, %s", endpointModeEnv, endpointModeDirect, endpointModeSentinel)
+	}
 }
 
 func poolConfigFromEnv() (poolConfig, error) {
@@ -185,4 +284,23 @@ func envFlagEnabled(name string) bool {
 	default:
 		return false
 	}
+}
+
+func csvEnv(name string) []string {
+	raw := strings.Split(os.Getenv(name), ",")
+	values := make([]string, 0, len(raw))
+	for _, value := range raw {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	return values
+}
+
+func tlsConfig(enabled bool) *tls.Config {
+	if !enabled {
+		return nil
+	}
+	return &tls.Config{MinVersion: tls.VersionTLS12}
 }
