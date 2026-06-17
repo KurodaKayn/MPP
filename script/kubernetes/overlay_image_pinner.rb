@@ -5,7 +5,8 @@ require "tempfile"
 require "yaml"
 
 module KubernetesOverlayImages
-  DEFAULT_REGISTRY = "ghcr.io/kurodakayn"
+  DEFAULT_IMAGE_NAMESPACE = "ghcr.io/kurodakayn"
+  DEFAULT_REGISTRY = DEFAULT_IMAGE_NAMESPACE
   APP_IMAGE_REPOSITORIES = {
     "registry.example.invalid/kurodakayn/mpp-frontend" => "mpp-frontend",
     "registry.example.invalid/kurodakayn/mpp-backend" => "mpp-backend",
@@ -65,9 +66,10 @@ module KubernetesOverlayImages
   end
 
   class Pinner
-    def initialize(overlay:, git_sha:, writer: AtomicYamlWriter.new)
+    def initialize(overlay:, git_sha:, image_namespace: DEFAULT_IMAGE_NAMESPACE, writer: AtomicYamlWriter.new)
       @overlay = overlay.to_s
       @git_sha = git_sha.to_s
+      @image_namespace = normalize_image_namespace(image_namespace)
       @writer = writer
       @errors = []
     end
@@ -83,16 +85,21 @@ module KubernetesOverlayImages
       return result([]) unless errors.empty?
 
       pin_app_images(kustomization)
-      pin_runtime_image(kustomization)
-      writer.write(kustomization_path, kustomization).each { |message| add_error(message) }
+      runtime_patch = pin_runtime_image(kustomization)
+      write_document(kustomization_path, kustomization)
+      write_document(runtime_patch.path, runtime_patch.document) if runtime_patch.path
       return result([]) unless errors.empty?
 
-      result([kustomization_path])
+      updated_files = [kustomization_path]
+      updated_files << runtime_patch.path if runtime_patch.path
+      result(updated_files)
     end
 
     private
 
-    attr_reader :overlay, :git_sha, :writer, :errors
+    RuntimePatch = Struct.new(:entry, :document, :path, keyword_init: true)
+
+    attr_reader :overlay, :git_sha, :image_namespace, :writer, :errors
 
     def result(updated_files)
       PinResult.new(updated_files: updated_files, errors: errors)
@@ -101,11 +108,16 @@ module KubernetesOverlayImages
     def validate_inputs
       add_error("overlay must be set") if overlay.strip.empty?
       add_error("overlay directory does not exist: #{overlay}") unless File.directory?(overlay)
-      unless File.basename(overlay) == "production-managed"
-        add_error("image pinning currently supports only the production-managed overlay")
+      unless production_overlay?
+        add_error("image pinning supports only production overlays")
       end
       unless git_sha.match?(/\A[0-9a-f]{40}\z/)
         add_error("git SHA must be 40 lowercase hexadecimal characters")
+      end
+      if image_namespace.empty?
+        add_error("image namespace must be set")
+      elsif image_namespace.match?(/\s/) || image_namespace.include?("@")
+        add_error("image namespace must not contain whitespace or digests")
       end
     end
 
@@ -135,15 +147,16 @@ module KubernetesOverlayImages
       images = document["images"]
       APP_IMAGE_REPOSITORIES.each do |source_name, repository|
         image = images.find { |entry| entry["name"] == source_name }
-        image["newName"] = "#{DEFAULT_REGISTRY}/#{repository}"
+        image["newName"] = image_repository(repository)
         image["newTag"] = image_tag
       end
     end
 
     def pin_runtime_image(kustomization)
-      patch_entry, patch_document = runtime_patch(kustomization)
-      runtime_image_env(patch_document)["value"] = "#{DEFAULT_REGISTRY}/#{BROWSER_RUNTIME_REPOSITORY}:#{image_tag}"
-      patch_entry["patch"] = YAML.dump(patch_document).sub(/\A---\s*\n/, "")
+      patch = runtime_patch(kustomization)
+      runtime_image_env(patch.document)["value"] = "#{image_repository(BROWSER_RUNTIME_REPOSITORY)}:#{image_tag}"
+      patch.entry["patch"] = YAML.dump(patch.document).sub(/\A---\s*\n/, "") unless patch.path
+      patch
     end
 
     def runtime_image_env(document)
@@ -167,22 +180,57 @@ module KubernetesOverlayImages
     end
 
     def parse_runtime_patch(entry)
-      patch = entry["patch"]
-      return nil unless patch.is_a?(String) && patch.include?("BROWSER_RUNTIME_IMAGE")
+      inline_patch = entry["patch"]
+      if inline_patch.is_a?(String) && inline_patch.include?("BROWSER_RUNTIME_IMAGE")
+        document = parse_patch_document(inline_patch)
+        return RuntimePatch.new(entry:, document:) if document.is_a?(Hash) && runtime_image_env(document)
+      end
 
-      document = YAML.safe_load(
-        patch,
-        permitted_classes: [],
-        permitted_symbols: [],
-        aliases: true,
-      )
-      [entry, document] if document.is_a?(Hash) && runtime_image_env(document)
+      path = entry["path"]
+      return nil unless path.is_a?(String)
+
+      patch_path = File.expand_path(path, overlay)
+      return nil unless File.file?(patch_path)
+
+      document = load_patch_document(patch_path)
+      RuntimePatch.new(entry:, document:, path: patch_path) if document.is_a?(Hash) && runtime_image_env(document)
     rescue Psych::Exception
       nil
     end
 
+    def parse_patch_document(raw)
+      YAML.safe_load(
+        raw,
+        permitted_classes: [],
+        permitted_symbols: [],
+        aliases: true,
+      )
+    end
+
+    def load_patch_document(path)
+      parse_patch_document(File.read(path))
+    rescue Errno::ENOENT
+      nil
+    end
+
+    def write_document(path, document)
+      writer.write(path, document).each { |message| add_error(message) }
+    end
+
+    def image_repository(repository)
+      "#{image_namespace}/#{repository}"
+    end
+
     def image_tag
       "sha-#{git_sha}"
+    end
+
+    def normalize_image_namespace(value)
+      value.to_s.strip.sub(%r{/+\z}, "")
+    end
+
+    def production_overlay?
+      File.basename(overlay).include?("production")
     end
 
     def load_yaml(path)

@@ -1,0 +1,109 @@
+name: Kubernetes Image Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      overlay:
+        description: Kubernetes production overlay to pin.
+        required: true
+        default: deploy/kubernetes/overlays/production-managed
+        type: string
+      git_sha:
+        description: Full 40-character Git SHA published by the Container Images workflow.
+        required: true
+        type: string
+      image_namespace:
+        description: Target registry namespace that contains the MPP images.
+        required: true
+        default: ghcr.io/kurodakayn
+        type: string
+      deployable_validation:
+        description: Run strict deployable validation after rendering the overlay.
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubernetes-image-promotion-${{ inputs.overlay }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Pin and validate overlay images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.33.9
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: script/kubernetes/smoke-test/go.mod
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Install kubeconform
+        run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
+
+      - name: Pin overlay images
+        shell: bash
+        env:
+          PROMOTION_OVERLAY: ${{ inputs.overlay }}
+          PROMOTION_GIT_SHA: ${{ inputs.git_sha }}
+          PROMOTION_IMAGE_NAMESPACE: ${{ inputs.image_namespace }}
+        run: |
+          set -euo pipefail
+
+          ruby script/kubernetes/pin-overlay-images.rb \
+            --overlay "$PROMOTION_OVERLAY" \
+            --git-sha "$PROMOTION_GIT_SHA" \
+            --image-namespace "$PROMOTION_IMAGE_NAMESPACE"
+
+      - name: Render and validate overlay
+        shell: bash
+        env:
+          PROMOTION_OVERLAY: ${{ inputs.overlay }}
+          PROMOTION_DEPLOYABLE_VALIDATION: ${{ inputs.deployable_validation }}
+          PROMOTION_IMAGE_NAMESPACE: ${{ inputs.image_namespace }}
+        run: |
+          set -euo pipefail
+
+          rendered="$(mktemp)"
+          kubectl kustomize "$PROMOTION_OVERLAY" > "$rendered"
+          ruby script/kubernetes/validate-rendered-schema.rb "$PROMOTION_OVERLAY" "$rendered"
+          if [[ "$PROMOTION_DEPLOYABLE_VALIDATION" == "true" ]]; then
+            MPP_IMAGE_NAMESPACE="$PROMOTION_IMAGE_NAMESPACE" \
+              MPP_KUBERNETES_VALIDATE_DEPLOYABLE=1 \
+              ruby script/kubernetes/validate-rendered-manifests.rb "$PROMOTION_OVERLAY" "$rendered"
+          else
+            MPP_IMAGE_NAMESPACE="$PROMOTION_IMAGE_NAMESPACE" \
+              ruby script/kubernetes/validate-rendered-manifests.rb "$PROMOTION_OVERLAY" "$rendered"
+          fi
+
+      - name: Write promotion patch
+        shell: bash
+        env:
+          PROMOTION_OVERLAY: ${{ inputs.overlay }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p artifacts/kubernetes-image-promotion
+          git diff -- "$PROMOTION_OVERLAY" > artifacts/kubernetes-image-promotion/promotion.patch
+          test -s artifacts/kubernetes-image-promotion/promotion.patch
+
+      - name: Upload promotion patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubernetes-image-promotion-${{ inputs.git_sha }}
+          path: artifacts/kubernetes-image-promotion/promotion.patch

@@ -36,6 +36,10 @@ Before applying this overlay to production:
 - Replace every `sha-0000000000000000000000000000000000000000` image tag with
   registry-published `sha-<full-git-sha>` tags:
   `ruby script/kubernetes/pin-overlay-images.rb --overlay deploy/kubernetes/overlays/production-managed --git-sha <full-git-sha>`.
+  For non-GHCR provider registries, add
+  `--image-namespace <registry>/<namespace>`. The `Kubernetes Image Promotion`
+  workflow wraps this command, validates the rendered overlay, and publishes a
+  reviewable patch artifact.
 - Replace the public host and ingress class for the target Ingress controller.
 - Create or sync the `mpp-public-tls` Secret for the production public host.
 - Replace managed PostgreSQL and Redis ExternalName targets with provider

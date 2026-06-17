@@ -192,7 +192,16 @@ ruby script/kubernetes/pin-overlay-images.rb \
 
 The helper updates every app image plus the `BROWSER_RUNTIME_IMAGE` patch in
 `deploy/kubernetes/overlays/production-managed/kustomization.yaml` to the GHCR
-image namespace used by the repository image publishing workflow.
+image namespace used by the repository image publishing workflow. For provider
+registries, pass `--image-namespace <registry>/<namespace>` or set
+`MPP_IMAGE_NAMESPACE`; provider-specific production overlays are supported when
+their overlay path contains `production`.
+
+The `Kubernetes Image Promotion` workflow runs the same pinner from
+`workflow_dispatch`, renders the target overlay, validates the manifests, and
+uploads a `promotion.patch` artifact for review. Enable its strict deployable
+validation input when the target overlay already uses provider-specific hosts,
+secrets, and release image tags.
 
 Set the repository variables `FRONTEND_BASE_URL` and `BACKEND_API_BASE_URL`
 before publishing images when the frontend build should use values other than
