@@ -11,9 +11,10 @@ DRILL_ID="${MPP_REDIS_FAILOVER_DRILL_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 last_master=""
 last_ready_detail=""
 last_write_detail=""
-backend_pod=""
-publish_worker_pod=""
-browser_worker_pod=""
+backend_pods=""
+publish_worker_pods=""
+browser_worker_pods=""
+backend_probe_pod=""
 
 usage() {
   cat <<USAGE
@@ -67,29 +68,24 @@ sentinel_exec() {
     env REDIS_SENTINEL_MASTER_NAME="$MASTER_NAME" sh -ec "$1"
 }
 
-select_backend_pod() {
-  select_pod 'app.kubernetes.io/name=mpp,app.kubernetes.io/component=backend'
+select_backend_pods() {
+  select_pods 'app.kubernetes.io/name=mpp,app.kubernetes.io/component=backend'
 }
 
-select_publish_worker_pod() {
-  select_pod 'app.kubernetes.io/name=mpp,app.kubernetes.io/component=publish-worker'
+select_publish_worker_pods() {
+  select_pods 'app.kubernetes.io/name=mpp,app.kubernetes.io/component=publish-worker'
 }
 
-select_browser_worker_pod() {
-  select_pod 'app.kubernetes.io/name=mpp,app.kubernetes.io/component=browser-worker'
+select_browser_worker_pods() {
+  select_pods 'app.kubernetes.io/name=mpp,app.kubernetes.io/component=browser-worker'
 }
 
-select_pod() {
+select_pods() {
   local selector="$1"
-  local pods
 
-  pods="$(
-    kubectl get pod -n "$APP_NS" \
-      -l "$selector" \
-      -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.metadata.name}{" "}{end}'
-  )"
-  set -- $pods
-  printf '%s\n' "${1:-}"
+  kubectl get pod -n "$APP_NS" \
+    -l "$selector" \
+    -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.metadata.name}{" "}{end}'
 }
 
 sentinel_master() {
@@ -100,35 +96,55 @@ trigger_sentinel_failover() {
   sentinel_exec 'redis-cli -p 26379 SENTINEL failover "$REDIS_SENTINEL_MASTER_NAME"'
 }
 
-backend_ready_probe() {
+workload_ready_probe() {
+  local pods="$1"
+  local container="$2"
+  local url="$3"
   local detail
+  local pod
+  local ok=0
 
-  detail="$(http_ready_probe "$backend_pod" backend http://127.0.0.1:8080/ready)"
-  last_ready_detail="backend $detail"
-  [[ "$detail" == exit=0* && "$detail" == *'"status":"ready"'* ]]
+  for pod in $pods; do
+    detail="$(http_ready_probe "$pod" "$container" "$url")"
+    append_ready_detail "$container/$pod $detail"
+    if [[ "$detail" != exit=0* || "$detail" != *'"status":"ready"'* ]]; then
+      ok=1
+    fi
+  done
+
+  return "$ok"
+}
+
+append_ready_detail() {
+  local detail="$1"
+
+  if [[ -n "$last_ready_detail" ]]; then
+    last_ready_detail="${last_ready_detail}; ${detail}"
+  else
+    last_ready_detail="$detail"
+  fi
+}
+
+backend_ready_probe() {
+  workload_ready_probe "$backend_pods" backend http://127.0.0.1:8080/ready
 }
 
 publish_worker_ready_probe() {
-  local detail
-
-  detail="$(http_ready_probe "$publish_worker_pod" publish-worker http://127.0.0.1:8080/ready)"
-  last_ready_detail="${last_ready_detail}; publish-worker $detail"
-  [[ "$detail" == exit=0* && "$detail" == *'"status":"ready"'* ]]
+  workload_ready_probe "$publish_worker_pods" publish-worker http://127.0.0.1:8080/ready
 }
 
 browser_worker_ready_probe() {
-  local detail
-
-  detail="$(http_ready_probe "$browser_worker_pod" browser-worker http://127.0.0.1:8081/ready)"
-  last_ready_detail="${last_ready_detail}; browser-worker $detail"
-  [[ "$detail" == exit=0* && "$detail" == *'"status":"ready"'* ]]
+  workload_ready_probe "$browser_worker_pods" browser-worker http://127.0.0.1:8081/ready
 }
 
 app_clients_ready_probe() {
+  local ok=0
+
   last_ready_detail=""
-  backend_ready_probe &&
-    publish_worker_ready_probe &&
-    browser_worker_ready_probe
+  backend_ready_probe || ok=1
+  publish_worker_ready_probe || ok=1
+  browser_worker_ready_probe || ok=1
+  return "$ok"
 }
 
 http_ready_probe() {
@@ -161,7 +177,7 @@ backend_write_probe() {
   payload="$(printf '{"email":"%s","scene":"register"}' "$email")"
   set +e
   write_output="$(
-    kubectl exec -n "$APP_NS" "$backend_pod" -c backend -- \
+    kubectl exec -n "$APP_NS" "$backend_probe_pod" -c backend -- \
       sh -ec '
         payload="$1"
         wget -qO- -T "'"$REQUEST_TIMEOUT"'" \
@@ -172,7 +188,7 @@ backend_write_probe() {
   )"
   write_status=$?
   read_output="$(
-    kubectl exec -n "$APP_NS" "$backend_pod" -c backend -- \
+    kubectl exec -n "$APP_NS" "$backend_probe_pod" -c backend -- \
       sh -ec '
         payload="$1"
         wget -qO- -T "'"$REQUEST_TIMEOUT"'" \
@@ -208,6 +224,17 @@ pod_redis_mode_ok() {
     fail "$label is not running with REDIS_SENTINEL_MASTER_NAME=$MASTER_NAME; restart it after patching mpp-app-config"
   [[ "$(pod_env_value "$pod" "$container" REDIS_ADDR)" == "redis:6379" ]] ||
     fail "$label must keep REDIS_ADDR=redis:6379 for rollback"
+}
+
+workload_redis_mode_ok() {
+  local pods="$1"
+  local container="$2"
+  local label="$3"
+  local pod
+
+  for pod in $pods; do
+    pod_redis_mode_ok "$pod" "$container" "$label Pod $pod"
+  done
 }
 
 one_line() {
@@ -262,18 +289,20 @@ preflight() {
   kubectl rollout status deployment/backend -n "$APP_NS" "--timeout=${TARGET_SECONDS}s"
   kubectl rollout status deployment/publish-worker -n "$APP_NS" "--timeout=${TARGET_SECONDS}s"
   kubectl rollout status deployment/browser-worker -n "$APP_NS" "--timeout=${TARGET_SECONDS}s"
-  backend_pod="$(select_backend_pod)"
-  publish_worker_pod="$(select_publish_worker_pod)"
-  browser_worker_pod="$(select_browser_worker_pod)"
-  [[ -n "$backend_pod" ]] || fail "no running backend Pod found"
-  [[ -n "$publish_worker_pod" ]] || fail "no running publish-worker Pod found"
-  [[ -n "$browser_worker_pod" ]] || fail "no running browser-worker Pod found"
-  log "using backend Pod $backend_pod for write probes"
-  log "checking Redis readiness through backend=$backend_pod publish-worker=$publish_worker_pod browser-worker=$browser_worker_pod"
+  backend_pods="$(select_backend_pods)"
+  publish_worker_pods="$(select_publish_worker_pods)"
+  browser_worker_pods="$(select_browser_worker_pods)"
+  [[ -n "$backend_pods" ]] || fail "no running backend Pod found"
+  [[ -n "$publish_worker_pods" ]] || fail "no running publish-worker Pod found"
+  [[ -n "$browser_worker_pods" ]] || fail "no running browser-worker Pod found"
+  set -- $backend_pods
+  backend_probe_pod="$1"
+  log "using backend Pod $backend_probe_pod for write probes"
+  log "checking Redis readiness through backend=[$backend_pods] publish-worker=[$publish_worker_pods] browser-worker=[$browser_worker_pods]"
 
-  pod_redis_mode_ok "$backend_pod" backend "backend Pod $backend_pod"
-  pod_redis_mode_ok "$publish_worker_pod" publish-worker "publish-worker Pod $publish_worker_pod"
-  pod_redis_mode_ok "$browser_worker_pod" browser-worker "browser-worker Pod $browser_worker_pod"
+  workload_redis_mode_ok "$backend_pods" backend "backend"
+  workload_redis_mode_ok "$publish_worker_pods" publish-worker "publish-worker"
+  workload_redis_mode_ok "$browser_worker_pods" browser-worker "browser-worker"
 
   sentinel_exec 'redis-cli -p 26379 SENTINEL ckquorum "$REDIS_SENTINEL_MASTER_NAME"'
   app_clients_ready_probe || fail "application Redis client readiness failed before failover: $last_ready_detail"
@@ -289,9 +318,10 @@ validate_positive_integer() {
 diagnostics() {
   printf '\n== Redis HA failover diagnostics ==\n'
   printf 'namespace=%s master_name=%s drill_id=%s target_seconds=%s\n' "$APP_NS" "$MASTER_NAME" "$DRILL_ID" "$TARGET_SECONDS"
-  printf 'backend_pod=%s\n' "$backend_pod"
-  printf 'publish_worker_pod=%s\n' "$publish_worker_pod"
-  printf 'browser_worker_pod=%s\n' "$browser_worker_pod"
+  printf 'backend_pods=%s\n' "$backend_pods"
+  printf 'publish_worker_pods=%s\n' "$publish_worker_pods"
+  printf 'browser_worker_pods=%s\n' "$browser_worker_pods"
+  printf 'backend_probe_pod=%s\n' "$backend_probe_pod"
   printf 'last_master=%s\n' "$(one_line "$last_master")"
   printf 'last_ready_detail=%s\n' "$last_ready_detail"
   printf 'last_write_detail=%s\n' "$last_write_detail"

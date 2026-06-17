@@ -36,6 +36,7 @@ spec:
                   - redis-ha-primary
                   - redis-ha-replica
                   - redis-ha-sentinel
+                  - redis
                   - backend
                   - publish-worker
                   - browser-worker

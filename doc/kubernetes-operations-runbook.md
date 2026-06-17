@@ -885,6 +885,33 @@ The drill validates three things:
 Record the observed recovery time from the script output. Phase 2 acceptance
 targets 1-5 minutes after a single Redis Pod, node, or short network failure.
 
+Data migration rehearsal:
+
+```bash
+MPP_APP_NS=mpp-system \
+MPP_REDIS_MIGRATION_ALLOW_TARGET_FLUSH=1 \
+ruby script/kubernetes/redis-ha-migration-rehearsal.rb \
+  --report redis-ha-migration-rehearsal.json
+```
+
+Run this only in non-production while app traffic still uses the existing
+direct Redis endpoint. The rehearsal reads keys from `statefulset/redis`, uses
+Redis `MIGRATE COPY REPLACE` to copy them into `statefulset/redis-ha-primary`,
+samples restored values and TTLs, and writes a concise JSON report. Attach the
+report or paste its `summary` block into the implementation PR or the
+environment runbook entry.
+
+For this Phase 2 rehearsal, `MIGRATE COPY REPLACE` is the export/import
+primitive: Redis streams each source key into the HA target while preserving the
+serialized value and TTL instead of writing an intermediate snapshot file.
+
+Expected report:
+
+- `summary.source_vs_target_key_count_diff=0`.
+- `summary.sample_value_matches` equals `summary.sampled_keys`.
+- `summary.sample_ttl_mismatches=0` unless the report explains expected
+  short-TTL expiration during the rehearsal window.
+
 Application endpoint switch:
 
 1. Patch `mpp-app-config` so `REDIS_ENDPOINT_MODE=sentinel`,
@@ -910,6 +937,11 @@ Rollback:
 If the drill fails, keep `REDIS_ADDR=redis:6379`, revert `REDIS_ENDPOINT_MODE`
 to `direct`, restart the app Pods, and inspect the script diagnostics for the
 first failing probe.
+
+If the migration rehearsal fails, keep `REDIS_ENDPOINT_MODE=direct`, discard
+the HA Redis rehearsal data with `FLUSHDB` on `redis-ha-primary` or by deleting
+the `redis-ha-*` PVCs after validation data is no longer needed, and continue
+using the existing `redis` StatefulSet and Service.
 
 No production traffic is cut over by this validation topology. If the HA
 resources fail to start, keep or restore `REDIS_ENDPOINT_MODE=direct`, delete

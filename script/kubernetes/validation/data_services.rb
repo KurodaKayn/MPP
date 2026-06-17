@@ -417,7 +417,7 @@ module KubernetesValidation
         .flat_map { |entry| Array(entry.dig("podSelector", "matchExpressions")) }
         .select { |entry| entry["key"] == "app.kubernetes.io/component" }
         .flat_map { |entry| Array(entry["values"]) }
-      ["redis-ha-primary", "redis-ha-replica", "redis-ha-sentinel", "backend", "publish-worker", "browser-worker", "collab-service"].each do |component|
+      ["redis-ha-primary", "redis-ha-replica", "redis-ha-sentinel", "redis", "backend", "publish-worker", "browser-worker", "collab-service"].each do |component|
         unless from_components.include?(component)
           context.add_error("non-prod HA Redis NetworkPolicy must allow #{component} ingress")
         end
