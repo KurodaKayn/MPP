@@ -455,6 +455,31 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_self_hosted_data_services_reject_redis_runtime_duplicate_overrides
+    rendered = mutated_render("deploy/kubernetes/data-services/self-hosted") do |documents|
+      config = document(documents, "ConfigMap", "redis-persistence-config", "mpp-system")
+      config["data"]["redis.conf"] = "#{config.dig('data', 'redis.conf')}\n" \
+        "maxmemory 1gb\n" \
+        "maxmemory-policy allkeys-lru\n" \
+        "timeout 30\n" \
+        "tcp-keepalive 60\n" \
+        "slowlog-log-slower-than 50000\n" \
+        "slowlog-max-len 512\n"
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/self-hosted", rendered.path)
+
+    refute status.success?, "self-hosted validation unexpectedly accepted duplicate redis runtime overrides"
+    assert_includes stderr, "self-hosted redis runtime config must keep maxmemory at 384mb"
+    assert_includes stderr, "self-hosted redis runtime config must use noeviction"
+    assert_includes stderr, "self-hosted redis runtime config must keep idle timeout disabled"
+    assert_includes stderr, "self-hosted redis runtime config must keep tcp-keepalive at 300 seconds"
+    assert_includes stderr, "self-hosted redis runtime config must log commands slower than 10ms"
+    assert_includes stderr, "self-hosted redis runtime config must retain 256 slowlog entries"
+  ensure
+    rendered&.unlink
+  end
+
   def test_staging_self_hosted_overlay_allows_documented_redis_policy_override
     rendered = mutated_render("deploy/kubernetes/overlays/staging-self-hosted") do |documents|
       config = document(documents, "ConfigMap", "redis-persistence-config", "mpp-system")

@@ -271,14 +271,14 @@ module KubernetesValidation
 
     def validate_base_redis_runtime_policy(context, redis_config)
       {
-        "maxmemory 384mb" => "self-hosted redis runtime config must keep maxmemory at 384mb",
-        "maxmemory-policy noeviction" => "self-hosted redis runtime config must use noeviction",
-        "timeout 0" => "self-hosted redis runtime config must keep idle timeout disabled",
-        "tcp-keepalive 300" => "self-hosted redis runtime config must keep tcp-keepalive at 300 seconds",
-        "slowlog-log-slower-than 10000" => "self-hosted redis runtime config must log commands slower than 10ms",
-        "slowlog-max-len 256" => "self-hosted redis runtime config must retain 256 slowlog entries",
-      }.each do |line, message|
-        context.add_error(message) unless redis_config.include?(line)
+        "maxmemory" => ["384mb", "self-hosted redis runtime config must keep maxmemory at 384mb"],
+        "maxmemory-policy" => ["noeviction", "self-hosted redis runtime config must use noeviction"],
+        "timeout" => ["0", "self-hosted redis runtime config must keep idle timeout disabled"],
+        "tcp-keepalive" => ["300", "self-hosted redis runtime config must keep tcp-keepalive at 300 seconds"],
+        "slowlog-log-slower-than" => ["10000", "self-hosted redis runtime config must log commands slower than 10ms"],
+        "slowlog-max-len" => ["256", "self-hosted redis runtime config must retain 256 slowlog entries"],
+      }.each do |key, (expected_value, message)|
+        context.add_error(message) unless redis_config_value(redis_config, key) == expected_value
       end
     end
 
