@@ -2,6 +2,7 @@
 
 require "base64"
 require "uri"
+require_relative "../image_namespace"
 require_relative "external_secrets"
 
 module KubernetesValidation
@@ -33,6 +34,7 @@ module KubernetesValidation
 
     def validate_staging_self_hosted(context)
       overlay = "staging-self-hosted"
+      validate_image_namespace(context, overlay)
       validate_self_hosted_config(context, overlay)
       validate_secret(context, overlay)
       validate_ingress(context, overlay)
@@ -42,6 +44,7 @@ module KubernetesValidation
 
     def validate_staging_managed(context)
       overlay = "staging-managed"
+      validate_image_namespace(context, overlay)
       validate_managed_config(context, overlay, app_env: "staging")
       validate_secret(context, overlay)
       validate_ingress(context, overlay)
@@ -50,8 +53,8 @@ module KubernetesValidation
       validate_managed_services(context, overlay)
     end
 
-    def validate_production_managed(context)
-      overlay = "production-managed"
+    def validate_production_managed(context, overlay: "production-managed")
+      validate_image_namespace(context, overlay)
       validate_managed_config(context, overlay, app_env: "production")
       ExternalSecrets.validate_app_secret_contract(context, overlay)
       validate_external_secret_contract(context, overlay)
@@ -256,6 +259,12 @@ module KubernetesValidation
       end
     end
 
+    def validate_image_namespace(context, overlay)
+      KubernetesImageNamespace.validation_errors(image_namespace).each do |message|
+        context.add_error("#{overlay} #{message}")
+      end
+    end
+
     def validate_managed_services(context, overlay)
       {
         "postgres" => 5432,
@@ -396,7 +405,7 @@ module KubernetesValidation
     end
 
     def image_namespace
-      ENV.fetch(IMAGE_NAMESPACE_ENV, DEFAULT_IMAGE_NAMESPACE).to_s.strip.sub(%r{/+\z}, "")
+      KubernetesImageNamespace.normalize(ENV.fetch(IMAGE_NAMESPACE_ENV, DEFAULT_IMAGE_NAMESPACE))
     end
 
     def image_repository(repository)
