@@ -23,5 +23,14 @@ class RedisHAFailoverDrillScriptTest < Minitest::Test
     assert status.success?, stderr
     assert_includes stdout, "non-production HA Redis client failover drill"
     assert_includes stdout, "MPP_REDIS_FAILOVER_TARGET_SECONDS"
+    assert_includes stdout, "MPP_REDIS_FAILOVER_ALLOW_PRODUCTION"
+  end
+
+  def test_script_requires_explicit_production_allowance
+    script = File.read(SCRIPT)
+
+    assert_includes script, "refusing to run against APP_ENV=$app_env"
+    assert_includes script, "MPP_REDIS_FAILOVER_ALLOW_PRODUCTION=1"
+    assert_includes script, "env_flag_enabled \"$ALLOW_PRODUCTION\""
   end
 end
