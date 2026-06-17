@@ -283,11 +283,15 @@ tooling and non-verifying discovery paths.
 Self-hosted Redis uses a single StatefulSet plus the `redis-data` PVC. Its
 versioned `redis-persistence-config` enables AOF with `appendfsync everysec` and
 keeps RDB snapshots with the base `900/1`, `300/10`, and `60/10000` save
-cadence. This protects Redis-resident keys across normal Pod restarts, subject
-to normal key TTL expiry and the last AOF fsync window. Managed Redis
-environments do not use that PVC or ConfigMap; record the provider persistence,
-snapshot retention, and restore point objective in the managed environment
-configuration before relying on restart recovery.
+cadence. It also sets `maxmemory 384mb`, `maxmemory-policy noeviction`,
+`timeout 0`, `tcp-keepalive 300`, and bounded slowlog retention so memory
+pressure fails writes explicitly instead of silently evicting mixed
+responsibility keys. This protects Redis-resident keys across normal Pod
+restarts, subject to normal key TTL expiry and the last AOF fsync window.
+Managed Redis environments do not use that PVC or ConfigMap; record the
+provider persistence, memory pressure, snapshot retention, and restore point
+objective in the managed environment configuration before relying on restart
+recovery.
 
 Schema migration remains a backend startup responsibility. Do not run database
 migrations as Kubernetes manifest side effects.
@@ -527,7 +531,8 @@ write to the `mpp-data-backups` PVC with local retention cleanup.
 Before keeping useful data in self-hosted StatefulSets:
 
 - Confirm Redis renders with `redis-persistence-config`, `appendonly yes`,
-  `appendfsync everysec`, and the `redis-data` PVC mounted at `/data`.
+  `appendfsync everysec`, `maxmemory-policy noeviction`, slowlog settings, and
+  the `redis-data` PVC mounted at `/data`.
 - Patch the `mpp-data-backups` storage class and size.
 - Patch the `postgres-backup` and `redis-backup` schedules for the environment.
 - Patch `BACKUP_RETENTION_DAYS` for each backup job.

@@ -30,6 +30,12 @@ data:
     dir /data
     dbfilename dump.rdb
 
+    maxmemory 384mb
+    maxmemory-policy noeviction
+
+    timeout 0
+    tcp-keepalive 300
+
     appendonly yes
     appendfsync everysec
     appenddirname appendonlydir
@@ -39,6 +45,9 @@ data:
     save 900 1
     save 300 10
     save 60 10000
+
+    slowlog-log-slower-than 10000
+    slowlog-max-len 256
 ---
 apiVersion: apps/v1
 kind: StatefulSet

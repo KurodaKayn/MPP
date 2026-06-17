@@ -20,7 +20,9 @@ The checked-in values are intentionally non-production:
 - Redis uses the self-hosted StatefulSet persistence baseline: the
   `redis-data` PVC stores `/data`, AOF is enabled with `appendfsync everysec`,
   and RDB snapshots keep the base `900/1`, `300/10`, and `60/10000` save
-  cadence.
+  cadence. It also inherits `maxmemory 384mb`, `maxmemory-policy noeviction`,
+  `timeout 0`, `tcp-keepalive 300`, and bounded slowlog retention from the
+  self-hosted data-services base.
 
 Before applying this overlay to a shared staging cluster:
 

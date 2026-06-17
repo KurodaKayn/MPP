@@ -2,6 +2,17 @@
 
 module KubernetesValidation
   module DataServices
+    VALID_REDIS_MAXMEMORY_POLICIES = [
+      "noeviction",
+      "allkeys-lru",
+      "volatile-lru",
+      "allkeys-random",
+      "volatile-random",
+      "volatile-ttl",
+      "allkeys-lfu",
+      "volatile-lfu",
+    ].freeze
+
     module_function
 
     def validate_managed(context)
@@ -136,8 +147,10 @@ module KubernetesValidation
       config = context.require_document("ConfigMap", "redis-persistence-config", "mpp-system")
       if config
         redis_config = redis_config_lines(config.data["redis.conf"])
+        validate_redis_runtime_common_policy(context, redis_config)
         validate_redis_persistence_common_policy(context, redis_config)
         if context.path_suffix?("deploy/kubernetes/data-services/self-hosted")
+          validate_base_redis_runtime_policy(context, redis_config)
           validate_base_redis_persistence_policy(context, redis_config)
         else
           validate_overlay_redis_persistence_policy(context, redis_config)
@@ -220,6 +233,55 @@ module KubernetesValidation
       end
     end
 
+    def validate_redis_runtime_common_policy(context, redis_config)
+      maxmemory = redis_config_value(redis_config, "maxmemory")
+      if maxmemory.nil?
+        context.add_error("self-hosted redis runtime config must explicitly set maxmemory")
+      elsif !positive_redis_memory?(maxmemory)
+        context.add_error("self-hosted redis runtime config maxmemory must be greater than zero")
+      end
+
+      maxmemory_policy = redis_config_value(redis_config, "maxmemory-policy")
+      if maxmemory_policy.nil?
+        context.add_error("self-hosted redis runtime config must explicitly set maxmemory-policy")
+      elsif !VALID_REDIS_MAXMEMORY_POLICIES.include?(maxmemory_policy)
+        context.add_error("self-hosted redis runtime config maxmemory-policy must be a valid Redis eviction policy")
+      end
+
+      timeout = redis_config_integer(redis_config, "timeout")
+      if timeout.nil?
+        context.add_error("self-hosted redis runtime config must set non-negative timeout")
+      end
+
+      tcp_keepalive = redis_config_integer(redis_config, "tcp-keepalive")
+      if tcp_keepalive.nil? || tcp_keepalive <= 0
+        context.add_error("self-hosted redis runtime config must enable tcp-keepalive")
+      end
+
+      slowlog_threshold = redis_config_integer(redis_config, "slowlog-log-slower-than")
+      if slowlog_threshold.nil?
+        context.add_error("self-hosted redis runtime config must set non-negative slowlog-log-slower-than")
+      end
+
+      slowlog_max_len = redis_config_integer(redis_config, "slowlog-max-len")
+      if slowlog_max_len.nil? || slowlog_max_len <= 0
+        context.add_error("self-hosted redis runtime config must retain slowlog entries")
+      end
+    end
+
+    def validate_base_redis_runtime_policy(context, redis_config)
+      {
+        "maxmemory" => ["384mb", "self-hosted redis runtime config must keep maxmemory at 384mb"],
+        "maxmemory-policy" => ["noeviction", "self-hosted redis runtime config must use noeviction"],
+        "timeout" => ["0", "self-hosted redis runtime config must keep idle timeout disabled"],
+        "tcp-keepalive" => ["300", "self-hosted redis runtime config must keep tcp-keepalive at 300 seconds"],
+        "slowlog-log-slower-than" => ["10000", "self-hosted redis runtime config must log commands slower than 10ms"],
+        "slowlog-max-len" => ["256", "self-hosted redis runtime config must retain 256 slowlog entries"],
+      }.each do |key, (expected_value, message)|
+        context.add_error(message) unless redis_config_value(redis_config, key) == expected_value
+      end
+    end
+
     def validate_base_redis_persistence_policy(context, redis_config)
       {
         "appendonly yes" => "self-hosted redis persistence config must enable AOF",
@@ -262,6 +324,17 @@ module KubernetesValidation
     def redis_config_value(redis_config, key)
       line = redis_config.reverse.find { |entry| entry.start_with?("#{key} ") }
       line&.split(/\s+/, 2)&.fetch(1, nil)&.delete_prefix('"')&.delete_suffix('"')
+    end
+
+    def redis_config_integer(redis_config, key)
+      value = redis_config_value(redis_config, key)
+      return nil unless value&.match?(/\A\d+\z/)
+
+      value.to_i
+    end
+
+    def positive_redis_memory?(value)
+      value.to_s.match?(/\A[1-9]\d*(?:[kmg]b?)?\z/i)
     end
 
     def active_redis_save_policy?(redis_config)
