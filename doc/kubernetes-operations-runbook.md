@@ -807,6 +807,77 @@ Run the failure check only in non-production. It verifies that the readiness
 probe fails when Redis stops serving commands, and that the Pod becomes ready
 again after the process resumes.
 
+## Non-Production HA Redis Validation
+
+The `staging-self-hosted` overlay includes the parallel
+`redis-ha-nonprod` package for Phase 2 validation. It deploys:
+
+- `redis-ha-primary`: one Redis primary StatefulSet.
+- `redis-ha-replica`: two Redis replica Pods.
+- `redis-ha-sentinel`: three Redis Sentinel Pods with quorum `2`.
+
+It does not change the application Redis endpoint. `mpp-app-config` must keep
+`REDIS_ADDR=redis:6379`, and the existing `redis` Service must continue
+selecting `app.kubernetes.io/component=redis`.
+
+Rollout checks:
+
+```bash
+kubectl rollout status statefulset/redis -n "$MPP_APP_NS"
+kubectl rollout status statefulset/redis-ha-primary -n "$MPP_APP_NS"
+kubectl rollout status statefulset/redis-ha-replica -n "$MPP_APP_NS"
+kubectl rollout status statefulset/redis-ha-sentinel -n "$MPP_APP_NS"
+kubectl get svc -n "$MPP_APP_NS" redis redis-ha-primary redis-ha-replicas redis-ha-sentinel
+kubectl get configmap -n "$MPP_APP_NS" mpp-app-config -o jsonpath='{.data.REDIS_ADDR}{"\n"}'
+```
+
+Replication health:
+
+```bash
+kubectl exec -n "$MPP_APP_NS" statefulset/redis-ha-replica -- sh -ec '
+  redis_cli() {
+    if [ -n "${REDIS_PASSWORD:-}" ]; then
+      redis-cli --raw --no-auth-warning -a "$REDIS_PASSWORD" "$@"
+    else
+      redis-cli --raw "$@"
+    fi
+  }
+  redis_cli INFO replication | tr -d "\r" | grep -E "role:|master_link_status:"
+'
+```
+
+Expected result:
+
+- Replicas report `role:slave` or `role:replica`.
+- Replicas report `master_link_status:up`.
+
+Sentinel health:
+
+```bash
+kubectl exec -n "$MPP_APP_NS" statefulset/redis-ha-sentinel -- sh -ec '
+  redis-cli -p 26379 SENTINEL get-master-addr-by-name mpp-redis-ha
+  redis-cli -p 26379 SENTINEL ckquorum mpp-redis-ha
+'
+```
+
+Expected result:
+
+- `get-master-addr-by-name` returns a Redis host and port `6379`.
+- `ckquorum` returns `OK`.
+
+Rollback:
+
+1. Remove `../../data-services/redis-ha-nonprod` from the non-production
+   overlay.
+2. Apply the overlay again.
+3. Confirm `REDIS_ADDR` still points at `redis:6379`.
+4. Delete leftover `redis-ha-*` PVCs only after confirming validation data is no
+   longer needed.
+
+No application traffic is cut over by this validation topology. If the HA
+resources fail to start, delete the HA package or its rendered `redis-ha-*`
+objects and continue using the existing `redis` StatefulSet and Service.
+
 Non-production restart check:
 
 ```bash
