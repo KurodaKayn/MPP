@@ -40,6 +40,36 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_redis_ha_nonprod_package_validates_for_local_render
+    overlay = "deploy/kubernetes/data-services/redis-ha-nonprod"
+    rendered = render_overlay(overlay)
+
+    _stdout, stderr, status = run_validator(overlay, rendered.path)
+
+    assert status.success?, "non-prod HA Redis validation failed: #{stderr}"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_staging_self_hosted_keeps_existing_redis_traffic_while_ha_renders
+    rendered = render_overlay("deploy/kubernetes/overlays/staging-self-hosted")
+    documents = parse_documents(File.read(rendered.path))
+
+    app_config = document(documents, "ConfigMap", "mpp-app-config", "mpp-system")
+    existing_redis = document(documents, "Service", "redis", "mpp-system")
+    ha_primary = document(documents, "StatefulSet", "redis-ha-primary", "mpp-system")
+    ha_replica = document(documents, "StatefulSet", "redis-ha-replica", "mpp-system")
+    ha_sentinel = document(documents, "StatefulSet", "redis-ha-sentinel", "mpp-system")
+
+    assert_equal "redis:6379", app_config.dig("data", "REDIS_ADDR")
+    assert_equal "redis", existing_redis.dig("spec", "selector", "app.kubernetes.io/component")
+    assert_equal 1, ha_primary.dig("spec", "replicas")
+    assert_equal 2, ha_replica.dig("spec", "replicas")
+    assert_equal 3, ha_sentinel.dig("spec", "replicas")
+  ensure
+    rendered&.unlink
+  end
+
   def test_production_managed_overlay_uses_external_secret_contract
     rendered = render_overlay(PRODUCTION_MANAGED_OVERLAY)
     documents = parse_documents(File.read(rendered.path))
@@ -581,6 +611,38 @@ class ValidateRenderedManifestsTest < Minitest::Test
 
     refute status.success?, "self-hosted validation unexpectedly accepted missing redis-exporter NetworkPolicy source"
     assert_includes stderr, "self-hosted redis NetworkPolicy must allow redis-exporter ingress"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_redis_ha_nonprod_requires_replica_health_readiness
+    rendered = mutated_render("deploy/kubernetes/data-services/redis-ha-nonprod") do |documents|
+      stateful_set = document(documents, "StatefulSet", "redis-ha-replica", "mpp-system")
+      container = stateful_set.dig("spec", "template", "spec", "containers").find { |entry| entry["name"] == "redis" }
+      container["readinessProbe"].dig("exec", "command")[-1] = "redis-cli ping"
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/redis-ha-nonprod", rendered.path)
+
+    refute status.success?, "non-prod HA Redis validation unexpectedly accepted weak replica readiness"
+    assert_includes stderr, "non-prod HA Redis replica readiness must verify healthy replication"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_redis_ha_nonprod_requires_sentinel_quorum_health
+    rendered = mutated_render("deploy/kubernetes/data-services/redis-ha-nonprod") do |documents|
+      stateful_set = document(documents, "StatefulSet", "redis-ha-sentinel", "mpp-system")
+      container = stateful_set.dig("spec", "template", "spec", "containers").find { |entry| entry["name"] == "sentinel" }
+      container["env"].find { |entry| entry["name"] == "REDIS_SENTINEL_QUORUM" }["value"] = "1"
+      container["readinessProbe"].dig("exec", "command")[-1] = "redis-cli -p 26379 ping"
+    end
+
+    _stdout, stderr, status = run_validator("deploy/kubernetes/data-services/redis-ha-nonprod", rendered.path)
+
+    refute status.success?, "non-prod HA Redis validation unexpectedly accepted weak Sentinel health"
+    assert_includes stderr, "non-prod HA Redis sentinel quorum must be 2"
+    assert_includes stderr, "non-prod HA Redis sentinel readiness must verify master discovery and quorum"
   ensure
     rendered&.unlink
   end

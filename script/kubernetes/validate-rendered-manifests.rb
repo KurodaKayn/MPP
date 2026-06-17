@@ -47,6 +47,10 @@ if context.path_suffix?("deploy/kubernetes/data-services/redis-exporter")
   KubernetesValidation::DataServices.validate_redis_exporter(context)
 end
 
+if context.path_suffix?("deploy/kubernetes/data-services/redis-ha-nonprod")
+  KubernetesValidation::DataServices.validate_redis_ha_nonprod(context)
+end
+
 if context.path_suffix?("deploy/kubernetes/data-services/self-hosted")
   KubernetesValidation::DataServices.validate_self_hosted(context)
 end
@@ -59,6 +63,7 @@ if context.path_suffix?("deploy/kubernetes/overlays/staging-self-hosted")
   KubernetesValidation::AppBaseline.validate_workloads(context)
   KubernetesValidation::BrowserRuntimeControl.validate(context)
   KubernetesValidation::DataServices.validate_self_hosted(context)
+  KubernetesValidation::DataServices.validate_redis_ha_nonprod(context)
   KubernetesValidation::EnvironmentOverlays.validate_staging_self_hosted(context)
 end
 
