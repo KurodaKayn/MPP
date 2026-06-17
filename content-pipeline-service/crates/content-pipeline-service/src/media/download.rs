@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 
@@ -38,13 +39,24 @@ fn media_http_client(resolved_host: Option<&ResolvedHost>) -> Result<Client, req
     }
 }
 
-pub(super) async fn fetch_media_url(mut url: Url) -> Result<HttpResponse, Status> {
+pub(super) async fn fetch_media_url(url: Url) -> Result<HttpResponse, Status> {
+    fetch_media_url_with_validator(url, validate_media_url).await
+}
+
+async fn fetch_media_url_with_validator<V, Fut>(
+    mut url: Url,
+    validate: V,
+) -> Result<HttpResponse, Status>
+where
+    V: Fn(Url) -> Fut,
+    Fut: Future<Output = Result<ValidatedMediaUrl, Status>>,
+{
     let mut redirects = 0;
 
     loop {
         // Every redirect target is revalidated so a public URL cannot bounce
         // the downloader into a private or otherwise non-global address.
-        let validated = validate_media_url(url).await?;
+        let validated = validate(url).await?;
         let client = media_http_client(validated.resolved_host.as_ref())
             .map_err(|_| Status::internal("failed to build media HTTP client"))?;
         let response = client
@@ -266,6 +278,21 @@ mod tests {
         Url::parse(value).expect("test URL should parse")
     }
 
+    async fn spawn_media_app(app: axum::Router) -> Url {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test media server should bind");
+        let addr = listener
+            .local_addr()
+            .expect("test media server address should be available");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("test media server should serve");
+        });
+        Url::parse(&format!("http://{addr}/")).expect("test media server URL should parse")
+    }
+
     #[test]
     fn accepts_public_resolved_addresses() {
         let addrs = vec!["93.184.216.34:443".parse().expect("address should parse")];
@@ -339,5 +366,172 @@ mod tests {
                 .expect_err("non-global IP URL should be rejected");
             assert_eq!(err.code(), tonic::Code::InvalidArgument);
         }
+    }
+
+    #[tokio::test]
+    async fn fetch_media_url_follows_revalidated_redirect_chain() {
+        use axum::response::Redirect;
+
+        let app = axum::Router::new()
+            .route(
+                "/start",
+                axum::routing::get(|| async { Redirect::temporary("/middle") }),
+            )
+            .route(
+                "/middle",
+                axum::routing::get(|| async { Redirect::temporary("/media") }),
+            )
+            .route("/media", axum::routing::get(|| async { "image-bytes" }));
+        let base_url = spawn_media_app(app).await;
+
+        let response = fetch_media_url_with_validator(
+            base_url.join("start").expect("test URL should join"),
+            allow_local_http_url,
+        )
+        .await
+        .expect("redirect chain should resolve");
+
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        assert_eq!(
+            response.url().path(),
+            "/media",
+            "final response URL should be the last redirect target",
+        );
+        let body = read_limited_body(response, 20)
+            .await
+            .expect("final body should be readable");
+        assert_eq!(body, b"image-bytes");
+    }
+
+    #[tokio::test]
+    async fn fetch_media_url_revalidates_redirect_targets() {
+        use axum::response::Redirect;
+
+        let app = axum::Router::new().route(
+            "/start",
+            axum::routing::get(|| async { Redirect::temporary("http://blocked.test/media") }),
+        );
+        let base_url = spawn_media_app(app).await;
+
+        let err = fetch_media_url_with_validator(
+            base_url.join("start").expect("test URL should join"),
+            |url| async move {
+                if url.host_str() == Some("blocked.test") {
+                    return Err(Status::invalid_argument("unsafe media URL"));
+                }
+                allow_local_http_url(url).await
+            },
+        )
+        .await
+        .expect_err("blocked redirect target should be rejected");
+
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn fetch_media_url_enforces_redirect_limit() {
+        use axum::response::Redirect;
+
+        let app = axum::Router::new().route(
+            "/loop",
+            axum::routing::get(|| async { Redirect::temporary("/loop") }),
+        );
+        let base_url = spawn_media_app(app).await;
+
+        let err = fetch_media_url_with_validator(
+            base_url.join("loop").expect("test URL should join"),
+            allow_local_http_url,
+        )
+        .await
+        .expect_err("redirect loops should be bounded");
+
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn read_limited_body_rejects_declared_content_length_above_limit() {
+        let app = axum::Router::new().route("/media", axum::routing::get(|| async { "abcde" }));
+        let base_url = spawn_media_app(app).await;
+        let response = Client::new()
+            .get(base_url.join("media").expect("test URL should join"))
+            .send()
+            .await
+            .expect("test response should be returned");
+
+        assert_eq!(response.content_length(), Some(5));
+        let err = read_limited_body(response, 4)
+            .await
+            .expect_err("declared content length above limit should be rejected");
+
+        assert_eq!(err.code(), tonic::Code::ResourceExhausted);
+    }
+
+    #[tokio::test]
+    async fn read_limited_body_rejects_streaming_body_above_limit() {
+        use axum::body::{Body, Bytes};
+        use axum::http::Response;
+        use futures_util::stream;
+        use std::convert::Infallible;
+
+        let app = axum::Router::new().route(
+            "/stream",
+            axum::routing::get(|| async {
+                let chunks = stream::iter([
+                    Ok::<Bytes, Infallible>(Bytes::from_static(b"abcd")),
+                    Ok::<Bytes, Infallible>(Bytes::from_static(b"ef")),
+                ]);
+                Response::builder()
+                    .body(Body::from_stream(chunks))
+                    .expect("streaming response should build")
+            }),
+        );
+        let base_url = spawn_media_app(app).await;
+        let response = Client::new()
+            .get(base_url.join("stream").expect("test URL should join"))
+            .send()
+            .await
+            .expect("test response should be returned");
+
+        assert_eq!(response.content_length(), None);
+        let err = read_limited_body(response, 5)
+            .await
+            .expect_err("streaming body above limit should be rejected");
+
+        assert_eq!(err.code(), tonic::Code::ResourceExhausted);
+    }
+
+    #[tokio::test]
+    async fn response_content_type_trims_parameters() {
+        use axum::body::Body;
+        use axum::http::Response;
+        use axum::http::header::CONTENT_TYPE as HTTP_CONTENT_TYPE;
+
+        let app = axum::Router::new().route(
+            "/typed",
+            axum::routing::get(|| async {
+                Response::builder()
+                    .header(HTTP_CONTENT_TYPE, "image/png; charset=utf-8")
+                    .body(Body::from("png"))
+                    .expect("typed response should build")
+            }),
+        );
+        let base_url = spawn_media_app(app).await;
+        let response = Client::new()
+            .get(base_url.join("typed").expect("test URL should join"))
+            .send()
+            .await
+            .expect("test response should be returned");
+
+        assert_eq!(
+            response_content_type(&response).as_deref(),
+            Some("image/png")
+        );
+    }
+
+    async fn allow_local_http_url(url: Url) -> Result<ValidatedMediaUrl, Status> {
+        Ok(ValidatedMediaUrl {
+            url,
+            resolved_host: None,
+        })
     }
 }
