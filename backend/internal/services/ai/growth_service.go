@@ -29,7 +29,10 @@ const (
 	defaultGrowthPromptVersion = "growth-v1"
 )
 
-var ErrInvalidGrowthOptimizationRequest = errors.New("invalid growth optimization request")
+var (
+	ErrInvalidGrowthOptimizationRequest = errors.New("invalid growth optimization request")
+	ErrGrowthProposalConflict           = errors.New("growth proposal conflict")
+)
 
 type GrowthOptimizationService struct {
 	db            *gorm.DB
@@ -131,27 +134,24 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 
 	stream, err := s.optimizer.StreamGrowthOptimization(ctx, req)
 	if err != nil {
-		s.markRunTerminal(context.WithoutCancel(ctx), &run, terminalGrowthRunStatus(err), err.Error())
-		return nil, err
+		return nil, s.finishRunWithError(ctx, &run, terminalGrowthRunStatus(err), err)
 	}
 	defer func() { _ = stream.Body.Close() }()
 
 	proposalEvents, status, err := readGrowthOptimizationEvents(stream.Body)
 	if err != nil {
-		s.markRunTerminal(context.WithoutCancel(ctx), &run, terminalGrowthRunStatus(err), err.Error())
-		return nil, err
+		return nil, s.finishRunWithError(ctx, &run, terminalGrowthRunStatus(err), err)
 	}
 
 	currentVersions, err := s.growthProposalBaseVersions(ctx, projectID, req.TargetPlatforms)
 	if err != nil {
-		s.markRunTerminal(context.WithoutCancel(ctx), &run, "failed", err.Error())
-		return nil, err
+		return nil, s.finishRunWithError(ctx, &run, "failed", err)
 	}
 	baseVersionCheck := compareGrowthProposalBaseVersions(baseVersions, currentVersions)
 	if baseVersionCheck.Status != "pass" {
 		message := "growth proposal base version changed before proposals were persisted"
-		s.markRunTerminal(context.WithoutCancel(ctx), &run, "failed", message)
-		return nil, fmt.Errorf("%w: %s", ErrAIServiceUnavailable, message)
+		err := fmt.Errorf("%w: %s", ErrGrowthProposalConflict, message)
+		return nil, s.finishRunWithError(ctx, &run, "failed", err)
 	}
 	if status.Model != "" {
 		run.Model = status.Model
@@ -166,8 +166,7 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 
 	publications, err := s.growthCandidatePublications(ctx, projectID, req.TargetPlatforms)
 	if err != nil {
-		s.markRunTerminal(context.WithoutCancel(ctx), &run, "failed", err.Error())
-		return nil, err
+		return nil, s.finishRunWithError(ctx, &run, "failed", err)
 	}
 
 	requestedPlatforms := make(map[string]struct{}, len(req.TargetPlatforms))
@@ -212,8 +211,8 @@ func (s *GrowthOptimizationService) CreateRun(ctx context.Context, projectID, us
 		proposals = append(proposals, proposal)
 	}
 	if len(proposals) == 0 {
-		s.markRunTerminal(context.WithoutCancel(ctx), &run, "failed", "growth optimizer returned no compilable proposals")
-		return nil, fmt.Errorf("%w: no compilable proposals returned", ErrAIServiceUnavailable)
+		err := fmt.Errorf("%w: no compilable proposals returned", ErrGrowthProposalConflict)
+		return nil, s.finishRunWithError(ctx, &run, "failed", err)
 	}
 
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -309,7 +308,7 @@ func compareGrowthProposalBaseVersions(base, current growthProposalBaseVersionCh
 	check.Status = "pass"
 	check.Warnings = nil
 
-	if base.Source != current.Source {
+	if !sameGrowthSourceBaseVersion(base.Source, current.Source) {
 		check.Status = "stale"
 		check.Warnings = append(check.Warnings, "source content changed since proposal generation started")
 	}
@@ -321,7 +320,7 @@ func compareGrowthProposalBaseVersions(base, current growthProposalBaseVersionCh
 			check.Warnings = append(check.Warnings, fmt.Sprintf("%s draft was removed since proposal generation started", platform))
 			continue
 		}
-		if baseDraft != currentDraft {
+		if !sameGrowthPlatformBaseVersion(baseDraft, currentDraft) {
 			check.Status = "stale"
 			check.Warnings = append(check.Warnings, fmt.Sprintf("%s draft changed since proposal generation started", platform))
 		}
@@ -334,6 +333,20 @@ func compareGrowthProposalBaseVersions(base, current growthProposalBaseVersionCh
 	}
 
 	return check
+}
+
+func sameGrowthSourceBaseVersion(base, current growthSourceBaseVersion) bool {
+	return base.VersionID == current.VersionID &&
+		base.VersionNumber == current.VersionNumber &&
+		base.TitleHash == current.TitleHash &&
+		base.SourceContentHash == current.SourceContentHash
+}
+
+func sameGrowthPlatformBaseVersion(base, current growthPlatformBaseVersion) bool {
+	return base.AdaptedContentHash == current.AdaptedContentHash &&
+		base.Status == current.Status &&
+		base.DraftStatus == current.DraftStatus &&
+		base.SyncRequired == current.SyncRequired
 }
 
 func withBaseVersionQualityChecks(qualityChecks map[string]any, check growthProposalBaseVersionCheck) map[string]any {
@@ -353,9 +366,16 @@ func stableJSONHash(raw []byte) string {
 	if len(raw) == 0 {
 		raw = []byte(`{}`)
 	}
-	var compacted bytes.Buffer
-	if err := json.Compact(&compacted, raw); err == nil {
-		raw = compacted.Bytes()
+	var value any
+	if err := json.Unmarshal(raw, &value); err == nil {
+		if canonical, err := json.Marshal(value); err == nil {
+			raw = canonical
+		}
+	} else {
+		var compacted bytes.Buffer
+		if err := json.Compact(&compacted, raw); err == nil {
+			raw = compacted.Bytes()
+		}
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
@@ -409,9 +429,19 @@ func withContentPipelineQualityChecks(qualityChecks map[string]any, adaptedConte
 	return qualityChecks
 }
 
-func (s *GrowthOptimizationService) markRunTerminal(ctx context.Context, run *models.AIGrowthOptimizationRun, status string, message string) {
+func (s *GrowthOptimizationService) finishRunWithError(ctx context.Context, run *models.AIGrowthOptimizationRun, status string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if markErr := s.markRunTerminal(context.WithoutCancel(ctx), run, status, err.Error()); markErr != nil {
+		return errors.Join(err, markErr)
+	}
+	return err
+}
+
+func (s *GrowthOptimizationService) markRunTerminal(ctx context.Context, run *models.AIGrowthOptimizationRun, status string, message string) error {
 	if run == nil || run.ID == uuid.Nil {
-		return
+		return nil
 	}
 	if status == "" {
 		status = "failed"
@@ -422,7 +452,9 @@ func (s *GrowthOptimizationService) markRunTerminal(ctx context.Context, run *mo
 		"updated_at":      time.Now(),
 	}).Error; err != nil {
 		log.Printf("[ai] failed to mark growth run terminal run=%s status=%s: %v", run.ID, status, err)
+		return fmt.Errorf("mark growth run terminal: %w", err)
 	}
+	return nil
 }
 
 func terminalGrowthRunStatus(err error) string {
