@@ -182,6 +182,36 @@ spec:
         runAsGroup: 999
         seccompProfile:
           type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: mpp
+                  matchExpressions:
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - redis-ha-primary
+                        - redis-ha-replica
+                        - redis-ha-sentinel
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - redis-ha-primary
+                  - redis-ha-replica
+                  - redis-ha-sentinel
       containers:
         - name: redis
           image: docker.io/library/redis:7-alpine
@@ -236,7 +266,15 @@ spec:
                     fi
                   }
                   redis_cli ping | grep -q PONG
-                  redis_cli ROLE | head -n 1 | grep -q '^master$'
+                  role="$(redis_cli ROLE | head -n 1)"
+                  if [ "$role" = "master" ]; then
+                    exit 0
+                  fi
+                  if [ "$role" = "slave" ] || [ "$role" = "replica" ]; then
+                    redis_cli INFO replication | tr -d '\r' | grep -q '^master_link_status:up$'
+                    exit 0
+                  fi
+                  exit 1
             initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
@@ -319,6 +357,36 @@ spec:
         runAsGroup: 999
         seccompProfile:
           type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: mpp
+                  matchExpressions:
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - redis-ha-primary
+                        - redis-ha-replica
+                        - redis-ha-sentinel
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - redis-ha-primary
+                  - redis-ha-replica
+                  - redis-ha-sentinel
       containers:
         - name: redis
           image: docker.io/library/redis:7-alpine
@@ -376,8 +444,15 @@ spec:
                     fi
                   }
                   redis_cli ping | grep -q PONG
-                  redis_cli INFO replication | tr -d '\r' | grep -Eq '^role:(slave|replica)$'
-                  redis_cli INFO replication | tr -d '\r' | grep -q '^master_link_status:up$'
+                  role="$(redis_cli ROLE | head -n 1)"
+                  if [ "$role" = "master" ]; then
+                    exit 0
+                  fi
+                  if [ "$role" = "slave" ] || [ "$role" = "replica" ]; then
+                    redis_cli INFO replication | tr -d '\r' | grep -q '^master_link_status:up$'
+                    exit 0
+                  fi
+                  exit 1
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 3
@@ -461,6 +536,36 @@ spec:
         runAsGroup: 999
         seccompProfile:
           type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: mpp
+                  matchExpressions:
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - redis-ha-primary
+                        - redis-ha-replica
+                        - redis-ha-sentinel
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - redis-ha-primary
+                  - redis-ha-replica
+                  - redis-ha-sentinel
       containers:
         - name: sentinel
           image: docker.io/library/redis:7-alpine

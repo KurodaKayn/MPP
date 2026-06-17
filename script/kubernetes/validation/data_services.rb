@@ -183,6 +183,7 @@ module KubernetesValidation
       end
 
       validate_redis_ha_pod_security(context, stateful_set, "non-prod HA Redis #{name} StatefulSet")
+      validate_redis_ha_scheduling_spread(context, stateful_set, "non-prod HA Redis #{name} StatefulSet")
 
       redis_container = stateful_set.container("redis")
       unless redis_container
@@ -227,6 +228,7 @@ module KubernetesValidation
       end
 
       validate_redis_ha_pod_security(context, stateful_set, "non-prod HA Redis sentinel StatefulSet")
+      validate_redis_ha_scheduling_spread(context, stateful_set, "non-prod HA Redis sentinel StatefulSet")
 
       container = stateful_set.container("sentinel")
       unless container
@@ -277,6 +279,30 @@ module KubernetesValidation
       end
     end
 
+    def validate_redis_ha_scheduling_spread(context, workload, label)
+      pod_spec = workload.pod_spec
+      spread = Array(pod_spec["topologySpreadConstraints"]).find do |entry|
+        entry["topologyKey"] == "kubernetes.io/hostname" &&
+          entry["whenUnsatisfiable"] == "ScheduleAnyway" &&
+          redis_ha_component_values(entry.dig("labelSelector", "matchExpressions")).sort == redis_ha_components
+      end
+      unless spread
+        context.add_error("#{label} must prefer hostname topology spread across HA Redis Pods")
+      end
+
+      anti_affinity_terms = Array(
+        pod_spec.dig("affinity", "podAntiAffinity", "preferredDuringSchedulingIgnoredDuringExecution"),
+      )
+      anti_affinity = anti_affinity_terms.find do |entry|
+        term = entry["podAffinityTerm"] || {}
+        term["topologyKey"] == "kubernetes.io/hostname" &&
+          redis_ha_component_values(term.dig("labelSelector", "matchExpressions")).sort == redis_ha_components
+      end
+      unless anti_affinity
+        context.add_error("#{label} must prefer hostname anti-affinity across HA Redis Pods")
+      end
+    end
+
     def validate_redis_ha_container_security(context, container, label)
       security = container["securityContext"] || {}
       context.add_error("#{label} must forbid privilege escalation") unless security["allowPrivilegeEscalation"] == false
@@ -320,13 +346,29 @@ module KubernetesValidation
         context.add_error("non-prod HA Redis #{name} readinessProbe must support optional REDIS_PASSWORD")
       end
 
-      if name == "redis-ha-primary"
-        context.add_error("non-prod HA Redis primary readiness must verify master role") unless command.include?("ROLE")
-      else
-        unless command.include?("INFO replication") && command.include?("master_link_status:up")
-          context.add_error("non-prod HA Redis replica readiness must verify healthy replication")
-        end
+      unless command.include?("ROLE") && command.include?('role="$(redis_cli ROLE | head -n 1)"')
+        context.add_error("non-prod HA Redis #{name} readinessProbe must inspect the current Redis role")
       end
+      unless command.include?('[ "$role" = "master" ]')
+        context.add_error("non-prod HA Redis #{name} readinessProbe must accept promoted master role")
+      end
+      unless command.include?('[ "$role" = "slave" ]') &&
+             command.include?('[ "$role" = "replica" ]') &&
+             command.include?("INFO replication") &&
+             command.include?("master_link_status:up")
+        context.add_error("non-prod HA Redis #{name} readinessProbe must verify healthy replica links")
+      end
+    end
+
+    def redis_ha_component_values(match_expressions)
+      Array(match_expressions)
+        .select { |entry| entry["key"] == "app.kubernetes.io/component" }
+        .flat_map { |entry| Array(entry["values"]) }
+        .sort
+    end
+
+    def redis_ha_components
+      ["redis-ha-primary", "redis-ha-replica", "redis-ha-sentinel"]
     end
 
     def validate_redis_ha_graceful_shutdown(context, stateful_set, container, name)
