@@ -49,7 +49,7 @@ module RedisHAMigrationRehearsal
         "redis_endpoint_mode" => app_config.fetch(:redis_endpoint_mode),
         "redis_addr" => app_config.fetch(:redis_addr),
         "no_endpoint_cutover" => true,
-        "production_refused" => true,
+        "production_refused" => !config.fetch(:allow_production),
         "write_operations" => target.fetch(:flushed) ? ["target FLUSHDB", "source MIGRATE COPY REPLACE"] : ["source MIGRATE COPY REPLACE"],
       },
       "source" => {

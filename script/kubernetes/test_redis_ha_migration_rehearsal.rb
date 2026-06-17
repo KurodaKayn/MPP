@@ -51,6 +51,34 @@ class RedisHAMigrationRehearsalScriptTest < Minitest::Test
     end
   end
 
+  def test_script_reports_production_not_refused_when_explicitly_allowed
+    Dir.mktmpdir("redis-ha-migration-rehearsal-prod-allowed-test") do |dir|
+      command_log = File.join(dir, "commands.log")
+      kubectl = File.join(dir, "kubectl")
+      File.write(kubectl, fake_kubectl(command_log, redis_password: "", app_env: "production"))
+      FileUtils.chmod("+x", kubectl)
+
+      original_path = ENV["PATH"]
+      ENV["PATH"] = "#{dir}:#{original_path}"
+      stdout, stderr, status = Open3.capture3(
+        {"PATH" => ENV.fetch("PATH")},
+        RbConfig.ruby,
+        SCRIPT,
+        "--allow-production",
+        "--allow-target-flush",
+        "--sample-limit",
+        "0",
+      )
+
+      assert status.success?, stderr
+      report = JSON.parse(stdout)
+      assert_equal "production", report.dig("safety", "app_env")
+      assert_equal false, report.dig("safety", "production_refused")
+    ensure
+      ENV["PATH"] = original_path
+    end
+  end
+
   def test_fake_kubectl_rehearsal_imports_and_reports_ttl_diff
     Dir.mktmpdir("redis-ha-migration-rehearsal-test") do |dir|
       command_log = File.join(dir, "commands.log")
