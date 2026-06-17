@@ -65,6 +65,7 @@ export async function buildApp(
           database: "ready",
           redis_sync: redisPubSub ? "ready" : "disabled",
           redis_addr: config.REDIS_ADDR,
+          redis_endpoint_mode: config.REDIS_ENDPOINT_MODE,
           token_secret_configured: Boolean(config.COLLAB_TOKEN_SECRET),
         },
       };

@@ -1,10 +1,12 @@
-import { createClient } from "redis";
+import { createClient, createSentinel } from "redis";
 import { applyUpdate } from "yjs";
 import { createHash, randomUUID } from "node:crypto";
 
 import type { Document } from "@hocuspocus/server";
 import type { RedisClientOptions } from "redis";
 import type { CollabConfig } from "../config.js";
+
+type RedisSentinelOptions = Parameters<typeof createSentinel>[0];
 
 const remoteUpdateHashTTLMS = 60_000;
 const remoteUpdateHashMaxEntries = 4096;
@@ -36,13 +38,14 @@ export interface CollabRedisPubSub {
 }
 
 interface RedisClient {
+  close?(): Promise<unknown>;
   connect(): Promise<unknown>;
   pSubscribe(
     pattern: string,
     listener: (message: string) => void,
   ): Promise<unknown>;
   publish(channel: string, message: string): Promise<unknown>;
-  quit(): Promise<unknown>;
+  quit?(): Promise<unknown>;
 }
 
 export class RedisCollabPubSub implements CollabRedisPubSub {
@@ -98,7 +101,10 @@ export class RedisCollabPubSub implements CollabRedisPubSub {
   }
 
   async close(): Promise<void> {
-    await Promise.allSettled([this.subscriber.quit(), this.publisher.quit()]);
+    await Promise.allSettled([
+      closeRedisClient(this.subscriber),
+      closeRedisClient(this.publisher),
+    ]);
   }
 
   private handleMessage(message: string): void {
@@ -165,13 +171,23 @@ export function createRedisCollabPubSub(
   if (!config.COLLAB_REDIS_SYNC_ENABLED) {
     return undefined;
   }
-  const clientOptions = redisClientOptionsFromConfig(config);
   return new RedisCollabPubSub(
-    createClient(clientOptions),
-    createClient(clientOptions),
+    createRedisClientFromConfig(config),
+    createRedisClientFromConfig(config),
     config.COLLAB_REDIS_CHANNEL_PREFIX,
     logger,
   );
+}
+
+export function createRedisClientFromConfig(config: CollabConfig): RedisClient {
+  if (config.REDIS_ENDPOINT_MODE === "sentinel") {
+    return createSentinel(
+      redisSentinelOptionsFromConfig(config),
+    ) as unknown as RedisClient;
+  }
+  return createClient(
+    redisClientOptionsFromConfig(config),
+  ) as unknown as RedisClient;
 }
 
 export function redisClientOptionsFromConfig(
@@ -189,6 +205,29 @@ export function redisClientOptionsFromConfig(
   };
 }
 
+export function redisSentinelOptionsFromConfig(
+  config: CollabConfig,
+): RedisSentinelOptions {
+  return {
+    name: config.REDIS_SENTINEL_MASTER_NAME,
+    sentinelRootNodes: redisSentinelRootNodesFromConfig(config),
+    nodeClientOptions: {
+      database: config.REDIS_DB,
+      password: config.REDIS_PASSWORD || undefined,
+      socket: config.REDIS_TLS ? { tls: true } : undefined,
+    },
+  };
+}
+
+export function redisSentinelRootNodesFromConfig(
+  config: CollabConfig,
+): Array<{ host: string; port: number }> {
+  return config.REDIS_SENTINEL_ADDRS.split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map(parseHostPort);
+}
+
 function redisUrlFromConfig(config: CollabConfig): string {
   const raw = config.REDIS_ADDR.trim();
   if (raw.startsWith("rediss://")) {
@@ -202,6 +241,30 @@ function redisUrlFromConfig(config: CollabConfig): string {
   }
   const scheme = config.REDIS_TLS ? "rediss" : "redis";
   return `${scheme}://${raw}`;
+}
+
+function parseHostPort(value: string): { host: string; port: number } {
+  const separator = value.lastIndexOf(":");
+  const host = value.slice(0, separator).trim();
+  const rawPort = value.slice(separator + 1).trim();
+  const port = Number(rawPort);
+  if (
+    separator <= 0 ||
+    host === "" ||
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65_535
+  ) {
+    throw new Error(`invalid REDIS_SENTINEL_ADDRS entry ${value}`);
+  }
+  return { host, port };
+}
+
+function closeRedisClient(client: RedisClient): Promise<unknown> {
+  if (client.close) {
+    return client.close();
+  }
+  return client.quit?.() ?? Promise.resolve();
 }
 
 function parseEnvelope(message: string): CollabUpdateEnvelope | undefined {

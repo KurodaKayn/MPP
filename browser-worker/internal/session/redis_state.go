@@ -15,10 +15,15 @@ import (
 )
 
 const (
-	redisAddrEnv     = "REDIS_ADDR"
-	redisPasswordEnv = "REDIS_PASSWORD"
-	redisDBEnv       = "REDIS_DB"
-	redisTLSEnv      = "REDIS_TLS"
+	redisEndpointModeEnv      = "REDIS_ENDPOINT_MODE"
+	redisAddrEnv              = "REDIS_ADDR"
+	redisPasswordEnv          = "REDIS_PASSWORD"
+	redisDBEnv                = "REDIS_DB"
+	redisTLSEnv               = "REDIS_TLS"
+	redisSentinelAddrsEnv     = "REDIS_SENTINEL_ADDRS"
+	redisSentinelMasterEnv    = "REDIS_SENTINEL_MASTER_NAME"
+	redisEndpointModeDirect   = "direct"
+	redisEndpointModeSentinel = "sentinel"
 
 	browserSessionKeyPrefix       = "mpp:browser:session:"
 	browserSessionHeartbeatPrefix = "mpp:browser:worker-heartbeat:"
@@ -27,8 +32,20 @@ const (
 	HeartbeatRefreshInterval      = 15 * time.Second
 )
 
+var errRedisNotConfigured = errors.New("redis is not configured")
+
 type RedisStateStore struct {
 	client *redis.Client
+}
+
+type redisConnectionConfig struct {
+	EndpointMode       string
+	Addr               string
+	Password           string
+	DB                 int
+	TLS                bool
+	SentinelAddrs      []string
+	SentinelMasterName string
 }
 
 type WorkerSessionState struct {
@@ -58,32 +75,84 @@ type redisLiveSession struct {
 }
 
 func NewRedisStateStoreFromEnv(ctx context.Context) (*RedisStateStore, error) {
-	addr := strings.TrimSpace(os.Getenv(redisAddrEnv))
-	if addr == "" {
+	config, err := redisConnectionConfigFromEnv()
+	if errors.Is(err, errRedisNotConfigured) {
 		return &RedisStateStore{}, nil
 	}
-
-	db, err := redisDBFromEnv()
 	if err != nil {
 		return nil, err
 	}
 
-	options := &redis.Options{
-		Addr:     addr,
-		Password: strings.TrimSpace(os.Getenv(redisPasswordEnv)),
-		DB:       db,
-	}
-	if redisEnvFlagEnabled(redisTLSEnv) {
-		options.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
-	}
-
-	client := redis.NewClient(options)
+	client := newRedisClient(config)
 	if err := client.Ping(ctx).Err(); err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
 
 	return &RedisStateStore{client: client}, nil
+}
+
+func redisConnectionConfigFromEnv() (redisConnectionConfig, error) {
+	endpointMode, err := redisEndpointModeFromEnv()
+	if err != nil {
+		return redisConnectionConfig{}, err
+	}
+
+	config := redisConnectionConfig{
+		EndpointMode: endpointMode,
+		Addr:         strings.TrimSpace(os.Getenv(redisAddrEnv)),
+		Password:     strings.TrimSpace(os.Getenv(redisPasswordEnv)),
+		TLS:          redisEnvFlagEnabled(redisTLSEnv),
+	}
+	switch endpointMode {
+	case redisEndpointModeDirect:
+		if config.Addr == "" {
+			return redisConnectionConfig{}, errRedisNotConfigured
+		}
+	case redisEndpointModeSentinel:
+		config.SentinelAddrs = redisCSVEnv(redisSentinelAddrsEnv)
+		config.SentinelMasterName = strings.TrimSpace(os.Getenv(redisSentinelMasterEnv))
+		if len(config.SentinelAddrs) == 0 {
+			return redisConnectionConfig{}, fmt.Errorf("%s must be set when %s=sentinel", redisSentinelAddrsEnv, redisEndpointModeEnv)
+		}
+		if config.SentinelMasterName == "" {
+			return redisConnectionConfig{}, fmt.Errorf("%s must be set when %s=sentinel", redisSentinelMasterEnv, redisEndpointModeEnv)
+		}
+	}
+
+	db, err := redisDBFromEnv()
+	if err != nil {
+		return redisConnectionConfig{}, err
+	}
+	config.DB = db
+
+	return config, nil
+}
+
+func newRedisClient(config redisConnectionConfig) *redis.Client {
+	if config.EndpointMode == redisEndpointModeSentinel {
+		return redis.NewFailoverClient(redisFailoverOptions(config))
+	}
+	return redis.NewClient(redisOptions(config))
+}
+
+func redisOptions(config redisConnectionConfig) *redis.Options {
+	return &redis.Options{
+		Addr:      config.Addr,
+		Password:  config.Password,
+		DB:        config.DB,
+		TLSConfig: redisTLSConfig(config.TLS),
+	}
+}
+
+func redisFailoverOptions(config redisConnectionConfig) *redis.FailoverOptions {
+	return &redis.FailoverOptions{
+		MasterName:    config.SentinelMasterName,
+		SentinelAddrs: append([]string(nil), config.SentinelAddrs...),
+		Password:      config.Password,
+		DB:            config.DB,
+		TLSConfig:     redisTLSConfig(config.TLS),
+	}
 }
 
 func (s *RedisStateStore) Close() error {
@@ -196,4 +265,34 @@ func redisEnvFlagEnabled(name string) bool {
 	default:
 		return false
 	}
+}
+
+func redisEndpointModeFromEnv() (string, error) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(redisEndpointModeEnv))) {
+	case "", redisEndpointModeDirect:
+		return redisEndpointModeDirect, nil
+	case redisEndpointModeSentinel:
+		return redisEndpointModeSentinel, nil
+	default:
+		return "", fmt.Errorf("%s must be one of: %s, %s", redisEndpointModeEnv, redisEndpointModeDirect, redisEndpointModeSentinel)
+	}
+}
+
+func redisCSVEnv(name string) []string {
+	raw := strings.Split(os.Getenv(name), ",")
+	values := make([]string, 0, len(raw))
+	for _, value := range raw {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	return values
+}
+
+func redisTLSConfig(enabled bool) *tls.Config {
+	if !enabled {
+		return nil
+	}
+	return &tls.Config{MinVersion: tls.VersionTLS12}
 }
