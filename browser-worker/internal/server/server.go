@@ -34,6 +34,8 @@ type Server struct {
 	internalToken string
 }
 
+var runDouyinDraft = workerpublish.RunDouyinDraft
+
 func New(runtimes browserruntime.Manager, sessions *session.Manager, stateStore *session.RedisStateStore) *Server {
 	return &Server{
 		runtimes:      runtimes,
@@ -283,7 +285,7 @@ func (s *Server) startDouyinPublish(c echo.Context) error {
 	}
 
 	go func() {
-		if err := workerpublish.RunDouyinDraft(context.Background(), workerSession, req); err != nil {
+		if err := runDouyinDraft(context.Background(), workerSession, req); err != nil {
 			log.Printf("Douyin publish script failed for session %s: %v", ref, err)
 		}
 	}()
