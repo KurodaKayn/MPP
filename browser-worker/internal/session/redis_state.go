@@ -31,6 +31,16 @@ const (
 	browserSessionRedisGrace      = time.Minute
 	browserSessionHeartbeatTTL    = 45 * time.Second
 	HeartbeatRefreshInterval      = 15 * time.Second
+
+	redisDialTimeout        = 750 * time.Millisecond
+	redisReadTimeout        = 1 * time.Second
+	redisWriteTimeout       = 1 * time.Second
+	redisPoolTimeout        = 1250 * time.Millisecond
+	redisMinRetryBackoff    = 25 * time.Millisecond
+	redisMaxRetryBackoff    = 150 * time.Millisecond
+	redisDialerRetries      = 2
+	redisDialerRetryTimeout = 75 * time.Millisecond
+	redisCommandRetries     = 1
 )
 
 var errRedisNotConfigured = errors.New("redis is not configured")
@@ -139,20 +149,38 @@ func newRedisClient(config redisConnectionConfig) *redis.Client {
 
 func redisOptions(config redisConnectionConfig) *redis.Options {
 	return &redis.Options{
-		Addr:      config.Addr,
-		Password:  config.Password,
-		DB:        config.DB,
-		TLSConfig: redisTLSConfig(config.TLS),
+		Addr:               config.Addr,
+		Password:           config.Password,
+		DB:                 config.DB,
+		TLSConfig:          redisTLSConfig(config.TLS),
+		DialTimeout:        redisDialTimeout,
+		ReadTimeout:        redisReadTimeout,
+		WriteTimeout:       redisWriteTimeout,
+		PoolTimeout:        redisPoolTimeout,
+		MaxRetries:         redisCommandRetries,
+		MinRetryBackoff:    redisMinRetryBackoff,
+		MaxRetryBackoff:    redisMaxRetryBackoff,
+		DialerRetries:      redisDialerRetries,
+		DialerRetryTimeout: redisDialerRetryTimeout,
 	}
 }
 
 func redisFailoverOptions(config redisConnectionConfig) *redis.FailoverOptions {
 	return &redis.FailoverOptions{
-		MasterName:    config.SentinelMasterName,
-		SentinelAddrs: append([]string(nil), config.SentinelAddrs...),
-		Password:      config.Password,
-		DB:            config.DB,
-		TLSConfig:     redisTLSConfig(config.TLS),
+		MasterName:         config.SentinelMasterName,
+		SentinelAddrs:      append([]string(nil), config.SentinelAddrs...),
+		Password:           config.Password,
+		DB:                 config.DB,
+		TLSConfig:          redisTLSConfig(config.TLS),
+		DialTimeout:        redisDialTimeout,
+		ReadTimeout:        redisReadTimeout,
+		WriteTimeout:       redisWriteTimeout,
+		PoolTimeout:        redisPoolTimeout,
+		MaxRetries:         redisCommandRetries,
+		MinRetryBackoff:    redisMinRetryBackoff,
+		MaxRetryBackoff:    redisMaxRetryBackoff,
+		DialerRetries:      redisDialerRetries,
+		DialerRetryTimeout: redisDialerRetryTimeout,
 	}
 }
 

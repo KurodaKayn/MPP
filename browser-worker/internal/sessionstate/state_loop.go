@@ -2,6 +2,7 @@ package sessionstate
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/kurodakayn/mpp-browser-worker/internal/cdp"
@@ -21,9 +22,13 @@ func StartLoop(ctx context.Context, workerSession *session.WorkerSession) contex
 					return
 				}
 				state := transientReadState(workerSession, err)
-				_ = workerSession.StateStore.SaveLiveSession(loopCtx, workerSession, state)
+				if saveErr := workerSession.StateStore.SaveLiveSession(loopCtx, workerSession, state); saveErr != nil && loopCtx.Err() == nil {
+					log.Printf("browser session state save failed worker_session_ref=%s err=%v", workerSession.ID, saveErr)
+				}
 			}
-			_ = workerSession.StateStore.RefreshHeartbeat(loopCtx, workerSession)
+			if err := workerSession.StateStore.RefreshHeartbeat(loopCtx, workerSession); err != nil && loopCtx.Err() == nil {
+				log.Printf("browser session heartbeat refresh failed worker_session_ref=%s err=%v", workerSession.ID, err)
+			}
 
 			select {
 			case <-loopCtx.Done():

@@ -240,7 +240,9 @@ func (s *Server) captureSession(c echo.Context) error {
 			ExpiresAt:        workerSession.ExpiresAt,
 		}
 		workerSession.Status = state.Status
-		_ = workerSession.StateStore.SaveLiveSession(c.Request().Context(), workerSession, state)
+		if err := workerSession.StateStore.SaveLiveSession(c.Request().Context(), workerSession, state); err != nil {
+			log.Printf("failed to save browser session state for session %s: %v", ref, err)
+		}
 		return c.JSON(http.StatusOK, session.CaptureWorkerSessionResponse{
 			Status:         "ready",
 			MissingCookies: missing,
@@ -259,7 +261,9 @@ func (s *Server) captureSession(c echo.Context) error {
 		ExpiresAt:        workerSession.ExpiresAt,
 	}
 	workerSession.Status = state.Status
-	_ = workerSession.StateStore.SaveLiveSession(c.Request().Context(), workerSession, state)
+	if err := workerSession.StateStore.SaveLiveSession(c.Request().Context(), workerSession, state); err != nil {
+		log.Printf("failed to save browser session state for session %s: %v", ref, err)
+	}
 	return c.JSON(http.StatusOK, session.CaptureWorkerSessionResponse{
 		Status:  contracts.BrowserWorkerSessionStatus(state.Status),
 		Cookies: preservedCookies,
@@ -309,7 +313,9 @@ func cleanupSession(ctx context.Context, runtimes browserruntime.Manager, worker
 	if workerSession.StateCancel != nil {
 		workerSession.StateCancel()
 	}
-	_ = workerSession.StateStore.DeleteHeartbeat(ctx, workerSession.ID)
+	if err := workerSession.StateStore.DeleteHeartbeat(ctx, workerSession.ID); err != nil && ctx.Err() == nil {
+		log.Printf("failed to delete browser session heartbeat %s: %v", workerSession.ID, err)
+	}
 	if workerSession.CancelFunc != nil {
 		workerSession.CancelFunc()
 	}
