@@ -224,7 +224,7 @@ func resolvedMediaAssetRefreshContext(parent context.Context) (context.Context, 
 	if parentDeadline, ok := parent.Deadline(); ok && parentDeadline.Before(deadline) {
 		deadline = parentDeadline
 	}
-	return context.WithDeadline(context.WithoutCancel(parent), deadline)
+	return context.WithDeadline(parent, deadline)
 }
 
 func (s *Service) computeResolvedMediaAsset(assetID uuid.UUID, userID uuid.UUID) (dto.ResolvedMediaAsset, error) {
