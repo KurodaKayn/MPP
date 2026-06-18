@@ -218,6 +218,10 @@ func ApplicationRateLimiter(config RateLimitConfig) echo.MiddlewareFunc {
 			}
 
 			result, err := checkRateLimitBuckets(c.Request().Context(), config.RedisClient, config.KeyPrefix, config.guard, buckets)
+			if result.Exceeded {
+				writeRateLimitHeaders(c, result)
+				return rateLimitExceededResponse(c, result)
+			}
 			if err != nil {
 				if config.FailOpen && redisdegrade.ShouldDegrade(err) {
 					c.Response().Header().Set("X-RateLimit-Degraded", "true")
@@ -232,21 +236,21 @@ func ApplicationRateLimiter(config RateLimitConfig) echo.MiddlewareFunc {
 			}
 
 			writeRateLimitHeaders(c, result)
-			if result.Exceeded {
-				return c.JSON(http.StatusTooManyRequests, rateLimitErrorResponse{
-					Error: rateLimitErrorBody{
-						Code:              "rate_limited",
-						Message:           "rate limit exceeded",
-						Limit:             result.Bucket.Limit,
-						Remaining:         0,
-						ResetAfterSeconds: resetAfterSeconds(result.RetryAfter),
-					},
-				})
-			}
-
 			return next(c)
 		}
 	}
+}
+
+func rateLimitExceededResponse(c echo.Context, result rateLimitResult) error {
+	return c.JSON(http.StatusTooManyRequests, rateLimitErrorResponse{
+		Error: rateLimitErrorBody{
+			Code:              "rate_limited",
+			Message:           "rate limit exceeded",
+			Limit:             result.Bucket.Limit,
+			Remaining:         0,
+			ResetAfterSeconds: resetAfterSeconds(result.RetryAfter),
+		},
+	})
 }
 
 func rateLimitBucketsFor(c echo.Context, config RateLimitConfig) ([]rateLimitBucket, error) {
@@ -356,6 +360,7 @@ func checkRateLimitBuckets(ctx context.Context, client *redis.Client, prefix str
 			Exceeded:   current > bucket.Limit,
 		}
 		if result.Exceeded {
+			// A known exceeded bucket must not be downgraded by later Redis degradation.
 			return result, nil
 		}
 		if selected.Bucket.Limit == 0 || result.Remaining < selected.Remaining {
