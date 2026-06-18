@@ -13,6 +13,7 @@ import (
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 )
 
 const dashboardStatsCachePrefix = "mpp:dashboard:stats:global:v1"
@@ -223,7 +224,9 @@ func (s *Service) getCachedDashboardStats(generationKey string, cacheKeyForGener
 }
 
 func (s *Service) cachedDashboardStats(ctx context.Context, cacheKey string, generation string) (*dto.DashboardStatsResponse, bool, error) {
-	cached, err := s.cache.Get(ctx, cacheKey).Bytes()
+	cached, err := redisdegrade.Call(s.cacheGuard, func() ([]byte, error) {
+		return s.cache.Get(ctx, cacheKey).Bytes()
+	})
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return nil, false, nil
@@ -259,7 +262,9 @@ func (s *Service) refreshDashboardStatsCache(ctx context.Context, cacheKey strin
 	}
 	encoded, err := json.Marshal(payload)
 	if err == nil {
-		_ = s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
+		_ = redisdegrade.Do(s.cacheGuard, func() error {
+			return s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
+		})
 	}
 	return stats, nil
 }
@@ -400,7 +405,9 @@ func (s *Service) InvalidateDashboardScopedStatsCache(ctx context.Context) {
 }
 
 func (s *Service) incrementDashboardStatsGeneration(ctx context.Context, generationKey string) {
-	_ = s.cache.Incr(ctx, generationKey).Err()
+	_ = redisdegrade.Do(s.cacheGuard, func() error {
+		return s.cache.Incr(ctx, generationKey).Err()
+	})
 }
 
 func dashboardStatsInvalidationContext(parent context.Context) (context.Context, context.CancelFunc) {
@@ -408,7 +415,9 @@ func dashboardStatsInvalidationContext(parent context.Context) (context.Context,
 }
 
 func (s *Service) dashboardStatsCacheGeneration(ctx context.Context, generationKey string) (string, error) {
-	generation, err := s.cache.Get(ctx, generationKey).Result()
+	generation, err := redisdegrade.Call(s.cacheGuard, func() (string, error) {
+		return s.cache.Get(ctx, generationKey).Result()
+	})
 	if errors.Is(err, redis.Nil) {
 		return "0", nil
 	}
