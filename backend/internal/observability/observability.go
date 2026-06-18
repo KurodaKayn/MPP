@@ -40,6 +40,7 @@ type Suite struct {
 	databaseObserver *DatabaseQueryObserver
 	replicaObserver  *ReplicaLagObserver
 	publishObserver  *PublishJobObserver
+	redisObserver    *RedisMetricsObserver
 }
 
 type DatabaseQueryObserver struct {
