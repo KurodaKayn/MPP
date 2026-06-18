@@ -312,7 +312,11 @@ func (s *Service) dispatchScheduledPublication(ctx context.Context, schedule mod
 		EnqueuedAt:     time.Now().UTC(),
 	}
 	lockKey := publishLockKey(schedule.ProjectID, platform)
-	acquired, err := s.queue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
+	coordinationQueue := s.coordinationQueueOrDefault()
+	if coordinationQueue == nil {
+		return ErrPublishQueueEmpty
+	}
+	acquired, err := coordinationQueue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
 	if err != nil {
 		return err
 	}
