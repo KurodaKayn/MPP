@@ -174,7 +174,7 @@ func (l *Limiter) Acquire(ctx context.Context, req AcquireRequest) (*Lease, erro
 		return nil, &LimitError{Scope: scope}
 	}
 	return &Lease{ID: connID, Kind: req.Kind, ExpiresAt: expiresAt, release: func(ctx context.Context) error {
-		return l.releaseRedis(ctx, req, connID)
+		return l.releaseRedis(ctx, req, connID, payload)
 	}}, nil
 }
 
@@ -264,17 +264,20 @@ func (l *Limiter) acquireRedis(ctx context.Context, req AcquireRequest, limits L
 	return scope, nil
 }
 
-func (l *Limiter) releaseRedis(ctx context.Context, req AcquireRequest, connID string) error {
-	keys := l.keys(req, connID)
-	if err := l.redis.Del(ctx, keys[0]).Err(); err != nil {
-		return err
-	}
-	for _, key := range keys[1:] {
-		if err := l.redis.ZRem(ctx, key, connID).Err(); err != nil {
-			return err
-		}
-	}
-	return nil
+const releaseScript = `
+if redis.call("GET", KEYS[1]) ~= ARGV[1] then
+	return 0
+end
+redis.call("DEL", KEYS[1])
+redis.call("ZREM", KEYS[2], ARGV[2])
+redis.call("ZREM", KEYS[3], ARGV[2])
+redis.call("ZREM", KEYS[4], ARGV[2])
+redis.call("ZREM", KEYS[5], ARGV[2])
+return 1
+`
+
+func (l *Limiter) releaseRedis(ctx context.Context, req AcquireRequest, connID string, ownerPayload []byte) error {
+	return l.redis.Eval(ctx, releaseScript, l.keys(req, connID), string(ownerPayload), connID).Err()
 }
 
 func (l *Limiter) keys(req AcquireRequest, connID string) []string {
