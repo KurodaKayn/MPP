@@ -69,7 +69,7 @@ func getCachedDashboardAccount[T any](s *Service, userID uuid.UUID, workspaceID 
 }
 
 func cachedDashboardAccount[T any](ctx context.Context, s *Service, cacheKey string, workspaceID uuid.UUID, platform string, valid func(T) bool) (*T, bool, error) {
-	cached, err := redisdegrade.Call(s.cacheGuard, func() ([]byte, error) {
+	cached, err := redisdegrade.CallWork(s.cacheGuard, "cache_read", func() ([]byte, error) {
 		return s.cache.Get(ctx, cacheKey).Bytes()
 	})
 	if err != nil {
@@ -108,7 +108,7 @@ func refreshDashboardAccountCache[T any](ctx context.Context, s *Service, cacheK
 	}
 	encoded, err := json.Marshal(payload)
 	if err == nil {
-		_ = redisdegrade.Do(s.cacheGuard, func() error {
+		_ = redisdegrade.DoWork(s.cacheGuard, "cache_write", func() error {
 			return s.cache.Set(ctx, cacheKey, encoded, cachettl.Jitter(s.cacheTTL, cacheKey)).Err()
 		})
 	}
@@ -121,7 +121,7 @@ func (s *Service) invalidateDashboardAccountCache(workspaceID uuid.UUID, platfor
 	}
 	ctx, cancel := dashboardAccountInvalidationContext(s.requestContext())
 	defer cancel()
-	_ = redisdegrade.Do(s.cacheGuard, func() error {
+	_ = redisdegrade.DoWork(s.cacheGuard, "cache_invalidate", func() error {
 		return s.cache.Del(ctx, dashboardAccountCacheKey(workspaceID, platform)).Err()
 	})
 }

@@ -39,7 +39,7 @@ func (s *Service) cachedResolvedMediaAsset(assetID uuid.UUID, userID uuid.UUID) 
 
 	ctx := s.requestContext()
 	cacheKey := resolvedMediaAssetCacheKey(assetID, userID)
-	cached, err := redisdegrade.Call(s.cacheGuard, func() ([]byte, error) {
+	cached, err := redisdegrade.CallWork(s.cacheGuard, "cache_read", func() ([]byte, error) {
 		return s.cache.Get(ctx, cacheKey).Bytes()
 	})
 	if err != nil {
@@ -97,7 +97,7 @@ func (s *Service) cacheResolvedMediaAsset(asset models.MediaAsset, userID uuid.U
 		return
 	}
 	cacheKey := resolvedMediaAssetCacheKey(asset.ID, userID)
-	_ = redisdegrade.Do(s.cacheGuard, func() error {
+	_ = redisdegrade.DoWork(s.cacheGuard, "cache_write", func() error {
 		return s.cache.Set(s.requestContext(), cacheKey, encoded, cachettl.Jitter(ttl, cacheKey)).Err()
 	})
 }
@@ -150,7 +150,7 @@ func deleteResolvedMediaAssetCacheKeys(ctx context.Context, client *redis.Client
 			keys []string
 			next uint64
 		}
-		result, err := redisdegrade.Call(guard, func() (scanResult, error) {
+		result, err := redisdegrade.CallWork(guard, "cache_invalidate", func() (scanResult, error) {
 			keys, next, err := client.Scan(ctx, cursor, pattern, 100).Result()
 			return scanResult{keys: keys, next: next}, err
 		})
@@ -158,7 +158,7 @@ func deleteResolvedMediaAssetCacheKeys(ctx context.Context, client *redis.Client
 			return
 		}
 		if len(result.keys) > 0 {
-			_ = redisdegrade.Do(guard, func() error {
+			_ = redisdegrade.DoWork(guard, "cache_invalidate", func() error {
 				return client.Del(ctx, result.keys...).Err()
 			})
 		}
