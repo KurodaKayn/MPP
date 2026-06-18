@@ -110,6 +110,14 @@ jobs:
       - name: Run frontend CI
         run: bash script/ci/frontend.sh
 
+      - name: Upload frontend artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-ci-artifacts
+          path: artifacts/frontend
+          if-no-files-found: warn
+
   extension:
     name: Extension
     needs: changes
@@ -135,6 +143,14 @@ jobs:
 
       - name: Run extension CI
         run: bash script/ci/extension.sh
+
+      - name: Upload extension artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-ci-artifacts
+          path: artifacts/extension
+          if-no-files-found: warn
 
   backend:
     name: Backend
@@ -213,6 +229,14 @@ jobs:
       - name: Run AI service CI
         run: bash script/ci/ai-service.sh
 
+      - name: Upload AI service artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-service-ci-artifacts
+          path: artifacts/ai-service
+          if-no-files-found: warn
+
   collab_service:
     name: Collab service
     needs: changes
@@ -238,6 +262,14 @@ jobs:
 
       - name: Run collab service CI
         run: bash script/ci/collab-service.sh
+
+      - name: Upload collab service artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collab-service-ci-artifacts
+          path: artifacts/collab-service
+          if-no-files-found: warn
 
   content_pipeline_service:
     name: Content pipeline service
@@ -322,3 +354,11 @@ jobs:
 
       - name: Run Kubernetes CI
         run: bash script/ci/kubernetes.sh
+
+      - name: Upload Kubernetes artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubernetes-ci-artifacts
+          path: artifacts/kubernetes
+          if-no-files-found: warn
