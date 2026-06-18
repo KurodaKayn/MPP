@@ -551,6 +551,7 @@ func TestListProjectsCacheCollapsesGenerationDegrade(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for first degraded project list query")
 	}
+	time.Sleep(50 * time.Millisecond)
 	close(releaseFirstQuery)
 	wg.Wait()
 	close(errs)
