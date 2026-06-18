@@ -8,14 +8,14 @@ Phase 1-2 target: pragmatic high availability. After a single Redis Pod, node, o
 
 Production final target: Redis Cluster. The final state must support multiple shards, multiple replicas, automatic failover, TLS/auth, backup and restore, maintenance windows, and clear SLA ownership. Prefer a provider-backed managed Redis Cluster. If managed Redis is unavailable, use a mature chart/operator to self-host Redis Cluster.
 
-Current overall progress: about `41%`.
+Current overall progress: about `47%`.
 
 | Phase | Weight | Current Completion | Status | Done | Next |
 | --- | ---: | ---: | --- | --- | --- |
 | Phase 0: responsibility and risk baseline | 10% | 100% | Done | Inventory script, responsibility labels, Redis SLO baseline, and [dependency map](../redis-dependency-map.md) added | Start Phase 1 single-instance hardening |
 | Phase 1: single-instance hardening | 15% | 100% | Done | Current single-instance deployment direction clear; Redis persistence baseline, probes, resources, graceful termination, backup baseline, restore runbook, runtime config hardening, and capacity guardrail alerts added | Start Phase 2 self-hosted HA |
 | Phase 2: self-hosted HA | 20% | 10% | Not Started | Initial HA direction chosen | Select Sentinel or equivalent failover mode and implement traffic switching |
-| Phase 3: app-side fault tolerance | 20% | 15% | Not Started | Retry and degradation areas identified | Implement timeout, retry, circuit breaker, and cache-miss protection |
+| Phase 3: app-side fault tolerance | 20% | 100% | Done | Role-specific Redis timeout/retry baselines, degraded cache modes, cache stampede protection, lock safety hardening, and Redis error-budget reporting added | Use app-side metrics during HA failover validation and operational drills |
 | Phase 4: production managed Redis HA | 15% | 0% | Not Started | Target direction chosen | Build parameterized Redis endpoint and migration runbook |
 | Phase 5: Redis Cluster target state | 15% | 0% | Not Started | Final target confirmed | Design key model, client compatibility, and cutover path |
 | Phase 6: drills and operations loop | 5% | 0% | Not Started | Not yet started | Add periodic failover, restore, and capacity drills |
@@ -111,13 +111,15 @@ Recommended Phase 2 target: Redis replication plus Sentinel or an equivalent mat
 
 Redis HA alone is not enough. Applications must behave correctly during slow Redis, failover, partial outage, and cache cold start.
 
+Current Phase 3 status: done. Redis clients now use responsibility-aware timeout and retry profiles; cache paths have degraded modes, workload-labeled guard metrics, TTL jitter, and singleflight protection; R0 publish and browser-session lock paths have ownership checks and stale-owner recovery; and Redis error-budget metrics are exposed through the backend observability suite with a Grafana dashboard.
+
 | PR | Goal | Main Changes | Acceptance | Rollback | Out Of Scope |
 | --- | --- | --- | --- | --- | --- |
 | PR 3.1: Standardize Redis timeout and retry | Prevent request pileups | Define connect timeout, command timeout, retry count, backoff, jitter by client type | Redis slowdown does not exhaust app workers in test | Revert client options | No topology change |
 | PR 3.2: Add circuit breaker and degraded modes | Prevent Redis outage from becoming full app outage | For R2/R3 keys, allow cache bypass, stale read, or degraded response; for R0 fail safely | Simulated Redis outage returns controlled errors or degraded responses | Disable breaker flags | No new infrastructure |
 | PR 3.3: Add cache stampede protection | Avoid origin overload after Redis restart | Add singleflight/lock, jittered TTL, early refresh, or rate limit around hot keys | Cache flush test does not overload DB/API | Disable protection per key group | No HA change |
 | PR 3.4: Audit distributed lock usage | Prevent unsafe locks after failover | Add TTL, owner token, fencing token where needed; remove lock patterns without safe release | R0 lock sites have documented safety behavior | Revert individual lock change | No broad business refactor |
-| PR 3.5: Add Redis error budget reporting | Tie app health to Redis | Add app metrics: Redis errors by command group, fallback count, cache hit rate, breaker open count | Dashboard shows app impact during Redis test | Remove metrics | No infra migration |
+| PR 3.5: Add Redis error budget reporting | Tie app health to Redis | Add Redis degrade observer hooks, workload-aware operation helpers on cache and rate-limit paths, Prometheus metrics for operations/errors/fallbacks/cache hit-miss/breaker state, runtime wiring, and a Grafana dashboard | `/metrics` exposes `mpp_redis_*`; dashboard shows app impact during Redis test | Remove observer wiring, metrics, and dashboard | No infra migration |
 
 ## 8. Phase 4: Production Managed Redis HA Intermediate State
 
@@ -210,7 +212,7 @@ Redis availability decays if drills stop. This phase turns Redis operations into
 | Redis responsibility | Every Redis key pattern has owner, tier, TTL policy, and recovery expectation |
 | Single-instance baseline | Persistence, probes, resources, backup, restore, and alerts are in place |
 | Self-hosted HA | Primary failure can recover within target window; app reconnect behavior verified |
-| App resilience | Redis timeout, retry, circuit breaker, degraded mode, and stampede protection are implemented for critical paths |
+| App resilience | Redis timeout, retry, circuit breaker, degraded mode, stampede protection, lock ownership safety, and error-budget reporting are implemented for critical paths |
 | Managed HA | Production runs on managed Redis HA with backup, metrics, TLS/auth, and rollback path |
 | Redis Cluster | Production runs on Redis Cluster; clients are Cluster-aware; cross-slot blockers resolved |
 | Operations | Failover drill, restore drill, capacity review, and incident playbook are recurring |
