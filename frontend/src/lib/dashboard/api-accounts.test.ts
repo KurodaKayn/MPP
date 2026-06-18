@@ -14,10 +14,7 @@ import {
   testWechatConnection,
   testXConnection,
 } from "./api";
-import {
-  jsonResponse,
-  setupDashboardApiTest,
-} from "./api-test-utils";
+import { jsonResponse, setupDashboardApiTest } from "./api-test-utils";
 
 describe("dashboard account api", () => {
   setupDashboardApiTest();

@@ -16,10 +16,7 @@ import {
   updateWorkspace,
   updateWorkspaceMember,
 } from "./api";
-import {
-  jsonResponse,
-  setupDashboardApiTest,
-} from "./api-test-utils";
+import { jsonResponse, setupDashboardApiTest } from "./api-test-utils";
 
 describe("dashboard workspace api", () => {
   setupDashboardApiTest();

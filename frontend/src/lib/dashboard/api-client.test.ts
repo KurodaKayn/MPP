@@ -9,10 +9,7 @@ import {
   getDashboardStats,
   setDashboardGetCacheTtlMs,
 } from "./api";
-import {
-  jsonResponse,
-  setupDashboardApiTest,
-} from "./api-test-utils";
+import { jsonResponse, setupDashboardApiTest } from "./api-test-utils";
 
 describe("dashboard api client requests", () => {
   setupDashboardApiTest();

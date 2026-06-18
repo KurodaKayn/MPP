@@ -139,7 +139,10 @@ function isDashboardGetCacheEnabled() {
 }
 
 function ensureDashboardGetCacheAuthSubscription() {
-  if (!isDashboardGetCacheEnabled() || unsubscribeDashboardGetCacheAuthChanges) {
+  if (
+    !isDashboardGetCacheEnabled() ||
+    unsubscribeDashboardGetCacheAuthChanges
+  ) {
     return;
   }
 

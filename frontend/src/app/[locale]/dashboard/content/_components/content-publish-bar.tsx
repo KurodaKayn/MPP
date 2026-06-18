@@ -67,7 +67,8 @@ export function ContentPublishBar({
   const [schedulePlatform, setSchedulePlatform] =
     useState<PublishPlatform>("wechat");
   const [scheduledAt, setScheduledAt] = useState("");
-  const isBusy = isOpeningXPostIntent || isPublishing || isSchedulingPublication;
+  const isBusy =
+    isOpeningXPostIntent || isPublishing || isSchedulingPublication;
   const selectedSet = new Set(selectedPlatforms);
   const scheduleablePlatforms = useMemo(
     () =>
@@ -207,7 +208,9 @@ export function ContentPublishBar({
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
               <h3 className="text-sm font-semibold">
-                {t("publish.scheduleTitle", { defaultValue: "Scheduled publish" })}
+                {t("publish.scheduleTitle", {
+                  defaultValue: "Scheduled publish",
+                })}
               </h3>
               <p className="mt-1 text-xs text-muted-foreground">
                 {t("publish.scheduleDesc", {
@@ -219,7 +222,9 @@ export function ContentPublishBar({
             <div className="grid gap-2 sm:grid-cols-[minmax(120px,160px)_minmax(180px,220px)_auto]">
               <select
                 value={activeSchedulePlatform ?? ""}
-                disabled={!canPublish || isBusy || !scheduleablePlatforms.length}
+                disabled={
+                  !canPublish || isBusy || !scheduleablePlatforms.length
+                }
                 onChange={(event) =>
                   setSchedulePlatform(event.target.value as PublishPlatform)
                 }
@@ -252,7 +257,10 @@ export function ContentPublishBar({
                 }
                 onClick={() => {
                   if (activeSchedulePlatform) {
-                    onSchedulePublication?.(activeSchedulePlatform, scheduledAt);
+                    onSchedulePublication?.(
+                      activeSchedulePlatform,
+                      scheduledAt,
+                    );
                   }
                 }}
                 className="h-9"
@@ -280,9 +288,7 @@ export function ContentPublishBar({
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">
-                          {schedule.platform}
-                        </span>
+                        <span className="font-medium">{schedule.platform}</span>
                         <span className="text-muted-foreground">
                           {formatScheduleDate(schedule.scheduled_at)}
                         </span>

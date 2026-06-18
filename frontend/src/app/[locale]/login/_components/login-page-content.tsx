@@ -325,7 +325,10 @@ export function LoginPageContent() {
                           className="h-10 border-[#cfc8ba]"
                           disabled={sendingCode || !forgotPasswordEmail}
                           onClick={() =>
-                            handleSendCode(forgotPasswordEmail, "forgot_password")
+                            handleSendCode(
+                              forgotPasswordEmail,
+                              "forgot_password",
+                            )
                           }
                         >
                           {sendingCode ? (

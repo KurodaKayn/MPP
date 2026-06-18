@@ -104,8 +104,7 @@ export function useContentPageController(
   const [scheduledPublications, setScheduledPublications] = useState<
     ScheduledPublication[]
   >([]);
-  const [isSchedulingPublication, setIsSchedulingPublication] =
-    useState(false);
+  const [isSchedulingPublication, setIsSchedulingPublication] = useState(false);
   const [busyScheduleId, setBusyScheduleId] = useState("");
   const [setupError, setSetupError] = useState("");
   const [isSetupLoading, setIsSetupLoading] = useState(false);
@@ -485,7 +484,11 @@ export function useContentPageController(
     }
     const scheduledDate = new Date(scheduledAt);
     if (Number.isNaN(scheduledDate.getTime())) {
-      toast.error(t("publish.scheduleInvalid", { defaultValue: "Choose a valid publish time." }));
+      toast.error(
+        t("publish.scheduleInvalid", {
+          defaultValue: "Choose a valid publish time.",
+        }),
+      );
       return;
     }
 
@@ -495,18 +498,24 @@ export function useContentPageController(
         idempotency_key: `${projectId}:${platform}:schedule:${scheduledDate.toISOString()}`,
         platform,
         scheduled_at: scheduledDate.toISOString(),
-        timezone:
-          Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       });
       upsertScheduledPublication(schedule);
-      toast.success(t("publish.scheduleCreated", { defaultValue: "Publish scheduled." }));
+      toast.success(
+        t("publish.scheduleCreated", { defaultValue: "Publish scheduled." }),
+      );
     } catch (requestError) {
-      toast.error(t("publish.scheduleFailed", { defaultValue: "Could not schedule publish." }), {
-        description:
-          requestError instanceof Error
-            ? requestError.message
-            : t("common.retryLater"),
-      });
+      toast.error(
+        t("publish.scheduleFailed", {
+          defaultValue: "Could not schedule publish.",
+        }),
+        {
+          description:
+            requestError instanceof Error
+              ? requestError.message
+              : t("common.retryLater"),
+        },
+      );
     } finally {
       setIsSchedulingPublication(false);
     }
@@ -520,14 +529,21 @@ export function useContentPageController(
     try {
       const schedule = await cancelScheduledPublication(projectId, scheduleId);
       upsertScheduledPublication(schedule);
-      toast.success(t("publish.scheduleCancelled", { defaultValue: "Schedule cancelled." }));
+      toast.success(
+        t("publish.scheduleCancelled", { defaultValue: "Schedule cancelled." }),
+      );
     } catch (requestError) {
-      toast.error(t("publish.cancelScheduleFailed", { defaultValue: "Could not cancel schedule." }), {
-        description:
-          requestError instanceof Error
-            ? requestError.message
-            : t("common.retryLater"),
-      });
+      toast.error(
+        t("publish.cancelScheduleFailed", {
+          defaultValue: "Could not cancel schedule.",
+        }),
+        {
+          description:
+            requestError instanceof Error
+              ? requestError.message
+              : t("common.retryLater"),
+        },
+      );
     } finally {
       setBusyScheduleId("");
     }
@@ -541,14 +557,19 @@ export function useContentPageController(
     try {
       const schedule = await retryScheduledPublication(projectId, scheduleId);
       upsertScheduledPublication(schedule);
-      toast.success(t("publish.retryQueued", { defaultValue: "Publish retried." }));
+      toast.success(
+        t("publish.retryQueued", { defaultValue: "Publish retried." }),
+      );
     } catch (requestError) {
-      toast.error(t("publish.retryFailed", { defaultValue: "Could not retry publish." }), {
-        description:
-          requestError instanceof Error
-            ? requestError.message
-            : t("common.retryLater"),
-      });
+      toast.error(
+        t("publish.retryFailed", { defaultValue: "Could not retry publish." }),
+        {
+          description:
+            requestError instanceof Error
+              ? requestError.message
+              : t("common.retryLater"),
+        },
+      );
     } finally {
       setBusyScheduleId("");
     }
@@ -628,7 +649,10 @@ export function useContentPageController(
       },
       onCancelSchedule: cancelSchedule,
       onRetrySchedule: retrySchedule,
-      onSchedulePublication: (platform: PublishPlatform, scheduledAt: string) => {
+      onSchedulePublication: (
+        platform: PublishPlatform,
+        scheduledAt: string,
+      ) => {
         if (guardSaveBlockedAction()) {
           return;
         }
