@@ -19,6 +19,7 @@ import (
 
 const dashboardProjectListCachePrefix = "mpp:dashboard:projects:list:v2"
 const dashboardProjectListCacheGenerationKey = "mpp:dashboard:projects:list-generation:v2"
+const dashboardProjectListDegradedGeneration = "degraded"
 const dashboardProjectListRefreshTimeout = 15 * time.Second
 const dashboardProjectListInvalidateTimeout = 2 * time.Second
 
@@ -82,7 +83,8 @@ func (s *Service) getCachedProjectList(params dashboardProjectListCacheParams, c
 	ctx := s.requestContext()
 	generation, err := s.dashboardProjectListCacheGeneration(ctx)
 	if err != nil {
-		return compute(s)
+		params.Generation = dashboardProjectListDegradedGeneration
+		return s.computeProjectListSingleflight(ctx, dashboardProjectListCacheKey(params), compute)
 	}
 	params.Generation = generation
 	cacheKey := dashboardProjectListCacheKey(params)
@@ -103,6 +105,31 @@ func (s *Service) getCachedProjectList(params dashboardProjectListCacheParams, c
 		}
 
 		return refreshSvc.refreshDashboardProjectListCache(refreshCtx, cacheKey, compute)
+	})
+
+	select {
+	case result := <-resultCh:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		if resp, ok := result.Val.(*dto.PaginationResponse); ok {
+			return resp, nil
+		}
+		return compute(s)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (s *Service) computeProjectListSingleflight(ctx context.Context, cacheKey string, compute dashboardProjectListCacheCompute) (*dto.PaginationResponse, error) {
+	if s.cacheGroup == nil {
+		return compute(s)
+	}
+
+	resultCh := s.cacheGroup.DoChan(cacheKey, func() (any, error) {
+		refreshCtx, cancel := dashboardProjectListRefreshContext(ctx)
+		defer cancel()
+		return compute(s.WithContext(refreshCtx))
 	})
 
 	select {
