@@ -75,6 +75,9 @@ const BaseEnvSchema = z.object({
   REDIS_PASSWORD: z.string().default(""),
   REDIS_DB: z.coerce.number().int().nonnegative().default(0),
   REDIS_TLS: EnvBoolean.default(false),
+  REDIS_TLS_CA_CERT: z.string().default(""),
+  REDIS_TLS_CA_FILE: z.string().default(""),
+  REDIS_TLS_SERVER_NAME: z.string().default(""),
   REDIS_SENTINEL_ADDRS: z.string().default(""),
   REDIS_SENTINEL_MASTER_NAME: z.preprocess(
     EmptyStringAsUndefined,
