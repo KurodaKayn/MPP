@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -229,6 +230,41 @@ func TestResolveMediaAssetsRefreshesExpiredCache(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, 2, storage.PresignGetObjectCount())
+}
+
+func TestResolveMediaAssetsCollapsesConcurrentMisses(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	redisClient, _ := newMediaAssetRedisClientWithServer(t)
+	service.UseRedis(redisClient)
+	owner, upload := createReadyMediaAsset(t, db, service, storage)
+
+	const callers = 8
+	var wg sync.WaitGroup
+	wg.Add(callers)
+	errs := make(chan error, callers)
+	results := make(chan *dto.ResolveMediaAssetsResponse, callers)
+	for range callers {
+		go func() {
+			defer wg.Done()
+			resp, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+				AssetIDs: []uuid.UUID{upload.AssetID},
+			})
+			if err != nil {
+				errs <- err
+				return
+			}
+			results <- resp
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	close(results)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	require.Len(t, results, callers)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
 }
 
 func TestDeleteMediaAssetInvalidatesResolvedAssetCache(t *testing.T) {
