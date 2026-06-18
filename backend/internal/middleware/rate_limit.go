@@ -14,11 +14,14 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	"gopkg.in/yaml.v3"
+
+	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 )
 
 const (
-	rateLimitEnabledEnv = "APP_RATE_LIMIT_ENABLED"
-	rateLimitPrefixEnv  = "APP_RATE_LIMIT_KEY_PREFIX"
+	rateLimitEnabledEnv  = "APP_RATE_LIMIT_ENABLED"
+	rateLimitPrefixEnv   = "APP_RATE_LIMIT_KEY_PREFIX"
+	rateLimitFailOpenEnv = "APP_RATE_LIMIT_FAIL_OPEN"
 
 	defaultRateLimitKeyPrefix = "mpp:ratelimit"
 	defaultRateLimitTenantID  = "default"
@@ -31,6 +34,8 @@ type RateLimitConfig struct {
 	Enabled     bool
 	RedisClient *redis.Client
 	KeyPrefix   string
+	FailOpen    bool
+	guard       *redisdegrade.Guard
 
 	GeneralUserPerMinute     int64
 	GeneralTenantPerMinute   int64
@@ -119,6 +124,8 @@ func rateLimitConfigFromPolicy(client *redis.Client, policy rateLimitPolicy) Rat
 		Enabled:     client != nil,
 		RedisClient: client,
 		KeyPrefix:   defaultRateLimitKeyPrefix,
+		FailOpen:    true,
+		guard:       redisdegrade.NewGuard(redisdegrade.GroupRateLimit),
 
 		GeneralUserPerMinute:     policy.General.UserPerMinute,
 		GeneralTenantPerMinute:   policy.General.TenantPerMinute,
@@ -153,6 +160,7 @@ func RateLimitConfigFromEnv(client *redis.Client) (RateLimitConfig, error) {
 	if prefix := strings.TrimSpace(os.Getenv(rateLimitPrefixEnv)); prefix != "" {
 		config.KeyPrefix = prefix
 	}
+	config.FailOpen = envFlagEnabledDefault(rateLimitFailOpenEnv, true)
 
 	return config, nil
 }
@@ -209,8 +217,12 @@ func ApplicationRateLimiter(config RateLimitConfig) echo.MiddlewareFunc {
 				return next(c)
 			}
 
-			result, err := checkRateLimitBuckets(c.Request().Context(), config.RedisClient, config.KeyPrefix, buckets)
+			result, err := checkRateLimitBuckets(c.Request().Context(), config.RedisClient, config.KeyPrefix, config.guard, buckets)
 			if err != nil {
+				if config.FailOpen && redisdegrade.ShouldDegrade(err) {
+					c.Response().Header().Set("X-RateLimit-Degraded", "true")
+					return next(c)
+				}
 				return c.JSON(http.StatusServiceUnavailable, rateLimitErrorResponse{
 					Error: rateLimitErrorBody{
 						Code:    "rate_limit_unavailable",
@@ -326,10 +338,10 @@ func rateLimitCategory(method, route string) string {
 	}
 }
 
-func checkRateLimitBuckets(ctx context.Context, client *redis.Client, prefix string, buckets []rateLimitBucket) (rateLimitResult, error) {
+func checkRateLimitBuckets(ctx context.Context, client *redis.Client, prefix string, guard *redisdegrade.Guard, buckets []rateLimitBucket) (rateLimitResult, error) {
 	var selected rateLimitResult
 	for _, bucket := range buckets {
-		current, ttl, err := incrementRateLimitBucket(ctx, client, rateLimitRedisKey(prefix, bucket), bucket.Window)
+		current, ttl, err := incrementRateLimitBucket(ctx, client, guard, rateLimitRedisKey(prefix, bucket), bucket.Window)
 		if err != nil {
 			return rateLimitResult{}, err
 		}
@@ -353,8 +365,10 @@ func checkRateLimitBuckets(ctx context.Context, client *redis.Client, prefix str
 	return selected, nil
 }
 
-func incrementRateLimitBucket(ctx context.Context, client *redis.Client, key string, window time.Duration) (int64, time.Duration, error) {
-	raw, err := client.Eval(ctx, redisRateLimitScript, []string{key}, window.Milliseconds()).Result()
+func incrementRateLimitBucket(ctx context.Context, client *redis.Client, guard *redisdegrade.Guard, key string, window time.Duration) (int64, time.Duration, error) {
+	raw, err := redisdegrade.Call(guard, func() (any, error) {
+		return client.Eval(ctx, redisRateLimitScript, []string{key}, window.Milliseconds()).Result()
+	})
 	if err != nil {
 		return 0, 0, err
 	}
