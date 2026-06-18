@@ -125,3 +125,46 @@ func TestRedisReleaseKeepsStateWhenOwnerPayloadChanged(t *testing.T) {
 		require.Equal(t, int64(1), client.ZCard(context.Background(), key).Val())
 	}
 }
+
+func TestRedisReleaseRemovesIndexEntriesWhenConnectionKeyMissing(t *testing.T) {
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+
+	limiter := New(client, Config{
+		Enabled: true,
+		Prefix:  "mpp:test:stream",
+		AI: Limits{
+			User:   1,
+			Tenant: 1,
+			IP:     1,
+			Global: 1,
+			TTL:    time.Minute,
+		},
+	})
+	req := AcquireRequest{
+		Kind:     KindAI,
+		UserID:   uuid.New(),
+		TenantID: "tenant-1",
+		IP:       "203.0.113.10",
+		Resource: "content",
+	}
+
+	lease, err := limiter.Acquire(context.Background(), req)
+	require.NoError(t, err)
+
+	keys := limiter.keys(req, lease.ID)
+	require.NoError(t, client.Del(context.Background(), keys[0]).Err())
+
+	require.NoError(t, lease.Release(context.Background()))
+
+	require.Equal(t, int64(0), client.Exists(context.Background(), keys[0]).Val())
+	for _, key := range keys[1:] {
+		require.Equal(t, int64(0), client.ZCard(context.Background(), key).Val())
+	}
+	lease, err = limiter.Acquire(context.Background(), req)
+	require.NoError(t, err)
+	require.NoError(t, lease.Release(context.Background()))
+}

@@ -265,7 +265,8 @@ func (l *Limiter) acquireRedis(ctx context.Context, req AcquireRequest, limits L
 }
 
 const releaseScript = `
-if redis.call("GET", KEYS[1]) ~= ARGV[1] then
+local owner = redis.call("GET", KEYS[1])
+if owner and owner ~= ARGV[1] then
 	return 0
 end
 redis.call("DEL", KEYS[1])
