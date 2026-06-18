@@ -59,6 +59,25 @@ func (p *contextAwareQueueTestPublisher) Publish(ctx context.Context, _ *models.
 
 type publishContextTestKey struct{}
 
+type blockingQueueTestPublisher struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (p *blockingQueueTestPublisher) ValidateConfig(_ []byte) error {
+	return nil
+}
+
+func (p *blockingQueueTestPublisher) Publish(ctx context.Context, _ *models.ProjectPlatformPublication, _ *models.PlatformAccount) (string, string, error) {
+	close(p.entered)
+	select {
+	case <-ctx.Done():
+		return "", "", ctx.Err()
+	case <-p.release:
+		return "remote-id", "https://example.com/published", nil
+	}
+}
+
 type testPublishQueue struct {
 	jobs            []PublishJob
 	locks           map[string]string
@@ -1330,6 +1349,88 @@ func TestProcessPublishJobPassesWorkerContextToPublisher(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, publisherSpy.valueSeen.Load())
+}
+
+func TestProcessPublishJobCancelsWhenRefreshLosesOwnership(t *testing.T) {
+	originalRefreshInterval := publishLockRefreshInterval
+	publishLockRefreshInterval = 10 * time.Millisecond
+	t.Cleanup(func() {
+		publishLockRefreshInterval = originalRefreshInterval
+	})
+
+	db := setupPublishQueueTestDB(t)
+	service := newPublishTestService(db)
+	queue := newTestPublishQueue()
+	service.queue = queue
+	observer := &testPublishJobObserver{}
+	service.SetPublishJobObserver(observer)
+
+	publisherSpy := &blockingQueueTestPublisher{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	publisher.Factory.Register("wechat", publisherSpy)
+	defer publisher.Factory.Register("wechat", &publisher.WechatPublisher{})
+
+	user := models.User{Username: "owner"}
+	require.NoError(t, db.Create(&user).Error)
+	project := models.Project{
+		UserID:        user.ID,
+		Title:         "Queued post",
+		SourceContent: "<p>ready</p>",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, db.Create(&project).Error)
+	createConnectedQueueAccount(t, db, user.ID, "wechat")
+	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
+		ProjectID:      project.ID,
+		Platform:       "wechat",
+		Enabled:        true,
+		Status:         models.PublicationStatusPublishing,
+		Config:         datatypes.JSON(`{"title":"Queued post"}`),
+		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
+	}).Error)
+
+	job := PublishJob{
+		JobID:      uuid.New(),
+		ProjectID:  project.ID,
+		UserID:     user.ID,
+		Platform:   "wechat",
+		EnqueuedAt: time.Now().UTC(),
+	}
+	lockKey := publishLockKey(project.ID, "wechat")
+	queue.locks[lockKey] = job.JobID.String()
+
+	errs := make(chan error, 1)
+	go func() {
+		errs <- service.processPublishJob(context.Background(), job)
+	}()
+
+	select {
+	case <-publisherSpy.entered:
+	case <-time.After(time.Second):
+		t.Fatal("expected publisher to start")
+	}
+	queue.locks[lockKey] = uuid.New().String()
+
+	var err error
+	select {
+	case err = <-errs:
+	case <-time.After(time.Second):
+		close(publisherSpy.release)
+		t.Fatal("expected publish job to stop after lock ownership loss")
+	}
+
+	require.NoError(t, err)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	require.Equal(t, models.PublicationStatusPublishing, saved.Status)
+	require.Zero(t, saved.RetryCount)
+	require.Empty(t, saved.ErrorMessage)
+	require.Empty(t, observer.observations)
+	require.NotEmpty(t, queue.locks[lockKey])
+	require.NotEqual(t, job.JobID.String(), queue.locks[lockKey])
 }
 
 func TestRedisPublishQueueEnqueuesAsynqTask(t *testing.T) {
