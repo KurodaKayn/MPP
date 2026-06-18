@@ -64,9 +64,9 @@ func main() {
 	userDashboardHandler.UseAIDraftingService(aisvc.NewDraftingService(db.DB))
 	userDashboardHandler.UseAIGrowthOptimizationService(aisvc.NewGrowthOptimizationService(db.DB, aiServiceClient))
 	userDashboardHandler.UseQuotaService(aisvc.NewQuotaService(db.DB))
-	streamLimiter := streamgate.New(runtime.RedisClient, streamgate.ConfigFromEnv())
+	streamLimiter := streamgate.New(runtime.RedisCoordination, streamgate.ConfigFromEnv())
 	userDashboardHandler.UseStreamLimiter(streamLimiter)
-	authHandler := handlers.NewAuthHandler(db.DB, runtime.RedisClient, runtime.EmailService, jwtSigningKey)
+	authHandler := handlers.NewAuthHandler(db.DB, runtime.RedisSessionContinuity, runtime.EmailService, jwtSigningKey)
 	authHandler.SetUsernameLoginEnabled(runtime.MockLogin)
 
 	browserSessionHandler := handlers.NewBrowserSessionHandler(runtime.BrowserSessionService)
@@ -78,7 +78,8 @@ func main() {
 	server, err := newServer(serverConfig{
 		runtimeConfig:      runtimeConfig,
 		jwtSigningKey:      jwtSigningKey,
-		redisClient:        runtime.RedisClient,
+		redisClient:        runtime.RedisSessionContinuity,
+		rateLimitRedis:     runtime.RedisClient,
 		mockLogin:          runtime.MockLogin,
 		ready:              &ready,
 		sqlDB:              db.DB,

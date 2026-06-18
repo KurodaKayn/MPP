@@ -24,6 +24,7 @@ type serverConfig struct {
 	runtimeConfig      app.RuntimeConfig
 	jwtSigningKey      []byte
 	redisClient        *redis.Client
+	rateLimitRedis     *redis.Client
 	mockLogin          bool
 	ready              *atomic.Bool
 	sqlDB              *gorm.DB
@@ -168,7 +169,7 @@ func registerAdminDashboardRoutes(e *echo.Echo, config serverConfig, h serverHan
 func registerUserDashboardRoutes(e *echo.Echo, config serverConfig, h serverHandlers) error {
 	userGroup := e.Group("/api/user/dashboard")
 	userGroup.Use(echojwt.WithConfig(middleware.GetJWTConfig(config.jwtSigningKey)))
-	rateLimitConfig, err := middleware.RateLimitConfigFromEnv(config.redisClient)
+	rateLimitConfig, err := middleware.RateLimitConfigFromEnv(config.rateLimitRedis)
 	if err != nil {
 		return err
 	}
@@ -249,7 +250,7 @@ func registerUserDashboardRoutes(e *echo.Echo, config serverConfig, h serverHand
 func registerWorkspaceRoutes(e *echo.Echo, config serverConfig, h serverHandlers) error {
 	workspaceGroup := e.Group("/api/workspaces")
 	workspaceGroup.Use(echojwt.WithConfig(middleware.GetJWTConfig(config.jwtSigningKey)))
-	rateLimitConfig, err := middleware.RateLimitConfigFromEnv(config.redisClient)
+	rateLimitConfig, err := middleware.RateLimitConfigFromEnv(config.rateLimitRedis)
 	if err != nil {
 		return err
 	}
@@ -283,7 +284,7 @@ func registerWorkspaceRoutes(e *echo.Echo, config serverConfig, h serverHandlers
 func registerCollabRoutes(e *echo.Echo, config serverConfig, h serverHandlers) error {
 	collabGroup := e.Group("/api/collab")
 	collabGroup.Use(echojwt.WithConfig(middleware.GetJWTConfig(config.jwtSigningKey)))
-	rateLimitConfig, err := middleware.RateLimitConfigFromEnv(config.redisClient)
+	rateLimitConfig, err := middleware.RateLimitConfigFromEnv(config.rateLimitRedis)
 	if err != nil {
 		return err
 	}
