@@ -13,6 +13,7 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 )
 
 const (
@@ -37,7 +38,9 @@ func (s *Service) cachedResolvedMediaAsset(assetID uuid.UUID, userID uuid.UUID) 
 
 	ctx := s.requestContext()
 	cacheKey := resolvedMediaAssetCacheKey(assetID, userID)
-	cached, err := s.cache.Get(ctx, cacheKey).Bytes()
+	cached, err := redisdegrade.Call(s.cacheGuard, func() ([]byte, error) {
+		return s.cache.Get(ctx, cacheKey).Bytes()
+	})
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return dto.ResolvedMediaAsset{}, false, nil
@@ -92,7 +95,9 @@ func (s *Service) cacheResolvedMediaAsset(asset models.MediaAsset, userID uuid.U
 	if err != nil {
 		return
 	}
-	_ = s.cache.Set(s.requestContext(), resolvedMediaAssetCacheKey(asset.ID, userID), encoded, ttl).Err()
+	_ = redisdegrade.Do(s.cacheGuard, func() error {
+		return s.cache.Set(s.requestContext(), resolvedMediaAssetCacheKey(asset.ID, userID), encoded, ttl).Err()
+	})
 }
 
 func (s *Service) authorizeCachedResolvedMediaAsset(assetID uuid.UUID, payload resolvedMediaAssetCachePayload, userID uuid.UUID) error {
@@ -132,24 +137,33 @@ func (s *Service) invalidateResolvedMediaAssetCache(assetID uuid.UUID) {
 	}
 	ctx, cancel := resolvedMediaAssetInvalidationContext(s.requestContext())
 	defer cancel()
-	deleteResolvedMediaAssetCacheKeys(ctx, s.cache, assetID)
+	deleteResolvedMediaAssetCacheKeys(ctx, s.cache, s.cacheGuard, assetID)
 }
 
-func deleteResolvedMediaAssetCacheKeys(ctx context.Context, client *redis.Client, assetID uuid.UUID) {
+func deleteResolvedMediaAssetCacheKeys(ctx context.Context, client *redis.Client, guard *redisdegrade.Guard, assetID uuid.UUID) {
 	var cursor uint64
 	pattern := resolvedMediaAssetCachePrefix + ":" + assetID.String() + ":*"
 	for {
-		keys, next, err := client.Scan(ctx, cursor, pattern, 100).Result()
+		type scanResult struct {
+			keys []string
+			next uint64
+		}
+		result, err := redisdegrade.Call(guard, func() (scanResult, error) {
+			keys, next, err := client.Scan(ctx, cursor, pattern, 100).Result()
+			return scanResult{keys: keys, next: next}, err
+		})
 		if err != nil {
 			return
 		}
-		if len(keys) > 0 {
-			_ = client.Del(ctx, keys...).Err()
+		if len(result.keys) > 0 {
+			_ = redisdegrade.Do(guard, func() error {
+				return client.Del(ctx, result.keys...).Err()
+			})
 		}
-		if next == 0 {
+		if result.next == 0 {
 			return
 		}
-		cursor = next
+		cursor = result.next
 	}
 }
 
