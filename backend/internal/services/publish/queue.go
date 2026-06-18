@@ -39,6 +39,7 @@ const (
 var (
 	ErrPublicationAlreadyPublishing = errors.New("publication is already publishing")
 	ErrPublishQueueEmpty            = errors.New("publish queue empty")
+	errPublishLockOwnershipLost     = errors.New("publish lock ownership lost")
 	publishLockRefreshInterval      = publishLockRefreshEvery
 )
 
@@ -419,10 +420,12 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 		return nil
 	}
 
-	publishCtx, cancelPublish := context.WithCancel(ctx)
-	defer cancelPublish()
+	publishCtx, cancelPublish := context.WithCancelCause(ctx)
+	defer cancelPublish(nil)
 
-	stopRefreshing := s.startPublishLockRefresh(publishCtx, lockKey, job.JobID.String(), cancelPublish)
+	stopRefreshing := s.startPublishLockRefresh(publishCtx, lockKey, job.JobID.String(), func() {
+		cancelPublish(errPublishLockOwnershipLost)
+	})
 	defer stopRefreshing()
 
 	if err := s.recordPublishEvent(models.PublishEvent{
@@ -440,6 +443,10 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 
 	resp, err := s.PublishProjectWithContext(publishCtx, job.ProjectID, job.Platform, &job.UserID, job.ScheduleID)
 	if err != nil {
+		if errors.Is(context.Cause(publishCtx), errPublishLockOwnershipLost) {
+			log.Printf("publish job %s stopped because lock ownership was lost", job.JobID)
+			return nil
+		}
 		log.Printf("publish job %s failed: %v", job.JobID, err)
 		observeJob(publishJobResultError)
 		cleanupCtx, cancelCleanup := publishCleanupContext(ctx)

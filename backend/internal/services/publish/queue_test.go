@@ -1421,10 +1421,14 @@ func TestProcessPublishJobCancelsWhenRefreshLosesOwnership(t *testing.T) {
 		t.Fatal("expected publish job to stop after lock ownership loss")
 	}
 
-	require.ErrorIs(t, err, context.Canceled)
-	require.Equal(t, []publishJobObservation{
-		{platform: "wechat", result: publishJobResultError},
-	}, observer.observations)
+	require.NoError(t, err)
+
+	var saved models.ProjectPlatformPublication
+	require.NoError(t, db.First(&saved, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
+	require.Equal(t, models.PublicationStatusPublishing, saved.Status)
+	require.Zero(t, saved.RetryCount)
+	require.Empty(t, saved.ErrorMessage)
+	require.Empty(t, observer.observations)
 	require.NotEmpty(t, queue.locks[lockKey])
 	require.NotEqual(t, job.JobID.String(), queue.locks[lockKey])
 }
