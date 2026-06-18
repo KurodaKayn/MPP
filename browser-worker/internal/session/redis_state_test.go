@@ -27,6 +27,15 @@ func TestRedisConnectionConfigFromEnvUsesDirectEndpoint(t *testing.T) {
 	require.Equal(t, "redis-secret", options.Password)
 	require.Equal(t, 2, options.DB)
 	require.NotNil(t, options.TLSConfig)
+	require.Equal(t, redisDialTimeout, options.DialTimeout)
+	require.Equal(t, redisReadTimeout, options.ReadTimeout)
+	require.Equal(t, redisWriteTimeout, options.WriteTimeout)
+	require.Equal(t, redisPoolTimeout, options.PoolTimeout)
+	require.Equal(t, redisCommandRetries, options.MaxRetries)
+	require.Equal(t, redisMinRetryBackoff, options.MinRetryBackoff)
+	require.Equal(t, redisMaxRetryBackoff, options.MaxRetryBackoff)
+	require.Equal(t, redisDialerRetries, options.DialerRetries)
+	require.Equal(t, redisDialerRetryTimeout, options.DialerRetryTimeout)
 }
 
 func TestRedisConnectionConfigFromEnvUsesSentinelEndpoint(t *testing.T) {
@@ -50,6 +59,15 @@ func TestRedisConnectionConfigFromEnvUsesSentinelEndpoint(t *testing.T) {
 	require.Equal(t, []string{"redis-ha-sentinel:26379", "redis-ha-sentinel-1:26379"}, options.SentinelAddrs)
 	require.Equal(t, "redis-secret", options.Password)
 	require.Equal(t, 4, options.DB)
+	require.Equal(t, redisDialTimeout, options.DialTimeout)
+	require.Equal(t, redisReadTimeout, options.ReadTimeout)
+	require.Equal(t, redisWriteTimeout, options.WriteTimeout)
+	require.Equal(t, redisPoolTimeout, options.PoolTimeout)
+	require.Equal(t, redisCommandRetries, options.MaxRetries)
+	require.Equal(t, redisMinRetryBackoff, options.MinRetryBackoff)
+	require.Equal(t, redisMaxRetryBackoff, options.MaxRetryBackoff)
+	require.Equal(t, redisDialerRetries, options.DialerRetries)
+	require.Equal(t, redisDialerRetryTimeout, options.DialerRetryTimeout)
 }
 
 func TestRedisConnectionConfigFromEnvKeepsRedisOptionalForDirectMode(t *testing.T) {
