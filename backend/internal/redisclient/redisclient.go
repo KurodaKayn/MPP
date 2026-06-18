@@ -33,7 +33,10 @@ const (
 	connMaxLifetimeEnv = "REDIS_CONN_MAX_LIFETIME"
 )
 
-var ErrNotConfigured = errors.New("redis is not configured")
+var (
+	ErrNotConfigured                = errors.New("redis is not configured")
+	errRedisTLSRootCAsNotConfigured = errors.New("redis tls root CAs are not configured")
+)
 
 const (
 	endpointModeDirect    = "direct"
@@ -533,24 +536,24 @@ func csvEnv(name string) []string {
 }
 
 func redisTLSConfig(config Config) (*tls.Config, error) {
-	if !config.TLS {
-		return nil, nil
-	}
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		ServerName: config.TLSServerName,
 	}
 	certPool, err := redisTLSRootCAs(config.TLSCACert, config.TLSCAFile)
 	if err != nil {
-		return nil, err
+		if !errors.Is(err, errRedisTLSRootCAsNotConfigured) {
+			return nil, err
+		}
+	} else {
+		tlsConfig.RootCAs = certPool
 	}
-	tlsConfig.RootCAs = certPool
 	return tlsConfig, nil
 }
 
 func redisTLSRootCAs(inlineCert string, certFile string) (*x509.CertPool, error) {
 	if inlineCert == "" && certFile == "" {
-		return nil, nil
+		return nil, errRedisTLSRootCAsNotConfigured
 	}
 	pool, _ := x509.SystemCertPool()
 	if pool == nil {
@@ -560,7 +563,7 @@ func redisTLSRootCAs(inlineCert string, certFile string) (*x509.CertPool, error)
 		return nil, fmt.Errorf("invalid %s: no PEM certificates found", tlsCACertEnv)
 	}
 	if certFile != "" {
-		pemBytes, err := os.ReadFile(certFile)
+		pemBytes, err := os.ReadFile(certFile) //nolint:gosec // REDIS_TLS_CA_FILE is a trusted deployment configuration path for Redis CA material.
 		if err != nil {
 			return nil, fmt.Errorf("failed to read %s: %w", tlsCAFileEnv, err)
 		}
