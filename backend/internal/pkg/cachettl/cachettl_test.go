@@ -19,7 +19,10 @@ func TestJitterKeepsTTLWithinLowerBoundAndBase(t *testing.T) {
 func TestJitterIsDeterministicPerKey(t *testing.T) {
 	base := time.Minute
 
-	require.Equal(t, Jitter(base, "same-key"), Jitter(base, "same-key"))
+	first := Jitter(base, "same-key")
+	second := Jitter(base, "same-key")
+
+	require.Equal(t, first, second)
 }
 
 func TestJitterCanSpreadDifferentKeys(t *testing.T) {
