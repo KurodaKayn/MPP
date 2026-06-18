@@ -1,6 +1,8 @@
 package session
 
 import (
+	"crypto/tls"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -36,6 +38,73 @@ func TestRedisConnectionConfigFromEnvUsesDirectEndpoint(t *testing.T) {
 	require.Equal(t, redisMaxRetryBackoff, options.MaxRetryBackoff)
 	require.Equal(t, redisDialerRetries, options.DialerRetries)
 	require.Equal(t, redisDialerRetryTimeout, options.DialerRetryTimeout)
+}
+
+func TestRedisConnectionConfigFromEnvBuildsTLSOptions(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(redisAddrEnv, "redis.example.invalid:6379")
+	t.Setenv(redisTLSEnv, "true")
+	t.Setenv(redisTLSCACertEnv, testRedisCACertPEM)
+	t.Setenv(redisTLSServerNameEnv, "redis.internal.example")
+
+	config, err := redisConnectionConfigFromEnv()
+	require.NoError(t, err)
+
+	require.Equal(t, testRedisCACertPEM, config.TLSCACert)
+	require.Equal(t, "redis.internal.example", config.TLSServerName)
+	options := redisOptions(config)
+	require.NotNil(t, options.TLSConfig)
+	require.Equal(t, uint16(tls.VersionTLS12), options.TLSConfig.MinVersion)
+	require.Equal(t, "redis.internal.example", options.TLSConfig.ServerName)
+	require.NotNil(t, options.TLSConfig.RootCAs)
+	require.NotSame(t, options.TLSConfig, config.tlsConfig())
+}
+
+func TestRedisConnectionConfigFromEnvBuildsTLSOptionsFromCAFile(t *testing.T) {
+	clearRedisEnv(t)
+	caFile := t.TempDir() + "/redis-ca.pem"
+	require.NoError(t, os.WriteFile(caFile, []byte(testRedisCACertPEM), 0o600))
+	t.Setenv(redisAddrEnv, "redis.example.invalid:6379")
+	t.Setenv(redisTLSEnv, "true")
+	t.Setenv(redisTLSCAFileEnv, caFile)
+
+	config, err := redisConnectionConfigFromEnv()
+	require.NoError(t, err)
+
+	options := redisOptions(config)
+	require.NotNil(t, options.TLSConfig)
+	require.NotNil(t, options.TLSConfig.RootCAs)
+}
+
+func TestRedisConnectionConfigFromEnvRejectsInvalidTLSCA(t *testing.T) {
+	tests := []struct {
+		name    string
+		envName string
+		value   string
+	}{
+		{name: "inline ca", envName: redisTLSCACertEnv, value: "not pem"},
+		{name: "ca file", envName: redisTLSCAFileEnv, value: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearRedisEnv(t)
+			t.Setenv(redisAddrEnv, "redis.example.invalid:6379")
+			t.Setenv(redisTLSEnv, "true")
+			value := tt.value
+			if tt.envName == redisTLSCAFileEnv {
+				caFile := t.TempDir() + "/redis-ca.pem"
+				require.NoError(t, os.WriteFile(caFile, []byte("not pem"), 0o600))
+				value = caFile
+			}
+			t.Setenv(tt.envName, value)
+
+			_, err := redisConnectionConfigFromEnv()
+
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.envName)
+		})
+	}
 }
 
 func TestRedisConnectionConfigFromEnvUsesSentinelEndpoint(t *testing.T) {
@@ -110,9 +179,32 @@ func clearRedisEnv(t *testing.T) {
 		redisPasswordEnv,
 		redisDBEnv,
 		redisTLSEnv,
+		redisTLSCACertEnv,
+		redisTLSCAFileEnv,
+		redisTLSServerNameEnv,
 		redisSentinelAddrsEnv,
 		redisSentinelMasterEnv,
 	} {
 		t.Setenv(name, "")
 	}
 }
+
+const testRedisCACertPEM = `-----BEGIN CERTIFICATE-----
+MIIDEzCCAfugAwIBAgIUb15xgBiiAVRKRFX/A/p9TvypqJwwDQYJKoZIhvcNAQEL
+BQAwGTEXMBUGA1UEAwwObXBwLXJlZGlzLXRlc3QwHhcNMjYwNjE4MTQyOTQ5WhcN
+MjcwNjE4MTQyOTQ5WjAZMRcwFQYDVQQDDA5tcHAtcmVkaXMtdGVzdDCCASIwDQYJ
+KoZIhvcNAQEBBQADggEPADCCAQoCggEBANGUc9qScjxCIirs4/uUnYWd+ikt1zJW
+jhhbVGcDJe+Ooo1sB3MgUd1iEQMHhcYuYYA6qhircakcIF8kqx0gn29yWfPPA2uU
+eKRMLZei7irkgM0ZoARM9WnHUsaPJ36sB3iEBGCC4OYUIFj9hBfIcUCzG/zU14qN
+f0mXQLeLn8i3WtT9r47HJ30GcfE/upHO0Rd+GZPMmZbJ2y+oiH4Lrx8T+vL0U3SZ
+XvTEPZmM0cYU5IQgLjqxkS0NrHzjPhP6+v75YZ354XJh0aLMAxIO+E1A8b7y457R
+r4M0yBBvFOZqORR7zau0IMqq9dySm2FxOYv45R9gZMIzuEqOBvHg6xsCAwEAAaNT
+MFEwHQYDVR0OBBYEFPKgwwRXzUJNYbeAxzEQaWvmjQXfMB8GA1UdIwQYMBaAFPKg
+wwRXzUJNYbeAxzEQaWvmjQXfMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQEL
+BQADggEBACX1ipm6cO0bgt3iB24CzFZ39ETCAs78UpQXll7VbkhPIJ9WoTYK11If
+6mlhEOtDDcg1s1nY91wVmA5ZnLkAIY+RkBfIDREX9tzmhcROoJRJmu8LjTmW5QmF
+KJV2w16drmHd7jgosOzFrqzWjatZ4DUyc9n8c4TYV0BDph6ARE0IL+9rHXA7wakG
+tYGsODtHm/A35rOUUfx34E9PUIQXrm7HPIHbThi64/vJFd2dzvB/966Z2YCtkBf2
+eXFaNn/Uv31V+R4jo/IoXT3Ge5aU2/HCF4GLt86Hny8lrZI/rzBtD+mvxHiPCeVH
+kXlb94L5hmllJh6r7idCx5YrKWYGYCc=
+-----END CERTIFICATE-----`

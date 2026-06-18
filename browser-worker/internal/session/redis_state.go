@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,9 @@ const (
 	redisPasswordEnv           = "REDIS_PASSWORD"
 	redisDBEnv                 = "REDIS_DB"
 	redisTLSEnv                = "REDIS_TLS"
+	redisTLSCACertEnv          = "REDIS_TLS_CA_CERT"
+	redisTLSCAFileEnv          = "REDIS_TLS_CA_FILE"
+	redisTLSServerNameEnv      = "REDIS_TLS_SERVER_NAME"
 	redisSentinelAddrsEnv      = "REDIS_SENTINEL_ADDRS"
 	redisSentinelMasterEnv     = "REDIS_SENTINEL_MASTER_NAME"
 	redisEndpointModeDirect    = "direct"
@@ -43,7 +47,10 @@ const (
 	redisCommandRetries     = 1
 )
 
-var errRedisNotConfigured = errors.New("redis is not configured")
+var (
+	errRedisNotConfigured           = errors.New("redis is not configured")
+	errRedisTLSRootCAsNotConfigured = errors.New("redis tls root CAs are not configured")
+)
 
 type RedisStateStore struct {
 	client *redis.Client
@@ -55,8 +62,12 @@ type redisConnectionConfig struct {
 	Password           string
 	DB                 int
 	TLS                bool
+	TLSCACert          string
+	TLSCAFile          string
+	TLSServerName      string
 	SentinelAddrs      []string
 	SentinelMasterName string
+	tls                *tls.Config
 }
 
 type WorkerSessionState struct {
@@ -114,6 +125,11 @@ func redisConnectionConfigFromEnv() (redisConnectionConfig, error) {
 		Addr:         strings.TrimSpace(os.Getenv(redisAddrEnv)),
 		Password:     strings.TrimSpace(os.Getenv(redisPasswordEnv)),
 		TLS:          redisEnvFlagEnabled(redisTLSEnv),
+		TLSCACert:    strings.TrimSpace(os.Getenv(redisTLSCACertEnv)),
+		TLSCAFile:    strings.TrimSpace(os.Getenv(redisTLSCAFileEnv)),
+		TLSServerName: strings.TrimSpace(
+			os.Getenv(redisTLSServerNameEnv),
+		),
 	}
 	switch endpointMode {
 	case redisEndpointModeDirect:
@@ -136,11 +152,15 @@ func redisConnectionConfigFromEnv() (redisConnectionConfig, error) {
 		return redisConnectionConfig{}, err
 	}
 	config.DB = db
+	if err := config.configureTLS(); err != nil {
+		return redisConnectionConfig{}, err
+	}
 
 	return config, nil
 }
 
 func newRedisClient(config redisConnectionConfig) *redis.Client {
+	_ = config.configureTLS()
 	if config.EndpointMode == redisEndpointModeSentinel {
 		return redis.NewFailoverClient(redisFailoverOptions(config))
 	}
@@ -152,7 +172,7 @@ func redisOptions(config redisConnectionConfig) *redis.Options {
 		Addr:               config.Addr,
 		Password:           config.Password,
 		DB:                 config.DB,
-		TLSConfig:          redisTLSConfig(config.TLS),
+		TLSConfig:          config.tlsConfig(),
 		DialTimeout:        redisDialTimeout,
 		ReadTimeout:        redisReadTimeout,
 		WriteTimeout:       redisWriteTimeout,
@@ -171,7 +191,7 @@ func redisFailoverOptions(config redisConnectionConfig) *redis.FailoverOptions {
 		SentinelAddrs:      append([]string(nil), config.SentinelAddrs...),
 		Password:           config.Password,
 		DB:                 config.DB,
-		TLSConfig:          redisTLSConfig(config.TLS),
+		TLSConfig:          config.tlsConfig(),
 		DialTimeout:        redisDialTimeout,
 		ReadTimeout:        redisReadTimeout,
 		WriteTimeout:       redisWriteTimeout,
@@ -319,9 +339,72 @@ func redisCSVEnv(name string) []string {
 	return values
 }
 
-func redisTLSConfig(enabled bool) *tls.Config {
-	if !enabled {
+func redisTLSConfig(config redisConnectionConfig) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ServerName: config.TLSServerName,
+	}
+	rootCAs, err := redisTLSRootCAs(config.TLSCACert, config.TLSCAFile)
+	if err != nil {
+		if !errors.Is(err, errRedisTLSRootCAsNotConfigured) {
+			return nil, err
+		}
+	} else {
+		tlsConfig.RootCAs = rootCAs
+	}
+	return tlsConfig, nil
+}
+
+func redisTLSRootCAs(inlineCert string, certFile string) (*x509.CertPool, error) {
+	if inlineCert == "" && certFile == "" {
+		return nil, errRedisTLSRootCAsNotConfigured
+	}
+	pool, _ := x509.SystemCertPool()
+	if pool == nil {
+		pool = x509.NewCertPool()
+	}
+	if inlineCert != "" && !pool.AppendCertsFromPEM([]byte(inlineCert)) {
+		return nil, fmt.Errorf("invalid %s: no PEM certificates found", redisTLSCACertEnv)
+	}
+	if certFile != "" {
+		pemBytes, err := os.ReadFile(certFile) //nolint:gosec // REDIS_TLS_CA_FILE is a trusted deployment configuration path for Redis CA material.
+		if err != nil {
+			return nil, fmt.Errorf("failed to read %s: %w", redisTLSCAFileEnv, err)
+		}
+		if !pool.AppendCertsFromPEM(pemBytes) {
+			return nil, fmt.Errorf("invalid %s: no PEM certificates found", redisTLSCAFileEnv)
+		}
+	}
+	return pool, nil
+}
+
+func (c *redisConnectionConfig) configureTLS() error {
+	if !c.TLS {
+		c.tls = nil
 		return nil
 	}
-	return &tls.Config{MinVersion: tls.VersionTLS12}
+	if c.tls != nil {
+		return nil
+	}
+	tlsConfig, err := redisTLSConfig(*c)
+	if err != nil {
+		return err
+	}
+	c.tls = tlsConfig
+	return nil
+}
+
+func (c redisConnectionConfig) tlsConfig() *tls.Config {
+	if !c.TLS {
+		return nil
+	}
+	if c.tls == nil {
+		tlsConfig := &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			ServerName: c.TLSServerName,
+		}
+		tlsConfig.RootCAs, _ = redisTLSRootCAs(c.TLSCACert, c.TLSCAFile)
+		return tlsConfig
+	}
+	return c.tls.Clone()
 }

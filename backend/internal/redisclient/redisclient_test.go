@@ -2,6 +2,8 @@ package redisclient
 
 import (
 	"context"
+	"crypto/tls"
+	"os"
 	"testing"
 	"time"
 
@@ -106,6 +108,73 @@ func TestConfigFromEnvBuildsSentinelEndpoint(t *testing.T) {
 	require.Equal(t, 24, options.PoolSize)
 	require.Equal(t, 3, options.MinIdleConns)
 	require.Equal(t, 9, options.MaxIdleConns)
+}
+
+func TestConfigFromEnvBuildsTLSOptions(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(addrEnv, "redis.example.invalid:6379")
+	t.Setenv(tlsEnv, "true")
+	t.Setenv(tlsCACertEnv, testRedisCACertPEM)
+	t.Setenv(tlsServerNameEnv, "redis.internal.example")
+
+	config, err := ConfigFromEnv()
+	require.NoError(t, err)
+
+	require.Equal(t, testRedisCACertPEM, config.TLSCACert)
+	require.Equal(t, "redis.internal.example", config.TLSServerName)
+	options := options(config, RoleDefault)
+	require.NotNil(t, options.TLSConfig)
+	require.Equal(t, uint16(tls.VersionTLS12), options.TLSConfig.MinVersion)
+	require.Equal(t, "redis.internal.example", options.TLSConfig.ServerName)
+	require.NotNil(t, options.TLSConfig.RootCAs)
+	require.NotSame(t, options.TLSConfig, config.tlsConfig())
+}
+
+func TestConfigFromEnvBuildsTLSOptionsFromCAFile(t *testing.T) {
+	clearRedisEnv(t)
+	caFile := t.TempDir() + "/redis-ca.pem"
+	require.NoError(t, os.WriteFile(caFile, []byte(testRedisCACertPEM), 0o600))
+	t.Setenv(addrEnv, "redis.example.invalid:6379")
+	t.Setenv(tlsEnv, "true")
+	t.Setenv(tlsCAFileEnv, caFile)
+
+	config, err := ConfigFromEnv()
+	require.NoError(t, err)
+
+	options := options(config, RoleDefault)
+	require.NotNil(t, options.TLSConfig)
+	require.NotNil(t, options.TLSConfig.RootCAs)
+}
+
+func TestConfigFromEnvRejectsInvalidTLSCA(t *testing.T) {
+	tests := []struct {
+		name    string
+		envName string
+		value   string
+	}{
+		{name: "inline ca", envName: tlsCACertEnv, value: "not pem"},
+		{name: "ca file", envName: tlsCAFileEnv, value: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearRedisEnv(t)
+			t.Setenv(addrEnv, "redis.example.invalid:6379")
+			t.Setenv(tlsEnv, "true")
+			value := tt.value
+			if tt.envName == tlsCAFileEnv {
+				caFile := t.TempDir() + "/redis-ca.pem"
+				require.NoError(t, os.WriteFile(caFile, []byte("not pem"), 0o600))
+				value = caFile
+			}
+			t.Setenv(tt.envName, value)
+
+			_, err := ConfigFromEnv()
+
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.envName)
+		})
+	}
 }
 
 func TestRoleSettingsMatchExpectedBaselines(t *testing.T) {
@@ -279,6 +348,9 @@ func clearRedisEnv(t *testing.T) {
 		passwordEnv,
 		dbEnv,
 		tlsEnv,
+		tlsCACertEnv,
+		tlsCAFileEnv,
+		tlsServerNameEnv,
 		sentinelAddrsEnv,
 		sentinelMasterEnv,
 		poolSizeEnv,
@@ -290,3 +362,23 @@ func clearRedisEnv(t *testing.T) {
 		t.Setenv(name, "")
 	}
 }
+
+const testRedisCACertPEM = `-----BEGIN CERTIFICATE-----
+MIIDEzCCAfugAwIBAgIUb15xgBiiAVRKRFX/A/p9TvypqJwwDQYJKoZIhvcNAQEL
+BQAwGTEXMBUGA1UEAwwObXBwLXJlZGlzLXRlc3QwHhcNMjYwNjE4MTQyOTQ5WhcN
+MjcwNjE4MTQyOTQ5WjAZMRcwFQYDVQQDDA5tcHAtcmVkaXMtdGVzdDCCASIwDQYJ
+KoZIhvcNAQEBBQADggEPADCCAQoCggEBANGUc9qScjxCIirs4/uUnYWd+ikt1zJW
+jhhbVGcDJe+Ooo1sB3MgUd1iEQMHhcYuYYA6qhircakcIF8kqx0gn29yWfPPA2uU
+eKRMLZei7irkgM0ZoARM9WnHUsaPJ36sB3iEBGCC4OYUIFj9hBfIcUCzG/zU14qN
+f0mXQLeLn8i3WtT9r47HJ30GcfE/upHO0Rd+GZPMmZbJ2y+oiH4Lrx8T+vL0U3SZ
+XvTEPZmM0cYU5IQgLjqxkS0NrHzjPhP6+v75YZ354XJh0aLMAxIO+E1A8b7y457R
+r4M0yBBvFOZqORR7zau0IMqq9dySm2FxOYv45R9gZMIzuEqOBvHg6xsCAwEAAaNT
+MFEwHQYDVR0OBBYEFPKgwwRXzUJNYbeAxzEQaWvmjQXfMB8GA1UdIwQYMBaAFPKg
+wwRXzUJNYbeAxzEQaWvmjQXfMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQEL
+BQADggEBACX1ipm6cO0bgt3iB24CzFZ39ETCAs78UpQXll7VbkhPIJ9WoTYK11If
+6mlhEOtDDcg1s1nY91wVmA5ZnLkAIY+RkBfIDREX9tzmhcROoJRJmu8LjTmW5QmF
+KJV2w16drmHd7jgosOzFrqzWjatZ4DUyc9n8c4TYV0BDph6ARE0IL+9rHXA7wakG
+tYGsODtHm/A35rOUUfx34E9PUIQXrm7HPIHbThi64/vJFd2dzvB/966Z2YCtkBf2
+eXFaNn/Uv31V+R4jo/IoXT3Ge5aU2/HCF4GLt86Hny8lrZI/rzBtD+mvxHiPCeVH
+kXlb94L5hmllJh6r7idCx5YrKWYGYCc=
+-----END CERTIFICATE-----`

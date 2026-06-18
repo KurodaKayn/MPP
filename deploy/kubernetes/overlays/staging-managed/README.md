@@ -37,12 +37,19 @@ Before applying this overlay to a shared staging cluster:
   when reader connections inherit `DB_SSLMODE=verify-full`.
 - Keep `REDIS_ADDR` equal to the managed Redis provider hostname and port when
   `REDIS_TLS=true` so Redis certificate hostname verification succeeds.
+- Set `REDIS_TLS_CA_CERT` or `REDIS_TLS_CA_FILE` only when the provider requires
+  custom trust material; prefer a mounted CA file for multiline bundles. Use
+  `REDIS_TLS_SERVER_NAME` only when the provider documents an SNI name that
+  differs from `REDIS_ADDR`.
 - Record the managed Redis persistence mode, snapshot retention, and restore
   point objective in the staging provider configuration or this README before
   treating Redis restarts as recoverable.
 - Replace every generated Secret literal through your staging secret workflow;
   `ruby script/kubernetes/render-app-secret.rb --require-redis-password` can
   render the `mpp-app-secrets` manifest from a temporary env file.
+- To roll app traffic back to self-hosted HA, switch `REDIS_ENDPOINT_MODE` back
+  to `sentinel`, set `REDIS_SENTINEL_ADDRS=redis-ha-sentinel:26379`, keep
+  `REDIS_SENTINEL_MASTER_NAME=mpp-redis-ha`, and restore `REDIS_TLS=false`.
 
 Render and validate:
 

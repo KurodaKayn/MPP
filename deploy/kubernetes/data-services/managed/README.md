@@ -26,6 +26,9 @@ Required overlay inputs:
 - Provide `DB_PASSWORD` and, when Redis auth is enabled, `REDIS_PASSWORD` in
   `mpp-app-secrets`.
 - Set `REDIS_TLS=true` when the managed Redis endpoint requires TLS.
+- Set `REDIS_TLS_CA_CERT` or `REDIS_TLS_CA_FILE` when the provider requires
+  custom Redis CA trust material. Use `REDIS_TLS_SERVER_NAME` only when the
+  provider documents an SNI/certificate name that differs from `REDIS_ADDR`.
 - Patch the redis-exporter `REDIS_ADDR` to the managed Redis hostname, using
   `rediss://...` when the provider requires TLS. The exporter reads the same
   optional `REDIS_PASSWORD` Secret and feeds the Redis observability baseline.

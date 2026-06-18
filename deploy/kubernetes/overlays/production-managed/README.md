@@ -51,6 +51,10 @@ Before applying this overlay to production:
   when reader connections inherit `DB_SSLMODE=verify-full`.
 - Keep `REDIS_ADDR` equal to the managed Redis provider hostname and port when
   `REDIS_TLS=true` so Redis certificate hostname verification succeeds.
+- Set `REDIS_TLS_CA_CERT` or `REDIS_TLS_CA_FILE` only when the provider requires
+  custom trust material; prefer a mounted CA file for multiline bundles. Use
+  `REDIS_TLS_SERVER_NAME` only when the provider documents an SNI name that
+  differs from `REDIS_ADDR`.
 - Record the production Redis persistence mode, snapshot retention, restore
   point objective, and provider restore procedure with the production change
   record before applying this overlay.
@@ -62,6 +66,9 @@ Before applying this overlay to production:
   `ClusterSecretStore`, and replace every `ExternalSecret` remote key with the
   production provider path. Add a `REDIS_PASSWORD` remote key when the managed
   Redis provider requires auth.
+- To roll app traffic back to self-hosted HA, switch `REDIS_ENDPOINT_MODE` back
+  to `sentinel`, set `REDIS_SENTINEL_ADDRS=redis-ha-sentinel:26379`, keep
+  `REDIS_SENTINEL_MASTER_NAME=mpp-redis-ha`, and restore `REDIS_TLS=false`.
 - For provider-specific overlays, keep the shared runtime, app, and data-service
   resources from this overlay and patch only provider hostnames, TLS/ingress
   details, secret-store bindings, CA mounts, and immutable image tags.

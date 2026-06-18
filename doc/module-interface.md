@@ -244,6 +244,7 @@ This endpoint lets `content-pipeline-service` exchange an object ref for a short
 | `DB_MAX_OPEN_CONNS`, `DB_MAX_IDLE_CONNS`, `DB_CONN_MAX_LIFETIME`, `DB_CONN_MAX_IDLE_TIME` | No | `10`, `5`, `30m`, `5m` | Database pool settings |
 | `DB_READER_HOST` and other `DB_READER_*` values | No | Empty | Optional read replica |
 | `REDIS_ENDPOINT_MODE`, `REDIS_ADDR`, `REDIS_PASSWORD`, `REDIS_DB`, `REDIS_TLS` | Depends on feature | `direct`, Redis DB defaults to `0` | Queues, locks, verification codes, rate limits, browser sessions. The backend applies role-specific timeout/retry defaults: `R0` coordination 500ms fail-fast with no command retry, `R1` continuity 750ms/1s with 1 bounded retry, `R2` caches 750ms with 1 bounded retry, `R4` queues 1-2s with 2 bounded retries |
+| `REDIS_TLS_CA_CERT`, `REDIS_TLS_CA_FILE`, `REDIS_TLS_SERVER_NAME` | No | Empty | Optional managed Redis TLS trust material and SNI/certificate hostname override |
 | `REDIS_SENTINEL_ADDRS`, `REDIS_SENTINEL_MASTER_NAME` | Required when `REDIS_ENDPOINT_MODE=sentinel` | Empty, `mpp-redis-ha` | Sentinel seed endpoints and monitored master name for HA Redis |
 | `REDIS_POOL_SIZE`, `REDIS_MIN_IDLE_CONNS`, `REDIS_MAX_IDLE_CONNS`, `REDIS_CONN_MAX_IDLE_TIME`, `REDIS_CONN_MAX_LIFETIME` | No | go-redis defaults or template values | Redis pool settings |
 | `AI_SERVICE_URL` | No | Empty | AI features are unavailable when empty |
@@ -397,6 +398,7 @@ Key body shape:
 | --- | --- | --- | --- |
 | `BROWSER_WORKER_INTERNAL_TOKEN` | Yes | None | Internal API bearer token |
 | `REDIS_ENDPOINT_MODE`, `REDIS_ADDR`, `REDIS_PASSWORD`, `REDIS_DB`, `REDIS_TLS` | No | Empty direct address disables Redis client, but `/ready` can still pass with an empty store | Session state storage. Browser Worker uses the same `R1` continuity baseline as backend live-session continuity: 750ms dial, 1s read/write, 1 bounded retry |
+| `REDIS_TLS_CA_CERT`, `REDIS_TLS_CA_FILE`, `REDIS_TLS_SERVER_NAME` | No | Empty | Optional managed Redis TLS trust material and SNI/certificate hostname override |
 | `REDIS_SENTINEL_ADDRS`, `REDIS_SENTINEL_MASTER_NAME` | Required when `REDIS_ENDPOINT_MODE=sentinel` | Empty, `mpp-redis-ha` | Sentinel seed endpoints and monitored master name for HA Redis |
 | `BROWSER_WORKER_POOL_SIZE` | No | `4` | Concurrent browser session limit; `0` means unlimited |
 | `BROWSER_RUNTIME_DRIVER` | No | `docker` | `docker` or `kubernetes` |
@@ -448,6 +450,7 @@ Collab session JWTs must include:
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSLMODE`, `DB_SSLROOTCERT` | Yes | Template values | PostgreSQL connection |
 | `DB_MAX_OPEN_CONNS`, `DB_CONN_MAX_LIFETIME`, `DB_CONN_MAX_IDLE_TIME` | No | `10`, `30m`, `5m` | Database pool settings |
 | `REDIS_ENDPOINT_MODE`, `REDIS_ADDR`, `REDIS_PASSWORD`, `REDIS_DB`, `REDIS_TLS` | Yes when Redis sync is enabled | `direct`, `redis:6379`, empty, `0`, `false` | Multi-instance collaboration sync. Collab Redis pub/sub uses 1s connect/socket timeout, disabled offline queue, bounded reconnect backoff up to 2s, and a max command queue length of 256 |
+| `REDIS_TLS_CA_CERT`, `REDIS_TLS_CA_FILE`, `REDIS_TLS_SERVER_NAME` | No | Empty | Optional managed Redis TLS trust material and SNI/certificate hostname override |
 | `REDIS_SENTINEL_ADDRS`, `REDIS_SENTINEL_MASTER_NAME` | Required when `REDIS_ENDPOINT_MODE=sentinel` | Empty, `mpp-redis-ha` | Sentinel seed endpoints and monitored master name for HA Redis |
 | `COLLAB_REDIS_SYNC_ENABLED` | No | `true` | Enables Redis pub/sub sync |
 | `COLLAB_REDIS_CHANNEL_PREFIX` | No | `mpp:collab:doc` | Redis channel prefix |
@@ -566,6 +569,9 @@ Compose also includes `pgbouncer`. In Compose, backend and collab-service connec
 | `REDIS_PASSWORD` | Empty | Password |
 | `REDIS_DB` | `0` | DB index |
 | `REDIS_TLS` | `false` | TLS |
+| `REDIS_TLS_CA_CERT` | Empty | Inline PEM CA bundle when managed Redis requires custom trust material |
+| `REDIS_TLS_CA_FILE` | Empty | Mounted PEM CA bundle path when managed Redis requires custom trust material |
+| `REDIS_TLS_SERVER_NAME` | Empty | SNI/certificate hostname override when documented by the provider |
 | `REDIS_SENTINEL_ADDRS` | Empty | Comma-separated Sentinel `host:port` seed list |
 | `REDIS_SENTINEL_MASTER_NAME` | `mpp-redis-ha` | Sentinel monitored master name |
 

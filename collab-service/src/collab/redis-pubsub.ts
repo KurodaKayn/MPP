@@ -1,12 +1,15 @@
 import { createClient, createSentinel } from "redis";
 import { applyUpdate } from "yjs";
 import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 import type { Document } from "@hocuspocus/server";
 import type { RedisClientOptions } from "redis";
+import type { ConnectionOptions as TLSConnectionOptions } from "node:tls";
 import type { CollabConfig } from "../config.js";
 
 type RedisSentinelOptions = Parameters<typeof createSentinel>[0];
+type RedisSocketOptions = NonNullable<RedisClientOptions["socket"]>;
 
 const remoteUpdateHashTTLMS = 60_000;
 const remoteUpdateHashMaxEntries = 4096;
@@ -222,24 +225,58 @@ export function redisClientOptionsFromConfig(
     database: config.REDIS_DB,
     pingInterval: redisPingIntervalMS,
     password: config.REDIS_PASSWORD || undefined,
-    socket: {
-      connectTimeout: redisConnectTimeoutMS,
-      socketTimeout: redisSocketTimeoutMS,
-      reconnectStrategy: redisReconnectStrategy,
-    },
+    socket: redisSocketOptionsFromConfig(config),
     url: redisUrlFromConfig(config),
   };
+}
+
+function redisSocketOptionsFromConfig(
+  config: CollabConfig,
+): RedisSocketOptions {
+  return {
+    ...redisTLSOptionsFromConfig(config),
+    connectTimeout: redisConnectTimeoutMS,
+    socketTimeout: redisSocketTimeoutMS,
+    reconnectStrategy: redisReconnectStrategy,
+  };
+}
+
+function redisTLSOptionsFromConfig(
+  config: CollabConfig,
+): Partial<RedisSocketOptions> {
+  if (!config.REDIS_TLS) {
+    return {};
+  }
+  const options: Partial<RedisSocketOptions> = {
+    tls: true,
+  };
+  const ca = redisTLSCAFromConfig(config);
+  if (ca) {
+    (options as TLSConnectionOptions).ca = ca;
+  }
+  if (config.REDIS_TLS_SERVER_NAME.trim()) {
+    (options as TLSConnectionOptions).servername =
+      config.REDIS_TLS_SERVER_NAME.trim();
+  }
+  return options;
+}
+
+function redisTLSCAFromConfig(config: CollabConfig): string | undefined {
+  const inlineCA = config.REDIS_TLS_CA_CERT.trim();
+  if (inlineCA) {
+    return inlineCA;
+  }
+  const caFile = config.REDIS_TLS_CA_FILE.trim();
+  if (caFile) {
+    return readFileSync(caFile, "utf8");
+  }
+  return undefined;
 }
 
 export function redisSentinelOptionsFromConfig(
   config: CollabConfig,
 ): RedisSentinelOptions {
-  const socket = {
-    ...(config.REDIS_TLS ? { tls: true } : {}),
-    connectTimeout: redisConnectTimeoutMS,
-    socketTimeout: redisSocketTimeoutMS,
-    reconnectStrategy: redisReconnectStrategy,
-  };
+  const socket = redisSocketOptionsFromConfig(config);
   return {
     name: config.REDIS_SENTINEL_MASTER_NAME,
     passthroughClientErrorEvents: true,
