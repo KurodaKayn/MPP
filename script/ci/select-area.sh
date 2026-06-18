@@ -67,6 +67,9 @@ case "$area" in
   content_pipeline_service)
     pattern="^(content-pipeline-service/|${shared_pattern})"
     ;;
+  content_pipeline_integration)
+    pattern="^(backend/|content-pipeline-service/|contracts/|${shared_pattern})"
+    ;;
   kubernetes)
     pattern="^(deploy/kubernetes/|script/kubernetes/|script/env/|script/secret/|script/redis/|contracts/env\.schema\.yaml|${shared_pattern})"
     ;;

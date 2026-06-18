@@ -290,6 +290,42 @@ jobs:
         if: steps.select.outputs.selected == 'true'
         run: bash script/ci/content-pipeline-service.sh
 
+  content_pipeline_integration:
+    name: Content pipeline integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select area
+        id: select
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash script/ci/select-area.sh content_pipeline_integration "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
+
+      - name: Setup Go
+        if: steps.select.outputs.selected == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up Rust
+        if: steps.select.outputs.selected == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        if: steps.select.outputs.selected == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: content-pipeline-service
+
+      - name: Run backend to content-pipeline integration
+        if: steps.select.outputs.selected == 'true'
+        run: bash script/ci/content-pipeline-integration.sh
+
   kubernetes:
     name: Kubernetes manifests
     runs-on: ubuntu-latest
