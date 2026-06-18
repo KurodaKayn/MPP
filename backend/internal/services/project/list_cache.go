@@ -148,7 +148,7 @@ func (s *Service) computeProjectListSingleflight(ctx context.Context, cacheKey s
 }
 
 func (s *Service) cachedDashboardProjectList(ctx context.Context, cacheKey string, cursor string, page, limit int) (*dto.PaginationResponse, bool, error) {
-	cached, err := redisdegrade.Call(s.projectListGuard, func() ([]byte, error) {
+	cached, err := redisdegrade.CallWork(s.projectListGuard, "cache_read", func() ([]byte, error) {
 		return s.cache.Get(ctx, cacheKey).Bytes()
 	})
 	if err != nil {
@@ -185,7 +185,7 @@ func (s *Service) refreshDashboardProjectListCache(ctx context.Context, cacheKey
 	}
 	encoded, err := json.Marshal(payload)
 	if err == nil {
-		_ = redisdegrade.Do(s.projectListGuard, func() error {
+		_ = redisdegrade.DoWork(s.projectListGuard, "cache_write", func() error {
 			return s.cache.Set(ctx, cacheKey, encoded, cachettl.Jitter(s.cacheTTL, cacheKey)).Err()
 		})
 	}
@@ -216,7 +216,7 @@ func (s *Service) invalidateDashboardProjectListCache() {
 	}
 	ctx, cancel := dashboardProjectListInvalidationContext(s.requestContext())
 	defer cancel()
-	_ = redisdegrade.Do(s.projectListGuard, func() error {
+	_ = redisdegrade.DoWork(s.projectListGuard, "cache_invalidate", func() error {
 		return s.cache.Incr(ctx, dashboardProjectListCacheGenerationKey).Err()
 	})
 	deleteDashboardProjectListCacheKeys(ctx, s.cache, s.projectListGuard)
@@ -251,7 +251,7 @@ func deleteDashboardProjectListCacheKeys(ctx context.Context, client *redis.Clie
 			keys []string
 			next uint64
 		}
-		result, err := redisdegrade.Call(guard, func() (scanResult, error) {
+		result, err := redisdegrade.CallWork(guard, "cache_invalidate", func() (scanResult, error) {
 			keys, next, err := client.Scan(ctx, cursor, dashboardProjectListCachePrefix+":*", 100).Result()
 			return scanResult{keys: keys, next: next}, err
 		})
@@ -259,7 +259,7 @@ func deleteDashboardProjectListCacheKeys(ctx context.Context, client *redis.Clie
 			return
 		}
 		if len(result.keys) > 0 {
-			_ = redisdegrade.Do(guard, func() error {
+			_ = redisdegrade.DoWork(guard, "cache_invalidate", func() error {
 				return client.Del(ctx, result.keys...).Err()
 			})
 		}
@@ -279,7 +279,7 @@ func dashboardProjectListInvalidationContext(parent context.Context) (context.Co
 }
 
 func (s *Service) dashboardProjectListCacheGeneration(ctx context.Context) (string, error) {
-	generation, err := redisdegrade.Call(s.projectListGuard, func() (string, error) {
+	generation, err := redisdegrade.CallWork(s.projectListGuard, "cache_read", func() (string, error) {
 		return s.cache.Get(ctx, dashboardProjectListCacheGenerationKey).Result()
 	})
 	if errors.Is(err, redis.Nil) {

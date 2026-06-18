@@ -225,7 +225,7 @@ func (s *Service) getCachedDashboardStats(generationKey string, cacheKeyForGener
 }
 
 func (s *Service) cachedDashboardStats(ctx context.Context, cacheKey string, generation string) (*dto.DashboardStatsResponse, bool, error) {
-	cached, err := redisdegrade.Call(s.cacheGuard, func() ([]byte, error) {
+	cached, err := redisdegrade.CallWork(s.cacheGuard, "cache_read", func() ([]byte, error) {
 		return s.cache.Get(ctx, cacheKey).Bytes()
 	})
 	if err != nil {
@@ -263,7 +263,7 @@ func (s *Service) refreshDashboardStatsCache(ctx context.Context, cacheKey strin
 	}
 	encoded, err := json.Marshal(payload)
 	if err == nil {
-		_ = redisdegrade.Do(s.cacheGuard, func() error {
+		_ = redisdegrade.DoWork(s.cacheGuard, "cache_write", func() error {
 			return s.cache.Set(ctx, cacheKey, encoded, cachettl.Jitter(s.cacheTTL, cacheKey)).Err()
 		})
 	}
@@ -406,7 +406,7 @@ func (s *Service) InvalidateDashboardScopedStatsCache(ctx context.Context) {
 }
 
 func (s *Service) incrementDashboardStatsGeneration(ctx context.Context, generationKey string) {
-	_ = redisdegrade.Do(s.cacheGuard, func() error {
+	_ = redisdegrade.DoWork(s.cacheGuard, "cache_invalidate", func() error {
 		return s.cache.Incr(ctx, generationKey).Err()
 	})
 }
@@ -416,7 +416,7 @@ func dashboardStatsInvalidationContext(parent context.Context) (context.Context,
 }
 
 func (s *Service) dashboardStatsCacheGeneration(ctx context.Context, generationKey string) (string, error) {
-	generation, err := redisdegrade.Call(s.cacheGuard, func() (string, error) {
+	generation, err := redisdegrade.CallWork(s.cacheGuard, "cache_read", func() (string, error) {
 		return s.cache.Get(ctx, generationKey).Result()
 	})
 	if errors.Is(err, redis.Nil) {

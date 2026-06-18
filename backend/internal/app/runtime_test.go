@@ -41,6 +41,9 @@ func TestNewRuntimeAllowsOptionalRedisForAPI(t *testing.T) {
 	if runtime.EmailService == nil {
 		t.Fatal("expected email service to be wired")
 	}
+	if runtime.ObservabilitySuite.RedisMetricsObserver() == nil {
+		t.Fatal("expected redis metrics observer to be wired")
+	}
 }
 
 func TestNewRuntimeRequiresRedisForPublishWorker(t *testing.T) {

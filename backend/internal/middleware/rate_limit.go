@@ -371,7 +371,7 @@ func checkRateLimitBuckets(ctx context.Context, client *redis.Client, prefix str
 }
 
 func incrementRateLimitBucket(ctx context.Context, client *redis.Client, guard *redisdegrade.Guard, key string, window time.Duration) (int64, time.Duration, error) {
-	raw, err := redisdegrade.Call(guard, func() (any, error) {
+	raw, err := redisdegrade.CallWork(guard, "rate_limit", func() (any, error) {
 		return client.Eval(ctx, redisRateLimitScript, []string{key}, window.Milliseconds()).Result()
 	})
 	if err != nil {
