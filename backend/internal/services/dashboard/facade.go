@@ -206,14 +206,25 @@ func (s *DashboardService) SetPublishQueue(queue publishsvc.PublishQueue) {
 }
 
 func (s *DashboardService) UseRedis(client *redis.Client) {
+	s.UseRedisCache(client)
+	s.UseRedisQueue(client)
+}
+
+func (s *DashboardService) UseRedisCache(client *redis.Client) {
 	if client == nil {
 		return
 	}
-	s.Project.UseRedis(client)
-	s.AccountSettings.UseRedis(client)
-	s.MediaAsset.UseRedis(client)
-	s.Publisher.UseRedis(client)
-	s.Stats.UseRedis(client)
+	s.Project.UseRedisCache(client)
+	s.AccountSettings.UseRedisCache(client)
+	s.MediaAsset.UseRedisCache(client)
+	s.Stats.UseRedisCache(client)
+}
+
+func (s *DashboardService) UseRedisQueue(client *redis.Client) {
+	if client == nil {
+		return
+	}
+	s.Publisher.UseRedisQueue(client)
 	s.readModelRebuildQueue = readmodelsvc.NewRedisDashboardRebuildQueue(client)
 }
 

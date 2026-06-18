@@ -34,29 +34,36 @@ func (s *BrowserSessionService) cleanupRedisSession(ctx context.Context, userID 
 }
 
 func (s *BrowserSessionService) cleanupRedisSessionForTenant(ctx context.Context, userID uuid.UUID, tenantID string, platform string, sessionID uuid.UUID, workerSessionRef string) error {
-	if s.redisClient == nil {
+	if s.coordinationRedisClient == nil && s.continuityRedisClient == nil {
 		return nil
 	}
 	tenantID, err := s.redisSessionTenantID(ctx, tenantID, sessionID)
 	if err != nil {
 		return err
 	}
+	var cleanupErrs []error
 	if err := s.releaseRedisActiveSession(ctx, userID, platform, sessionID); err != nil {
-		return err
+		cleanupErrs = append(cleanupErrs, err)
 	}
 	if err := s.releaseRedisConcurrencyQuota(ctx, userID, tenantID, sessionID); err != nil {
-		return err
+		cleanupErrs = append(cleanupErrs, err)
 	}
 	if err := s.deleteRedisStreamToken(ctx, sessionID); err != nil {
-		return err
+		cleanupErrs = append(cleanupErrs, err)
 	}
 	if err := s.deleteRedisLiveSession(ctx, sessionID); err != nil {
-		return err
+		cleanupErrs = append(cleanupErrs, err)
 	}
 	if err := s.deleteRedisWorkerHeartbeat(ctx, workerSessionRef); err != nil {
-		return err
+		cleanupErrs = append(cleanupErrs, err)
 	}
-	return s.removeRedisCleanupMember(ctx, sessionID)
+	if err := s.removeRedisCleanupMember(ctx, sessionID); err != nil {
+		cleanupErrs = append(cleanupErrs, err)
+	}
+	if len(cleanupErrs) == 0 {
+		return nil
+	}
+	return errors.Join(cleanupErrs...)
 }
 
 func browserSessionActiveKey(userID uuid.UUID, platform string) string {
@@ -100,21 +107,21 @@ func browserSessionLiveTTL(expiresAt time.Time) time.Duration {
 }
 
 func (s *BrowserSessionService) acquireRedisActiveSession(ctx context.Context, userID uuid.UUID, platform string, sessionID uuid.UUID, expiresAt time.Time) (bool, error) {
-	if s.redisClient == nil {
+	if s.coordinationRedisClient == nil {
 		return true, nil
 	}
-	return s.redisClient.SetNX(ctx, browserSessionActiveKey(userID, platform), sessionID.String(), browserSessionLiveTTL(expiresAt)).Result()
+	return s.coordinationRedisClient.SetNX(ctx, browserSessionActiveKey(userID, platform), sessionID.String(), browserSessionLiveTTL(expiresAt)).Result()
 }
 
 func (s *BrowserSessionService) releaseRedisActiveSession(ctx context.Context, userID uuid.UUID, platform string, sessionID uuid.UUID) error {
-	if s.redisClient == nil {
+	if s.coordinationRedisClient == nil {
 		return nil
 	}
 	return s.releaseRedisActiveSessionValue(ctx, userID, platform, sessionID.String())
 }
 
 func (s *BrowserSessionService) releaseRedisActiveSessionValue(ctx context.Context, userID uuid.UUID, platform string, activeValue string) error {
-	if s.redisClient == nil {
+	if s.coordinationRedisClient == nil {
 		return nil
 	}
 	const script = `
@@ -123,11 +130,11 @@ if redis.call("GET", KEYS[1]) == ARGV[1] then
 end
 return 0
 `
-	return s.redisClient.Eval(ctx, script, []string{browserSessionActiveKey(userID, platform)}, activeValue).Err()
+	return s.coordinationRedisClient.Eval(ctx, script, []string{browserSessionActiveKey(userID, platform)}, activeValue).Err()
 }
 
 func (s *BrowserSessionService) acquireRedisConcurrencyQuota(ctx context.Context, userID uuid.UUID, tenantID string, sessionID uuid.UUID, expiresAt time.Time) error {
-	if s.redisClient == nil {
+	if s.coordinationRedisClient == nil {
 		return nil
 	}
 	config := s.quotaConfig
@@ -162,7 +169,7 @@ redis.call("ZADD", KEYS[2], expires_at_ms, session_id)
 redis.call("PEXPIRE", KEYS[2], ttl_ms)
 return "ok"
 `
-	result, err := s.redisClient.Eval(ctx, script, []string{
+	result, err := s.coordinationRedisClient.Eval(ctx, script, []string{
 		browserSessionQuotaUserKey(userID),
 		browserSessionQuotaTenantKey(tenantID),
 	},
@@ -189,10 +196,10 @@ return "ok"
 }
 
 func (s *BrowserSessionService) releaseRedisConcurrencyQuota(ctx context.Context, userID uuid.UUID, tenantID string, sessionID uuid.UUID) error {
-	if s.redisClient == nil {
+	if s.coordinationRedisClient == nil {
 		return nil
 	}
-	_, err := s.redisClient.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+	_, err := s.coordinationRedisClient.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		pipe.ZRem(ctx, browserSessionQuotaUserKey(userID), sessionID.String())
 		pipe.ZRem(ctx, browserSessionQuotaTenantKey(tenantID), sessionID.String())
 		return nil
@@ -201,7 +208,7 @@ func (s *BrowserSessionService) releaseRedisConcurrencyQuota(ctx context.Context
 }
 
 func (s *BrowserSessionService) saveRedisLiveSession(ctx context.Context, state browserSessionLiveState) error {
-	if s.redisClient == nil {
+	if s.continuityRedisClient == nil {
 		return nil
 	}
 	if state.TenantID == "" {
@@ -219,20 +226,20 @@ func (s *BrowserSessionService) saveRedisLiveSession(ctx context.Context, state 
 	if err != nil {
 		return err
 	}
-	if err := s.redisClient.Set(ctx, browserSessionKey(state.SessionID), payload, browserSessionLiveTTL(state.ExpiresAt)).Err(); err != nil {
+	if err := s.continuityRedisClient.Set(ctx, browserSessionKey(state.SessionID), payload, browserSessionLiveTTL(state.ExpiresAt)).Err(); err != nil {
 		return err
 	}
-	return s.redisClient.ZAdd(ctx, browserSessionCleanupKey, redis.Z{
+	return s.continuityRedisClient.ZAdd(ctx, browserSessionCleanupKey, redis.Z{
 		Score:  float64(state.ExpiresAt.UnixMilli()),
 		Member: state.SessionID.String(),
 	}).Err()
 }
 
 func (s *BrowserSessionService) getRedisLiveSession(ctx context.Context, sessionID uuid.UUID) (browserSessionLiveState, bool, error) {
-	if s.redisClient == nil {
+	if s.continuityRedisClient == nil {
 		return browserSessionLiveState{}, false, nil
 	}
-	raw, err := s.redisClient.Get(ctx, browserSessionKey(sessionID)).Bytes()
+	raw, err := s.continuityRedisClient.Get(ctx, browserSessionKey(sessionID)).Bytes()
 	if errors.Is(err, redis.Nil) {
 		return browserSessionLiveState{}, false, nil
 	}
@@ -262,40 +269,40 @@ func (s *BrowserSessionService) redisSessionTenantID(ctx context.Context, tenant
 }
 
 func (s *BrowserSessionService) deleteRedisLiveSession(ctx context.Context, sessionID uuid.UUID) error {
-	if s.redisClient == nil {
+	if s.continuityRedisClient == nil {
 		return nil
 	}
-	return s.redisClient.Del(ctx, browserSessionKey(sessionID)).Err()
+	return s.continuityRedisClient.Del(ctx, browserSessionKey(sessionID)).Err()
 }
 
 func (s *BrowserSessionService) redisWorkerHeartbeatAlive(ctx context.Context, workerSessionRef string) (bool, error) {
-	if s.redisClient == nil || workerSessionRef == "" {
+	if s.continuityRedisClient == nil || workerSessionRef == "" {
 		return true, nil
 	}
-	exists, err := s.redisClient.Exists(ctx, browserSessionWorkerHeartbeatKey(workerSessionRef)).Result()
+	exists, err := s.continuityRedisClient.Exists(ctx, browserSessionWorkerHeartbeatKey(workerSessionRef)).Result()
 	return exists > 0, err
 }
 
 func (s *BrowserSessionService) deleteRedisWorkerHeartbeat(ctx context.Context, workerSessionRef string) error {
-	if s.redisClient == nil || workerSessionRef == "" {
+	if s.continuityRedisClient == nil || workerSessionRef == "" {
 		return nil
 	}
-	return s.redisClient.Del(ctx, browserSessionWorkerHeartbeatKey(workerSessionRef)).Err()
+	return s.continuityRedisClient.Del(ctx, browserSessionWorkerHeartbeatKey(workerSessionRef)).Err()
 }
 
 func (s *BrowserSessionService) removeRedisCleanupMember(ctx context.Context, sessionID uuid.UUID) error {
-	if s.redisClient == nil {
+	if s.continuityRedisClient == nil {
 		return nil
 	}
-	return s.redisClient.ZRem(ctx, browserSessionCleanupKey, sessionID.String()).Err()
+	return s.continuityRedisClient.ZRem(ctx, browserSessionCleanupKey, sessionID.String()).Err()
 }
 
 func (s *BrowserSessionService) recoverRedisActiveSessionLock(ctx context.Context, userID uuid.UUID, platform string, now time.Time) (bool, error) {
-	if s.redisClient == nil {
+	if s.coordinationRedisClient == nil {
 		return false, nil
 	}
 
-	activeValue, err := s.redisClient.Get(ctx, browserSessionActiveKey(userID, platform)).Result()
+	activeValue, err := s.coordinationRedisClient.Get(ctx, browserSessionActiveKey(userID, platform)).Result()
 	if errors.Is(err, redis.Nil) {
 		return true, nil
 	}

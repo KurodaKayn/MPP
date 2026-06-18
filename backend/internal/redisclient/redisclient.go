@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -47,6 +48,36 @@ type Config struct {
 	pool               poolConfig
 }
 
+type Role string
+
+const (
+	RoleDefault           Role = "default"
+	RoleCoordination      Role = "coordination"
+	RoleCache             Role = "cache"
+	RoleQueue             Role = "queue"
+	RoleSessionContinuity Role = "session_continuity"
+)
+
+type ClientSet struct {
+	Default      *redis.Client
+	Coordination *redis.Client
+	Cache        *redis.Client
+	Queue        *redis.Client
+	Session      *redis.Client
+}
+
+type roleConfig struct {
+	DialTimeout        time.Duration
+	ReadTimeout        time.Duration
+	WriteTimeout       time.Duration
+	PoolTimeout        time.Duration
+	MaxRetries         int
+	MinRetryBackoff    time.Duration
+	MaxRetryBackoff    time.Duration
+	DialerRetries      int
+	DialerRetryTimeout time.Duration
+}
+
 type poolConfig struct {
 	PoolSize        int
 	MinIdleConns    int
@@ -56,12 +87,44 @@ type poolConfig struct {
 }
 
 func NewFromEnv(ctx context.Context) (*redis.Client, error) {
+	return NewRoleFromEnv(ctx, RoleDefault)
+}
+
+func NewRoleFromEnv(ctx context.Context, role Role) (*redis.Client, error) {
 	config, err := ConfigFromEnv()
 	if err != nil {
 		return nil, err
 	}
 
-	return New(ctx, config)
+	return New(ctx, config, role)
+}
+
+func NewClientSetFromEnv(ctx context.Context) (*ClientSet, error) {
+	config, err := ConfigFromEnv()
+	if err != nil {
+		return nil, err
+	}
+
+	clientSet := &ClientSet{}
+	builders := []struct {
+		role Role
+		dst  **redis.Client
+	}{
+		{role: RoleDefault, dst: &clientSet.Default},
+		{role: RoleCoordination, dst: &clientSet.Coordination},
+		{role: RoleCache, dst: &clientSet.Cache},
+		{role: RoleQueue, dst: &clientSet.Queue},
+		{role: RoleSessionContinuity, dst: &clientSet.Session},
+	}
+	for _, builder := range builders {
+		client, err := New(ctx, config, builder.role)
+		if err != nil {
+			_ = clientSet.Close()
+			return nil, err
+		}
+		*builder.dst = client
+	}
+	return clientSet, nil
 }
 
 func ConfigFromEnv() (Config, error) {
@@ -106,8 +169,8 @@ func ConfigFromEnv() (Config, error) {
 	return config, nil
 }
 
-func New(ctx context.Context, config Config) (*redis.Client, error) {
-	client := newClient(config)
+func New(ctx context.Context, config Config, role Role) (*redis.Client, error) {
+	client := newClient(config, role)
 	if err := pingWithRetry(ctx, client); err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
@@ -116,34 +179,123 @@ func New(ctx context.Context, config Config) (*redis.Client, error) {
 	return client, nil
 }
 
-func newClient(config Config) *redis.Client {
+func newClient(config Config, role Role) *redis.Client {
 	if config.EndpointMode == endpointModeSentinel {
-		return redis.NewFailoverClient(failoverOptions(config))
+		client := redis.NewFailoverClient(failoverOptions(config, role))
+		client.AddHook(newLoggingHook(role))
+		return client
 	}
-	return redis.NewClient(options(config))
+	client := redis.NewClient(options(config, role))
+	client.AddHook(newLoggingHook(role))
+	return client
 }
 
-func options(config Config) *redis.Options {
+func options(config Config, role Role) *redis.Options {
+	roleSettings := roleSettings(role)
 	options := &redis.Options{
-		Addr:      config.Addr,
-		Password:  config.Password,
-		DB:        config.DB,
-		TLSConfig: tlsConfig(config.TLS),
+		Addr:               config.Addr,
+		Password:           config.Password,
+		DB:                 config.DB,
+		TLSConfig:          tlsConfig(config.TLS),
+		DialTimeout:        roleSettings.DialTimeout,
+		ReadTimeout:        roleSettings.ReadTimeout,
+		WriteTimeout:       roleSettings.WriteTimeout,
+		PoolTimeout:        roleSettings.PoolTimeout,
+		MaxRetries:         roleSettings.MaxRetries,
+		MinRetryBackoff:    roleSettings.MinRetryBackoff,
+		MaxRetryBackoff:    roleSettings.MaxRetryBackoff,
+		DialerRetries:      roleSettings.DialerRetries,
+		DialerRetryTimeout: roleSettings.DialerRetryTimeout,
 	}
 	applyPoolConfig(options, config.pool)
 	return options
 }
 
-func failoverOptions(config Config) *redis.FailoverOptions {
+func failoverOptions(config Config, role Role) *redis.FailoverOptions {
+	roleSettings := roleSettings(role)
 	options := &redis.FailoverOptions{
-		MasterName:    config.SentinelMasterName,
-		SentinelAddrs: append([]string(nil), config.SentinelAddrs...),
-		Password:      config.Password,
-		DB:            config.DB,
-		TLSConfig:     tlsConfig(config.TLS),
+		MasterName:         config.SentinelMasterName,
+		SentinelAddrs:      append([]string(nil), config.SentinelAddrs...),
+		Password:           config.Password,
+		DB:                 config.DB,
+		TLSConfig:          tlsConfig(config.TLS),
+		DialTimeout:        roleSettings.DialTimeout,
+		ReadTimeout:        roleSettings.ReadTimeout,
+		WriteTimeout:       roleSettings.WriteTimeout,
+		PoolTimeout:        roleSettings.PoolTimeout,
+		MaxRetries:         roleSettings.MaxRetries,
+		MinRetryBackoff:    roleSettings.MinRetryBackoff,
+		MaxRetryBackoff:    roleSettings.MaxRetryBackoff,
+		DialerRetries:      roleSettings.DialerRetries,
+		DialerRetryTimeout: roleSettings.DialerRetryTimeout,
 	}
 	applyFailoverPoolConfig(options, config.pool)
 	return options
+}
+
+func roleSettings(role Role) roleConfig {
+	switch role {
+	case RoleCoordination:
+		return roleConfig{
+			DialTimeout:        500 * time.Millisecond,
+			ReadTimeout:        500 * time.Millisecond,
+			WriteTimeout:       500 * time.Millisecond,
+			PoolTimeout:        750 * time.Millisecond,
+			MaxRetries:         -1,
+			MinRetryBackoff:    -1,
+			MaxRetryBackoff:    -1,
+			DialerRetries:      1,
+			DialerRetryTimeout: 50 * time.Millisecond,
+		}
+	case RoleCache:
+		return roleConfig{
+			DialTimeout:        750 * time.Millisecond,
+			ReadTimeout:        750 * time.Millisecond,
+			WriteTimeout:       750 * time.Millisecond,
+			PoolTimeout:        1 * time.Second,
+			MaxRetries:         1,
+			MinRetryBackoff:    25 * time.Millisecond,
+			MaxRetryBackoff:    150 * time.Millisecond,
+			DialerRetries:      2,
+			DialerRetryTimeout: 75 * time.Millisecond,
+		}
+	case RoleQueue:
+		return roleConfig{
+			DialTimeout:        1 * time.Second,
+			ReadTimeout:        2 * time.Second,
+			WriteTimeout:       2 * time.Second,
+			PoolTimeout:        2 * time.Second,
+			MaxRetries:         2,
+			MinRetryBackoff:    50 * time.Millisecond,
+			MaxRetryBackoff:    250 * time.Millisecond,
+			DialerRetries:      3,
+			DialerRetryTimeout: 100 * time.Millisecond,
+		}
+	case RoleSessionContinuity:
+		return roleConfig{
+			DialTimeout:        750 * time.Millisecond,
+			ReadTimeout:        1 * time.Second,
+			WriteTimeout:       1 * time.Second,
+			PoolTimeout:        1250 * time.Millisecond,
+			MaxRetries:         1,
+			MinRetryBackoff:    25 * time.Millisecond,
+			MaxRetryBackoff:    150 * time.Millisecond,
+			DialerRetries:      2,
+			DialerRetryTimeout: 75 * time.Millisecond,
+		}
+	default:
+		return roleConfig{
+			DialTimeout:        1 * time.Second,
+			ReadTimeout:        1 * time.Second,
+			WriteTimeout:       1 * time.Second,
+			PoolTimeout:        1500 * time.Millisecond,
+			MaxRetries:         1,
+			MinRetryBackoff:    25 * time.Millisecond,
+			MaxRetryBackoff:    150 * time.Millisecond,
+			DialerRetries:      2,
+			DialerRetryTimeout: 75 * time.Millisecond,
+		}
+	}
 }
 
 func applyPoolConfig(options *redis.Options, config poolConfig) {
@@ -230,6 +382,71 @@ func pingWithRetry(ctx context.Context, client *redis.Client) error {
 		}
 	}
 	return lastErr
+}
+
+func (c *ClientSet) Close() error {
+	if c == nil {
+		return nil
+	}
+	clients := []*redis.Client{
+		c.Default,
+		c.Coordination,
+		c.Cache,
+		c.Queue,
+		c.Session,
+	}
+	seen := make(map[*redis.Client]struct{}, len(clients))
+	var firstErr error
+	for _, client := range clients {
+		if client == nil {
+			continue
+		}
+		if _, ok := seen[client]; ok {
+			continue
+		}
+		seen[client] = struct{}{}
+		if err := client.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+type loggingHook struct {
+	role Role
+}
+
+func newLoggingHook(role Role) redis.Hook {
+	return loggingHook{role: role}
+}
+
+func (h loggingHook) DialHook(next redis.DialHook) redis.DialHook {
+	return next
+}
+
+func (h loggingHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		startedAt := time.Now()
+		err := next(ctx, cmd)
+		duration := time.Since(startedAt)
+		if err == nil && duration < 750*time.Millisecond {
+			return nil
+		}
+		role := string(h.role)
+		if role == "" {
+			role = string(RoleDefault)
+		}
+		if err != nil {
+			log.Printf("redis command failed role=%s cmd=%s duration=%s err=%v", role, cmd.FullName(), duration, err)
+			return err
+		}
+		log.Printf("redis command slow role=%s cmd=%s duration=%s", role, cmd.FullName(), duration)
+		return nil
+	}
+}
+
+func (h loggingHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
 }
 
 func redisDBFromEnv() (int, error) {

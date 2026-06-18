@@ -39,6 +39,7 @@ type Service struct {
 	router                *dbrouter.Router
 	accounts              *platformaccount.Service
 	queue                 PublishQueue
+	coordinationQueue     PublishQueue
 	publishJobObserver    PublishJobObserver
 	browserWorkerClient   publisher.BrowserWorkerClient
 	browserSessionService *browsersession.BrowserSessionService
@@ -136,6 +137,26 @@ func publishDBWithContext(database *gorm.DB, ctx context.Context) *gorm.DB {
 
 func (s *Service) SetQueue(queue PublishQueue) {
 	s.queue = queue
+	if s.coordinationQueue == nil {
+		s.coordinationQueue = queue
+	}
+}
+
+func (s *Service) SetCoordinationQueue(queue PublishQueue) {
+	s.coordinationQueue = queue
+	if s.queue == nil {
+		s.queue = queue
+	}
+}
+
+func (s *Service) coordinationQueueOrDefault() PublishQueue {
+	if s == nil {
+		return nil
+	}
+	if s.coordinationQueue != nil {
+		return s.coordinationQueue
+	}
+	return s.queue
 }
 
 func (s *Service) SetPublishJobObserver(observer PublishJobObserver) {
@@ -164,10 +185,28 @@ func (s *Service) SetDashboardReadModelUpdater(updater DashboardReadModelUpdater
 }
 
 func (s *Service) UseRedis(client *redis.Client) {
+	s.UseRedisCoordination(client)
+	s.UseRedisQueue(client)
+}
+
+func (s *Service) UseRedisCoordination(client *redis.Client) {
+	if client == nil {
+		return
+	}
+	s.coordinationQueue = NewRedisPublishQueue(client)
+	if s.queue == nil {
+		s.queue = s.coordinationQueue
+	}
+}
+
+func (s *Service) UseRedisQueue(client *redis.Client) {
 	if client == nil {
 		return
 	}
 	s.queue = NewRedisPublishQueue(client)
+	if s.coordinationQueue == nil {
+		s.coordinationQueue = s.queue
+	}
 }
 
 func (s *Service) observePublishJob(platform string, result string) {

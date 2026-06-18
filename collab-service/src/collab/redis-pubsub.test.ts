@@ -23,6 +23,8 @@ class InMemoryRedisBus {
 }
 
 class FakeRedisClient {
+  isReady = true;
+
   constructor(private readonly bus: InMemoryRedisBus) {}
 
   async connect() {}
@@ -157,6 +159,28 @@ describe("redisClientOptionsFromConfig", () => {
 
     expect(options.url).toBe("rediss://redis.example.invalid:6379");
   });
+
+  it("applies bounded reconnect and queue defaults", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      REDIS_ADDR: "redis.example.invalid:6379",
+    });
+
+    const options = redisClientOptionsFromConfig(config);
+
+    expect(options.commandsQueueMaxLength).toBe(256);
+    expect(options.disableOfflineQueue).toBe(true);
+    expect(options.pingInterval).toBe(15_000);
+    expect(options.socket).toMatchObject({
+      connectTimeout: 1_000,
+      socketTimeout: 1_000,
+    });
+    const reconnectDelay = options.socket?.reconnectStrategy?.(3);
+    expect(typeof reconnectDelay).toBe("number");
+    expect(reconnectDelay).toBeGreaterThanOrEqual(400);
+    expect(reconnectDelay).toBeLessThan(450);
+    expect(options.socket?.reconnectStrategy?.(4)).toBeInstanceOf(Error);
+  });
 });
 
 describe("redisSentinelOptionsFromConfig", () => {
@@ -180,13 +204,20 @@ describe("redisSentinelOptionsFromConfig", () => {
       { host: "redis-ha-sentinel-1", port: 26379 },
     ]);
     expect(options.nodeClientOptions).toMatchObject({
+      commandsQueueMaxLength: 256,
+      disableOfflineQueue: true,
       database: 2,
+      pingInterval: 15_000,
       password: "redis-secret",
-      socket: { tls: true },
+      socket: { tls: true, connectTimeout: 1_000, socketTimeout: 1_000 },
     });
     expect(options.sentinelClientOptions).toMatchObject({
-      socket: { tls: true },
+      commandsQueueMaxLength: 256,
+      disableOfflineQueue: true,
+      pingInterval: 15_000,
+      socket: { tls: true, connectTimeout: 1_000, socketTimeout: 1_000 },
     });
+    expect(options.passthroughClientErrorEvents).toBe(true);
   });
 
   it("rejects sentinel mode without sentinel addrs", () => {

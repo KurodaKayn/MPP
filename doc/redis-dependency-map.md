@@ -46,6 +46,12 @@ Risk tags:
 
 ## Owner And Follow-Up Notes
 
+- Redis timeout/retry baseline now follows client role rather than one shared profile:
+  - `R0` coordination (`streamgate`, publish locks, browser-session ownership, browser stream token checks): 500ms dial/read/write, 750ms pool wait, no automatic command retry, single short dial retry.
+  - `R1` continuity (`auth` verification codes, X OAuth2 callback state, browser live-session continuity, browser-worker live-session state): 750ms dial, 1s read/write, 1250ms pool wait, 1 bounded retry with 25-150ms backoff.
+  - `R2` caches: 750ms dial/read/write, 1s pool wait, 1 bounded retry with 25-150ms backoff.
+  - `R4` queues and async workers: 1s dial, 2s read/write, 2s pool wait, 2 bounded retries with 50-250ms backoff.
+  - `R3` collab Redis pub/sub sync uses node-redis bounded reconnect with 1s connect/socket timeout, disabled offline queue, max queue length 256, and reconnect delay capped at 2s.
 - `R0` items need explicit recovery semantics before any topology change. Publish locks and stream gates are the main ones.
 - `R1` items should preserve user continuity or fail with a clear retry path. Browser sessions and auth codes are the most visible.
 - `R4` items need durable replay or a non-Redis queue before Redis Cluster work.

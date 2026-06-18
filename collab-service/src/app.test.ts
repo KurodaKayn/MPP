@@ -66,6 +66,20 @@ function testConfig() {
   });
 }
 
+function testConfigWithRedisSync() {
+  return loadConfig({
+    NODE_ENV: "test",
+    LOG_LEVEL: "silent",
+    COLLAB_HOST: "127.0.0.1",
+    COLLAB_PORT: "8090",
+    COLLAB_WS_PATH: "/collab/documents/:documentId",
+    COLLAB_REDIS_SYNC_ENABLED: "true",
+    REDIS_ADDR: "127.0.0.1:1",
+    BACKEND_INTERNAL_URL: "http://backend:8080",
+    COLLAB_TOKEN_SECRET: "collab-secret",
+  });
+}
+
 describe("collab-service app", () => {
   it("serves health and readiness probes", async () => {
     const app = await buildApp(testConfig(), {
@@ -124,6 +138,14 @@ describe("collab-service app", () => {
     });
 
     await app.close();
+  });
+
+  it("fails startup when redis sync is enabled but unavailable", async () => {
+    await expect(
+      buildApp(testConfigWithRedisSync(), {
+        persistence: new FakeDocumentPersistence(),
+      }),
+    ).rejects.toThrow();
   });
 
   it("initializes project collaboration state for authorized backend requests", async () => {

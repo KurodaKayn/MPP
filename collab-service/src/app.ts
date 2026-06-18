@@ -40,7 +40,7 @@ export async function buildApp(
   const authenticator = createCollabAuthenticator(config);
   const persistence =
     options.persistence ?? createPostgresDocumentPersistence(config, metrics);
-  const redisPubSub = createRedisCollabPubSub(config, console);
+  const redisPubSub = createRedisCollabPubSub(config, app.log);
   const collabServer = createCollabServer(
     config,
     authenticator,
@@ -59,11 +59,23 @@ export async function buildApp(
   app.get("/ready", async (_request, reply) => {
     try {
       await persistence.ping();
+      const redisSyncStatus = !redisPubSub
+        ? "disabled"
+        : redisPubSub.isReady()
+          ? "ready"
+          : "not_ready";
+      if (redisSyncStatus === "not_ready") {
+        reply.code(503);
+        return {
+          status: "not_ready",
+          dependency: "redis_sync",
+        };
+      }
       return {
         status: "ready",
         dependencies: {
           database: "ready",
-          redis_sync: redisPubSub ? "ready" : "disabled",
+          redis_sync: redisSyncStatus,
           redis_addr: config.REDIS_ADDR,
           redis_endpoint_mode: config.REDIS_ENDPOINT_MODE,
           token_secret_configured: Boolean(config.COLLAB_TOKEN_SECRET),

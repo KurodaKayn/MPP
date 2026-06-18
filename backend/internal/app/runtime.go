@@ -39,19 +39,23 @@ type RuntimeWiringConfig struct {
 }
 
 type Runtime struct {
-	Config                RuntimeConfig
-	JWTSigningKey         []byte
-	MockLogin             bool
-	RedisClient           *redis.Client
-	ObservabilitySuite    *observability.Suite
-	DashboardService      *dashboardsvc.DashboardService
-	CollabDocumentService *collabdoc.Service
-	BrowserSessionService *browsersession.BrowserSessionService
-	ObjectStorageConfig   objectstorage.Config
-	ObjectStorageClient   objectstorage.Client
-	ArchiveConfig         archive.Config
-	BaseEmailService      email.EmailService
-	EmailService          email.EmailService
+	Config                 RuntimeConfig
+	JWTSigningKey          []byte
+	MockLogin              bool
+	RedisClient            *redis.Client
+	RedisCoordination      *redis.Client
+	RedisCache             *redis.Client
+	RedisQueue             *redis.Client
+	RedisSessionContinuity *redis.Client
+	ObservabilitySuite     *observability.Suite
+	DashboardService       *dashboardsvc.DashboardService
+	CollabDocumentService  *collabdoc.Service
+	BrowserSessionService  *browsersession.BrowserSessionService
+	ObjectStorageConfig    objectstorage.Config
+	ObjectStorageClient    objectstorage.Client
+	ArchiveConfig          archive.Config
+	BaseEmailService       email.EmailService
+	EmailService           email.EmailService
 
 	db                *gorm.DB
 	asyncEmailService *email.AsyncEmailService
@@ -109,7 +113,7 @@ func NewRuntime(ctx context.Context, config RuntimeWiringConfig) (*Runtime, erro
 	}
 	runtime.wireCollabDocumentService(config.JWTSecret)
 
-	redisClient, err := redisclient.NewFromEnv(ctx)
+	redisClients, err := redisclient.NewClientSetFromEnv(ctx)
 	if errors.Is(err, redisclient.ErrNotConfigured) {
 		if redisRequiredForRuntime(mode, config.RuntimeConfig) {
 			return nil, errors.New(missingRedisMessage(mode))
@@ -117,15 +121,26 @@ func NewRuntime(ctx context.Context, config RuntimeWiringConfig) (*Runtime, erro
 	} else if err != nil {
 		return nil, err
 	} else {
-		runtime.RedisClient = redisClient
-		dashboardService.UseRedis(redisClient)
+		runtime.RedisClient = redisClients.Default
+		runtime.RedisCoordination = redisClients.Coordination
+		runtime.RedisCache = redisClients.Cache
+		runtime.RedisQueue = redisClients.Queue
+		runtime.RedisSessionContinuity = redisClients.Session
+
+		dashboardService.UseRedisStateStore(redisClients.Session)
+		dashboardService.UseRedisCache(redisClients.Cache)
+		dashboardService.UseRedisQueue(redisClients.Queue)
+		dashboardService.UseRedisCoordination(redisClients.Coordination)
 	}
 
 	workerClient := NewBrowserWorkerClientFromEnv()
 	browserSessionService := browsersession.NewBrowserSessionServiceWithRouter(config.SQLDB, workerClient, publisher.NewCookieStore(config.SQLDB), config.DBRouter)
 	browserSessionService.UseDashboardAccountCacheInvalidator(dashboardService.AccountSettings)
-	if redisClient != nil {
-		browserSessionService.UseRedis(redisClient)
+	if runtime.RedisCoordination != nil {
+		browserSessionService.UseRedisCoordination(runtime.RedisCoordination)
+	}
+	if runtime.RedisSessionContinuity != nil {
+		browserSessionService.UseRedisContinuity(runtime.RedisSessionContinuity)
 	}
 	dashboardService.SetBrowserWorkerClient(workerClient)
 	dashboardService.SetBrowserSessionService(browserSessionService)
@@ -137,8 +152,8 @@ func NewRuntime(ctx context.Context, config RuntimeWiringConfig) (*Runtime, erro
 	}
 	runtime.BaseEmailService = baseEmailService
 	runtime.EmailService = baseEmailService
-	if redisClient != nil {
-		asyncEmailService := email.NewAsyncEmailService(redisClient)
+	if runtime.RedisQueue != nil {
+		asyncEmailService := email.NewAsyncEmailService(runtime.RedisQueue)
 		runtime.asyncEmailService = asyncEmailService
 		runtime.EmailService = asyncEmailService
 	}
@@ -153,16 +168,20 @@ func (r *Runtime) StartAPIWorkers(ctx context.Context) RuntimeWorkerErrors {
 
 	workerErrors := RuntimeWorkerErrors{}
 	r.startArchiveWorker(ctx)
-	if r.RedisClient == nil {
+	if r.RedisQueue == nil && r.RedisSessionContinuity == nil {
 		return workerErrors
 	}
 
-	r.DashboardService.StartPublishWorker(ctx)
+	if r.RedisQueue != nil {
+		r.DashboardService.StartPublishWorker(ctx)
+	}
 	if r.BrowserSessionService != nil {
 		r.BrowserSessionService.StartCleanupWorker(ctx)
 	}
 	workerErrors.Email = r.startEmailWorker(ctx)
-	workerErrors.ReadModel = r.DashboardService.StartDashboardReadModelRebuildWorkerWithErrors(ctx)
+	if r.RedisQueue != nil {
+		workerErrors.ReadModel = r.DashboardService.StartDashboardReadModelRebuildWorkerWithErrors(ctx)
+	}
 	return workerErrors
 }
 
@@ -191,10 +210,31 @@ func (r *Runtime) WaitWorkers() {
 }
 
 func (r *Runtime) Close() error {
-	if r == nil || r.RedisClient == nil {
+	if r == nil {
 		return nil
 	}
-	return r.RedisClient.Close()
+	clients := []*redis.Client{
+		r.RedisClient,
+		r.RedisCoordination,
+		r.RedisCache,
+		r.RedisQueue,
+		r.RedisSessionContinuity,
+	}
+	seen := map[*redis.Client]struct{}{}
+	var firstErr error
+	for _, client := range clients {
+		if client == nil {
+			continue
+		}
+		if _, ok := seen[client]; ok {
+			continue
+		}
+		seen[client] = struct{}{}
+		if err := client.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 func (r *Runtime) wireCollabDocumentService(jwtSecret string) {

@@ -241,7 +241,11 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		EnqueuedAt:     scheduledAt,
 	}
 	lockKey := publishLockKey(project.ID, platform)
-	acquired, err := s.queue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
+	coordinationQueue := s.coordinationQueueOrDefault()
+	if coordinationQueue == nil {
+		return PublishResponse{}, ErrPublishQueueEmpty
+	}
+	acquired, err := coordinationQueue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
 	if err != nil {
 		return PublishResponse{}, err
 	}
@@ -314,7 +318,7 @@ func (s *Service) EnqueuePublishProject(ctx context.Context, projectID uuid.UUID
 		outboxEventID = outboxEvent.ID
 		return nil
 	}); err != nil {
-		_ = s.queue.ReleaseLock(ctx, lockKey, job.JobID.String())
+		_ = coordinationQueue.ReleaseLock(ctx, lockKey, job.JobID.String())
 		return PublishResponse{}, err
 	}
 	s.invalidateDashboardCaches(ctx)
@@ -394,6 +398,10 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 		log.Printf("discarding invalid publish job: %+v", job)
 		return nil
 	}
+	coordinationQueue := s.coordinationQueueOrDefault()
+	if coordinationQueue == nil {
+		return ErrPublishQueueEmpty
+	}
 	observeJob := func(result string) {
 		s.observePublishJob(job.Platform, result)
 	}
@@ -449,7 +457,7 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 			Status:         models.PublicationStatusFailed,
 			ErrorMessage:   SanitizeUserFacingErrorMessage(err.Error()),
 		})
-		if releaseErr := s.queue.ReleaseLock(context.Background(), lockKey, job.JobID.String()); releaseErr != nil {
+		if releaseErr := coordinationQueue.ReleaseLock(context.Background(), lockKey, job.JobID.String()); releaseErr != nil {
 			log.Printf("publish lock release failed for failed job %s: %v", job.JobID, releaseErr)
 		}
 		return err
@@ -469,7 +477,7 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 			Status:         models.PublicationStatusFailed,
 			ErrorMessage:   message,
 		})
-		if releaseErr := s.queue.ReleaseLock(context.Background(), lockKey, job.JobID.String()); releaseErr != nil {
+		if releaseErr := coordinationQueue.ReleaseLock(context.Background(), lockKey, job.JobID.String()); releaseErr != nil {
 			log.Printf("publish lock release failed for failed job %s: %v", job.JobID, releaseErr)
 		}
 		return err
@@ -487,7 +495,7 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 		PublishURL:     resp.PublishURL,
 	})
 
-	if err := s.queue.ReleaseLock(ctx, lockKey, job.JobID.String()); err != nil {
+	if err := coordinationQueue.ReleaseLock(ctx, lockKey, job.JobID.String()); err != nil {
 		log.Printf("publish lock release failed for job %s: %v", job.JobID, err)
 	}
 	observeJob(publishJobResultSuccess)
@@ -495,7 +503,11 @@ func (s *Service) processPublishJob(ctx context.Context, job PublishJob) error {
 }
 
 func (s *Service) ensurePublishJobLock(ctx context.Context, job PublishJob, lockKey string) (bool, error) {
-	lockValue, err := s.queue.LockValue(ctx, lockKey)
+	coordinationQueue := s.coordinationQueueOrDefault()
+	if coordinationQueue == nil {
+		return false, ErrPublishQueueEmpty
+	}
+	lockValue, err := coordinationQueue.LockValue(ctx, lockKey)
 	if err != nil {
 		return false, err
 	}
@@ -514,7 +526,7 @@ func (s *Service) ensurePublishJobLock(ctx context.Context, job PublishJob, lock
 		return false, nil
 	}
 
-	return s.queue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
+	return coordinationQueue.AcquireLock(ctx, lockKey, job.JobID.String(), publishLockTTL)
 }
 
 func (s *Service) startPublishLockRefresh(ctx context.Context, lockKey, lockValue string) func() {
@@ -530,7 +542,12 @@ func (s *Service) startPublishLockRefresh(ctx context.Context, lockKey, lockValu
 			case <-done:
 				return
 			case <-ticker.C:
-				refreshed, err := s.queue.RefreshLock(ctx, lockKey, lockValue, publishLockTTL)
+				coordinationQueue := s.coordinationQueueOrDefault()
+				if coordinationQueue == nil {
+					log.Printf("publish lock refresh skipped for %s: coordination queue unavailable", lockKey)
+					continue
+				}
+				refreshed, err := coordinationQueue.RefreshLock(ctx, lockKey, lockValue, publishLockTTL)
 				if err != nil {
 					log.Printf("publish lock refresh failed for %s: %v", lockKey, err)
 					continue

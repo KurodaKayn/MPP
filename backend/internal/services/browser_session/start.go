@@ -85,7 +85,7 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 	expiresAt := now.Add(browserSessionTTL)
 
 	// 1. Use Redis as the live active-session lock when available.
-	if s.redisClient != nil {
+	if s.coordinationRedisClient != nil {
 		acquired, err := s.acquireRedisActiveSession(ctx, userID, platform, sessionID, expiresAt)
 		if err != nil {
 			return nil, err

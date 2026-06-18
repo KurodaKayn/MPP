@@ -44,7 +44,7 @@ func main() {
 	ready.Store(true)
 	server, err := app.NewHealthServer(app.HealthServerConfig{
 		Ready:              &ready,
-		RedisClient:        runtime.RedisClient,
+		RedisClient:        runtime.RedisQueue,
 		ObservabilitySuite: runtime.ObservabilitySuite,
 		DBRouter:           db.DefaultRouter,
 		SQLDB:              db.DB,

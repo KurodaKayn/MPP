@@ -63,6 +63,10 @@ func (s *Service) UseObjectStorage(client objectstorage.Client, config objectsto
 }
 
 func (s *Service) UseRedis(client *redis.Client) {
+	s.UseRedisCache(client)
+}
+
+func (s *Service) UseRedisCache(client *redis.Client) {
 	if client == nil {
 		return
 	}
