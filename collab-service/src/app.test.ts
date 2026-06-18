@@ -140,20 +140,12 @@ describe("collab-service app", () => {
     await app.close();
   });
 
-  it("reports not ready when redis sync is enabled but unavailable", async () => {
-    const app = await buildApp(testConfigWithRedisSync(), {
-      persistence: new FakeDocumentPersistence(),
-    });
-
-    const response = await app.inject("/ready");
-
-    expect(response.statusCode).toBe(503);
-    expect(response.json()).toEqual({
-      status: "not_ready",
-      dependency: "redis_sync",
-    });
-
-    await app.close();
+  it("fails startup when redis sync is enabled but unavailable", async () => {
+    await expect(
+      buildApp(testConfigWithRedisSync(), {
+        persistence: new FakeDocumentPersistence(),
+      }),
+    ).rejects.toThrow();
   });
 
   it("initializes project collaboration state for authorized backend requests", async () => {

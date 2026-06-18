@@ -74,6 +74,27 @@ func setupBrowserSessionRedis(t *testing.T, svc *browsersession.BrowserSessionSe
 	return client
 }
 
+func setupBrowserSessionSplitRedis(t *testing.T, svc *browsersession.BrowserSessionService) (*redis.Client, *redis.Client) {
+	t.Helper()
+
+	continuityServer := miniredis.RunT(t)
+	continuityClient := redis.NewClient(&redis.Options{Addr: continuityServer.Addr()})
+	coordinationClient := redis.NewClient(&redis.Options{
+		Addr:         "127.0.0.1:1",
+		DialTimeout:  20 * time.Millisecond,
+		ReadTimeout:  20 * time.Millisecond,
+		WriteTimeout: 20 * time.Millisecond,
+		MaxRetries:   0,
+	})
+	t.Cleanup(func() {
+		require.NoError(t, continuityClient.Close())
+		require.NoError(t, coordinationClient.Close())
+	})
+	svc.UseRedisContinuity(continuityClient)
+	svc.UseRedisCoordination(coordinationClient)
+	return continuityClient, coordinationClient
+}
+
 func setRedisLiveSession(t *testing.T, client *redis.Client, state map[string]any, ttl time.Duration) {
 	t.Helper()
 
@@ -871,6 +892,49 @@ func TestBrowserSessionService_GetSessionKeepsLiveRedisStateOnTransientWorkerRea
 	assert.Equal(t, int64(1), client.Exists(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Val())
 	assert.Equal(t, int64(1), client.Exists(context.Background(), "mpp:browser:session:"+session.ID.String()).Val())
 	assert.Equal(t, int64(1), client.Exists(context.Background(), "mpp:browser:worker-heartbeat:"+workerSessionRef).Val())
+}
+
+func TestBrowserSessionService_CancelSessionRemovesContinuityStateWhenCoordinationCleanupFails(t *testing.T) {
+	db, svc, _ := setupBrowserSessionTest(t)
+	continuityClient, _ := setupBrowserSessionSplitRedis(t, svc)
+	userID := uuid.New()
+	platform := "douyin"
+	workerSessionRef := "worker-coordination-down"
+	session := models.RemoteBrowserSession{
+		UserID:            userID,
+		Platform:          platform,
+		Status:            models.BrowserSessionStatusReady,
+		WorkerSessionRef:  workerSessionRef,
+		StreamEndpointRef: "http://127.0.0.1:9/stream/worker-coordination-down",
+		ConnectTokenHash:  "stale-token",
+		CreatedAt:         time.Now().Add(-time.Minute),
+		ExpiresAt:         time.Now().Add(10 * time.Minute),
+	}
+	require.NoError(t, db.Create(&session).Error)
+	setRedisLiveSession(t, continuityClient, map[string]any{
+		"session_id":         session.ID.String(),
+		"user_id":            userID.String(),
+		"platform":           platform,
+		"status":             models.BrowserSessionStatusReady,
+		"worker_session_ref": workerSessionRef,
+		"created_at":         session.CreatedAt,
+		"expires_at":         session.ExpiresAt,
+	}, time.Hour)
+	require.NoError(t, continuityClient.Set(context.Background(), "mpp:browser:worker-heartbeat:"+workerSessionRef, session.ID.String(), time.Hour).Err())
+	require.NoError(t, continuityClient.ZAdd(context.Background(), "mpp:browser:cleanup", redis.Z{
+		Score:  float64(session.ExpiresAt.UnixMilli()),
+		Member: session.ID.String(),
+	}).Err())
+
+	require.NoError(t, svc.CancelSession(context.Background(), userID, session.ID))
+
+	assert.Equal(t, int64(0), continuityClient.Exists(context.Background(), "mpp:browser:session:"+session.ID.String()).Val())
+	assert.Equal(t, int64(0), continuityClient.Exists(context.Background(), "mpp:browser:worker-heartbeat:"+workerSessionRef).Val())
+	assert.Equal(t, int64(0), continuityClient.ZCard(context.Background(), "mpp:browser:cleanup").Val())
+
+	var savedSession models.RemoteBrowserSession
+	require.NoError(t, db.First(&savedSession, session.ID).Error)
+	assert.Equal(t, models.BrowserSessionStatusExpired, savedSession.Status)
 }
 
 func streamTokenFromPath(t *testing.T, path string) string {
