@@ -194,7 +194,7 @@ func (s *Service) resolveMediaAsset(assetID uuid.UUID, userID uuid.UUID) (dto.Re
 
 	cacheKey := resolvedMediaAssetCacheKey(assetID, userID)
 	resultCh := s.cacheGroup.DoChan(cacheKey, func() (any, error) {
-		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(s.requestContext()), resolvedMediaAssetCacheTTL)
+		refreshCtx, cancel := resolvedMediaAssetRefreshContext(s.requestContext())
 		defer cancel()
 		refreshSvc := s.WithContext(refreshCtx)
 		if item, hit, err := refreshSvc.cachedResolvedMediaAsset(assetID, userID); hit {
@@ -217,6 +217,14 @@ func (s *Service) resolveMediaAsset(assetID uuid.UUID, userID uuid.UUID) (dto.Re
 	case <-s.requestContext().Done():
 		return dto.ResolvedMediaAsset{}, s.requestContext().Err()
 	}
+}
+
+func resolvedMediaAssetRefreshContext(parent context.Context) (context.Context, context.CancelFunc) {
+	deadline := time.Now().Add(resolvedMediaAssetCacheTTL)
+	if parentDeadline, ok := parent.Deadline(); ok && parentDeadline.Before(deadline) {
+		deadline = parentDeadline
+	}
+	return context.WithDeadline(context.WithoutCancel(parent), deadline)
 }
 
 func (s *Service) computeResolvedMediaAsset(assetID uuid.UUID, userID uuid.UUID) (dto.ResolvedMediaAsset, error) {
