@@ -21,15 +21,16 @@ import (
 var ErrPlatformAccountForbidden = errors.New("platform account access denied")
 
 type Service struct {
-	db              *gorm.DB
-	router          *dbrouter.Router
-	wechatTester    WechatConnectionTester
-	xTester         XConnectionTester
-	xOAuth2Provider XOAuth2Provider
-	xOAuth2States   XOAuth2StateStore
-	cache           *redis.Client
-	cacheTTL        time.Duration
-	cacheGroup      *singleflight.Group
+	db               *gorm.DB
+	router           *dbrouter.Router
+	wechatTester     WechatConnectionTester
+	xTester          XConnectionTester
+	xOAuth2Provider  XOAuth2Provider
+	xOAuth2States    XOAuth2StateStore
+	stateStoreClient *redis.Client
+	cache            *redis.Client
+	cacheTTL         time.Duration
+	cacheGroup       *singleflight.Group
 }
 
 const dashboardAccountCacheTTL = 15 * time.Second
@@ -108,10 +109,22 @@ func (s *Service) strongReadDB() *gorm.DB {
 }
 
 func (s *Service) UseRedis(client *redis.Client) {
+	s.UseRedisStateStore(client)
+	s.UseRedisCache(client)
+}
+
+func (s *Service) UseRedisStateStore(client *redis.Client) {
 	if client == nil {
 		return
 	}
+	s.stateStoreClient = client
 	s.xOAuth2States = NewRedisXOAuth2StateStore(client)
+}
+
+func (s *Service) UseRedisCache(client *redis.Client) {
+	if client == nil {
+		return
+	}
 	s.cache = client
 	s.cacheTTL = dashboardAccountCacheTTL
 	if s.cacheGroup == nil {
