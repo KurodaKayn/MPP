@@ -47,6 +47,11 @@ func TestNewFromEnvAppliesPoolOverrides(t *testing.T) {
 	require.Equal(t, 16, options.MaxIdleConns)
 	require.Equal(t, 45*time.Second, options.ConnMaxIdleTime)
 	require.Equal(t, 30*time.Minute, options.ConnMaxLifetime)
+	require.Equal(t, 1*time.Second, options.DialTimeout)
+	require.Equal(t, 1*time.Second, options.ReadTimeout)
+	require.Equal(t, 1*time.Second, options.WriteTimeout)
+	require.Equal(t, 1500*time.Millisecond, options.PoolTimeout)
+	require.Equal(t, 1, options.MaxRetries)
 }
 
 func TestConfigFromEnvKeepsRedisOptionalForDirectMode(t *testing.T) {
@@ -92,7 +97,7 @@ func TestConfigFromEnvBuildsSentinelEndpoint(t *testing.T) {
 	require.Equal(t, 3, config.DB)
 	require.True(t, config.TLS)
 
-	options := failoverOptions(config)
+	options := failoverOptions(config, RoleDefault)
 	require.Equal(t, sentinelMasterDefault, options.MasterName)
 	require.Equal(t, []string{"redis-ha-sentinel:26379", "redis-ha-sentinel-1:26379"}, options.SentinelAddrs)
 	require.Equal(t, "redis-secret", options.Password)
@@ -101,6 +106,108 @@ func TestConfigFromEnvBuildsSentinelEndpoint(t *testing.T) {
 	require.Equal(t, 24, options.PoolSize)
 	require.Equal(t, 3, options.MinIdleConns)
 	require.Equal(t, 9, options.MaxIdleConns)
+}
+
+func TestRoleSettingsMatchExpectedBaselines(t *testing.T) {
+	tests := []struct {
+		role               Role
+		dialTimeout        time.Duration
+		readTimeout        time.Duration
+		writeTimeout       time.Duration
+		poolTimeout        time.Duration
+		maxRetries         int
+		minRetryBackoff    time.Duration
+		maxRetryBackoff    time.Duration
+		dialerRetries      int
+		dialerRetryTimeout time.Duration
+	}{
+		{
+			role:               RoleCoordination,
+			dialTimeout:        500 * time.Millisecond,
+			readTimeout:        500 * time.Millisecond,
+			writeTimeout:       500 * time.Millisecond,
+			poolTimeout:        750 * time.Millisecond,
+			maxRetries:         -1,
+			minRetryBackoff:    -1,
+			maxRetryBackoff:    -1,
+			dialerRetries:      1,
+			dialerRetryTimeout: 50 * time.Millisecond,
+		},
+		{
+			role:               RoleCache,
+			dialTimeout:        750 * time.Millisecond,
+			readTimeout:        750 * time.Millisecond,
+			writeTimeout:       750 * time.Millisecond,
+			poolTimeout:        1 * time.Second,
+			maxRetries:         1,
+			minRetryBackoff:    25 * time.Millisecond,
+			maxRetryBackoff:    150 * time.Millisecond,
+			dialerRetries:      2,
+			dialerRetryTimeout: 75 * time.Millisecond,
+		},
+		{
+			role:               RoleQueue,
+			dialTimeout:        1 * time.Second,
+			readTimeout:        2 * time.Second,
+			writeTimeout:       2 * time.Second,
+			poolTimeout:        2 * time.Second,
+			maxRetries:         2,
+			minRetryBackoff:    50 * time.Millisecond,
+			maxRetryBackoff:    250 * time.Millisecond,
+			dialerRetries:      3,
+			dialerRetryTimeout: 100 * time.Millisecond,
+		},
+		{
+			role:               RoleSessionContinuity,
+			dialTimeout:        750 * time.Millisecond,
+			readTimeout:        1 * time.Second,
+			writeTimeout:       1 * time.Second,
+			poolTimeout:        1250 * time.Millisecond,
+			maxRetries:         1,
+			minRetryBackoff:    25 * time.Millisecond,
+			maxRetryBackoff:    150 * time.Millisecond,
+			dialerRetries:      2,
+			dialerRetryTimeout: 75 * time.Millisecond,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.role), func(t *testing.T) {
+			settings := roleSettings(tt.role)
+			require.Equal(t, tt.dialTimeout, settings.DialTimeout)
+			require.Equal(t, tt.readTimeout, settings.ReadTimeout)
+			require.Equal(t, tt.writeTimeout, settings.WriteTimeout)
+			require.Equal(t, tt.poolTimeout, settings.PoolTimeout)
+			require.Equal(t, tt.maxRetries, settings.MaxRetries)
+			require.Equal(t, tt.minRetryBackoff, settings.MinRetryBackoff)
+			require.Equal(t, tt.maxRetryBackoff, settings.MaxRetryBackoff)
+			require.Equal(t, tt.dialerRetries, settings.DialerRetries)
+			require.Equal(t, tt.dialerRetryTimeout, settings.DialerRetryTimeout)
+		})
+	}
+}
+
+func TestNewClientSetFromEnvBuildsDistinctRoleClients(t *testing.T) {
+	clearRedisEnv(t)
+	redisServer := miniredis.RunT(t)
+	t.Setenv(addrEnv, redisServer.Addr())
+
+	clients, err := NewClientSetFromEnv(context.Background())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, clients.Close())
+	})
+
+	require.NotNil(t, clients.Default)
+	require.NotNil(t, clients.Coordination)
+	require.NotNil(t, clients.Cache)
+	require.NotNil(t, clients.Queue)
+	require.NotNil(t, clients.Session)
+	require.NotSame(t, clients.Default, clients.Coordination)
+	require.NotSame(t, clients.Default, clients.Queue)
+	require.Equal(t, 500*time.Millisecond, clients.Coordination.Options().DialTimeout)
+	require.Equal(t, 2*time.Second, clients.Queue.Options().ReadTimeout)
+	require.Equal(t, 1*time.Second, clients.Session.Options().ReadTimeout)
 }
 
 func TestConfigFromEnvUsesSentinelMasterOverride(t *testing.T) {
