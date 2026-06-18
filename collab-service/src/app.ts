@@ -48,14 +48,7 @@ export async function buildApp(
     redisPubSub,
     metrics,
   );
-  if (redisPubSub) {
-    try {
-      await redisPubSub.start(collabServer.documents);
-    } catch (error) {
-      app.log.error({ error }, "collab redis pubsub start failed");
-      await redisPubSub.close();
-    }
-  }
+  await redisPubSub?.start(collabServer.documents);
 
   await app.register(websocket);
 
