@@ -17,6 +17,9 @@ Required overlay inputs:
 - A reachable Redis endpoint through `REDIS_ENDPOINT_MODE=direct` and
   `REDIS_ADDR`, or through `REDIS_ENDPOINT_MODE=sentinel` with
   `REDIS_SENTINEL_ADDRS` and `REDIS_SENTINEL_MASTER_NAME`.
+- Redis TLS policy through `REDIS_TLS`; set `REDIS_TLS_CA_CERT`,
+  `REDIS_TLS_CA_FILE`, or `REDIS_TLS_SERVER_NAME` only when the provider
+  requires custom trust material or a documented SNI override.
 - Public collaboration routing through `COLLAB_WEBSOCKET_URL_BASE`.
 - Public HTTP routing through the `mpp-public-gateway` Ingress. The baseline
   routes `/collab` to `collab-service` for WebSocket traffic and all remaining

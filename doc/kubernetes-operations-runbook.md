@@ -485,7 +485,7 @@ kubectl exec -n "$MPP_APP_NS" deployment/publish-worker -- wget -qO- http://127.
 Check Redis-related readiness:
 
 ```bash
-kubectl exec -n "$MPP_APP_NS" deployment/publish-worker -- printenv REDIS_ADDR REDIS_TLS
+kubectl exec -n "$MPP_APP_NS" deployment/publish-worker -- printenv REDIS_ADDR REDIS_TLS REDIS_TLS_CA_FILE REDIS_TLS_SERVER_NAME
 ```
 
 Check platform-specific failure shape:
@@ -738,7 +738,7 @@ kubectl logs -n "$MPP_APP_NS" deployment/publish-worker --tail=200 | grep -i red
 Check config:
 
 ```bash
-kubectl get configmap -n "$MPP_APP_NS" mpp-app-config -o yaml | grep -E "REDIS_ADDR|REDIS_TLS|REDIS_DB"
+kubectl get configmap -n "$MPP_APP_NS" mpp-app-config -o yaml | grep -E "REDIS_ADDR|REDIS_TLS|REDIS_TLS_CA_|REDIS_TLS_SERVER_NAME|REDIS_DB"
 kubectl get secret -n "$MPP_APP_NS" mpp-app-secrets -o jsonpath='{.data.REDIS_PASSWORD}' | wc -c
 ```
 
@@ -746,6 +746,9 @@ Mitigation:
 
 - Restore Redis endpoint or ExternalName.
 - Restore `REDIS_TLS` to match the provider.
+- Restore `REDIS_TLS_CA_CERT`, `REDIS_TLS_CA_FILE`, or
+  `REDIS_TLS_SERVER_NAME` if the managed provider requires custom trust
+  material or SNI.
 - Restore Redis auth Secret.
 - Restart `backend`, `publish-worker`, `browser-worker`, and `collab-service`
   after Redis Secret changes.
@@ -1391,6 +1394,8 @@ Run against non-production Redis with bounded load:
 REDIS_ADDR=redis.example.invalid:6379 \
 REDIS_PASSWORD=... \
 REDIS_DB=0 \
+REDIS_TLS=true \
+REDIS_TLS_CA_FILE=/path/to/provider-ca.pem \
 ruby script/redis/keyspace_inventory.rb \
   --scan-count 100 \
   --max-keys 10000 \
