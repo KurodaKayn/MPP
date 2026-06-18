@@ -8,13 +8,13 @@ Phase 1-2 target: pragmatic high availability. After a single Redis Pod, node, o
 
 Production final target: Redis Cluster. The final state must support multiple shards, multiple replicas, automatic failover, TLS/auth, backup and restore, maintenance windows, and clear SLA ownership. Prefer a provider-backed managed Redis Cluster. If managed Redis is unavailable, use a mature chart/operator to self-host Redis Cluster.
 
-Current overall progress: about `47%`.
+Current overall progress: about `65%`.
 
 | Phase | Weight | Current Completion | Status | Done | Next |
 | --- | ---: | ---: | --- | --- | --- |
 | Phase 0: responsibility and risk baseline | 10% | 100% | Done | Inventory script, responsibility labels, Redis SLO baseline, and [dependency map](../redis-dependency-map.md) added | Start Phase 1 single-instance hardening |
-| Phase 1: single-instance hardening | 15% | 100% | Done | Current single-instance deployment direction clear; Redis persistence baseline, probes, resources, graceful termination, backup baseline, restore runbook, runtime config hardening, and capacity guardrail alerts added | Start Phase 2 self-hosted HA |
-| Phase 2: self-hosted HA | 20% | 10% | Not Started | Initial HA direction chosen | Select Sentinel or equivalent failover mode and implement traffic switching |
+| Phase 1: single-instance hardening | 15% | 100% | Done | Current single-instance deployment direction clear; Redis persistence baseline, probes, resources, graceful termination, backup baseline, restore runbook, runtime config hardening, and capacity guardrail alerts added | Maintain as HA fallback baseline |
+| Phase 2: self-hosted HA | 20% | 100% | Done | HA deployment, endpoint abstraction, failover validation, migration rehearsal, and production HA cutover completed | Use HA setup as the baseline for managed Redis validation |
 | Phase 3: app-side fault tolerance | 20% | 100% | Done | Role-specific Redis timeout/retry baselines, degraded cache modes, cache stampede protection, lock safety hardening, and Redis error-budget reporting added | Use app-side metrics during HA failover validation and operational drills |
 | Phase 4: production managed Redis HA | 15% | 0% | Not Started | Target direction chosen | Build parameterized Redis endpoint and migration runbook |
 | Phase 5: Redis Cluster target state | 15% | 0% | Not Started | Final target confirmed | Design key model, client compatibility, and cutover path |
