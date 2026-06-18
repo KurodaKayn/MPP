@@ -14,10 +14,12 @@ import (
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 )
 
 const dashboardProjectListCachePrefix = "mpp:dashboard:projects:list:v2"
 const dashboardProjectListCacheGenerationKey = "mpp:dashboard:projects:list-generation:v2"
+const dashboardProjectListDegradedGeneration = "degraded"
 const dashboardProjectListRefreshTimeout = 15 * time.Second
 const dashboardProjectListInvalidateTimeout = 2 * time.Second
 
@@ -81,7 +83,8 @@ func (s *Service) getCachedProjectList(params dashboardProjectListCacheParams, c
 	ctx := s.requestContext()
 	generation, err := s.dashboardProjectListCacheGeneration(ctx)
 	if err != nil {
-		return compute(s)
+		params.Generation = dashboardProjectListDegradedGeneration
+		return s.computeProjectListSingleflight(ctx, dashboardProjectListCacheKey(params), compute)
 	}
 	params.Generation = generation
 	cacheKey := dashboardProjectListCacheKey(params)
@@ -118,8 +121,35 @@ func (s *Service) getCachedProjectList(params dashboardProjectListCacheParams, c
 	}
 }
 
+func (s *Service) computeProjectListSingleflight(ctx context.Context, cacheKey string, compute dashboardProjectListCacheCompute) (*dto.PaginationResponse, error) {
+	if s.cacheGroup == nil {
+		return compute(s)
+	}
+
+	resultCh := s.cacheGroup.DoChan(cacheKey, func() (any, error) {
+		refreshCtx, cancel := dashboardProjectListRefreshContext(ctx)
+		defer cancel()
+		return compute(s.WithContext(refreshCtx))
+	})
+
+	select {
+	case result := <-resultCh:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		if resp, ok := result.Val.(*dto.PaginationResponse); ok {
+			return resp, nil
+		}
+		return compute(s)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 func (s *Service) cachedDashboardProjectList(ctx context.Context, cacheKey string, cursor string, page, limit int) (*dto.PaginationResponse, bool, error) {
-	cached, err := s.cache.Get(ctx, cacheKey).Bytes()
+	cached, err := redisdegrade.Call(s.projectListGuard, func() ([]byte, error) {
+		return s.cache.Get(ctx, cacheKey).Bytes()
+	})
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return nil, false, nil
@@ -154,7 +184,9 @@ func (s *Service) refreshDashboardProjectListCache(ctx context.Context, cacheKey
 	}
 	encoded, err := json.Marshal(payload)
 	if err == nil {
-		_ = s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
+		_ = redisdegrade.Do(s.projectListGuard, func() error {
+			return s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
+		})
 	}
 	return resp, nil
 }
@@ -183,8 +215,10 @@ func (s *Service) invalidateDashboardProjectListCache() {
 	}
 	ctx, cancel := dashboardProjectListInvalidationContext(s.requestContext())
 	defer cancel()
-	_ = s.cache.Incr(ctx, dashboardProjectListCacheGenerationKey).Err()
-	deleteDashboardProjectListCacheKeys(ctx, s.cache)
+	_ = redisdegrade.Do(s.projectListGuard, func() error {
+		return s.cache.Incr(ctx, dashboardProjectListCacheGenerationKey).Err()
+	})
+	deleteDashboardProjectListCacheKeys(ctx, s.cache, s.projectListGuard)
 }
 
 func (s *Service) invalidateDashboardCaches(includeStats bool) {
@@ -209,20 +243,29 @@ func (s *Service) refreshProjectReadModel(projectID uuid.UUID) {
 	s.readModels.RefreshProjectAsync(s.requestContext(), projectID)
 }
 
-func deleteDashboardProjectListCacheKeys(ctx context.Context, client *redis.Client) {
+func deleteDashboardProjectListCacheKeys(ctx context.Context, client *redis.Client, guard *redisdegrade.Guard) {
 	var cursor uint64
 	for {
-		keys, next, err := client.Scan(ctx, cursor, dashboardProjectListCachePrefix+":*", 100).Result()
+		type scanResult struct {
+			keys []string
+			next uint64
+		}
+		result, err := redisdegrade.Call(guard, func() (scanResult, error) {
+			keys, next, err := client.Scan(ctx, cursor, dashboardProjectListCachePrefix+":*", 100).Result()
+			return scanResult{keys: keys, next: next}, err
+		})
 		if err != nil {
 			return
 		}
-		if len(keys) > 0 {
-			_ = client.Del(ctx, keys...).Err()
+		if len(result.keys) > 0 {
+			_ = redisdegrade.Do(guard, func() error {
+				return client.Del(ctx, result.keys...).Err()
+			})
 		}
-		if next == 0 {
+		if result.next == 0 {
 			return
 		}
-		cursor = next
+		cursor = result.next
 	}
 }
 
@@ -235,7 +278,9 @@ func dashboardProjectListInvalidationContext(parent context.Context) (context.Co
 }
 
 func (s *Service) dashboardProjectListCacheGeneration(ctx context.Context) (string, error) {
-	generation, err := s.cache.Get(ctx, dashboardProjectListCacheGenerationKey).Result()
+	generation, err := redisdegrade.Call(s.projectListGuard, func() (string, error) {
+		return s.cache.Get(ctx, dashboardProjectListCacheGenerationKey).Result()
+	})
 	if errors.Is(err, redis.Nil) {
 		return "0", nil
 	}

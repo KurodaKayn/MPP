@@ -1,10 +1,13 @@
 package middleware
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/golang-jwt/jwt/v5"
@@ -138,6 +141,61 @@ func TestRateLimitConfigFromEnvHonorsDeploymentSwitches(t *testing.T) {
 	require.Equal(t, DefaultRateLimitConfig(nil).AIUserPerMinute, config.AIUserPerMinute)
 }
 
+func TestApplicationRateLimiterFailsOpenWhenRedisIsDegraded(t *testing.T) {
+	t.Setenv("APP_RATE_LIMIT_FAIL_OPEN", "true")
+	t.Setenv("REDIS_DEGRADE_RATE_LIMIT_FAILURE_THRESHOLD", "2")
+	t.Setenv("REDIS_DEGRADE_RATE_LIMIT_COOLDOWN", "1s")
+
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+
+	config, err := RateLimitConfigFromEnv(client)
+	require.NoError(t, err)
+	config.GeneralUserPerMinute = 1
+
+	userID := uuid.New()
+	require.Equal(t, http.StatusOK, performRateLimitedRequest(t, config, userID, "", http.MethodGet, "/api/user/dashboard/stats"))
+
+	server.SetError("LOADING Redis is loading the dataset in memory")
+	status, headers, _ := performRateLimitedRequestWithDetails(t, config, userID, "", http.MethodGet, "/api/user/dashboard/stats")
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "true", headers.Get("X-RateLimit-Degraded"))
+
+	status, headers, _ = performRateLimitedRequestWithDetails(t, config, userID, "", http.MethodGet, "/api/user/dashboard/stats")
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "true", headers.Get("X-RateLimit-Degraded"))
+
+	server.SetError("")
+	time.Sleep(1100 * time.Millisecond)
+
+	status, _, body := performRateLimitedRequestWithDetails(t, config, userID, "", http.MethodGet, "/api/user/dashboard/stats")
+	require.Equal(t, http.StatusTooManyRequests, status)
+	require.Contains(t, body, `"code":"rate_limited"`)
+}
+
+func TestCheckRateLimitBucketsStopsAfterExceededBucket(t *testing.T) {
+	client := setupRateLimitRedis(t)
+	prefix := "test:ratelimit"
+	buckets := []rateLimitBucket{
+		newRateLimitBucket("general:minute:user", "user", "user-1", "general", 1, time.Minute),
+		newRateLimitBucket("general:minute:tenant", "tenant", "tenant-1", "general", 100, time.Minute),
+	}
+
+	result, err := checkRateLimitBuckets(context.Background(), client, prefix, nil, buckets)
+	require.NoError(t, err)
+	require.False(t, result.Exceeded)
+
+	client.AddHook(rateLimitKeyErrorHook{key: rateLimitRedisKey(prefix, buckets[1])})
+	result, err = checkRateLimitBuckets(context.Background(), client, prefix, nil, buckets)
+
+	require.NoError(t, err)
+	require.True(t, result.Exceeded)
+	require.Equal(t, buckets[0].Name, result.Bucket.Name)
+}
+
 func setupRateLimitRedis(t *testing.T) *redis.Client {
 	t.Helper()
 
@@ -197,4 +255,27 @@ func performRateLimitedRequestWithDetails(t *testing.T, config RateLimitConfig, 
 
 	require.NoError(t, handler(c))
 	return rec.Code, rec.Header(), strings.TrimSpace(rec.Body.String())
+}
+
+type rateLimitKeyErrorHook struct {
+	key string
+}
+
+func (h rateLimitKeyErrorHook) DialHook(next redis.DialHook) redis.DialHook {
+	return next
+}
+
+func (h rateLimitKeyErrorHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if strings.EqualFold(cmd.Name(), "eval") && len(cmd.Args()) > 3 {
+			if key, ok := cmd.Args()[3].(string); ok && key == h.key {
+				return errors.New("LOADING Redis is loading the dataset in memory")
+			}
+		}
+		return next(ctx, cmd)
+	}
+}
+
+func (h rateLimitKeyErrorHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
 }

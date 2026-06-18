@@ -328,6 +328,43 @@ func TestDashboardAccountCacheCollapsesConcurrentRedisReadErrors(t *testing.T) {
 	require.Equal(t, int64(1), queryCount.Load())
 }
 
+func TestDashboardAccountCacheDegradesDuringRedisOutageAndRecoversAfterCooldown(t *testing.T) {
+	t.Setenv("REDIS_DEGRADE_DASHBOARD_ACCOUNT_CACHE_FAILURE_THRESHOLD", "2")
+	t.Setenv("REDIS_DEGRADE_DASHBOARD_ACCOUNT_CACHE_COOLDOWN", "1s")
+
+	db := testsupport.SetupTestDB()
+	redisClient, redisServer := newAccountCacheRedisClientWithServer(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	user := seedAccountCacheUser(t, db, "cache-degraded")
+	account := seedAccountCacheAccount(t, db, user, "douyin", "cached")
+
+	first, err := s.WithContext(context.Background()).GetDouyinAccount(user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "cached", first.Username)
+
+	redisServer.SetError("LOADING Redis is loading the dataset in memory")
+	require.NoError(t, db.Model(&account).Update("username", "fresh").Error)
+
+	degradedFirst, err := s.WithContext(context.Background()).GetDouyinAccount(user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "fresh", degradedFirst.Username)
+
+	degradedSecond, err := s.WithContext(context.Background()).GetDouyinAccount(user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "fresh", degradedSecond.Username)
+
+	redisServer.SetError("")
+	time.Sleep(1100 * time.Millisecond)
+	redisServer.FastForward(16 * time.Second)
+
+	refreshed, err := s.WithContext(context.Background()).GetDouyinAccount(user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "fresh", refreshed.Username)
+	requireAccountCacheKeys(t, redisClient, 1)
+}
+
 func TestDashboardAccountCacheRefreshSurvivesFirstCallerCancel(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	redisClient := newAccountCacheRedisClient(t)

@@ -10,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 )
 
 const dashboardAccountCachePrefix = "mpp:dashboard:accounts:v1"
@@ -67,7 +68,9 @@ func getCachedDashboardAccount[T any](s *Service, userID uuid.UUID, workspaceID 
 }
 
 func cachedDashboardAccount[T any](ctx context.Context, s *Service, cacheKey string, workspaceID uuid.UUID, platform string, valid func(T) bool) (*T, bool, error) {
-	cached, err := s.cache.Get(ctx, cacheKey).Bytes()
+	cached, err := redisdegrade.Call(s.cacheGuard, func() ([]byte, error) {
+		return s.cache.Get(ctx, cacheKey).Bytes()
+	})
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return nil, false, nil
@@ -104,7 +107,9 @@ func refreshDashboardAccountCache[T any](ctx context.Context, s *Service, cacheK
 	}
 	encoded, err := json.Marshal(payload)
 	if err == nil {
-		_ = s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
+		_ = redisdegrade.Do(s.cacheGuard, func() error {
+			return s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
+		})
 	}
 	return resp, nil
 }
@@ -115,7 +120,9 @@ func (s *Service) invalidateDashboardAccountCache(workspaceID uuid.UUID, platfor
 	}
 	ctx, cancel := dashboardAccountInvalidationContext(s.requestContext())
 	defer cancel()
-	_ = s.cache.Del(ctx, dashboardAccountCacheKey(workspaceID, platform)).Err()
+	_ = redisdegrade.Do(s.cacheGuard, func() error {
+		return s.cache.Del(ctx, dashboardAccountCacheKey(workspaceID, platform)).Err()
+	})
 }
 
 func (s *Service) InvalidateDashboardAccountCache(ctx context.Context, workspaceID uuid.UUID, platform string) {

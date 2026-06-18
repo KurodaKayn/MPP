@@ -13,6 +13,7 @@ import (
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 	platformcapabilities "github.com/kurodakayn/mpp-backend/internal/platformcapabilities"
 	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
@@ -39,14 +40,16 @@ type DashboardReadModelUpdater interface {
 var allowedProjectPlatforms = platformcapabilities.ProjectPlatformSet()
 
 type Service struct {
-	db              *gorm.DB
-	router          *dbrouter.Router
-	collabDocuments *collabdoc.Service
-	cache           *redis.Client
-	cacheTTL        time.Duration
-	cacheGroup      *singleflight.Group
-	statsCache      DashboardStatsCacheInvalidator
-	readModels      DashboardReadModelUpdater
+	db                *gorm.DB
+	router            *dbrouter.Router
+	collabDocuments   *collabdoc.Service
+	cache             *redis.Client
+	cacheTTL          time.Duration
+	cacheGroup        *singleflight.Group
+	projectListGuard  *redisdegrade.Guard
+	contentSetupGuard *redisdegrade.Guard
+	statsCache        DashboardStatsCacheInvalidator
+	readModels        DashboardReadModelUpdater
 }
 
 func NewService(db *gorm.DB) *Service {
@@ -87,6 +90,12 @@ func (s *Service) UseRedisCache(client *redis.Client) {
 	}
 	s.cache = client
 	s.cacheTTL = dashboardProjectListCacheTTL
+	if s.projectListGuard == nil {
+		s.projectListGuard = redisdegrade.NewGuard(redisdegrade.GroupDashboardProjectListCache)
+	}
+	if s.contentSetupGuard == nil {
+		s.contentSetupGuard = redisdegrade.NewGuard(redisdegrade.GroupDashboardContentSetupCache)
+	}
 }
 
 func (s *Service) SetDashboardStatsCacheInvalidator(invalidator DashboardStatsCacheInvalidator) {

@@ -489,6 +489,82 @@ func TestListProjectsCacheCollapsesConcurrentMisses(t *testing.T) {
 	require.LessOrEqual(t, queryCount.Load(), int64(3))
 }
 
+func TestListProjectsCacheCollapsesGenerationDegrade(t *testing.T) {
+	t.Setenv("REDIS_DEGRADE_DASHBOARD_PROJECT_LIST_CACHE_FAILURE_THRESHOLD", "1")
+	t.Setenv("REDIS_DEGRADE_DASHBOARD_PROJECT_LIST_CACHE_COOLDOWN", "5s")
+
+	db := testsupport.SetupTestDB()
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+
+	redisClient, redisServer := newProjectListRedisClientWithServer(t)
+	s := services.NewDashboardService(db)
+	s.UseRedis(redisClient)
+
+	user := createProjectListCacheUser(t, db, "cache-generation-degrade")
+	seedProjectListCacheProject(t, db, user, "degraded-singleflight", models.ProjectStatusReady, "wechat")
+
+	redisServer.SetError("LOADING Redis is loading the dataset in memory")
+	_, err = s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", nil)
+	require.NoError(t, err)
+	redisServer.SetError("")
+
+	var queryCount atomic.Int64
+	firstQuery := make(chan struct{})
+	releaseFirstQuery := make(chan struct{})
+	var closeFirstQuery sync.Once
+	const callbackName = "test:dashboard_project_list_generation_degrade"
+	require.NoError(t, db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		count := queryCount.Add(1)
+		if count == 1 {
+			closeFirstQuery.Do(func() { close(firstQuery) })
+			<-releaseFirstQuery
+		}
+	}))
+	t.Cleanup(func() {
+		_ = db.Callback().Query().Remove(callbackName)
+	})
+
+	const callers = 8
+	start := make(chan struct{})
+	errs := make(chan error, callers)
+	totals := make(chan int64, callers)
+	var wg sync.WaitGroup
+	wg.Add(callers)
+	for range callers {
+		go func() {
+			defer wg.Done()
+			<-start
+			resp, err := s.WithContext(context.Background()).ListProjects(1, 10, "", "", "", nil)
+			if err != nil {
+				errs <- err
+				return
+			}
+			totals <- resp.Total
+		}()
+	}
+
+	close(start)
+	select {
+	case <-firstQuery:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first degraded project list query")
+	}
+	close(releaseFirstQuery)
+	wg.Wait()
+	close(errs)
+	close(totals)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	for total := range totals {
+		require.Equal(t, int64(1), total)
+	}
+	require.LessOrEqual(t, queryCount.Load(), int64(3))
+}
+
 func TestListProjectsCacheRefreshSurvivesFirstCallerCancel(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	redisClient := newProjectListRedisClient(t)

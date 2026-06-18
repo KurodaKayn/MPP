@@ -10,6 +10,7 @@ import (
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/objectstorage"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 )
@@ -29,6 +30,7 @@ type Service struct {
 	storageConfig objectstorage.Config
 	cache         *redis.Client
 	cacheTTL      time.Duration
+	cacheGuard    *redisdegrade.Guard
 }
 
 func NewService(db *gorm.DB, projects *projectsvc.Service) *Service {
@@ -72,6 +74,9 @@ func (s *Service) UseRedisCache(client *redis.Client) {
 	}
 	s.cache = client
 	s.cacheTTL = resolvedMediaAssetCacheTTL
+	if s.cacheGuard == nil {
+		s.cacheGuard = redisdegrade.NewGuard(redisdegrade.GroupResolvedMediaAssetCache)
+	}
 }
 
 func (s *Service) requestContext() context.Context {

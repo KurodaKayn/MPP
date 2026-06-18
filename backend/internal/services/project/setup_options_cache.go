@@ -12,10 +12,12 @@ import (
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 )
 
 const contentSetupOptionsCachePrefix = "mpp:dashboard:content-setup:v1"
 const contentSetupOptionsCacheVersion = 1
+const contentSetupOptionsDegradedGeneration = "degraded"
 const contentSetupOptionsRefreshTimeout = 15 * time.Second
 const contentSetupOptionsInvalidateTimeout = 2 * time.Second
 
@@ -64,7 +66,8 @@ func getCachedContentSetupOptions[T any](
 	ctx := s.requestContext()
 	generation, err := s.contentSetupOptionsCacheGeneration(ctx, resource, userID, workspaceID)
 	if err != nil {
-		return compute(s)
+		cacheKey := contentSetupOptionsCacheKey(resource, userID, workspaceID, contentSetupOptionsDegradedGeneration)
+		return computeContentSetupOptionsSingleflight(ctx, s, cacheKey, compute)
 	}
 	cacheKey := contentSetupOptionsCacheKey(resource, userID, workspaceID, generation)
 	if resp, hit, _ := cachedContentSetupOptions(ctx, s, cacheKey, resource, generation, userID, workspaceID, valid); hit {
@@ -101,6 +104,36 @@ func getCachedContentSetupOptions[T any](
 	}
 }
 
+func computeContentSetupOptionsSingleflight[T any](
+	ctx context.Context,
+	s *Service,
+	cacheKey string,
+	compute func(*Service) (*T, error),
+) (*T, error) {
+	if s.cacheGroup == nil {
+		return compute(s)
+	}
+
+	resultCh := s.cacheGroup.DoChan(cacheKey, func() (any, error) {
+		refreshCtx, cancel := contentSetupOptionsRefreshContext(ctx)
+		defer cancel()
+		return compute(s.WithContext(refreshCtx))
+	})
+
+	select {
+	case result := <-resultCh:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		if resp, ok := result.Val.(*T); ok {
+			return resp, nil
+		}
+		return compute(s)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 func cachedContentSetupOptions[T any](
 	ctx context.Context,
 	s *Service,
@@ -111,7 +144,9 @@ func cachedContentSetupOptions[T any](
 	workspaceID uuid.UUID,
 	valid func(T) bool,
 ) (*T, bool, error) {
-	cached, err := s.cache.Get(ctx, cacheKey).Bytes()
+	cached, err := redisdegrade.Call(s.contentSetupGuard, func() ([]byte, error) {
+		return s.cache.Get(ctx, cacheKey).Bytes()
+	})
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return nil, false, nil
@@ -166,7 +201,9 @@ func refreshContentSetupOptionsCache[T any](
 	}
 	encoded, err := json.Marshal(payload)
 	if err == nil {
-		_ = s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
+		_ = redisdegrade.Do(s.contentSetupGuard, func() error {
+			return s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
+		})
 	}
 	return resp, nil
 }
@@ -178,12 +215,16 @@ func (s *Service) invalidateContentTemplateOptionsCache(userID uuid.UUID, worksp
 	ctx, cancel := contentSetupOptionsInvalidationContext(s.requestContext())
 	defer cancel()
 	if scope == models.ContentTemplateScopeWorkspace {
-		_ = s.cache.Incr(ctx, contentSetupOptionsWorkspaceGenerationKey(contentSetupResourceTemplates, workspaceID)).Err()
-		deleteContentSetupOptionsCacheKeys(ctx, s.cache, contentSetupOptionsWorkspacePattern(contentSetupResourceTemplates, workspaceID))
+		_ = redisdegrade.Do(s.contentSetupGuard, func() error {
+			return s.cache.Incr(ctx, contentSetupOptionsWorkspaceGenerationKey(contentSetupResourceTemplates, workspaceID)).Err()
+		})
+		deleteContentSetupOptionsCacheKeys(ctx, s.cache, s.contentSetupGuard, contentSetupOptionsWorkspacePattern(contentSetupResourceTemplates, workspaceID))
 		return
 	}
-	_ = s.cache.Incr(ctx, contentSetupOptionsUserGenerationKey(contentSetupResourceTemplates, userID)).Err()
-	deleteContentSetupOptionsCacheKeys(ctx, s.cache, contentSetupOptionsUserPattern(contentSetupResourceTemplates, userID))
+	_ = redisdegrade.Do(s.contentSetupGuard, func() error {
+		return s.cache.Incr(ctx, contentSetupOptionsUserGenerationKey(contentSetupResourceTemplates, userID)).Err()
+	})
+	deleteContentSetupOptionsCacheKeys(ctx, s.cache, s.contentSetupGuard, contentSetupOptionsUserPattern(contentSetupResourceTemplates, userID))
 }
 
 func (s *Service) invalidateBrandProfileOptionsCache(workspaceID uuid.UUID) {
@@ -192,24 +233,35 @@ func (s *Service) invalidateBrandProfileOptionsCache(workspaceID uuid.UUID) {
 	}
 	ctx, cancel := contentSetupOptionsInvalidationContext(s.requestContext())
 	defer cancel()
-	_ = s.cache.Incr(ctx, contentSetupOptionsWorkspaceGenerationKey(contentSetupResourceBrandProfiles, workspaceID)).Err()
-	deleteContentSetupOptionsCacheKeys(ctx, s.cache, contentSetupOptionsWorkspacePattern(contentSetupResourceBrandProfiles, workspaceID))
+	_ = redisdegrade.Do(s.contentSetupGuard, func() error {
+		return s.cache.Incr(ctx, contentSetupOptionsWorkspaceGenerationKey(contentSetupResourceBrandProfiles, workspaceID)).Err()
+	})
+	deleteContentSetupOptionsCacheKeys(ctx, s.cache, s.contentSetupGuard, contentSetupOptionsWorkspacePattern(contentSetupResourceBrandProfiles, workspaceID))
 }
 
-func deleteContentSetupOptionsCacheKeys(ctx context.Context, client *redis.Client, pattern string) {
+func deleteContentSetupOptionsCacheKeys(ctx context.Context, client *redis.Client, guard *redisdegrade.Guard, pattern string) {
 	var cursor uint64
 	for {
-		keys, next, err := client.Scan(ctx, cursor, pattern, 100).Result()
+		type scanResult struct {
+			keys []string
+			next uint64
+		}
+		result, err := redisdegrade.Call(guard, func() (scanResult, error) {
+			keys, next, err := client.Scan(ctx, cursor, pattern, 100).Result()
+			return scanResult{keys: keys, next: next}, err
+		})
 		if err != nil {
 			return
 		}
-		if len(keys) > 0 {
-			_ = client.Del(ctx, keys...).Err()
+		if len(result.keys) > 0 {
+			_ = redisdegrade.Do(guard, func() error {
+				return client.Del(ctx, result.keys...).Err()
+			})
 		}
-		if next == 0 {
+		if result.next == 0 {
 			return
 		}
-		cursor = next
+		cursor = result.next
 	}
 }
 
@@ -223,25 +275,27 @@ func (s *Service) canUseContentSetupOptionsCache() bool {
 
 func (s *Service) contentSetupOptionsCacheGeneration(ctx context.Context, resource string, userID uuid.UUID, workspaceID uuid.UUID) (string, error) {
 	if resource == contentSetupResourceTemplates {
-		userGeneration, err := contentSetupOptionsGeneration(ctx, s.cache, contentSetupOptionsUserGenerationKey(resource, userID))
+		userGeneration, err := contentSetupOptionsGeneration(ctx, s.cache, s.contentSetupGuard, contentSetupOptionsUserGenerationKey(resource, userID))
 		if err != nil {
 			return "", err
 		}
-		workspaceGeneration, err := contentSetupOptionsGeneration(ctx, s.cache, contentSetupOptionsWorkspaceGenerationKey(resource, workspaceID))
+		workspaceGeneration, err := contentSetupOptionsGeneration(ctx, s.cache, s.contentSetupGuard, contentSetupOptionsWorkspaceGenerationKey(resource, workspaceID))
 		if err != nil {
 			return "", err
 		}
 		return "user:" + userGeneration + ":workspace:" + workspaceGeneration, nil
 	}
-	workspaceGeneration, err := contentSetupOptionsGeneration(ctx, s.cache, contentSetupOptionsWorkspaceGenerationKey(resource, workspaceID))
+	workspaceGeneration, err := contentSetupOptionsGeneration(ctx, s.cache, s.contentSetupGuard, contentSetupOptionsWorkspaceGenerationKey(resource, workspaceID))
 	if err != nil {
 		return "", err
 	}
 	return "workspace:" + workspaceGeneration, nil
 }
 
-func contentSetupOptionsGeneration(ctx context.Context, client *redis.Client, key string) (string, error) {
-	generation, err := client.Get(ctx, key).Result()
+func contentSetupOptionsGeneration(ctx context.Context, client *redis.Client, guard *redisdegrade.Guard, key string) (string, error) {
+	generation, err := redisdegrade.Call(guard, func() (string, error) {
+		return client.Get(ctx, key).Result()
+	})
 	if errors.Is(err, redis.Nil) {
 		return "0", nil
 	}

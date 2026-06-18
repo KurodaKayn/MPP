@@ -15,6 +15,7 @@ import (
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 )
 
@@ -31,6 +32,7 @@ type Service struct {
 	cache            *redis.Client
 	cacheTTL         time.Duration
 	cacheGroup       *singleflight.Group
+	cacheGuard       *redisdegrade.Guard
 }
 
 const dashboardAccountCacheTTL = 15 * time.Second
@@ -129,6 +131,9 @@ func (s *Service) UseRedisCache(client *redis.Client) {
 	s.cacheTTL = dashboardAccountCacheTTL
 	if s.cacheGroup == nil {
 		s.cacheGroup = &singleflight.Group{}
+	}
+	if s.cacheGuard == nil {
+		s.cacheGuard = redisdegrade.NewGuard(redisdegrade.GroupDashboardAccountCache)
 	}
 }
 

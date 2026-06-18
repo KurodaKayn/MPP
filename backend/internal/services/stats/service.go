@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 )
 
@@ -21,6 +22,7 @@ type Service struct {
 	cache      *redis.Client
 	cacheTTL   time.Duration
 	cacheGroup *singleflight.Group
+	cacheGuard *redisdegrade.Guard
 }
 
 func NewService(db *gorm.DB, projects *projectsvc.Service) *Service {
@@ -64,6 +66,9 @@ func (s *Service) UseRedisCache(client *redis.Client) {
 	s.cacheTTL = dashboardStatsCacheTTL
 	if s.cacheGroup == nil {
 		s.cacheGroup = &singleflight.Group{}
+	}
+	if s.cacheGuard == nil {
+		s.cacheGuard = redisdegrade.NewGuard(redisdegrade.GroupDashboardStatsCache)
 	}
 }
 
