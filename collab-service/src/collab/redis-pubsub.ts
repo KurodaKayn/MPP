@@ -10,6 +10,13 @@ type RedisSentinelOptions = Parameters<typeof createSentinel>[0];
 
 const remoteUpdateHashTTLMS = 60_000;
 const remoteUpdateHashMaxEntries = 4096;
+const redisConnectTimeoutMS = 1_000;
+const redisSocketTimeoutMS = 1_000;
+const redisPingIntervalMS = 15_000;
+const redisCommandQueueMaxLength = 256;
+const redisMaxReconnectDelayMS = 2_000;
+const redisMaxReconnectRetries = 3;
+const redisReconnectJitterMS = 50;
 
 interface CollabUpdateEnvelope {
   actorUserId?: string;
@@ -28,6 +35,7 @@ interface RedisPubSubLogger {
 
 export interface CollabRedisPubSub {
   close(): Promise<void>;
+  isReady(): boolean;
   isRemoteUpdate(update: Uint8Array): boolean;
   publishUpdate(
     documentId: string,
@@ -40,6 +48,8 @@ export interface CollabRedisPubSub {
 interface RedisClient {
   close?(): Promise<unknown>;
   connect(): Promise<unknown>;
+  isReady?: boolean;
+  on?(event: string, listener: (...args: unknown[]) => void): unknown;
   pSubscribe(
     pattern: string,
     listener: (message: string) => void,
@@ -50,6 +60,7 @@ interface RedisClient {
 
 export class RedisCollabPubSub implements CollabRedisPubSub {
   private documents?: Map<string, Document>;
+  private connected = false;
   private readonly remoteUpdateHashes = new Map<string, number>();
   private readonly instanceId = randomUUID();
 
@@ -62,11 +73,14 @@ export class RedisCollabPubSub implements CollabRedisPubSub {
 
   async start(documents: Map<string, Document>): Promise<void> {
     this.documents = documents;
+    attachRedisClientLogging(this.publisher, "publisher", this.logger);
+    attachRedisClientLogging(this.subscriber, "subscriber", this.logger);
     await this.publisher.connect();
     await this.subscriber.connect();
     await this.subscriber.pSubscribe(`${this.channelPrefix}:*`, (message) => {
       this.handleMessage(message);
     });
+    this.connected = true;
   }
 
   async publishUpdate(
@@ -101,10 +115,19 @@ export class RedisCollabPubSub implements CollabRedisPubSub {
   }
 
   async close(): Promise<void> {
+    this.connected = false;
     await Promise.allSettled([
       closeRedisClient(this.subscriber),
       closeRedisClient(this.publisher),
     ]);
+  }
+
+  isReady(): boolean {
+    return (
+      this.connected &&
+      this.publisher.isReady !== false &&
+      this.subscriber.isReady !== false
+    );
   }
 
   private handleMessage(message: string): void {
@@ -194,12 +217,15 @@ export function redisClientOptionsFromConfig(
   config: CollabConfig,
 ): RedisClientOptions {
   return {
+    commandsQueueMaxLength: redisCommandQueueMaxLength,
+    disableOfflineQueue: true,
     database: config.REDIS_DB,
+    pingInterval: redisPingIntervalMS,
     password: config.REDIS_PASSWORD || undefined,
     socket: {
-      reconnectStrategy(retries: number) {
-        return Math.min(100 + retries * 100, 2_000);
-      },
+      connectTimeout: redisConnectTimeoutMS,
+      socketTimeout: redisSocketTimeoutMS,
+      reconnectStrategy: redisReconnectStrategy,
     },
     url: redisUrlFromConfig(config),
   };
@@ -208,13 +234,27 @@ export function redisClientOptionsFromConfig(
 export function redisSentinelOptionsFromConfig(
   config: CollabConfig,
 ): RedisSentinelOptions {
-  const socket = config.REDIS_TLS ? { tls: true } : undefined;
+  const socket = {
+    ...(config.REDIS_TLS ? { tls: true } : {}),
+    connectTimeout: redisConnectTimeoutMS,
+    socketTimeout: redisSocketTimeoutMS,
+    reconnectStrategy: redisReconnectStrategy,
+  };
   return {
     name: config.REDIS_SENTINEL_MASTER_NAME,
+    passthroughClientErrorEvents: true,
     sentinelRootNodes: redisSentinelRootNodesFromConfig(config),
-    sentinelClientOptions: socket ? { socket } : undefined,
+    sentinelClientOptions: {
+      commandsQueueMaxLength: redisCommandQueueMaxLength,
+      disableOfflineQueue: true,
+      pingInterval: redisPingIntervalMS,
+      socket,
+    },
     nodeClientOptions: {
+      commandsQueueMaxLength: redisCommandQueueMaxLength,
+      disableOfflineQueue: true,
       database: config.REDIS_DB,
+      pingInterval: redisPingIntervalMS,
       password: config.REDIS_PASSWORD || undefined,
       socket,
     },
@@ -267,6 +307,30 @@ function closeRedisClient(client: RedisClient): Promise<unknown> {
     return client.close();
   }
   return client.quit?.() ?? Promise.resolve();
+}
+
+function redisReconnectStrategy(retries: number): number | Error {
+  if (retries > redisMaxReconnectRetries) {
+    return new Error("collab redis reconnect retry limit exceeded");
+  }
+  const backoff = Math.min(100 + retries * 100, redisMaxReconnectDelayMS);
+  return backoff + Math.floor(Math.random() * redisReconnectJitterMS);
+}
+
+function attachRedisClientLogging(
+  client: RedisClient,
+  role: string,
+  logger: RedisPubSubLogger,
+): void {
+  client.on?.("error", (error) => {
+    logger.error("collab redis client error", { role, error });
+  });
+  client.on?.("reconnecting", () => {
+    logger.warn?.("collab redis client reconnecting", { role });
+  });
+  client.on?.("ready", () => {
+    logger.info?.("collab redis client ready", { role });
+  });
 }
 
 function parseEnvelope(message: string): CollabUpdateEnvelope | undefined {
