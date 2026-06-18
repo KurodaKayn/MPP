@@ -42,9 +42,15 @@ jobs:
   contracts:
     name: Shared contracts
     needs: changes
-    if: needs.changes.outputs.contracts == 'true'
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.contracts == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip shared contracts CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -87,9 +93,15 @@ jobs:
   frontend:
     name: Frontend
     needs: changes
-    if: needs.changes.outputs.frontend == 'true'
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip frontend CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -121,9 +133,15 @@ jobs:
   extension:
     name: Extension
     needs: changes
-    if: needs.changes.outputs.extension == 'true'
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.extension == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip extension CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -155,9 +173,15 @@ jobs:
   backend:
     name: Backend
     needs: changes
-    if: needs.changes.outputs.backend == 'true'
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.backend == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip backend CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -181,9 +205,15 @@ jobs:
   browser_worker:
     name: Browser worker
     needs: changes
-    if: needs.changes.outputs.browser_worker == 'true'
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.browser_worker == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip browser worker CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -207,9 +237,15 @@ jobs:
   ai_service:
     name: AI service
     needs: changes
-    if: needs.changes.outputs.ai_service == 'true'
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.ai_service == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip AI service CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -240,9 +276,15 @@ jobs:
   collab_service:
     name: Collab service
     needs: changes
-    if: needs.changes.outputs.collab_service == 'true'
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.collab_service == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip collab service CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -274,9 +316,15 @@ jobs:
   content_pipeline_service:
     name: Content pipeline service
     needs: changes
-    if: needs.changes.outputs.content_pipeline_service == 'true'
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.content_pipeline_service == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip content pipeline service CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -298,9 +346,15 @@ jobs:
   content_pipeline_integration:
     name: Content pipeline integration
     needs: changes
-    if: needs.changes.outputs.content_pipeline_integration == 'true'
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.content_pipeline_integration == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip content pipeline integration CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -326,9 +380,15 @@ jobs:
   kubernetes:
     name: Kubernetes manifests
     needs: changes
-    if: needs.changes.outputs.kubernetes == 'true'
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.kubernetes == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip Kubernetes CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
