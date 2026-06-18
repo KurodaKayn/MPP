@@ -17,6 +17,7 @@ import (
 
 const contentSetupOptionsCachePrefix = "mpp:dashboard:content-setup:v1"
 const contentSetupOptionsCacheVersion = 1
+const contentSetupOptionsDegradedGeneration = "degraded"
 const contentSetupOptionsRefreshTimeout = 15 * time.Second
 const contentSetupOptionsInvalidateTimeout = 2 * time.Second
 
@@ -65,7 +66,8 @@ func getCachedContentSetupOptions[T any](
 	ctx := s.requestContext()
 	generation, err := s.contentSetupOptionsCacheGeneration(ctx, resource, userID, workspaceID)
 	if err != nil {
-		return compute(s)
+		cacheKey := contentSetupOptionsCacheKey(resource, userID, workspaceID, contentSetupOptionsDegradedGeneration)
+		return computeContentSetupOptionsSingleflight(ctx, s, cacheKey, compute)
 	}
 	cacheKey := contentSetupOptionsCacheKey(resource, userID, workspaceID, generation)
 	if resp, hit, _ := cachedContentSetupOptions(ctx, s, cacheKey, resource, generation, userID, workspaceID, valid); hit {
@@ -86,6 +88,36 @@ func getCachedContentSetupOptions[T any](
 			return compute(refreshSvc)
 		}
 		return refreshContentSetupOptionsCache(refreshCtx, refreshSvc, cacheKey, resource, generation, userID, workspaceID, compute)
+	})
+
+	select {
+	case result := <-resultCh:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		if resp, ok := result.Val.(*T); ok {
+			return resp, nil
+		}
+		return compute(s)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func computeContentSetupOptionsSingleflight[T any](
+	ctx context.Context,
+	s *Service,
+	cacheKey string,
+	compute func(*Service) (*T, error),
+) (*T, error) {
+	if s.cacheGroup == nil {
+		return compute(s)
+	}
+
+	resultCh := s.cacheGroup.DoChan(cacheKey, func() (any, error) {
+		refreshCtx, cancel := contentSetupOptionsRefreshContext(ctx)
+		defer cancel()
+		return compute(s.WithContext(refreshCtx))
 	})
 
 	select {
