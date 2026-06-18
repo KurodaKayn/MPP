@@ -81,6 +81,7 @@ func NewRuntime(ctx context.Context, config RuntimeWiringConfig) (*Runtime, erro
 	}
 
 	observabilitySuite := observability.New(serviceNameForRuntime(mode, config.RuntimeConfig))
+	observabilitySuite.SetupRedisMetrics()
 	dashboardService := dashboardsvc.NewDashboardServiceWithRouter(config.SQLDB, config.DBRouter)
 	dashboardService.SetPublishJobObserver(observabilitySuite.PublishJobObserver())
 
