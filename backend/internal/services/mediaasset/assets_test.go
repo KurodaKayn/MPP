@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -229,6 +230,69 @@ func TestResolveMediaAssetsRefreshesExpiredCache(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, 2, storage.PresignGetObjectCount())
+}
+
+func TestResolveMediaAssetsCollapsesConcurrentMisses(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	redisClient, _ := newMediaAssetRedisClientWithServer(t)
+	service.UseRedis(redisClient)
+	owner, upload := createReadyMediaAsset(t, db, service, storage)
+
+	const callers = 8
+	var wg sync.WaitGroup
+	wg.Add(callers)
+	errs := make(chan error, callers)
+	results := make(chan *dto.ResolveMediaAssetsResponse, callers)
+	for range callers {
+		go func() {
+			defer wg.Done()
+			resp, err := service.ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+				AssetIDs: []uuid.UUID{upload.AssetID},
+			})
+			if err != nil {
+				errs <- err
+				return
+			}
+			results <- resp
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	close(results)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	require.Len(t, results, callers)
+	require.Equal(t, 1, storage.PresignGetObjectCount())
+}
+
+func TestResolveMediaAssetsRefreshHonorsCallerDeadline(t *testing.T) {
+	db, service, storage := setupMediaAssetService(t)
+	redisClient, _ := newMediaAssetRedisClientWithServer(t)
+	service.UseRedis(redisClient)
+	owner, upload := createReadyMediaAsset(t, db, service, storage)
+	service.UseObjectStorage(&deadlinePresignStorage{Client: storage}, objectstorage.Config{
+		Enabled:        true,
+		Provider:       objectstorage.ProviderR2,
+		Bucket:         "mpp-media",
+		UploadURLTTL:   10 * time.Minute,
+		DownloadURLTTL: 5 * time.Minute,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	startedAt := time.Now()
+
+	_, err := service.WithContext(ctx).ResolveMediaAssets(owner.ID, dto.ResolveMediaAssetsRequest{
+		AssetIDs: []uuid.UUID{upload.AssetID},
+	})
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Less(t, time.Since(startedAt), 250*time.Millisecond)
 }
 
 func TestDeleteMediaAssetInvalidatesResolvedAssetCache(t *testing.T) {
@@ -571,6 +635,19 @@ func newMediaAssetRedisClientWithServer(t *testing.T) (*redis.Client, *miniredis
 		require.NoError(t, client.Close())
 	})
 	return client, redisServer
+}
+
+type deadlinePresignStorage struct {
+	*fake.Client
+}
+
+func (s *deadlinePresignStorage) PresignGetObject(ctx context.Context, input objectstorage.GetObjectInput) (objectstorage.PresignedURL, error) {
+	select {
+	case <-ctx.Done():
+		return objectstorage.PresignedURL{}, ctx.Err()
+	case <-time.After(time.Second):
+		return s.Client.PresignGetObject(ctx, input)
+	}
 }
 
 func requireResolvedMediaAssetCacheKeys(t *testing.T, redisServer *miniredis.Miniredis, assetID uuid.UUID, count int) []string {

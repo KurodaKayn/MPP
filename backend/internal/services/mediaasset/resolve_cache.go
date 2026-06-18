@@ -13,6 +13,7 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/cachettl"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 )
 
@@ -95,8 +96,9 @@ func (s *Service) cacheResolvedMediaAsset(asset models.MediaAsset, userID uuid.U
 	if err != nil {
 		return
 	}
+	cacheKey := resolvedMediaAssetCacheKey(asset.ID, userID)
 	_ = redisdegrade.Do(s.cacheGuard, func() error {
-		return s.cache.Set(s.requestContext(), resolvedMediaAssetCacheKey(asset.ID, userID), encoded, ttl).Err()
+		return s.cache.Set(s.requestContext(), cacheKey, encoded, cachettl.Jitter(ttl, cacheKey)).Err()
 	})
 }
 

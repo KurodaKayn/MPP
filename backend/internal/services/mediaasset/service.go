@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
@@ -31,6 +32,7 @@ type Service struct {
 	cache         *redis.Client
 	cacheTTL      time.Duration
 	cacheGuard    *redisdegrade.Guard
+	cacheGroup    *singleflight.Group
 }
 
 func NewService(db *gorm.DB, projects *projectsvc.Service) *Service {
@@ -56,6 +58,7 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 	if s.projects != nil {
 		scoped.projects = s.projects.WithContext(ctx)
 	}
+	scoped.cacheGroup = s.cacheGroup
 	return &scoped
 }
 
@@ -74,6 +77,9 @@ func (s *Service) UseRedisCache(client *redis.Client) {
 	}
 	s.cache = client
 	s.cacheTTL = resolvedMediaAssetCacheTTL
+	if s.cacheGroup == nil {
+		s.cacheGroup = &singleflight.Group{}
+	}
 	if s.cacheGuard == nil {
 		s.cacheGuard = redisdegrade.NewGuard(redisdegrade.GroupResolvedMediaAssetCache)
 	}

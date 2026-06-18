@@ -12,6 +12,7 @@ import (
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/cachettl"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 )
 
@@ -202,7 +203,7 @@ func refreshContentSetupOptionsCache[T any](
 	encoded, err := json.Marshal(payload)
 	if err == nil {
 		_ = redisdegrade.Do(s.contentSetupGuard, func() error {
-			return s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
+			return s.cache.Set(ctx, cacheKey, encoded, cachettl.Jitter(s.cacheTTL, cacheKey)).Err()
 		})
 	}
 	return resp, nil

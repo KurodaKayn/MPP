@@ -1,6 +1,7 @@
 package mediaasset
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -177,30 +178,78 @@ func (s *Service) ResolveMediaAssets(userID uuid.UUID, req dto.ResolveMediaAsset
 			items = append(items, item)
 			continue
 		}
-		asset, err := s.mediaAssetForRead(assetID, userID)
+		item, err := s.resolveMediaAsset(assetID, userID)
 		if err != nil {
 			return nil, err
 		}
-		if asset.Status != models.MediaAssetStatusReady {
-			return nil, ErrMediaAssetNotReady
-		}
-		presigned, err := s.objectStorage.PresignGetObject(s.requestContext(), objectstorage.GetObjectInput{
-			Bucket:  asset.Bucket,
-			Key:     asset.ObjectKey,
-			Expires: s.storageConfig.DownloadURLTTL,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("presign media download: %w", err)
-		}
-		item := dto.ResolvedMediaAsset{
-			AssetID:   asset.ID,
-			URL:       presigned.URL,
-			ExpiresAt: time.Now().UTC().Add(presigned.Expires),
-		}
-		s.cacheResolvedMediaAsset(*asset, userID, item)
 		items = append(items, item)
 	}
 	return &dto.ResolveMediaAssetsResponse{Items: items}, nil
+}
+
+func (s *Service) resolveMediaAsset(assetID uuid.UUID, userID uuid.UUID) (dto.ResolvedMediaAsset, error) {
+	if s.cacheGroup == nil {
+		return s.computeResolvedMediaAsset(assetID, userID)
+	}
+
+	cacheKey := resolvedMediaAssetCacheKey(assetID, userID)
+	resultCh := s.cacheGroup.DoChan(cacheKey, func() (any, error) {
+		refreshCtx, cancel := resolvedMediaAssetRefreshContext(s.requestContext())
+		defer cancel()
+		refreshSvc := s.WithContext(refreshCtx)
+		if item, hit, err := refreshSvc.cachedResolvedMediaAsset(assetID, userID); hit {
+			return item, nil
+		} else if err != nil {
+			return refreshSvc.computeResolvedMediaAsset(assetID, userID)
+		}
+		return refreshSvc.computeResolvedMediaAsset(assetID, userID)
+	})
+
+	select {
+	case result := <-resultCh:
+		if result.Err != nil {
+			return dto.ResolvedMediaAsset{}, result.Err
+		}
+		if item, ok := result.Val.(dto.ResolvedMediaAsset); ok {
+			return item, nil
+		}
+		return s.computeResolvedMediaAsset(assetID, userID)
+	case <-s.requestContext().Done():
+		return dto.ResolvedMediaAsset{}, s.requestContext().Err()
+	}
+}
+
+func resolvedMediaAssetRefreshContext(parent context.Context) (context.Context, context.CancelFunc) {
+	deadline := time.Now().Add(resolvedMediaAssetCacheTTL)
+	if parentDeadline, ok := parent.Deadline(); ok && parentDeadline.Before(deadline) {
+		deadline = parentDeadline
+	}
+	return context.WithDeadline(parent, deadline)
+}
+
+func (s *Service) computeResolvedMediaAsset(assetID uuid.UUID, userID uuid.UUID) (dto.ResolvedMediaAsset, error) {
+	asset, err := s.mediaAssetForRead(assetID, userID)
+	if err != nil {
+		return dto.ResolvedMediaAsset{}, err
+	}
+	if asset.Status != models.MediaAssetStatusReady {
+		return dto.ResolvedMediaAsset{}, ErrMediaAssetNotReady
+	}
+	presigned, err := s.objectStorage.PresignGetObject(s.requestContext(), objectstorage.GetObjectInput{
+		Bucket:  asset.Bucket,
+		Key:     asset.ObjectKey,
+		Expires: s.storageConfig.DownloadURLTTL,
+	})
+	if err != nil {
+		return dto.ResolvedMediaAsset{}, fmt.Errorf("presign media download: %w", err)
+	}
+	item := dto.ResolvedMediaAsset{
+		AssetID:   asset.ID,
+		URL:       presigned.URL,
+		ExpiresAt: time.Now().UTC().Add(presigned.Expires),
+	}
+	s.cacheResolvedMediaAsset(*asset, userID, item)
+	return item, nil
 }
 
 func (s *Service) ResolveMediaObjectRef(req dto.ResolveMediaObjectRefRequest) (*dto.ResolveMediaObjectRefResponse, error) {

@@ -10,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/cachettl"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 )
 
@@ -108,7 +109,7 @@ func refreshDashboardAccountCache[T any](ctx context.Context, s *Service, cacheK
 	encoded, err := json.Marshal(payload)
 	if err == nil {
 		_ = redisdegrade.Do(s.cacheGuard, func() error {
-			return s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
+			return s.cache.Set(ctx, cacheKey, encoded, cachettl.Jitter(s.cacheTTL, cacheKey)).Err()
 		})
 	}
 	return resp, nil
