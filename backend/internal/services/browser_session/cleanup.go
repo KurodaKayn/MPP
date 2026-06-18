@@ -15,7 +15,7 @@ import (
 )
 
 func (s *BrowserSessionService) StartCleanupWorker(ctx context.Context) {
-	if s.redisClient == nil {
+	if s.continuityRedisClient == nil {
 		return
 	}
 	go func() {
@@ -35,10 +35,10 @@ func (s *BrowserSessionService) StartCleanupWorker(ctx context.Context) {
 }
 
 func (s *BrowserSessionService) CleanupExpiredSessions(ctx context.Context, now time.Time) error {
-	if s.redisClient == nil {
+	if s.continuityRedisClient == nil {
 		return nil
 	}
-	sessionIDs, err := s.redisClient.ZRangeArgs(ctx, redis.ZRangeArgs{
+	sessionIDs, err := s.continuityRedisClient.ZRangeArgs(ctx, redis.ZRangeArgs{
 		Key:     browserSessionCleanupKey,
 		Start:   "-inf",
 		Stop:    fmt.Sprintf("%d", now.UnixMilli()),
@@ -50,7 +50,7 @@ func (s *BrowserSessionService) CleanupExpiredSessions(ctx context.Context, now 
 	for _, rawID := range sessionIDs {
 		sessionID, err := uuid.Parse(rawID)
 		if err != nil {
-			_ = s.redisClient.ZRem(ctx, browserSessionCleanupKey, rawID).Err()
+			_ = s.continuityRedisClient.ZRem(ctx, browserSessionCleanupKey, rawID).Err()
 			continue
 		}
 		if err := s.cleanupExpiredSession(ctx, sessionID); err != nil {
