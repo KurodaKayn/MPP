@@ -13,29 +13,55 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  contracts:
-    name: Shared contracts
+  changes:
+    name: Detect changes
     runs-on: ubuntu-latest
+    outputs:
+      contracts: ${{ steps.compute.outputs.contracts }}
+      frontend: ${{ steps.compute.outputs.frontend }}
+      extension: ${{ steps.compute.outputs.extension }}
+      backend: ${{ steps.compute.outputs.backend }}
+      browser_worker: ${{ steps.compute.outputs.browser_worker }}
+      ai_service: ${{ steps.compute.outputs.ai_service }}
+      collab_service: ${{ steps.compute.outputs.collab_service }}
+      content_pipeline_service: ${{ steps.compute.outputs.content_pipeline_service }}
+      content_pipeline_integration: ${{ steps.compute.outputs.content_pipeline_integration }}
+      kubernetes: ${{ steps.compute.outputs.kubernetes }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select area
-        id: select
+      - name: Compute area selection
+        id: compute
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash script/ci/select-area.sh contracts "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
+        run: bash script/ci/compute-changes.sh "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
+
+  contracts:
+    name: Shared contracts
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.contracts == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip shared contracts CI." >&2
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
-        if: steps.select.outputs.selected == 'true'
         uses: pnpm/action-setup@v4
         with:
           run_install: false
 
       - name: Setup Node.js
-        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -43,7 +69,6 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Go
-        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
@@ -52,45 +77,42 @@ jobs:
             browser-worker/go.sum
 
       - name: Setup Python
-        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-python@v5
         with:
           python-version-file: ai-service/.python-version
 
       - name: Setup uv
-        if: steps.select.outputs.selected == 'true'
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           cache-dependency-glob: ai-service/uv.lock
 
       - name: Check generated contracts
-        if: steps.select.outputs.selected == 'true'
         run: bash script/ci/contracts.sh
 
   frontend:
     name: Frontend
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip frontend CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select area
-        id: select
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash script/ci/select-area.sh frontend "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
-
       - name: Setup pnpm
-        if: steps.select.outputs.selected == 'true'
         uses: pnpm/action-setup@v4
         with:
           run_install: false
 
       - name: Setup Node.js
-        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -98,32 +120,39 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Run frontend CI
-        if: steps.select.outputs.selected == 'true'
         run: bash script/ci/frontend.sh
+
+      - name: Upload frontend artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-ci-artifacts
+          path: artifacts/frontend
+          if-no-files-found: warn
 
   extension:
     name: Extension
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.extension == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip extension CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select area
-        id: select
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash script/ci/select-area.sh extension "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
-
       - name: Setup pnpm
-        if: steps.select.outputs.selected == 'true'
         uses: pnpm/action-setup@v4
         with:
           run_install: false
 
       - name: Setup Node.js
-        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -131,124 +160,142 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Run extension CI
-        if: steps.select.outputs.selected == 'true'
         run: bash script/ci/extension.sh
+
+      - name: Upload extension artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-ci-artifacts
+          path: artifacts/extension
+          if-no-files-found: warn
 
   backend:
     name: Backend
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.backend == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip backend CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select area
-        id: select
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash script/ci/select-area.sh backend "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
-
       - name: Setup Go
-        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
-      - name: Install golangci-lint
-        if: steps.select.outputs.selected == 'true'
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+      - name: Run backend lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          working-directory: backend
 
       - name: Run backend CI
-        if: steps.select.outputs.selected == 'true'
         run: bash script/ci/backend.sh
 
   browser_worker:
     name: Browser worker
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.browser_worker == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip browser worker CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select area
-        id: select
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash script/ci/select-area.sh browser_worker "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
-
       - name: Setup Go
-        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: browser-worker/go.mod
           cache-dependency-path: browser-worker/go.sum
 
-      - name: Install golangci-lint
-        if: steps.select.outputs.selected == 'true'
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+      - name: Run browser worker lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          working-directory: browser-worker
 
       - name: Run browser worker CI
-        if: steps.select.outputs.selected == 'true'
         run: bash script/ci/browser-worker.sh
 
   ai_service:
     name: AI service
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.ai_service == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip AI service CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select area
-        id: select
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash script/ci/select-area.sh ai_service "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
-
       - name: Setup Python
-        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-python@v5
         with:
           python-version-file: ai-service/.python-version
 
       - name: Setup uv
-        if: steps.select.outputs.selected == 'true'
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           cache-dependency-glob: ai-service/uv.lock
 
       - name: Run AI service CI
-        if: steps.select.outputs.selected == 'true'
         run: bash script/ci/ai-service.sh
+
+      - name: Upload AI service artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-service-ci-artifacts
+          path: artifacts/ai-service
+          if-no-files-found: warn
 
   collab_service:
     name: Collab service
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.collab_service == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip collab service CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select area
-        id: select
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash script/ci/select-area.sh collab_service "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
-
       - name: Setup pnpm
-        if: steps.select.outputs.selected == 'true'
         uses: pnpm/action-setup@v4
         with:
           run_install: false
 
       - name: Setup Node.js
-        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -256,77 +303,122 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Run collab service CI
-        if: steps.select.outputs.selected == 'true'
         run: bash script/ci/collab-service.sh
+
+      - name: Upload collab service artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collab-service-ci-artifacts
+          path: artifacts/collab-service
+          if-no-files-found: warn
 
   content_pipeline_service:
     name: Content pipeline service
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.content_pipeline_service == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip content pipeline service CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select area
-        id: select
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash script/ci/select-area.sh content_pipeline_service "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
-
       - name: Setup Rust
-        if: steps.select.outputs.selected == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
       - name: Rust Cache
-        if: steps.select.outputs.selected == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: content-pipeline-service
 
       - name: Run content pipeline service CI
-        if: steps.select.outputs.selected == 'true'
         run: bash script/ci/content-pipeline-service.sh
 
-  kubernetes:
-    name: Kubernetes manifests
+  content_pipeline_integration:
+    name: Content pipeline integration
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.content_pipeline_integration == 'true')
     runs-on: ubuntu-latest
     steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip content pipeline integration CI." >&2
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Select area
-        id: select
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash script/ci/select-area.sh kubernetes "${{ github.event_name }}" "${PR_BASE_SHA:-}" "$GITHUB_SHA"
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: content-pipeline-service
+
+      - name: Run backend to content-pipeline integration
+        run: bash script/ci/content-pipeline-integration.sh
+
+  kubernetes:
+    name: Kubernetes manifests
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.kubernetes == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if change detection failed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "Change detection failed; refusing to skip Kubernetes CI." >&2
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup kubectl
-        if: steps.select.outputs.selected == 'true'
         uses: azure/setup-kubectl@v4
         with:
           version: v1.33.9
 
       - name: Setup Go
-        if: steps.select.outputs.selected == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: script/kubernetes/smoke-test/go.mod
 
       - name: Setup Ruby
-        if: steps.select.outputs.selected == 'true'
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
 
       - name: Install kubeconform
-        if: steps.select.outputs.selected == 'true'
         run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0
 
       - name: Run Kubernetes CI
-        if: steps.select.outputs.selected == 'true'
         run: bash script/ci/kubernetes.sh
+
+      - name: Upload Kubernetes artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubernetes-ci-artifacts
+          path: artifacts/kubernetes
+          if-no-files-found: warn

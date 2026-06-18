@@ -164,6 +164,8 @@ jobs:
           push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
           build-args: |
             FRONTEND_BASE_URL=${{ env.FRONTEND_BASE_URL }}
             BACKEND_API_BASE_URL=${{ env.BACKEND_API_BASE_URL }}
@@ -221,6 +223,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
           build-args: |
             FRONTEND_BASE_URL=${{ env.FRONTEND_BASE_URL }}
             BACKEND_API_BASE_URL=${{ env.BACKEND_API_BASE_URL }}

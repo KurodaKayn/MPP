@@ -282,10 +282,16 @@ export function ProjectCollaborationPanel({
           {permissionSources.length > 0 ? (
             <div className="mb-4 flex flex-wrap gap-2">
               {permissionSources.map((source, index) => (
-                <Badge key={`${source.source}-${source.role}-${index}`} variant="outline">
-                  {t(`content.collaboration.permissionSource.${source.source}`, {
-                    defaultValue: source.source,
-                  })}
+                <Badge
+                  key={`${source.source}-${source.role}-${index}`}
+                  variant="outline"
+                >
+                  {t(
+                    `content.collaboration.permissionSource.${source.source}`,
+                    {
+                      defaultValue: source.source,
+                    },
+                  )}
                   {" - "}
                   {t(`content.header.role.${source.role}`, {
                     defaultValue: source.role,

@@ -1,8 +1,5 @@
 import type { NextRequest } from "next/server";
-import {
-  type ApiRouteContext,
-  proxyApiRequest,
-} from "@/app/api/_lib/proxy";
+import { type ApiRouteContext, proxyApiRequest } from "@/app/api/_lib/proxy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

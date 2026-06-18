@@ -21,10 +21,7 @@ import {
   updateDashboardProject,
   updateProjectCollaborator,
 } from "./api";
-import {
-  jsonResponse,
-  setupDashboardApiTest,
-} from "./api-test-utils";
+import { jsonResponse, setupDashboardApiTest } from "./api-test-utils";
 
 describe("dashboard project api", () => {
   setupDashboardApiTest();
