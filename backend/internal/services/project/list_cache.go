@@ -14,6 +14,7 @@ import (
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/cachettl"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 )
 
@@ -185,7 +186,7 @@ func (s *Service) refreshDashboardProjectListCache(ctx context.Context, cacheKey
 	encoded, err := json.Marshal(payload)
 	if err == nil {
 		_ = redisdegrade.Do(s.projectListGuard, func() error {
-			return s.cache.Set(ctx, cacheKey, encoded, s.cacheTTL).Err()
+			return s.cache.Set(ctx, cacheKey, encoded, cachettl.Jitter(s.cacheTTL, cacheKey)).Err()
 		})
 	}
 	return resp, nil
