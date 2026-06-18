@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/golang-jwt/jwt/v5"
@@ -136,6 +137,41 @@ func TestRateLimitConfigFromEnvHonorsDeploymentSwitches(t *testing.T) {
 	require.False(t, config.Enabled)
 	require.Equal(t, "custom:limits", config.KeyPrefix)
 	require.Equal(t, DefaultRateLimitConfig(nil).AIUserPerMinute, config.AIUserPerMinute)
+}
+
+func TestApplicationRateLimiterFailsOpenWhenRedisIsDegraded(t *testing.T) {
+	t.Setenv("APP_RATE_LIMIT_FAIL_OPEN", "true")
+	t.Setenv("REDIS_DEGRADE_RATE_LIMIT_FAILURE_THRESHOLD", "2")
+	t.Setenv("REDIS_DEGRADE_RATE_LIMIT_COOLDOWN", "1s")
+
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+
+	config, err := RateLimitConfigFromEnv(client)
+	require.NoError(t, err)
+	config.GeneralUserPerMinute = 1
+
+	userID := uuid.New()
+	require.Equal(t, http.StatusOK, performRateLimitedRequest(t, config, userID, "", http.MethodGet, "/api/user/dashboard/stats"))
+
+	server.SetError("LOADING Redis is loading the dataset in memory")
+	status, headers, _ := performRateLimitedRequestWithDetails(t, config, userID, "", http.MethodGet, "/api/user/dashboard/stats")
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "true", headers.Get("X-RateLimit-Degraded"))
+
+	status, headers, _ = performRateLimitedRequestWithDetails(t, config, userID, "", http.MethodGet, "/api/user/dashboard/stats")
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, "true", headers.Get("X-RateLimit-Degraded"))
+
+	server.SetError("")
+	time.Sleep(1100 * time.Millisecond)
+
+	status, _, body := performRateLimitedRequestWithDetails(t, config, userID, "", http.MethodGet, "/api/user/dashboard/stats")
+	require.Equal(t, http.StatusTooManyRequests, status)
+	require.Contains(t, body, `"code":"rate_limited"`)
 }
 
 func setupRateLimitRedis(t *testing.T) *redis.Client {
