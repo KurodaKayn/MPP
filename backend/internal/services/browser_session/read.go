@@ -82,7 +82,7 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 		if err := s.CancelSession(ctx, userID, id); err != nil {
 			return nil, err
 		}
-		if s.redisClient != nil {
+		if s.continuityRedisClient != nil || s.coordinationRedisClient != nil {
 			return nil, ErrSessionGone
 		}
 		session.Status = models.BrowserSessionStatusExpired
@@ -109,7 +109,7 @@ func (s *BrowserSessionService) GetSession(ctx context.Context, userID uuid.UUID
 		if err != nil {
 			return nil, err
 		}
-		if s.redisClient == nil {
+		if s.coordinationRedisClient == nil {
 			if err := s.writerDB(ctx).Model(&session).Updates(map[string]any{
 				"connect_token_hash":       tokenHash,
 				"connect_token_expires_at": tokenExpiresAt,
@@ -154,7 +154,7 @@ func (s *BrowserSessionService) GetStreamEndpoint(ctx context.Context, userID uu
 	}
 
 	tokenHash := HashStreamToken(token)
-	if s.redisClient != nil {
+	if s.coordinationRedisClient != nil {
 		meta, ok, err := s.readRedisStreamToken(ctx, id, tokenHash, consume)
 		if err != nil {
 			return "", err

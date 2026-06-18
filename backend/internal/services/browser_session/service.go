@@ -72,7 +72,8 @@ type BrowserSessionService struct {
 	workerClient                     publisher.BrowserWorkerClient
 	cookieStore                      *publisher.CookieStore
 	adapters                         map[string]publisher.RemoteBrowserPlatformAdapter
-	redisClient                      *redis.Client
+	coordinationRedisClient          *redis.Client
+	continuityRedisClient            *redis.Client
 	quotaConfig                      BrowserSessionQuotaConfig
 	dashboardAccountCacheInvalidator DashboardAccountCacheInvalidator
 }
@@ -134,7 +135,7 @@ func (s *BrowserSessionService) RegisterSession(ctx context.Context, session *mo
 		return err
 	}
 
-	if s.redisClient != nil {
+	if s.continuityRedisClient != nil || s.coordinationRedisClient != nil {
 		// Register in Redis live sessions
 		if err := s.saveRedisLiveSession(ctx, browserSessionLiveState{
 			SessionID:        session.ID,
@@ -149,18 +150,32 @@ func (s *BrowserSessionService) RegisterSession(ctx context.Context, session *mo
 		}
 
 		// Register token in Redis
-		_, err := s.rotateRedisStreamToken(ctx, session.ID, session.UserID, session.Platform, tokenHash, session.ExpiresAt)
-		return err
+		if s.coordinationRedisClient != nil {
+			_, err := s.rotateRedisStreamToken(ctx, session.ID, session.UserID, session.Platform, tokenHash, session.ExpiresAt)
+			return err
+		}
 	}
 
 	return nil
 }
 
 func (s *BrowserSessionService) UseRedis(client *redis.Client) {
+	s.UseRedisCoordination(client)
+	s.UseRedisContinuity(client)
+}
+
+func (s *BrowserSessionService) UseRedisCoordination(client *redis.Client) {
 	if client == nil {
 		return
 	}
-	s.redisClient = client
+	s.coordinationRedisClient = client
+}
+
+func (s *BrowserSessionService) UseRedisContinuity(client *redis.Client) {
+	if client == nil {
+		return
+	}
+	s.continuityRedisClient = client
 }
 
 func (s *BrowserSessionService) UseDashboardAccountCacheInvalidator(invalidator DashboardAccountCacheInvalidator) {

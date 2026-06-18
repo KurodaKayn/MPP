@@ -32,7 +32,7 @@ func (s *BrowserSessionService) rotateRedisStreamToken(ctx context.Context, sess
 	if ttl <= 0 {
 		return time.Time{}, ErrInvalidStreamToken
 	}
-	if s.redisClient == nil {
+	if s.coordinationRedisClient == nil {
 		return expiresAt, nil
 	}
 	meta := browserStreamTokenMeta{
@@ -56,14 +56,14 @@ redis.call("SET", KEYS[2], ARGV[2], "PX", ARGV[3])
 redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[3])
 return 1
 `
-	return expiresAt, s.redisClient.Eval(ctx, script, []string{
+	return expiresAt, s.coordinationRedisClient.Eval(ctx, script, []string{
 		browserSessionStreamCurrentKey(sessionID),
 		browserSessionStreamTokenKey(sessionID, tokenHash),
 	}, tokenHash, payload, ttl.Milliseconds(), browserSessionStreamTokenKeyPrefixFor(sessionID)).Err()
 }
 
 func (s *BrowserSessionService) readRedisStreamToken(ctx context.Context, sessionID uuid.UUID, tokenHash string, consume bool) (browserStreamTokenMeta, bool, error) {
-	if s.redisClient == nil {
+	if s.coordinationRedisClient == nil {
 		return browserStreamTokenMeta{}, false, nil
 	}
 	tokenKey := browserSessionStreamTokenKey(sessionID, tokenHash)
@@ -82,7 +82,7 @@ end
 return payload
 `
 		var result any
-		result, err = s.redisClient.Eval(ctx, script, []string{tokenKey, browserSessionStreamCurrentKey(sessionID)}, tokenHash).Result()
+		result, err = s.coordinationRedisClient.Eval(ctx, script, []string{tokenKey, browserSessionStreamCurrentKey(sessionID)}, tokenHash).Result()
 		if err == nil {
 			switch value := result.(type) {
 			case string:
@@ -94,7 +94,7 @@ return payload
 			}
 		}
 	} else {
-		raw, err = s.redisClient.Get(ctx, tokenKey).Bytes()
+		raw, err = s.coordinationRedisClient.Get(ctx, tokenKey).Bytes()
 	}
 	if errors.Is(err, redis.Nil) {
 		return browserStreamTokenMeta{}, false, nil
@@ -110,10 +110,10 @@ return payload
 }
 
 func (s *BrowserSessionService) deleteRedisStreamToken(ctx context.Context, sessionID uuid.UUID) error {
-	if s.redisClient == nil {
+	if s.coordinationRedisClient == nil {
 		return nil
 	}
-	currentHash, err := s.redisClient.Get(ctx, browserSessionStreamCurrentKey(sessionID)).Result()
+	currentHash, err := s.coordinationRedisClient.Get(ctx, browserSessionStreamCurrentKey(sessionID)).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return err
 	}
@@ -124,7 +124,7 @@ func (s *BrowserSessionService) deleteRedisStreamToken(ctx context.Context, sess
 		keys = append(keys, currentTokenKey)
 		seen[currentTokenKey] = struct{}{}
 	}
-	iter := s.redisClient.Scan(ctx, 0, browserSessionStreamTokenKeyPrefixFor(sessionID)+"*", 100).Iterator()
+	iter := s.coordinationRedisClient.Scan(ctx, 0, browserSessionStreamTokenKeyPrefixFor(sessionID)+"*", 100).Iterator()
 	for iter.Next(ctx) {
 		key := iter.Val()
 		if _, ok := seen[key]; ok {
@@ -136,14 +136,14 @@ func (s *BrowserSessionService) deleteRedisStreamToken(ctx context.Context, sess
 	if err := iter.Err(); err != nil {
 		return err
 	}
-	return s.redisClient.Del(ctx, keys...).Err()
+	return s.coordinationRedisClient.Del(ctx, keys...).Err()
 }
 
 func (s *BrowserSessionService) hasCurrentStreamToken(ctx context.Context, session models.RemoteBrowserSession) (bool, error) {
-	if s.redisClient == nil {
+	if s.coordinationRedisClient == nil {
 		return session.ConnectTokenHash != "" && StreamTokenValidUntil(session).After(time.Now()), nil
 	}
-	currentHash, err := s.redisClient.Get(ctx, browserSessionStreamCurrentKey(session.ID)).Result()
+	currentHash, err := s.coordinationRedisClient.Get(ctx, browserSessionStreamCurrentKey(session.ID)).Result()
 	if errors.Is(err, redis.Nil) {
 		return false, nil
 	}
@@ -153,7 +153,7 @@ func (s *BrowserSessionService) hasCurrentStreamToken(ctx context.Context, sessi
 	if currentHash == "" {
 		return false, nil
 	}
-	if err := s.redisClient.Get(ctx, browserSessionStreamTokenKey(session.ID, currentHash)).Err(); errors.Is(err, redis.Nil) {
+	if err := s.coordinationRedisClient.Get(ctx, browserSessionStreamTokenKey(session.ID, currentHash)).Err(); errors.Is(err, redis.Nil) {
 		return false, nil
 	} else if err != nil {
 		return false, err
