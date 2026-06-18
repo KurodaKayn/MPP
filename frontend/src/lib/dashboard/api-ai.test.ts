@@ -7,10 +7,7 @@ import {
   streamAIContentEdit,
   streamAIPrepublishEdit,
 } from "./api";
-import {
-  setupDashboardApiTest,
-  textStreamResponse,
-} from "./api-test-utils";
+import { setupDashboardApiTest, textStreamResponse } from "./api-test-utils";
 
 describe("dashboard ai api", () => {
   setupDashboardApiTest();

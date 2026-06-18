@@ -222,10 +222,7 @@ export function useAuthPageController() {
   }, [t]);
 
   const refreshBrowserSession = useCallback(
-    async (
-      sessionID: string,
-      options: { replaceStreamURL?: boolean } = {},
-    ) => {
+    async (sessionID: string, options: { replaceStreamURL?: boolean } = {}) => {
       const nextSession = await getBrowserSession(sessionID);
       setBrowserSession(nextSession);
       if (nextSession.stream_url) {
@@ -260,14 +257,13 @@ export function useAuthPageController() {
 
     let cancelled = false;
     const interval = window.setInterval(() => {
-      void refreshBrowserSession(browserSession.session_id)
-        .catch((error) => {
-          if (!cancelled) {
-            setBrowserError(
-              getErrorDescription(error, t("auth.toast.sessionRefreshFailed")),
-            );
-          }
-        });
+      void refreshBrowserSession(browserSession.session_id).catch((error) => {
+        if (!cancelled) {
+          setBrowserError(
+            getErrorDescription(error, t("auth.toast.sessionRefreshFailed")),
+          );
+        }
+      });
     }, 2500);
 
     return () => {

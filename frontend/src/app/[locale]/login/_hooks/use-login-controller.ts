@@ -179,7 +179,9 @@ export function useLoginController() {
     }
   };
 
-  const handleResetPasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleResetPasswordSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
     const normalizedEmail = forgotPasswordEmail.trim();
 

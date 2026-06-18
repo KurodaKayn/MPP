@@ -13,10 +13,7 @@ import {
   waitForProjectPublications,
 } from "./api";
 import type { ProjectPublications } from "./api";
-import {
-  jsonResponse,
-  setupDashboardApiTest,
-} from "./api-test-utils";
+import { jsonResponse, setupDashboardApiTest } from "./api-test-utils";
 
 describe("dashboard publication api", () => {
   setupDashboardApiTest();
