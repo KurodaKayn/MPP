@@ -127,10 +127,10 @@ func NewRuntime(ctx context.Context, config RuntimeWiringConfig) (*Runtime, erro
 		runtime.RedisQueue = redisClients.Queue
 		runtime.RedisSessionContinuity = redisClients.Session
 
-		dashboardService.AccountSettings.UseRedisStateStore(redisClients.Session)
+		dashboardService.UseRedisStateStore(redisClients.Session)
 		dashboardService.UseRedisCache(redisClients.Cache)
 		dashboardService.UseRedisQueue(redisClients.Queue)
-		dashboardService.Publisher.UseRedisCoordination(redisClients.Coordination)
+		dashboardService.UseRedisCoordination(redisClients.Coordination)
 	}
 
 	workerClient := NewBrowserWorkerClientFromEnv()

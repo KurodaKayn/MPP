@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -296,20 +295,6 @@ func (s *BrowserSessionService) removeRedisCleanupMember(ctx context.Context, se
 		return nil
 	}
 	return s.continuityRedisClient.ZRem(ctx, browserSessionCleanupKey, sessionID.String()).Err()
-}
-
-func formatBrowserSessionCleanupError(err error) string {
-	if err == nil {
-		return ""
-	}
-	parts := strings.Split(err.Error(), "\n")
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			return part
-		}
-	}
-	return err.Error()
 }
 
 func (s *BrowserSessionService) recoverRedisActiveSessionLock(ctx context.Context, userID uuid.UUID, platform string, now time.Time) (bool, error) {

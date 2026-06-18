@@ -119,7 +119,7 @@ func NewClientSetFromEnv(ctx context.Context) (*ClientSet, error) {
 	for _, builder := range builders {
 		client, err := New(ctx, config, builder.role)
 		if err != nil {
-			clientSet.Close()
+			_ = clientSet.Close()
 			return nil, err
 		}
 		*builder.dst = client
