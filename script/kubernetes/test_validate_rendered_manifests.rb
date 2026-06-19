@@ -170,6 +170,52 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_retired_production_redis_ha_package_rejects_leftover_support_resources
+    rendered = mutated_render(PRODUCTION_REDIS_HA_PACKAGE) do |documents|
+      documents.concat(
+        [
+          {
+            "apiVersion" => "v1",
+            "kind" => "ConfigMap",
+            "metadata" => {
+              "name" => "redis-ha-config",
+              "namespace" => "mpp-system",
+            },
+            "data" => {},
+          },
+          {
+            "apiVersion" => "v1",
+            "kind" => "Service",
+            "metadata" => {
+              "name" => "redis-ha-primary-headless",
+              "namespace" => "mpp-system",
+            },
+            "spec" => {},
+          },
+          {
+            "apiVersion" => "networking.k8s.io/v1",
+            "kind" => "NetworkPolicy",
+            "metadata" => {
+              "name" => "redis-ha-internal-access",
+              "namespace" => "mpp-system",
+            },
+            "spec" => {},
+          },
+        ],
+      )
+    end
+
+    _stdout, stderr, status = run_validator(PRODUCTION_REDIS_HA_PACKAGE, rendered.path)
+
+    refute status.success?, "retired production Redis HA validation unexpectedly accepted support resources"
+    assert_includes stderr, "only ConfigMap/mpp-system/redis-ha-production-retired is allowed"
+    assert_includes stderr, "ConfigMap/mpp-system/redis-ha-config"
+    assert_includes stderr, "Service/mpp-system/redis-ha-primary-headless"
+    assert_includes stderr, "NetworkPolicy/mpp-system/redis-ha-internal-access"
+  ensure
+    rendered&.unlink
+  end
+
   def test_production_managed_validation_accepts_promoted_provider_namespace
     image_namespace = "registry.internal.example/mpp"
     git_sha = "1234567890abcdef1234567890abcdef12345678"
