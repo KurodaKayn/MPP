@@ -5,6 +5,7 @@ resources:
   - ../../app-baseline
   - ../../data-services/self-hosted
   - ../../data-services/redis-ha-nonprod
+  - ../../data-services/redis-cluster-nonprod
 
 patches:
   - path: runtime-image-patch.yaml

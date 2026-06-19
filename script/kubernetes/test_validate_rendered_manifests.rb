@@ -17,6 +17,7 @@ class ValidateRenderedManifestsTest < Minitest::Test
   PRODUCTION_MANAGED_OVERLAY = "deploy/kubernetes/overlays/production-managed"
   PRODUCTION_SELF_HOSTED_HA_OVERLAY = "deploy/kubernetes/overlays/production-self-hosted-ha"
   PRODUCTION_REDIS_HA_PACKAGE = "deploy/kubernetes/data-services/redis-ha-production"
+  NONPROD_REDIS_CLUSTER_PACKAGE = "deploy/kubernetes/data-services/redis-cluster-nonprod"
 
   def test_deployable_validation_rejects_checked_in_staging_examples
     STAGING_OVERLAYS.each do |overlay|
@@ -55,6 +56,17 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
+  def test_redis_cluster_nonprod_package_validates_for_local_render
+    overlay = NONPROD_REDIS_CLUSTER_PACKAGE
+    rendered = render_overlay(overlay)
+
+    _stdout, stderr, status = run_validator(overlay, rendered.path)
+
+    assert status.success?, "non-prod Redis Cluster validation failed: #{stderr}"
+  ensure
+    rendered&.unlink
+  end
+
   def test_staging_self_hosted_keeps_existing_redis_traffic_while_ha_renders
     rendered = render_overlay("deploy/kubernetes/overlays/staging-self-hosted")
     documents = parse_documents(File.read(rendered.path))
@@ -70,6 +82,26 @@ class ValidateRenderedManifestsTest < Minitest::Test
     assert_equal 1, ha_primary.dig("spec", "replicas")
     assert_equal 2, ha_replica.dig("spec", "replicas")
     assert_equal 3, ha_sentinel.dig("spec", "replicas")
+  ensure
+    rendered&.unlink
+  end
+
+  def test_redis_cluster_package_has_cluster_bootstrap_and_backup_surface
+    rendered = render_overlay(NONPROD_REDIS_CLUSTER_PACKAGE)
+    documents = parse_documents(File.read(rendered.path))
+
+    service = document(documents, "Service", "redis-cluster", "mpp-system")
+    headless = document(documents, "Service", "redis-cluster-headless", "mpp-system")
+    bootstrap = document(documents, "Job", "redis-cluster-bootstrap", "mpp-system")
+    exporter = document(documents, "Deployment", "redis-cluster-exporter", "mpp-system")
+    backup = document(documents, "CronJob", "redis-cluster-backup", "mpp-system")
+
+    assert_equal "redis-cluster", service.dig("spec", "selector", "app.kubernetes.io/component")
+    assert_equal "None", headless.dig("spec", "clusterIP")
+    assert_equal 6, document(documents, "StatefulSet", "redis-cluster", "mpp-system").dig("spec", "replicas")
+    assert_equal "oliver006/redis_exporter:v1.86.0", exporter.dig("spec", "template", "spec", "containers", 0, "image")
+    assert_equal "Forbid", backup.dig("spec", "concurrencyPolicy")
+    assert_equal 6, bootstrap.dig("spec", "backoffLimit")
   ensure
     rendered&.unlink
   end

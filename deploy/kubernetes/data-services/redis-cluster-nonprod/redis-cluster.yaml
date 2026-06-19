@@ -1,0 +1,547 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-cluster
+    app.kubernetes.io/part-of: mpp
+spec:
+  selector:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-cluster
+  ports:
+    - name: redis-tls
+      port: 6379
+      targetPort: redis-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster-headless
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-cluster
+    app.kubernetes.io/part-of: mpp
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-cluster
+  ports:
+    - name: redis-tls
+      port: 6379
+      targetPort: redis-tls
+    - name: cluster-bus
+      port: 16379
+      targetPort: cluster-bus
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster-exporter
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-cluster-exporter
+    app.kubernetes.io/part-of: mpp
+spec:
+  selector:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-cluster-exporter
+  ports:
+    - name: metrics
+      port: 9121
+      targetPort: metrics
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-cluster-config
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-cluster
+    app.kubernetes.io/part-of: mpp
+data:
+  redis.conf: |
+    dir /data
+    dbfilename dump.rdb
+    protected-mode yes
+
+    port 0
+    tls-port 6379
+    tls-cert-file /tls/tls.crt
+    tls-key-file /tls/tls.key
+    tls-ca-cert-file /tls/ca.crt
+    tls-auth-clients yes
+    tls-replication yes
+    tls-cluster yes
+
+    cluster-enabled yes
+    cluster-config-file nodes.conf
+    cluster-node-timeout 5000
+    cluster-require-full-coverage yes
+    cluster-allow-reads-when-down no
+    cluster-migration-barrier 1
+
+    maxmemory 384mb
+    maxmemory-policy noeviction
+
+    timeout 0
+    tcp-keepalive 300
+
+    appendonly yes
+    appendfsync everysec
+    appenddirname appendonlydir
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+
+    save 900 1
+    save 300 10
+    save 60 10000
+
+    slowlog-log-slower-than 10000
+    slowlog-max-len 256
+    latency-monitor-threshold 100
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-cluster
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-cluster
+    app.kubernetes.io/part-of: mpp
+spec:
+  podManagementPolicy: Parallel
+  serviceName: redis-cluster-headless
+  replicas: 6
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: redis-cluster
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: redis-cluster
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: mpp
+                    app.kubernetes.io/component: redis-cluster
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: mpp
+              app.kubernetes.io/component: redis-cluster
+      containers:
+        - name: redis
+          image: docker.io/library/redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: redis-tls
+              containerPort: 6379
+            - name: cluster-bus
+              containerPort: 16379
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: REDIS_PASSWORD
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          command:
+            - sh
+            - -ec
+          args:
+            - |
+              announce="${POD_NAME}.redis-cluster-headless.${POD_NAMESPACE}.svc.cluster.local"
+              exec redis-server /usr/local/etc/redis/redis.conf \
+                --requirepass "$REDIS_PASSWORD" \
+                --masterauth "$REDIS_PASSWORD" \
+                --cluster-announce-hostname "$announce" \
+                --cluster-announce-tls-port 6379 \
+                --cluster-announce-bus-port 16379
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -ec
+                  - |
+                    redis-cli --tls --cacert /tls/ca.crt --no-auth-warning -a "$REDIS_PASSWORD" SHUTDOWN SAVE || true
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - |
+                  redis_cli() {
+                    redis-cli --tls --cacert /tls/ca.crt --raw --no-auth-warning -a "$REDIS_PASSWORD" "$@"
+                  }
+                  redis_cli PING | grep -q PONG
+                  redis_cli CLUSTER INFO | tr -d '\r' | grep -q '^cluster_state:ok$'
+                  redis_cli CLUSTER SLOTS | grep -q 16383
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 18
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -ec
+                - redis-cli --tls --cacert /tls/ca.crt --no-auth-warning -a "$REDIS_PASSWORD" PING | grep -q PONG
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: redis-cluster-config
+              mountPath: /usr/local/etc/redis
+              readOnly: true
+            - name: redis-cluster-tls
+              mountPath: /tls
+              readOnly: true
+            - name: redis-cluster-data
+              mountPath: /data
+      volumes:
+        - name: redis-cluster-config
+          configMap:
+            name: redis-cluster-config
+        - name: redis-cluster-tls
+          secret:
+            secretName: mpp-redis-cluster-tls
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-cluster-data
+        labels:
+          app.kubernetes.io/name: mpp
+          app.kubernetes.io/component: redis-cluster
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redis-cluster-bootstrap
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-cluster-bootstrap
+    app.kubernetes.io/part-of: mpp
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: redis-cluster-bootstrap
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bootstrap
+          image: docker.io/library/redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: REDIS_PASSWORD
+            - name: REDIS_CLUSTER_NODES
+              value: >-
+                redis-cluster-0.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+                redis-cluster-1.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+                redis-cluster-2.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+                redis-cluster-3.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+                redis-cluster-4.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+                redis-cluster-5.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+          command:
+            - sh
+            - -ec
+          args:
+            - |
+              redis_cli() {
+                redis-cli --tls --cacert /tls/ca.crt --no-auth-warning -a "$REDIS_PASSWORD" "$@"
+              }
+              first_node="${REDIS_CLUSTER_NODES%% *}"
+              for node in $REDIS_CLUSTER_NODES; do
+                until redis_cli -h "${node%:*}" -p "${node##*:}" PING | grep -q PONG; do
+                  sleep 2
+                done
+              done
+              if redis_cli -h "${first_node%:*}" -p "${first_node##*:}" CLUSTER INFO 2>/dev/null | tr -d '\r' | grep -q '^cluster_state:ok$'; then
+                exit 0
+              fi
+              # redis-cluster-0.redis-cluster-headless.mpp-system.svc.cluster.local is the bootstrap anchor.
+              set -- $REDIS_CLUSTER_NODES
+              redis-cli --tls --cacert /tls/ca.crt --no-auth-warning -a "$REDIS_PASSWORD" \
+                --cluster create \
+                "$1" "$2" "$3" "$4" "$5" "$6" \
+                --cluster-replicas 1 \
+                --cluster-yes
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: redis-cluster-tls
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: redis-cluster-tls
+          secret:
+            secretName: mpp-redis-cluster-tls
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-cluster-exporter
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-cluster-exporter
+    app.kubernetes.io/part-of: mpp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mpp
+      app.kubernetes.io/component: redis-cluster-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mpp
+        app.kubernetes.io/component: redis-cluster-exporter
+        app.kubernetes.io/part-of: mpp
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 59000
+        runAsGroup: 59000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis-cluster-exporter
+          image: oliver006/redis_exporter:v1.86.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: metrics
+              containerPort: 9121
+          env:
+            - name: REDIS_ADDR
+              value: rediss://redis-cluster-0.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mpp-app-secrets
+                  key: REDIS_PASSWORD
+            - name: REDIS_EXPORTER_IS_CLUSTER
+              value: "true"
+            - name: REDIS_EXPORTER_TLS_CLIENT_KEY_FILE
+              value: /tls/tls.key
+            - name: REDIS_EXPORTER_TLS_CLIENT_CERT_FILE
+              value: /tls/tls.crt
+            - name: REDIS_EXPORTER_TLS_CA_CERT_FILE
+              value: /tls/ca.crt
+            - name: REDIS_EXPORTER_LOG_FORMAT
+              value: json
+            - name: REDIS_EXPORTER_PING_ON_CONNECT
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: redis-cluster-tls
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: redis-cluster-tls
+          secret:
+            secretName: mpp-redis-cluster-tls
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redis-cluster-backup
+  namespace: mpp-system
+  labels:
+    app.kubernetes.io/name: mpp
+    app.kubernetes.io/component: redis-cluster-backup
+    app.kubernetes.io/part-of: mpp
+spec:
+  schedule: "17 */6 * * *"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: mpp
+            app.kubernetes.io/component: redis-cluster-backup
+            app.kubernetes.io/part-of: mpp
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: redis-cluster-backup
+              image: docker.io/library/redis:7-alpine
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: REDIS_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mpp-app-secrets
+                      key: REDIS_PASSWORD
+                - name: REDIS_CLUSTER_NODES
+                  value: >-
+                    redis-cluster-0.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+                    redis-cluster-1.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+                    redis-cluster-2.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+                    redis-cluster-3.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+                    redis-cluster-4.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+                    redis-cluster-5.redis-cluster-headless.mpp-system.svc.cluster.local:6379
+              command:
+                - sh
+                - -ec
+              args:
+                - |
+                  backup_dir="/backups/redis-cluster/$(date -u +%Y%m%dT%H%M%SZ)"
+                  mkdir -p "$backup_dir"
+                  first_node="${REDIS_CLUSTER_NODES%% *}"
+                  # redis-cluster-0.redis-cluster-headless.mpp-system.svc.cluster.local is the backup anchor.
+                  for node in $REDIS_CLUSTER_NODES; do
+                    host="${node%:*}"
+                    port="${node##*:}"
+                    redis-cli --tls --cacert /tls/ca.crt --no-auth-warning -a "$REDIS_PASSWORD" -h "$host" -p "$port" BGSAVE SCHEDULE || true
+                    redis-cli --tls --cacert /tls/ca.crt --no-auth-warning -a "$REDIS_PASSWORD" -h "$host" -p "$port" CLUSTER NODES > "$backup_dir/${host}.cluster-nodes.txt"
+                  done
+                  echo "$first_node" > "$backup_dir/cluster-source.txt"
+                  echo "Redis Cluster backup marker written to $backup_dir"
+              resources:
+                requests:
+                  cpu: 25m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+              volumeMounts:
+                - name: redis-cluster-tls
+                  mountPath: /tls
+                  readOnly: true
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: redis-cluster-tls
+              secret:
+                secretName: mpp-redis-cluster-tls
+            - name: backups
+              persistentVolumeClaim:
+                claimName: mpp-data-backups

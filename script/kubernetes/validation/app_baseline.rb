@@ -399,6 +399,7 @@ module KubernetesValidation
       if context.path_suffix?("deploy/kubernetes/overlays/staging-self-hosted") ||
          context.path_suffix?("deploy/kubernetes/overlays/production-self-hosted-ha")
         expected.concat(SELF_HOSTED_DATA_NETWORK_POLICIES)
+        expected << "redis-cluster-internal-access" if context.path_suffix?("deploy/kubernetes/overlays/staging-self-hosted")
       end
 
       actual = context.documents

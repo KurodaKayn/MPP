@@ -52,6 +52,10 @@ if context.path_suffix?("deploy/kubernetes/data-services/redis-ha-nonprod")
   KubernetesValidation::DataServices.validate_redis_ha_nonprod(context)
 end
 
+if context.path_suffix?("deploy/kubernetes/data-services/redis-cluster-nonprod")
+  KubernetesValidation::DataServices.validate_redis_cluster_nonprod(context)
+end
+
 if context.path_suffix?("deploy/kubernetes/data-services/redis-ha-production")
   KubernetesValidation::EnvironmentOverlays.validate_retired_redis_ha_production(context)
 end
