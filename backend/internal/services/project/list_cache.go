@@ -16,11 +16,12 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/cachettl"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
-	"github.com/kurodakayn/mpp-backend/internal/pkg/rediskey"
 )
 
 const dashboardProjectListCachePrefix = "mpp:dashboard:projects:list:v2"
-const dashboardProjectListCacheGenerationKey = "mpp:dashboard:projects:list-generation:v2:{dashboard:projects-list}"
+const dashboardProjectListCacheHashTag = "{dashboard:projects-list}"
+const dashboardProjectListCacheGenerationKey = "mpp:dashboard:projects:list-generation:v2:" + dashboardProjectListCacheHashTag
+const dashboardProjectListCachePattern = dashboardProjectListCachePrefix + ":" + dashboardProjectListCacheHashTag + ":*"
 const dashboardProjectListDegradedGeneration = "degraded"
 const dashboardProjectListRefreshTimeout = 15 * time.Second
 const dashboardProjectListInvalidateTimeout = 2 * time.Second
@@ -253,7 +254,7 @@ func deleteDashboardProjectListCacheKeys(ctx context.Context, client redis.Unive
 			next uint64
 		}
 		result, err := redisdegrade.CallWork(guard, "cache_invalidate", func() (scanResult, error) {
-			keys, next, err := client.Scan(ctx, cursor, dashboardProjectListCachePrefix+":*", 100).Result()
+			keys, next, err := client.Scan(ctx, cursor, dashboardProjectListCachePattern, 100).Result()
 			return scanResult{keys: keys, next: next}, err
 		})
 		if err != nil {
@@ -297,7 +298,7 @@ func dashboardProjectListCacheKey(params dashboardProjectListCacheParams) string
 		return fmt.Sprintf("%s:%d:%d", dashboardProjectListCachePrefix, params.Page, params.Limit)
 	}
 	sum := sha256.Sum256(encoded)
-	return dashboardProjectListCachePrefix + ":" + rediskey.Tag("dashboard", "projects-list") + ":" + hex.EncodeToString(sum[:])
+	return dashboardProjectListCachePrefix + ":" + dashboardProjectListCacheHashTag + ":" + hex.EncodeToString(sum[:])
 }
 
 func uuidStringValue(value *uuid.UUID) string {
