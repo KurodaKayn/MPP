@@ -16,10 +16,11 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/cachettl"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/rediskey"
 )
 
 const dashboardProjectListCachePrefix = "mpp:dashboard:projects:list:v2"
-const dashboardProjectListCacheGenerationKey = "mpp:dashboard:projects:list-generation:v2"
+const dashboardProjectListCacheGenerationKey = "mpp:dashboard:projects:list-generation:v2:{dashboard:projects-list}"
 const dashboardProjectListDegradedGeneration = "degraded"
 const dashboardProjectListRefreshTimeout = 15 * time.Second
 const dashboardProjectListInvalidateTimeout = 2 * time.Second
@@ -294,7 +295,7 @@ func dashboardProjectListCacheKey(params dashboardProjectListCacheParams) string
 		return fmt.Sprintf("%s:%d:%d", dashboardProjectListCachePrefix, params.Page, params.Limit)
 	}
 	sum := sha256.Sum256(encoded)
-	return dashboardProjectListCachePrefix + ":" + hex.EncodeToString(sum[:])
+	return dashboardProjectListCachePrefix + ":" + rediskey.Tag("dashboard", "projects-list") + ":" + hex.EncodeToString(sum[:])
 }
 
 func uuidStringValue(value *uuid.UUID) string {
