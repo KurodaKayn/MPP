@@ -5,6 +5,7 @@ require "json"
 require "open3"
 require "optparse"
 require "shellwords"
+require "tempfile"
 require "time"
 require "timeout"
 
@@ -600,11 +601,14 @@ module RedisKeyspaceInventory
   end
 
   class RedisCliScanner
-    def initialize(addr:, password:, db:, tls:, scan_match:, scan_count:, max_keys:, command_timeout_seconds:)
+    def initialize(addr:, password:, db:, tls:, scan_match:, scan_count:, max_keys:, command_timeout_seconds:, tls_ca_cert: "", tls_ca_file: "", tls_server_name: "")
       @addr = addr
       @password = password
       @db = db
       @tls = tls
+      @tls_ca_cert = tls_ca_cert.to_s
+      @tls_ca_file = tls_ca_file.to_s
+      @tls_server_name = tls_server_name.to_s
       @scan_match = scan_match
       @scan_count = scan_count
       @max_keys = max_keys
@@ -613,24 +617,32 @@ module RedisKeyspaceInventory
 
     def scan
       samples = []
-      base_args = redis_cli_base_args
-      cursor = "0"
-      loop do
-        cursor, keys = scan_page(base_args, cursor)
-        keys.each do |key|
-          samples << key_sample(base_args, key)
-          return samples if samples.length >= @max_keys
+      with_inline_ca_file do |inline_ca_file|
+        base_args = redis_cli_base_args(inline_ca_file)
+        cursor = "0"
+        loop do
+          cursor, keys = scan_page(base_args, cursor)
+          keys.each do |key|
+            samples << key_sample(base_args, key)
+            return samples if samples.length >= @max_keys
+          end
+          break if cursor == "0"
         end
-        break if cursor == "0"
       end
       samples
     end
 
     private
 
-    def redis_cli_base_args
-      args = ["redis-cli", "-u", redis_url, "--raw"]
-      args << "--tls" if @tls && !redis_url.start_with?("rediss://")
+    def redis_cli_base_args(inline_ca_file)
+      url = redis_url
+      tls_enabled = @tls || url.start_with?("rediss://")
+      args = ["redis-cli", "-u", url, "--raw"]
+      args << "--tls" if @tls && !url.start_with?("rediss://")
+      ca_file = redis_tls_ca_file(inline_ca_file)
+      args.concat(["--cacert", ca_file]) if ca_file && tls_enabled
+      server_name = @tls_server_name.strip
+      args.concat(["--sni", server_name]) if server_name != "" && tls_enabled
       args
     end
 
@@ -648,6 +660,27 @@ module RedisKeyspaceInventory
       return with_db(raw) if raw.start_with?("redis://") || raw.start_with?("rediss://")
 
       with_db("#{scheme}://#{raw}")
+    end
+
+    def redis_tls_ca_file(inline_ca_file)
+      ca_file = @tls_ca_file.strip
+      return ca_file unless ca_file.empty?
+
+      inline_ca_file
+    end
+
+    def with_inline_ca_file
+      inline_ca = @tls_ca_cert.strip
+      if inline_ca.empty?
+        yield nil
+        return
+      end
+
+      Tempfile.create(["redis-ca", ".pem"]) do |file|
+        file.write(inline_ca)
+        file.flush
+        yield file.path
+      end
     end
 
     def with_db(url)
@@ -701,6 +734,9 @@ module RedisKeyspaceInventory
         password: ENV.fetch("REDIS_PASSWORD", ""),
         db: ENV.fetch("REDIS_DB", "0"),
         tls: env_flag?("REDIS_TLS"),
+        tls_ca_cert: ENV.fetch("REDIS_TLS_CA_CERT", ""),
+        tls_ca_file: ENV.fetch("REDIS_TLS_CA_FILE", ""),
+        tls_server_name: ENV.fetch("REDIS_TLS_SERVER_NAME", ""),
         scan_match: DEFAULT_SCAN_MATCH,
         scan_count: DEFAULT_BATCH_SIZE,
         max_keys: DEFAULT_MAX_KEYS,
@@ -743,6 +779,15 @@ module RedisKeyspaceInventory
         opts.on("--tls", "Use TLS when REDIS_ADDR is not already a rediss:// URL.") do
           @options[:tls] = true
         end
+        opts.on("--tls-ca-cert PEM", "Inline Redis TLS CA PEM. Defaults to REDIS_TLS_CA_CERT.") do |value|
+          @options[:tls_ca_cert] = value
+        end
+        opts.on("--tls-ca-file PATH", "Redis TLS CA PEM file. Defaults to REDIS_TLS_CA_FILE.") do |value|
+          @options[:tls_ca_file] = value
+        end
+        opts.on("--tls-server-name NAME", "Redis TLS SNI name. Defaults to REDIS_TLS_SERVER_NAME.") do |value|
+          @options[:tls_server_name] = value
+        end
         opts.on("--match PATTERN", "SCAN match pattern. Defaults to #{DEFAULT_SCAN_MATCH.inspect}.") do |value|
           @options[:scan_match] = value
         end
@@ -774,6 +819,9 @@ module RedisKeyspaceInventory
         password: @options.fetch(:password),
         db: @options.fetch(:db),
         tls: @options.fetch(:tls),
+        tls_ca_cert: @options.fetch(:tls_ca_cert),
+        tls_ca_file: @options.fetch(:tls_ca_file),
+        tls_server_name: @options.fetch(:tls_server_name),
         scan_match: @options.fetch(:scan_match),
         scan_count: @options.fetch(:scan_count),
         max_keys: @options.fetch(:max_keys),
