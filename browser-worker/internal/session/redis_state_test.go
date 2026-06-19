@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -145,6 +146,63 @@ func TestRedisConnectionConfigFromEnvUsesSentinelEndpoint(t *testing.T) {
 	require.Equal(t, redisDialerRetryTimeout, options.DialerRetryTimeout)
 }
 
+func TestRedisConnectionConfigFromEnvUsesClusterEndpoint(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(redisEndpointModeEnv, redisEndpointModeCluster)
+	t.Setenv(redisAddrEnv, " redis-cluster-0:6379,redis-cluster-1:6379 ")
+	t.Setenv(redisPasswordEnv, "redis-secret")
+	t.Setenv(redisTLSEnv, "true")
+	t.Setenv(redisTLSCACertEnv, testRedisCACertPEM)
+	t.Setenv(redisTLSServerNameEnv, "redis.internal.example")
+
+	config, err := redisConnectionConfigFromEnv()
+	require.NoError(t, err)
+
+	require.Equal(t, redisEndpointModeCluster, config.EndpointMode)
+	require.Equal(t, []string{"redis-cluster-0:6379", "redis-cluster-1:6379"}, config.ClusterAddrs)
+	require.Equal(t, "redis-secret", config.Password)
+	require.Zero(t, config.DB)
+
+	options := redisClusterOptions(config)
+	require.Equal(t, []string{"redis-cluster-0:6379", "redis-cluster-1:6379"}, options.Addrs)
+	require.Equal(t, "redis-secret", options.Password)
+	require.Equal(t, redisClusterMaxRedirects, options.MaxRedirects)
+	require.Equal(t, redisClusterReloadEvery, options.ClusterStateReloadInterval)
+	require.Equal(t, redisCommandRetries, options.MaxRetries)
+	require.Equal(t, redisMinRetryBackoff, options.MinRetryBackoff)
+	require.Equal(t, redisMaxRetryBackoff, options.MaxRetryBackoff)
+	require.Equal(t, redisDialerRetries, options.DialerRetries)
+	require.Equal(t, redisDialerRetryTimeout, options.DialerRetryTimeout)
+	require.NotNil(t, options.TLSConfig)
+	require.Equal(t, "redis.internal.example", options.TLSConfig.ServerName)
+
+	client := newRedisClient(config)
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+	_, ok := client.(*redis.ClusterClient)
+	require.True(t, ok)
+}
+
+func TestRedisConnectionConfigFromEnvUsesClusterEndpointURLs(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(redisEndpointModeEnv, redisEndpointModeCluster)
+	t.Setenv(redisAddrEnv, "rediss://cluster-user:cluster-pass@redis-cluster-0:6380?addr=redis-cluster-1:6379")
+
+	config, err := redisConnectionConfigFromEnv()
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"redis-cluster-0:6380", "redis-cluster-1:6379"}, config.ClusterAddrs)
+	require.True(t, config.TLS)
+	require.Equal(t, "cluster-user", config.Username)
+	require.Equal(t, "cluster-pass", config.Password)
+
+	options := redisClusterOptions(config)
+	require.Equal(t, "cluster-user", options.Username)
+	require.Equal(t, "cluster-pass", options.Password)
+	require.NotNil(t, options.TLSConfig)
+}
+
 func TestRedisConnectionConfigFromEnvKeepsRedisOptionalForDirectMode(t *testing.T) {
 	clearRedisEnv(t)
 	t.Setenv(redisDBEnv, "not-a-number")
@@ -174,6 +232,30 @@ func TestRedisConnectionConfigFromEnvRejectsMissingSentinelAddrs(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), redisEndpointModeEnv)
+}
+
+func TestRedisConnectionConfigFromEnvRejectsClusterWithNonZeroDB(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(redisEndpointModeEnv, redisEndpointModeCluster)
+	t.Setenv(redisAddrEnv, "redis-cluster-0:6379")
+	t.Setenv(redisDBEnv, "1")
+
+	_, err := redisConnectionConfigFromEnv()
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), redisDBEnv)
+	require.Contains(t, err.Error(), redisEndpointModeCluster)
+}
+
+func TestRedisConnectionConfigFromEnvRejectsConflictingClusterURLPasswords(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(redisEndpointModeEnv, redisEndpointModeCluster)
+	t.Setenv(redisAddrEnv, "redis://:one@redis-cluster-0:6379,redis://:two@redis-cluster-1:6379")
+
+	_, err := redisConnectionConfigFromEnv()
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "conflicting passwords")
 }
 
 func clearRedisEnv(t *testing.T) {
