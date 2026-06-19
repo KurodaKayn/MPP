@@ -96,16 +96,16 @@ module KubernetesValidation
         end
       end
 
-      retired_kinds = ["StatefulSet", "Deployment", "CronJob", "PersistentVolumeClaim", "Ingress", "ExternalSecret"]
-      retired = context.documents.select do |document|
-        retired_kinds.include?(document.kind) ||
-          active_production_service?(document) ||
-          active_app_config?(document)
+      unexpected = context.documents.reject do |document|
+        retirement_marker?(document, marker_name)
       end
-      return if retired.empty?
+      return if unexpected.empty?
 
-      formatted = retired.map { |document| "#{document.kind}/#{document.namespace}/#{document.name}" }.sort
-      context.add_error("#{overlay} is retired and must not render active production resources: #{formatted.join(', ')}")
+      formatted = unexpected.map { |document| "#{document.kind}/#{document.namespace}/#{document.name}" }.sort
+      context.add_error(
+        "#{overlay} is retired and must not render active production resources; " \
+        "only ConfigMap/mpp-system/#{marker_name} is allowed: #{formatted.join(', ')}",
+      )
     end
 
     def validate_self_hosted_config(context, overlay)
@@ -348,19 +348,10 @@ module KubernetesValidation
       end
     end
 
-    def active_production_service?(document)
-      return false unless document.kind == "Service"
-      return false unless document.namespace == "mpp-system"
-
-      ["postgres", "postgres-reader", "pgbouncer", "pgbouncer-reader", "redis", "redis-ha-primary",
-       "redis-ha-replicas", "redis-ha-sentinel", "redis-exporter", "frontend", "backend",
-       "browser-worker", "ai-service", "content-pipeline-service", "collab-service"].include?(document.name)
-    end
-
-    def active_app_config?(document)
+    def retirement_marker?(document, marker_name)
       document.kind == "ConfigMap" &&
         document.namespace == "mpp-system" &&
-        document.name == "mpp-app-config"
+        document.name == marker_name
     end
 
     def validate_collab_websocket_url(context, value, overlay)
