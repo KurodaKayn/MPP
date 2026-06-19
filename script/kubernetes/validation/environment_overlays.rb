@@ -64,15 +64,48 @@ module KubernetesValidation
       validate_managed_services(context, overlay)
     end
 
-    def validate_production_self_hosted_ha(context, overlay: "production-self-hosted-ha")
-      validate_image_namespace(context, overlay)
-      validate_production_self_hosted_ha_config(context, overlay)
-      ExternalSecrets.validate_app_secret_contract(context, overlay)
-      validate_external_secret_contract(context, overlay)
-      validate_ingress(context, overlay)
-      validate_runtime_image(context, overlay)
-      validate_app_images(context, overlay)
-      validate_self_hosted_services(context, overlay)
+    def validate_retired_production_self_hosted_ha(context, overlay: "production-self-hosted-ha")
+      validate_retired_redis_package(
+        context,
+        overlay: overlay,
+        marker_name: "production-self-hosted-ha-retired",
+      )
+    end
+
+    def validate_retired_redis_ha_production(context, overlay: "redis-ha-production")
+      validate_retired_redis_package(
+        context,
+        overlay: overlay,
+        marker_name: "redis-ha-production-retired",
+      )
+    end
+
+    def validate_retired_redis_package(context, overlay:, marker_name:)
+      marker = context.require_document("ConfigMap", marker_name, "mpp-system")
+      if marker
+        expected = {
+          "status" => "retired",
+          "retiredIssue" => "339",
+          "activeOverlay" => "deploy/kubernetes/overlays/production-managed",
+          "restoreRunbook" => "doc/self-hosted-redis-decommission-record.md",
+        }
+        expected.each do |key, value|
+          unless marker.data[key] == value
+            context.add_error("#{overlay} retirement marker #{key} must be #{value}")
+          end
+        end
+      end
+
+      retired_kinds = ["StatefulSet", "Deployment", "CronJob", "PersistentVolumeClaim", "Ingress", "ExternalSecret"]
+      retired = context.documents.select do |document|
+        retired_kinds.include?(document.kind) ||
+          active_production_service?(document) ||
+          active_app_config?(document)
+      end
+      return if retired.empty?
+
+      formatted = retired.map { |document| "#{document.kind}/#{document.namespace}/#{document.name}" }.sort
+      context.add_error("#{overlay} is retired and must not render active production resources: #{formatted.join(', ')}")
     end
 
     def validate_self_hosted_config(context, overlay)
@@ -140,29 +173,6 @@ module KubernetesValidation
       end
       if deployable_validation? && example_host?(redis_addr_host)
         context.add_error("#{overlay} mpp-app-config REDIS_ADDR must not use example.invalid in deployable validation")
-      end
-
-      validate_common_config(context, config, overlay)
-    end
-
-    def validate_production_self_hosted_ha_config(context, overlay)
-      config = context.require_document("ConfigMap", "mpp-app-config", "mpp-system")
-      return unless config
-
-      {
-        "APP_ENV" => "production",
-        "DB_HOST" => "pgbouncer",
-        "DB_READER_HOST" => "pgbouncer-reader",
-        "DB_SSLMODE" => "disable",
-        "REDIS_ENDPOINT_MODE" => "sentinel",
-        "REDIS_ADDR" => "redis:6379",
-        "REDIS_TLS" => "false",
-        "REDIS_SENTINEL_ADDRS" => "redis-ha-sentinel:26379",
-        "REDIS_SENTINEL_MASTER_NAME" => "mpp-redis-ha",
-      }.each do |key, value|
-        unless config.data[key] == value
-          context.add_error("#{overlay} mpp-app-config #{key} must be #{value}")
-        end
       end
 
       validate_common_config(context, config, overlay)
@@ -336,6 +346,21 @@ module KubernetesValidation
         service_port = Array(service.spec["ports"]).find { |entry| entry["port"] == port }
         context.add_error("#{overlay} #{name} Service must expose port #{port}") unless service_port
       end
+    end
+
+    def active_production_service?(document)
+      return false unless document.kind == "Service"
+      return false unless document.namespace == "mpp-system"
+
+      ["postgres", "postgres-reader", "pgbouncer", "pgbouncer-reader", "redis", "redis-ha-primary",
+       "redis-ha-replicas", "redis-ha-sentinel", "redis-exporter", "frontend", "backend",
+       "browser-worker", "ai-service", "content-pipeline-service", "collab-service"].include?(document.name)
+    end
+
+    def active_app_config?(document)
+      document.kind == "ConfigMap" &&
+        document.namespace == "mpp-system" &&
+        document.name == "mpp-app-config"
     end
 
     def validate_collab_websocket_url(context, value, overlay)
