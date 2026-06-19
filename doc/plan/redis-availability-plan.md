@@ -8,7 +8,7 @@ Phase 1-2 target: pragmatic high availability. After a single Redis Pod, node, o
 
 Production final target: Redis Cluster. The final state must support multiple shards, multiple replicas, automatic failover, TLS/auth, backup and restore, maintenance windows, and clear SLA ownership. Prefer a provider-backed managed Redis Cluster. If managed Redis is unavailable, use a mature chart/operator to self-host Redis Cluster.
 
-Current overall progress: about `80%`.
+Current overall progress: about `82%`.
 
 | Phase | Weight | Current Completion | Status | Done | Next |
 | --- | ---: | ---: | --- | --- | --- |
@@ -17,7 +17,7 @@ Current overall progress: about `80%`.
 | Phase 2: self-hosted HA | 20% | 100% | Done | HA deployment, endpoint abstraction, failover validation, migration rehearsal, and production HA cutover completed | Use HA setup as the baseline for managed Redis validation |
 | Phase 3: app-side fault tolerance | 20% | 100% | Done | Role-specific Redis timeout/retry baselines, degraded cache modes, cache stampede protection, lock safety hardening, and Redis error-budget reporting added | Use app-side metrics during HA failover validation and operational drills |
 | Phase 4: production managed Redis HA | 15% | 100% | Done | Provider endpoint parameterization, [managed Redis non-production validation](../managed-redis-nonprod-validation.md), [production migration runbook](../managed-redis-production-migration-runbook.md), [production cutover record](../managed-redis-production-cutover-record.md), and [self-hosted Redis decommission record](../self-hosted-redis-decommission-record.md) completed | Start Phase 5 Redis Cluster key model, client compatibility, and cutover path design |
-| Phase 5: Redis Cluster target state | 15% | 0% | Not Started | Final target confirmed | Design key model, client compatibility, and cutover path |
+| Phase 5: Redis Cluster target state | 15% | 10% | In Progress | Final target confirmed; [Cluster compatibility audit](../redis-cluster-compatibility-audit.md) added for command/client blockers and critical unknowns | Define key hash-tag convention and Cluster client mode |
 | Phase 6: drills and operations loop | 5% | 0% | Not Started | Not yet started | Add periodic failover, restore, and capacity drills |
 
 ## 1. Background And Problem
@@ -165,7 +165,7 @@ Redis Cluster is the final target. Do not start this phase until key model and c
 
 | PR | Goal | Main Changes | Acceptance | Rollback | Out Of Scope |
 | --- | --- | --- | --- | --- | --- |
-| PR 5.1: Audit Cluster-incompatible Redis usage | Find blockers | Scan for multi-key commands, Lua scripts, transactions, DB index usage, blocking commands | Report lists each blocker with owner and fix path | Revert report only | No runtime change |
+| PR 5.1: Audit Cluster-incompatible Redis usage | Find blockers | [Cluster compatibility audit](../redis-cluster-compatibility-audit.md) scans multi-key commands, Lua scripts, transactions, DB index usage, blocking commands, pipelines, and standalone assumptions | Report lists each blocker with owner and fix path | Revert report only | No runtime change |
 | PR 5.2: Add key hash-tag convention | Make related keys co-locate | Define key naming rules such as `{tenantId}` or `{userId}` for multi-key groups | New keys follow convention; lint/test catches violations | Revert lint rule or docs | No data migration |
 | PR 5.3: Replace or constrain cross-slot operations | Remove Cluster blockers | Update `MGET`, `DEL`, pipelines, Lua, transactions to single-slot or split-safe alternatives | Tests pass against Redis Cluster in non-prod | Revert individual command changes | No production cutover |
 | PR 5.4: Enable Cluster-capable clients | Make apps Cluster-ready | Configure clients for Cluster topology, redirect handling, retry, TLS/auth | App passes integration tests against non-prod Cluster | Point client back to standalone mode | No production traffic |
