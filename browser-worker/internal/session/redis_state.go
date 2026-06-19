@@ -28,7 +28,9 @@ const (
 	redisSentinelMasterEnv     = "REDIS_SENTINEL_MASTER_NAME"
 	redisEndpointModeDirect    = "direct"
 	redisEndpointModeSentinel  = "sentinel"
+	redisEndpointModeCluster   = "cluster"
 	redisSentinelMasterDefault = "mpp-redis-ha"
+	redisClusterMaxRedirects   = 8
 
 	browserSessionKeyPrefix       = "mpp:browser:session:"
 	browserSessionHeartbeatPrefix = "mpp:browser:worker-heartbeat:"
@@ -45,6 +47,7 @@ const (
 	redisDialerRetries      = 2
 	redisDialerRetryTimeout = 75 * time.Millisecond
 	redisCommandRetries     = 1
+	redisClusterReloadEvery = 10 * time.Second
 )
 
 var (
@@ -53,18 +56,20 @@ var (
 )
 
 type RedisStateStore struct {
-	client *redis.Client
+	client redis.UniversalClient
 }
 
 type redisConnectionConfig struct {
 	EndpointMode       string
 	Addr               string
+	Username           string
 	Password           string
 	DB                 int
 	TLS                bool
 	TLSCACert          string
 	TLSCAFile          string
 	TLSServerName      string
+	ClusterAddrs       []string
 	SentinelAddrs      []string
 	SentinelMasterName string
 	tls                *tls.Config
@@ -136,6 +141,13 @@ func redisConnectionConfigFromEnv() (redisConnectionConfig, error) {
 		if config.Addr == "" {
 			return redisConnectionConfig{}, errRedisNotConfigured
 		}
+	case redisEndpointModeCluster:
+		if err := config.configureClusterFromEnv(); err != nil {
+			return redisConnectionConfig{}, err
+		}
+		if len(config.ClusterAddrs) == 0 {
+			return redisConnectionConfig{}, fmt.Errorf("%s must be set when %s=cluster", redisAddrEnv, redisEndpointModeEnv)
+		}
 	case redisEndpointModeSentinel:
 		config.SentinelAddrs = redisCSVEnv(redisSentinelAddrsEnv)
 		config.SentinelMasterName = strings.TrimSpace(os.Getenv(redisSentinelMasterEnv))
@@ -151,6 +163,9 @@ func redisConnectionConfigFromEnv() (redisConnectionConfig, error) {
 	if err != nil {
 		return redisConnectionConfig{}, err
 	}
+	if endpointMode == redisEndpointModeCluster && db != 0 {
+		return redisConnectionConfig{}, fmt.Errorf("invalid %s: must be 0 when %s=cluster", redisDBEnv, redisEndpointModeEnv)
+	}
 	config.DB = db
 	if err := config.configureTLS(); err != nil {
 		return redisConnectionConfig{}, err
@@ -159,12 +174,16 @@ func redisConnectionConfigFromEnv() (redisConnectionConfig, error) {
 	return config, nil
 }
 
-func newRedisClient(config redisConnectionConfig) *redis.Client {
+func newRedisClient(config redisConnectionConfig) redis.UniversalClient {
 	_ = config.configureTLS()
-	if config.EndpointMode == redisEndpointModeSentinel {
+	switch config.EndpointMode {
+	case redisEndpointModeCluster:
+		return redis.NewClusterClient(redisClusterOptions(config))
+	case redisEndpointModeSentinel:
 		return redis.NewFailoverClient(redisFailoverOptions(config))
+	default:
+		return redis.NewClient(redisOptions(config))
 	}
-	return redis.NewClient(redisOptions(config))
 }
 
 func redisOptions(config redisConnectionConfig) *redis.Options {
@@ -201,6 +220,26 @@ func redisFailoverOptions(config redisConnectionConfig) *redis.FailoverOptions {
 		MaxRetryBackoff:    redisMaxRetryBackoff,
 		DialerRetries:      redisDialerRetries,
 		DialerRetryTimeout: redisDialerRetryTimeout,
+	}
+}
+
+func redisClusterOptions(config redisConnectionConfig) *redis.ClusterOptions {
+	return &redis.ClusterOptions{
+		Addrs:                      append([]string(nil), config.ClusterAddrs...),
+		Username:                   config.Username,
+		Password:                   config.Password,
+		TLSConfig:                  config.tlsConfig(),
+		MaxRedirects:               redisClusterMaxRedirects,
+		ClusterStateReloadInterval: redisClusterReloadEvery,
+		DialTimeout:                redisDialTimeout,
+		ReadTimeout:                redisReadTimeout,
+		WriteTimeout:               redisWriteTimeout,
+		PoolTimeout:                redisPoolTimeout,
+		MaxRetries:                 redisCommandRetries,
+		MinRetryBackoff:            redisMinRetryBackoff,
+		MaxRetryBackoff:            redisMaxRetryBackoff,
+		DialerRetries:              redisDialerRetries,
+		DialerRetryTimeout:         redisDialerRetryTimeout,
 	}
 }
 
@@ -353,8 +392,10 @@ func redisEndpointModeFromEnv() (string, error) {
 		return redisEndpointModeDirect, nil
 	case redisEndpointModeSentinel:
 		return redisEndpointModeSentinel, nil
+	case redisEndpointModeCluster:
+		return redisEndpointModeCluster, nil
 	default:
-		return "", fmt.Errorf("%s must be one of: %s, %s", redisEndpointModeEnv, redisEndpointModeDirect, redisEndpointModeSentinel)
+		return "", fmt.Errorf("%s must be one of: %s, %s, %s", redisEndpointModeEnv, redisEndpointModeDirect, redisEndpointModeSentinel, redisEndpointModeCluster)
 	}
 }
 
@@ -368,6 +409,45 @@ func redisCSVEnv(name string) []string {
 		}
 	}
 	return values
+}
+
+func (c *redisConnectionConfig) configureClusterFromEnv() error {
+	addrs := redisCSVEnv(redisAddrEnv)
+	normalized := make([]string, 0, len(addrs))
+	var urlUsername string
+	var urlPassword string
+	for _, addr := range addrs {
+		if !strings.Contains(addr, "://") {
+			normalized = append(normalized, addr)
+			continue
+		}
+		options, err := redis.ParseClusterURL(addr)
+		if err != nil {
+			return fmt.Errorf("invalid %s cluster URL: %w", redisAddrEnv, err)
+		}
+		normalized = append(normalized, options.Addrs...)
+		if options.Username != "" {
+			if urlUsername != "" && urlUsername != options.Username {
+				return fmt.Errorf("invalid %s cluster URL: conflicting usernames", redisAddrEnv)
+			}
+			urlUsername = options.Username
+		}
+		if options.Password != "" {
+			if urlPassword != "" && urlPassword != options.Password {
+				return fmt.Errorf("invalid %s cluster URL: conflicting passwords", redisAddrEnv)
+			}
+			urlPassword = options.Password
+		}
+		if options.TLSConfig != nil {
+			c.TLS = true
+		}
+	}
+	c.ClusterAddrs = normalized
+	c.Username = urlUsername
+	if c.Password == "" {
+		c.Password = urlPassword
+	}
+	return nil
 }
 
 func redisTLSConfig(config redisConnectionConfig) (*tls.Config, error) {
