@@ -28,8 +28,8 @@ type Service struct {
 	xTester          XConnectionTester
 	xOAuth2Provider  XOAuth2Provider
 	xOAuth2States    XOAuth2StateStore
-	stateStoreClient *redis.Client
-	cache            *redis.Client
+	stateStoreClient redis.UniversalClient
+	cache            redis.UniversalClient
 	cacheTTL         time.Duration
 	cacheGroup       *singleflight.Group
 	cacheGuard       *redisdegrade.Guard
@@ -110,12 +110,12 @@ func (s *Service) strongReadDB() *gorm.DB {
 	return s.router.Reader(s.requestContext(), dbrouter.StrongRead)
 }
 
-func (s *Service) UseRedis(client *redis.Client) {
+func (s *Service) UseRedis(client redis.UniversalClient) {
 	s.UseRedisStateStore(client)
 	s.UseRedisCache(client)
 }
 
-func (s *Service) UseRedisStateStore(client *redis.Client) {
+func (s *Service) UseRedisStateStore(client redis.UniversalClient) {
 	if client == nil {
 		return
 	}
@@ -123,7 +123,7 @@ func (s *Service) UseRedisStateStore(client *redis.Client) {
 	s.xOAuth2States = NewRedisXOAuth2StateStore(client)
 }
 
-func (s *Service) UseRedisCache(client *redis.Client) {
+func (s *Service) UseRedisCache(client redis.UniversalClient) {
 	if client == nil {
 		return
 	}
