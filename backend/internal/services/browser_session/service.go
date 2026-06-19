@@ -37,6 +37,7 @@ const (
 	pendingSessionStaleAfter = 2 * time.Minute
 	browserSessionTTL        = 15 * time.Minute
 	browserSessionRedisGrace = 1 * time.Minute
+	redisCleanupTimeout      = 2 * time.Second
 	streamTokenMaxTTL        = 5 * time.Minute
 
 	browserSessionActiveKeyPrefix       = "mpp:browser:active:"

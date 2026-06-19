@@ -3,6 +3,8 @@ package browsersession_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"testing"
@@ -17,6 +19,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/rediskey"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	browsersession "github.com/kurodakayn/mpp-backend/internal/services/browser_session"
 )
@@ -531,7 +534,8 @@ func TestBrowserSessionService_GetSessionReturnsGoneForExpiredRedisSession(t *te
 
 func TestBrowserSessionService_RedisStreamTokenIsConsumedOnce(t *testing.T) {
 	_, svc, _ := setupBrowserSessionTest(t)
-	setupBrowserSessionRedis(t, svc)
+	client := setupBrowserSessionRedis(t, svc)
+	client.AddHook(browserSessionClusterGuardHook{})
 	userID := uuid.New()
 	platform := "douyin"
 	t.Setenv("COOKIE_ENCRYPTION_KEY", "12345678901234567890123456789012")
@@ -560,6 +564,21 @@ func TestBrowserSessionService_RedisStreamTokenIsConsumedOnce(t *testing.T) {
 
 	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, rotatedToken, false)
 	require.NoError(t, err)
+
+	stalePayload, err := json.Marshal(map[string]any{
+		"session_id": resp.SessionID.String(),
+		"user_id":    userID.String(),
+		"platform":   platform,
+		"purpose":    "stream",
+		"issued_at":  time.Now().UTC(),
+		"expires_at": time.Now().Add(time.Minute).UTC(),
+	})
+	require.NoError(t, err)
+	staleTokenKey := browserSessionTestStreamTokenKey(resp.SessionID, browsersession.HashStreamToken(streamToken))
+	require.NoError(t, client.Set(context.Background(), staleTokenKey, stalePayload, time.Minute).Err())
+
+	_, err = svc.GetStreamEndpoint(context.Background(), userID, resp.SessionID, streamToken, false)
+	require.ErrorIs(t, err, browsersession.ErrStreamTokenGone)
 }
 
 func TestBrowserSessionService_RedisLiveStateOmitsInternalEndpointRefs(t *testing.T) {
@@ -821,6 +840,7 @@ func TestBrowserSessionService_StartSessionPreservesReachableRedisActiveLock(t *
 func TestBrowserSessionService_StartSessionEnforcesUserConcurrencyQuota(t *testing.T) {
 	_, svc, _ := setupBrowserSessionTest(t)
 	client := setupBrowserSessionRedis(t, svc)
+	client.AddHook(browserSessionClusterGuardHook{})
 	svc.UseQuotaConfig(browsersession.BrowserSessionQuotaConfig{
 		UserConcurrencyLimit:   1,
 		TenantConcurrencyLimit: 10,
@@ -847,6 +867,7 @@ func TestBrowserSessionService_StartSessionEnforcesUserConcurrencyQuota(t *testi
 func TestBrowserSessionService_StartSessionEnforcesTenantConcurrencyQuota(t *testing.T) {
 	_, svc, _ := setupBrowserSessionTest(t)
 	client := setupBrowserSessionRedis(t, svc)
+	client.AddHook(browserSessionClusterGuardHook{})
 	svc.UseQuotaConfig(browsersession.BrowserSessionQuotaConfig{
 		UserConcurrencyLimit:   10,
 		TenantConcurrencyLimit: 1,
@@ -862,6 +883,7 @@ func TestBrowserSessionService_StartSessionEnforcesTenantConcurrencyQuota(t *tes
 	_, err = svc.StartSessionForTenant(context.Background(), otherUserID, tenantID, "zhihu")
 	require.ErrorIs(t, err, browsersession.ErrTenantQuotaExceeded)
 	assert.Equal(t, int64(1), client.ZCard(context.Background(), "mpp:browser:quota:tenant:"+tenantID).Val())
+	assert.Equal(t, int64(0), client.ZCard(context.Background(), "mpp:browser:quota:user:"+otherUserID.String()).Val())
 
 	require.NoError(t, svc.CancelSession(context.Background(), userID, resp.SessionID))
 	assert.Equal(t, int64(0), client.ZCard(context.Background(), "mpp:browser:quota:tenant:"+tenantID).Val())
@@ -974,4 +996,113 @@ func streamTokenFromPath(t *testing.T, path string) string {
 	}
 	require.Fail(t, "stream token path segment not found", path)
 	return ""
+}
+
+type browserSessionClusterGuardHook struct{}
+
+func (browserSessionClusterGuardHook) DialHook(next redis.DialHook) redis.DialHook {
+	return next
+}
+
+func (browserSessionClusterGuardHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if err := validateBrowserSessionRedisCommand(cmd); err != nil {
+			return err
+		}
+		return next(ctx, cmd)
+	}
+}
+
+func (browserSessionClusterGuardHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return func(ctx context.Context, cmds []redis.Cmder) error {
+		if len(cmds) > 1 && !browserSessionClientMetadataPipeline(cmds) {
+			return fmt.Errorf("pipeline used %d commands: %s", len(cmds), browserSessionCommandNames(cmds))
+		}
+		for _, cmd := range cmds {
+			if err := validateBrowserSessionRedisCommand(cmd); err != nil {
+				return err
+			}
+		}
+		return next(ctx, cmds)
+	}
+}
+
+func validateBrowserSessionRedisCommand(cmd redis.Cmder) error {
+	args := cmd.Args()
+	switch strings.ToLower(cmd.Name()) {
+	case "eval":
+		keyCount, ok := browserSessionCommandIntArg(args, 2)
+		if !ok {
+			return fmt.Errorf("unexpected eval key count argument: %#v", args)
+		}
+		keys := browserSessionCommandKeys(args, 3, keyCount)
+		if len(keys) != keyCount {
+			return fmt.Errorf("unexpected eval keys: %#v", args)
+		}
+		if keyCount > 1 && !rediskey.ShareTag(keys...) {
+			return fmt.Errorf("eval keys do not share a Redis hash tag: %v", keys)
+		}
+	case "del", "unlink":
+		if len(args) > 2 {
+			return fmt.Errorf("%s used %d keys", cmd.Name(), len(args)-1)
+		}
+	}
+	return nil
+}
+
+func browserSessionCommandIntArg(args []any, index int) (int, bool) {
+	if len(args) <= index {
+		return 0, false
+	}
+	switch value := args[index].(type) {
+	case int:
+		return value, true
+	case int64:
+		if value > math.MaxInt || value < math.MinInt {
+			return 0, false
+		}
+		return int(value), true
+	case uint64:
+		if value > math.MaxInt {
+			return 0, false
+		}
+		return int(value), true
+	default:
+		return 0, false
+	}
+}
+
+func browserSessionCommandKeys(args []any, start int, count int) []string {
+	if count <= 0 || len(args) < start+count {
+		return nil
+	}
+	keys := make([]string, 0, count)
+	for _, arg := range args[start : start+count] {
+		key, ok := arg.(string)
+		if !ok {
+			return nil
+		}
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func browserSessionCommandNames(cmds []redis.Cmder) string {
+	names := make([]string, 0, len(cmds))
+	for _, cmd := range cmds {
+		names = append(names, cmd.Name())
+	}
+	return strings.Join(names, ",")
+}
+
+func browserSessionClientMetadataPipeline(cmds []redis.Cmder) bool {
+	if len(cmds) == 0 {
+		return false
+	}
+	for _, cmd := range cmds {
+		if !strings.EqualFold(cmd.Name(), "client") {
+			return false
+		}
+	}
+	return true
 }

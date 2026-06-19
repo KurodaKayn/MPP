@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -28,7 +27,8 @@ const (
 	KindAI      = "ai"
 	KindBrowser = "browser"
 
-	defaultPrefix = "mpp:stream"
+	defaultPrefix       = "mpp:stream"
+	redisCleanupTimeout = 2 * time.Second
 )
 
 var (
@@ -212,73 +212,122 @@ func normalizeLimits(limits Limits) Limits {
 	return limits
 }
 
-const acquireScript = `
-redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", ARGV[1])
-redis.call("ZREMRANGEBYSCORE", KEYS[3], "-inf", ARGV[1])
-redis.call("ZREMRANGEBYSCORE", KEYS[4], "-inf", ARGV[1])
-redis.call("ZREMRANGEBYSCORE", KEYS[5], "-inf", ARGV[1])
-if tonumber(ARGV[5]) > 0 and redis.call("ZCARD", KEYS[2]) >= tonumber(ARGV[5]) then return {0, "user"} end
-if tonumber(ARGV[6]) > 0 and redis.call("ZCARD", KEYS[3]) >= tonumber(ARGV[6]) then return {0, "tenant"} end
-if tonumber(ARGV[7]) > 0 and redis.call("ZCARD", KEYS[4]) >= tonumber(ARGV[7]) then return {0, "ip"} end
-if tonumber(ARGV[8]) > 0 and redis.call("ZCARD", KEYS[5]) >= tonumber(ARGV[8]) then return {0, "global"} end
-redis.call("SET", KEYS[1], ARGV[4], "PX", ARGV[3])
-redis.call("ZADD", KEYS[2], ARGV[2], ARGV[9])
-redis.call("ZADD", KEYS[3], ARGV[2], ARGV[9])
-redis.call("ZADD", KEYS[4], ARGV[2], ARGV[9])
-redis.call("ZADD", KEYS[5], ARGV[2], ARGV[9])
-return {1, ""}
-`
-
 func (l *Limiter) acquireRedis(ctx context.Context, req AcquireRequest, limits Limits, connID string, payload []byte, now time.Time, expiresAt time.Time) (string, error) {
-	result, err := l.redis.Eval(ctx, acquireScript, l.keys(req, connID),
-		now.UnixMilli(),
-		expiresAt.UnixMilli(),
-		limits.TTL.Milliseconds(),
-		string(payload),
-		limits.User,
-		limits.Tenant,
-		limits.IP,
-		limits.Global,
-		connID,
-	).Result()
-	if err != nil {
+	keys := l.keys(req, connID)
+	scopes := []streamRedisScope{
+		{name: "user", key: keys[1], limit: limits.User},
+		{name: "tenant", key: keys[2], limit: limits.Tenant},
+		{name: "ip", key: keys[3], limit: limits.IP},
+		{name: "global", key: keys[4], limit: limits.Global},
+	}
+
+	var acquired []streamRedisScope
+	for _, scope := range scopes {
+		ok, err := l.acquireRedisScope(ctx, scope, connID, limits.TTL, now, expiresAt)
+		if err != nil {
+			if cleanupErr := l.cleanupPartialRedisAcquire(ctx, keys[0], acquired, connID); cleanupErr != nil {
+				return "", errors.Join(err, cleanupErr)
+			}
+			return "", err
+		}
+		if !ok {
+			if cleanupErr := l.cleanupPartialRedisAcquire(ctx, keys[0], acquired, connID); cleanupErr != nil {
+				return "", cleanupErr
+			}
+			return scope.name, nil
+		}
+		acquired = append(acquired, scope)
+	}
+
+	if err := l.redis.Set(ctx, keys[0], payload, limits.TTL).Err(); err != nil {
+		if cleanupErr := l.cleanupPartialRedisAcquire(ctx, keys[0], acquired, connID); cleanupErr != nil {
+			return "", errors.Join(fmt.Errorf("%w: %w", ErrUnavailable, err), cleanupErr)
+		}
 		return "", fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
-	values, ok := result.([]any)
-	if !ok || len(values) != 2 {
-		log.Printf("streamgate: unexpected redis acquire response: %#v", result)
-		return "", fmt.Errorf("%w: unexpected redis response", ErrUnavailable)
-	}
-	accepted, ok := redisInt64(values[0])
-	if !ok {
-		log.Printf("streamgate: unexpected redis acquire accepted flag: %#v", values[0])
-		return "", fmt.Errorf("%w: unexpected redis accepted flag", ErrUnavailable)
-	}
-	if accepted == 1 {
-		return "", nil
-	}
-	scope, _ := values[1].(string)
-	if scope == "" {
-		scope = "unknown"
-	}
-	return scope, nil
+	return "", nil
 }
 
-const releaseScript = `
-local owner = redis.call("GET", KEYS[1])
-if owner and owner ~= ARGV[1] then
+func (l *Limiter) releaseRedis(ctx context.Context, req AcquireRequest, connID string, ownerPayload []byte) error {
+	keys := l.keys(req, connID)
+	owner, err := l.redis.Get(ctx, keys[0]).Bytes()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+	if len(owner) > 0 && string(owner) != string(ownerPayload) {
+		return nil
+	}
+
+	var releaseErrs []error
+	if err := l.redis.Del(ctx, keys[0]).Err(); err != nil {
+		releaseErrs = append(releaseErrs, err)
+	}
+	for _, key := range keys[1:] {
+		if err := l.redis.ZRem(ctx, key, connID).Err(); err != nil {
+			releaseErrs = append(releaseErrs, err)
+		}
+	}
+	return errors.Join(releaseErrs...)
+}
+
+type streamRedisScope struct {
+	name  string
+	key   string
+	limit int64
+}
+
+func (l *Limiter) acquireRedisScope(ctx context.Context, scope streamRedisScope, connID string, ttl time.Duration, now time.Time, expiresAt time.Time) (bool, error) {
+	const script = `
+local now_ms = tonumber(ARGV[1])
+local expires_at_ms = tonumber(ARGV[2])
+local ttl_ms = tonumber(ARGV[3])
+local conn_id = ARGV[4]
+local limit = tonumber(ARGV[5])
+
+redis.call("ZADD", KEYS[1], expires_at_ms, conn_id)
+redis.call("PEXPIRE", KEYS[1], ttl_ms)
+redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", now_ms)
+
+if limit > 0 and redis.call("ZCARD", KEYS[1]) > limit then
+	redis.call("ZREM", KEYS[1], conn_id)
 	return 0
 end
-redis.call("DEL", KEYS[1])
-redis.call("ZREM", KEYS[2], ARGV[2])
-redis.call("ZREM", KEYS[3], ARGV[2])
-redis.call("ZREM", KEYS[4], ARGV[2])
-redis.call("ZREM", KEYS[5], ARGV[2])
 return 1
 `
+	result, err := l.redis.Eval(ctx, script, []string{scope.key},
+		now.UnixMilli(),
+		expiresAt.UnixMilli(),
+		ttl.Milliseconds(),
+		connID,
+		scope.limit,
+	).Result()
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", ErrUnavailable, err)
+	}
+	accepted, ok := redisInt64(result)
+	if !ok {
+		return false, fmt.Errorf("%w: unexpected redis accepted flag", ErrUnavailable)
+	}
+	return accepted == 1, nil
+}
 
-func (l *Limiter) releaseRedis(ctx context.Context, req AcquireRequest, connID string, ownerPayload []byte) error {
-	return l.redis.Eval(ctx, releaseScript, l.keys(req, connID), string(ownerPayload), connID).Err()
+func (l *Limiter) cleanupPartialRedisAcquire(ctx context.Context, connKey string, scopes []streamRedisScope, connID string) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), redisCleanupTimeout)
+	defer cancel()
+	return l.cleanupRedisAcquire(cleanupCtx, connKey, scopes, connID)
+}
+
+func (l *Limiter) cleanupRedisAcquire(ctx context.Context, connKey string, scopes []streamRedisScope, connID string) error {
+	var cleanupErrs []error
+	if err := l.redis.Del(ctx, connKey).Err(); err != nil {
+		cleanupErrs = append(cleanupErrs, err)
+	}
+	for _, scope := range scopes {
+		if err := l.redis.ZRem(ctx, scope.key, connID).Err(); err != nil {
+			cleanupErrs = append(cleanupErrs, err)
+		}
+	}
+	return errors.Join(cleanupErrs...)
 }
 
 func (l *Limiter) keys(req AcquireRequest, connID string) []string {
