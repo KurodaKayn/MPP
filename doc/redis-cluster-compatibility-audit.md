@@ -74,12 +74,12 @@ The application is not Redis Cluster ready today. The primary blockers are:
 
 | Category | Coverage result |
 | --- | --- |
-| Multi-key commands | Blockers found in stream gate Lua, browser-session quota Lua, browser stream token Lua/cleanup, auth `DEL`, cache scan-and-delete invalidation, and Asynq queue internals. |
-| Lua scripts | Blockers found in stream gate, browser quota, browser token rotation/consume, and dynamic key access from `ARGV`. Single-key scripts in publish locks, app rate limits, and active-session release are structurally compatible after Cluster clients are added. |
+| Multi-key commands | PR #347 replaces the first-party stream gate, browser-session quota, browser stream token cleanup, and cache scan-and-delete command blockers with single-key, same-slot, or split-safe operations. Auth verification uses email hash tags from PR #346. Asynq queue internals remain intentionally deferred to the queue Cluster-client work because their command shape is library-owned. |
+| Lua scripts | PR #347 removes cross-slot stream gate Lua, splits browser quota Lua into one-key scripts with compensating cleanup, and removes browser token rotation's dynamic `ARGV` key access. Remaining first-party Lua scripts are single-key or same `{session:<session_id>}` token scripts with every accessed key declared in `KEYS`. |
 | Transactions | No first-party `MULTI`, `WATCH`, `TxPipeline`, or `TxPipelined` usage was found. Asynq internals still need Cluster certification because they use Lua and queue state transitions internally. |
 | DB index usage | `REDIS_DB` and `TRAEFIK_RATE_LIMIT_REDIS_DB` are configured across app services, contracts, scripts, and docs. Cluster mode must force DB `0`. |
 | Blocking commands | No first-party `BLPOP`, `BRPOP`, `BRPOPLPUSH`, `BZPOP*`, or `XREAD` calls were found. Asynq worker dequeue behavior is library-managed and must be tested in Cluster mode. |
-| Pipelines | First-party pipeline use found in browser-session quota release with two keys. Go-redis Cluster clients can route pipelines differently from standalone clients, so this should be split or same-slot constrained. |
+| Pipelines | PR #347 removes the first-party browser-session quota release pipeline and uses per-key `ZREM` cleanup. Go-redis client metadata may still use internal `CLIENT` pipelining during connection setup, which does not touch MPP keys. |
 | Standalone assumptions | Direct/Sentinel-only client wiring, single logical DB config, standalone `redis-cli` inventory, and single-endpoint Traefik rate-limit wiring all assume non-Cluster Redis. |
 
 ## Critical Unknowns
