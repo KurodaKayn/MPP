@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/cachettl"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/rediskey"
 )
 
 const (
@@ -144,7 +144,7 @@ func (s *Service) invalidateResolvedMediaAssetCache(assetID uuid.UUID) {
 
 func deleteResolvedMediaAssetCacheKeys(ctx context.Context, client *redis.Client, guard *redisdegrade.Guard, assetID uuid.UUID) {
 	var cursor uint64
-	pattern := resolvedMediaAssetCachePrefix + ":" + assetID.String() + ":*"
+	pattern := resolvedMediaAssetCachePrefix + ":" + rediskey.Tag("asset", assetID.String()) + ":*"
 	for {
 		type scanResult struct {
 			keys []string
@@ -192,5 +192,5 @@ func (s *Service) currentResolvedMediaAssetCacheTTL() time.Duration {
 }
 
 func resolvedMediaAssetCacheKey(assetID uuid.UUID, userID uuid.UUID) string {
-	return fmt.Sprintf("%s:%s:actor:%s", resolvedMediaAssetCachePrefix, assetID, userID)
+	return resolvedMediaAssetCachePrefix + ":" + rediskey.Tag("asset", assetID.String()) + ":actor:" + userID.String()
 }

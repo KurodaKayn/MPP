@@ -653,7 +653,7 @@ func (s *deadlinePresignStorage) PresignGetObject(ctx context.Context, input obj
 func requireResolvedMediaAssetCacheKeys(t *testing.T, redisServer *miniredis.Miniredis, assetID uuid.UUID, count int) []string {
 	t.Helper()
 
-	prefix := "mpp:dashboard:media-assets:resolve:v1:" + assetID.String() + ":"
+	prefix := "mpp:dashboard:media-assets:resolve:v1:{asset:" + assetID.String() + "}:"
 	keys := make([]string, 0)
 	for _, key := range redisServer.Keys() {
 		if strings.HasPrefix(key, prefix) {
