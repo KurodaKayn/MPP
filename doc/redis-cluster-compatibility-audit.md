@@ -5,6 +5,9 @@ Issue: #345
 This audit records current Redis Cluster blockers and unknowns only. It does
 not change runtime behavior.
 
+The approved key hash-tag convention for follow-up work lives in
+`doc/redis-key-hash-tag-convention.md`.
+
 ## Scope
 
 Audited code and operational surfaces:

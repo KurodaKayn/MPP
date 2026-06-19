@@ -39,7 +39,7 @@ Preferred MVP: **one browser container per connection session**.
 1. User clicks `Connect` on a platform card.
 2. Backend acquires `mpp:browser:active:{user_id}:{platform}` with Redis `SET NX EX`.
 3. Backend creates a durable `remote_browser_sessions` audit row with `pending` status.
-4. Backend writes `mpp:browser:session:{session_id}` live state to Redis with the session TTL.
+4. Backend writes `mpp:browser:session:{session:<session_id>}` live state to Redis with the session TTL.
 5. Backend asks `browser-worker` to start a browser container with:
    - isolated user data directory
    - adapter network policy, not only an initial allowlist URL
@@ -101,9 +101,9 @@ Use the same Redis client style already used by publish queues and OAuth state. 
 | Key | Type | TTL | Purpose |
 | --- | --- | --- | --- |
 | `mpp:browser:active:{user_id}:{platform}` | string `session_id` | session TTL + small grace | One active session per user/platform. Acquired with `SET NX EX`; released by compare-and-delete Lua. |
-| `mpp:browser:session:{session_id}` | hash or JSON string | session TTL + grace | Live status, owner, platform, worker refs, current URL, missing cookies, error message, and expiry. |
-| `mpp:browser:stream-token:{session_id}:{token_hash}` | JSON string | `min(5 minutes, session remaining)` | Single-use stream token metadata: user ID, platform, purpose, and issued time. |
-| `mpp:browser:stream-current:{session_id}` | string `token_hash` | same as stream token | Optional pointer used to rotate/revoke the latest unconsumed token. |
+| `mpp:browser:session:{session:<session_id>}` | hash or JSON string | session TTL + grace | Live status, owner, platform, worker refs, current URL, missing cookies, error message, and expiry. |
+| `mpp:browser:stream-token:{session:<session_id>}:{token_hash}` | JSON string | `min(5 minutes, session remaining)` | Single-use browser stream token metadata. |
+| `mpp:browser:stream-current:{session:<session_id>}` | string `token_hash` | same as stream token | Optional pointer used to rotate/revoke the latest unconsumed token. |
 | `mpp:browser:cleanup` | sorted set | none | `session_id` scored by `expires_at` for deterministic cleanup sweeps. Do not rely only on keyspace notifications. |
 | `mpp:browser:worker-heartbeat:{worker_session_ref}` | string | 30-60 seconds | Detect worker/container loss before the session TTL expires. |
 
@@ -253,9 +253,9 @@ Response:
 Rules:
 
 - Stop the worker session if it is still running.
-- Delete outstanding stream token keys and `mpp:browser:stream-current:{session_id}`.
+- Delete outstanding stream token keys and `mpp:browser:stream-current:{session:<session_id>}`.
 - Release `mpp:browser:active:{user_id}:{platform}` by compare-and-delete.
-- Remove `mpp:browser:session:{session_id}` and its cleanup sorted-set member.
+- Remove `mpp:browser:session:{session:<session_id>}` and its cleanup sorted-set member.
 - Keep completed sessions as audit records; do not delete rows in the request path.
 
 ### Stream
@@ -288,7 +288,7 @@ type StreamToken struct {
 Generation and storage:
 
 - Generate at least 32 random bytes and encode with unpadded URL-safe base64.
-- Store only `SHA-256(token)` or `HMAC-SHA-256(token, STREAM_TOKEN_HASH_KEY)` in Redis under `mpp:browser:stream-token:{session_id}:{token_hash}`.
+- Store only `SHA-256(token)` or `HMAC-SHA-256(token, STREAM_TOKEN_HASH_KEY)` in Redis under `mpp:browser:stream-token:{session:<session_id>}:{token_hash}`.
 - Store token metadata as JSON: `session_id`, `user_id`, `platform`, `purpose: "stream"`, `issued_at`, and `expires_at`.
 - Set token TTL to `min(5 minutes, session.expires_at - now)`.
 - Never log token values or include them in worker requests.
@@ -298,7 +298,7 @@ Consumption:
 - Compare token hashes in constant time.
 - Reject expired or already consumed tokens by reading Redis, not PostgreSQL.
 - Consume the Redis token key only after authentication and just before/while accepting the WebSocket upgrade.
-- Clear `mpp:browser:stream-current:{session_id}` when the consumed hash matches the current pointer.
+- Clear `mpp:browser:stream-current:{session:<session_id>}` when the consumed hash matches the current pointer.
 - For reconnect, the frontend calls `GET /api/user/dashboard/browser-sessions/:id` and receives a rotated token if the session is still active.
 - Token rotation should delete the previous current token key when it is still unconsumed. Use a Lua script so the current pointer and token key change atomically.
 
@@ -309,7 +309,7 @@ The worker API is internal only. It can be implemented as HTTP/gRPC or as an in-
 Redis responsibilities:
 
 - Backend creates the session Redis keys before calling the worker.
-- Worker updates `mpp:browser:session:{session_id}` with `status`, `current_url`, `login_detected`, `missing_cookies`, and `message` while polling CDP.
+- Worker updates `mpp:browser:session:{session:<session_id>}` with `status`, `current_url`, `login_detected`, `missing_cookies`, and `message` while polling CDP.
 - Worker refreshes `mpp:browser:worker-heartbeat:{worker_session_ref}` while the container is alive.
 - Backend cleanup sweeps `mpp:browser:cleanup` and calls `DELETE /internal/browser-sessions/:worker_session_ref` for expired sessions. The worker may also self-expire, but backend cleanup is the source of deterministic recovery.
 
@@ -388,7 +388,7 @@ Response:
 Rules:
 
 - Return fresh CDP-derived state when available.
-- Also write that state to `mpp:browser:session:{session_id}` so normal frontend polling does not need to call the worker every time.
+- Also write that state to `mpp:browser:session:{session:<session_id>}` so normal frontend polling does not need to call the worker every time.
 - If the worker heartbeat is missing or the container is gone, backend should mark the Redis session and PostgreSQL audit row `failed` or `expired` depending on whether the TTL elapsed.
 
 ### Capture Worker Session
@@ -594,7 +594,7 @@ Redis key expiration removes stale live metadata, but cleanup must still stop co
 
 1. On start, add `session_id` to `mpp:browser:cleanup` with score `expires_at_unix_ms`.
 2. A backend cleanup loop periodically reads due members with `ZRANGEBYSCORE`.
-3. For each due session, read `mpp:browser:session:{session_id}`. If Redis already evicted it, fall back to the PostgreSQL audit row to recover `worker_session_ref`.
+3. For each due session, read `mpp:browser:session:{session:<session_id>}`. If Redis already evicted it, fall back to the PostgreSQL audit row to recover `worker_session_ref`.
 4. Mark PostgreSQL `remote_browser_sessions.status = expired` unless the session already completed, failed, or was revoked.
 5. Delete stream-token keys, the active lock, the live session key, heartbeat key, and the cleanup sorted-set member using compare-and-delete where ownership matters.
 6. If backend crashes, Redis TTLs release locks automatically; the cleanup sorted set lets the next backend instance find containers that still need explicit stop calls.
