@@ -97,9 +97,8 @@ class ValidateRenderedManifestsTest < Minitest::Test
 
     assert_equal ["ConfigMap"], documents.map { |entry| entry["kind"] }.sort
     assert_equal "retired", marker.dig("data", "status")
-    assert_equal "339", marker.dig("data", "retiredIssue")
     assert_equal "deploy/kubernetes/overlays/production-managed", marker.dig("data", "activeOverlay")
-    assert_equal "doc/self-hosted-redis-decommission-record.md", marker.dig("data", "restoreRunbook")
+    assert_equal "not-an-active-deployment-path", marker.dig("data", "retirementNote")
 
     _stdout, stderr, status = run_validator(PRODUCTION_SELF_HOSTED_HA_OVERLAY, rendered.path)
 
@@ -115,9 +114,8 @@ class ValidateRenderedManifestsTest < Minitest::Test
 
     assert_equal ["ConfigMap"], documents.map { |entry| entry["kind"] }.sort
     assert_equal "retired", marker.dig("data", "status")
-    assert_equal "339", marker.dig("data", "retiredIssue")
     assert_equal "deploy/kubernetes/overlays/production-managed", marker.dig("data", "activeOverlay")
-    assert_equal "doc/self-hosted-redis-decommission-record.md", marker.dig("data", "restoreRunbook")
+    assert_equal "not-an-active-deployment-path", marker.dig("data", "retirementNote")
 
     _stdout, stderr, status = run_validator(PRODUCTION_REDIS_HA_PACKAGE, rendered.path)
 

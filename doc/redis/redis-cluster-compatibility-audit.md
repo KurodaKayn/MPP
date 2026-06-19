@@ -1,12 +1,10 @@
 # Redis Cluster Compatibility Audit
 
-Issue: #345
-
 This audit records current Redis Cluster blockers and unknowns only. It does
 not change runtime behavior.
 
 The approved key hash-tag convention for follow-up work lives in
-`doc/redis-key-hash-tag-convention.md`.
+`doc/redis/redis-key-hash-tag-convention.md`.
 
 ## Scope
 
@@ -29,8 +27,8 @@ The application is not Redis Cluster ready today. The primary blockers are:
   `redis.NewFailoverClient`; the collab service uses `createClient` or
   `createSentinel`. None of the deployed app paths build Cluster-aware clients.
 - `REDIS_DB` and `TRAEFIK_RATE_LIMIT_REDIS_DB` are first-class configuration.
-  Redis Cluster supports database `0` only, so any non-zero DB config is a
-  migration blocker.
+  Redis Cluster supports database `0` only, so any non-zero DB config blocks
+  Cluster adoption.
 - Several Lua scripts touch multiple keys without hash tags that guarantee a
   single slot. Some scripts also derive Redis keys from `ARGV`, which is unsafe
   in Cluster because the accessed key is not declared in `KEYS`.
@@ -41,7 +39,7 @@ The application is not Redis Cluster ready today. The primary blockers are:
   design.
 - Asynq has Redis Cluster support, but MPP currently injects standalone
   `*redis.Client` instances into Asynq. Queue behavior must be wired and tested
-  with Cluster clients before production Cluster cutover.
+  with Cluster clients before Redis Cluster is selected for an environment.
 
 ## Blockers And Fix Paths
 
@@ -68,18 +66,18 @@ The application is not Redis Cluster ready today. The primary blockers are:
 | RC-19 | backend X OAuth2 state | `mpp:x_oauth2_state:{state}` | Uses `SET NX` and `GETDEL` on one key. | No command-level blocker once Cluster clients exist. | Mark as compatible after Cluster-client integration tests. |
 | RC-20 | collab-service pub/sub | `mpp:collab:doc:*` channels | Uses pattern subscription and publish. | Redis Cluster pub/sub semantics depend on provider and client mode. Pattern subscription may not deliver across all shards unless the Cluster client manages node subscriptions as expected. | Validate node-redis Cluster pub/sub against the chosen provider. Consider sharded pub/sub or one channel hash tag per document if provider support requires it. |
 | RC-21 | Traefik gateway rate limit | Docker labels for `ratelimit.redis.*` | Traefik rate-limit Redis config uses endpoint/password/db labels and no Cluster-specific shape in this repo. | Gateway throttling may not support or may need different config for Redis Cluster. | Verify Traefik v3 Redis rate-limit middleware Cluster support for the deployed build. If unsupported, keep gateway rate-limit Redis on standalone/managed HA or move gateway limits elsewhere. |
-| RC-22 | scripts and runbooks | `script/redis/keyspace_inventory.rb`, migration runbooks | Inventory scans one logical DB via `redis-cli -u .../{db}` and does not enumerate Cluster nodes. | Cluster inventory can miss keys or fail on unsupported DB selection. | Add Cluster inventory mode that uses `CLUSTER SLOTS` or provider APIs, scans each primary, and forces DB `0`. |
+| RC-22 | scripts | `script/redis/keyspace_inventory.rb` | Inventory scans one logical DB via `redis-cli -u .../{db}` and does not enumerate Cluster nodes. | Cluster inventory can miss keys or fail on unsupported DB selection. | Add Cluster inventory mode that uses `CLUSTER SLOTS` or provider APIs, scans each primary, and forces DB `0`. |
 
 ## Required Category Coverage
 
 | Category | Coverage result |
 | --- | --- |
-| Multi-key commands | PR #347 replaces the first-party stream gate, browser-session quota, browser stream token cleanup, and cache scan-and-delete command blockers with single-key, same-slot, or split-safe operations. Auth verification uses email hash tags from PR #346. Asynq queue internals remain intentionally deferred to the queue Cluster-client work because their command shape is library-owned. |
-| Lua scripts | PR #347 removes cross-slot stream gate Lua, splits browser quota Lua into one-key scripts with compensating cleanup, and removes browser token rotation's dynamic `ARGV` key access. Remaining first-party Lua scripts are single-key or same `{session:<session_id>}` token scripts with every accessed key declared in `KEYS`. |
+| Multi-key commands | First-party stream gate, browser-session quota, browser stream token cleanup, and cache scan-and-delete blockers should be replaced with single-key, same-slot, or split-safe operations. Auth verification keys should use email hash tags. Asynq queue internals remain intentionally deferred to the queue Cluster-client work because their command shape is library-owned. |
+| Lua scripts | Cross-slot stream gate Lua, browser quota Lua, and browser token rotation's dynamic `ARGV` key access need Cluster-safe shapes before Cluster mode. Remaining first-party Lua scripts should be single-key or same `{session:<session_id>}` token scripts with every accessed key declared in `KEYS`. |
 | Transactions | No first-party `MULTI`, `WATCH`, `TxPipeline`, or `TxPipelined` usage was found. Asynq internals still need Cluster certification because they use Lua and queue state transitions internally. |
 | DB index usage | `REDIS_DB` and `TRAEFIK_RATE_LIMIT_REDIS_DB` are configured across app services, contracts, scripts, and docs. Cluster mode must force DB `0`. |
 | Blocking commands | No first-party `BLPOP`, `BRPOP`, `BRPOPLPUSH`, `BZPOP*`, or `XREAD` calls were found. Asynq worker dequeue behavior is library-managed and must be tested in Cluster mode. |
-| Pipelines | PR #347 removes the first-party browser-session quota release pipeline and uses per-key `ZREM` cleanup. Go-redis client metadata may still use internal `CLIENT` pipelining during connection setup, which does not touch MPP keys. |
+| Pipelines | First-party browser-session quota release should avoid cross-slot pipelines and use per-key cleanup. Go-redis client metadata may still use internal `CLIENT` pipelining during connection setup, which does not touch MPP keys. |
 | Standalone assumptions | Direct/Sentinel-only client wiring, single logical DB config, standalone `redis-cli` inventory, and single-endpoint Traefik rate-limit wiring all assume non-Cluster Redis. |
 
 ## Critical Unknowns
@@ -91,7 +89,7 @@ The application is not Redis Cluster ready today. The primary blockers are:
 | Collab pub/sub provider behavior | Cluster pub/sub semantics vary by Redis version/provider and node-redis client mode. | Validate pattern subscription across at least two shards in non-prod. Decide between classic Cluster pub/sub, sharded pub/sub, or a non-Redis fan-out path. |
 | Gateway rate-limit support | Traefik Redis rate-limit Cluster behavior is not proven by repo code. | Confirm Traefik middleware support against the exact deployed Traefik version before moving gateway limits to Cluster. |
 | Global cleanup and global limits | Redis Cluster makes global sorted sets/counters natural hot spots if kept in one slot, but cross-slot global operations fail. | Decide whether global stream limits and browser cleanup stay centralized, are sharded with approximate limits, or move to a durable DB/worker model. |
-| Data migration tooling | Current inventory and migration scripts are standalone/Sentinel oriented. | Add Cluster-aware inventory and migration rehearsal before any non-prod Cluster deployment. |
+| Data movement tooling | Current inventory scripts are standalone/Sentinel oriented. | Add Cluster-aware inventory and rehearsal before any non-prod Cluster deployment. |
 
 ## Recommended Follow-Up Order
 

@@ -21,9 +21,6 @@ The checked-in values are intentionally non-production:
 - Redis persistence is a managed-provider responsibility in this overlay. The
   provider instance must enable durable persistence or snapshots appropriate for
   staging before useful staging data is kept there.
-- Managed Redis validation evidence must be recorded in
-  `doc/managed-redis-nonprod-validation.md` before this overlay is used as the
-  basis for production migration planning.
 
 Before applying this overlay to a shared staging cluster:
 
@@ -83,8 +80,6 @@ Apply only after replacing the example inputs:
 kubectl apply -k deploy/kubernetes/overlays/staging-managed
 ```
 
-After applying provider-backed staging, complete the managed Redis validation
-report in `doc/managed-redis-nonprod-validation.md`. The report covers latency,
-provider failover, backup restore, TLS/auth, metrics/log visibility, teardown
-safety, observed RTO/RPO, provider limitations, and required production
-settings.
+After applying provider-backed staging, verify Redis latency, provider failover,
+backup restore, TLS/auth, metrics visibility, and teardown behavior directly in
+the environment notes for that staging provider.

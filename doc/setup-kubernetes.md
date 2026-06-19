@@ -44,11 +44,8 @@ staging should run PostgreSQL and Redis inside the cluster.
 Use `overlays/production-managed` as the production starter for managed
 PostgreSQL and Redis deployments that materialize `mpp-app-secrets` through an
 external secret manager or controlled bootstrap workflow.
-`overlays/production-self-hosted-ha` is retained only as a retired marker after
-issue #339. It no longer renders self-hosted Redis resources; recreate the old
-chart during the retention window only from the historical Git SHA and snapshot
-recorded in `doc/self-hosted-redis-decommission-record.md`.
-`data-services/redis-ha-production` is also retired after issue #339. Keep
+`overlays/production-self-hosted-ha` and `data-services/redis-ha-production`
+render guardrail ConfigMaps only; they are not active production paths. Keep
 `data-services/redis-ha-nonprod` for staging drills and Redis HA validation.
 
 ## Required Overlays
@@ -103,10 +100,8 @@ raw `mpp-app-secrets` values. It includes an `ExternalSecret` starter that
 expects External Secrets Operator to materialize the Secret at runtime. Create
 or patch the referenced secret store before applying app workloads, then replace
 the checked-in example hosts and image tags.
-The included `deploy/kubernetes/overlays/production-self-hosted-ha` path now
-renders only a retirement marker. Use `doc/self-hosted-redis-decommission-record.md`
-for no-traffic evidence, retained snapshot details, deletion steps, and
-recreate-from-history rollback notes.
+The included `deploy/kubernetes/overlays/production-self-hosted-ha` path renders
+only a guardrail marker and should not be used as an active release target.
 
 ## Provider-Specific Production Overlays
 

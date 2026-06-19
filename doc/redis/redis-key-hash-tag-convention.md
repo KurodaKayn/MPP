@@ -1,10 +1,8 @@
 # Redis Key Hash-Tag Convention
 
-Issue: #346
-
 This convention defines how MPP names Redis keys that may need Redis Cluster
 single-slot behavior. It complements the Redis Cluster compatibility audit in
-`doc/redis-cluster-compatibility-audit.md`.
+`doc/redis/redis-cluster-compatibility-audit.md`.
 
 ## Rules
 
@@ -38,11 +36,11 @@ mpp:dashboard:media-assets:resolve:v1:{asset:<asset_id>}:actor:<user_id>
 
 | Audit ID | Area | Approved hash-tag strategy |
 | --- | --- | --- |
-| RC-05 | Stream gate Lua | No tag is approved for the current five-key Lua shape. User, tenant, IP, and global counters aggregate across different dimensions, so a forced shared tag would change limiter semantics. Split per-scope operations or move global coordination before Cluster cutover. |
+| RC-05 | Stream gate Lua | No tag is approved for the current five-key Lua shape. User, tenant, IP, and global counters aggregate across different dimensions, so a forced shared tag would change limiter semantics. Split per-scope operations or move global coordination before Redis Cluster is enabled. |
 | RC-06 | App rate limit | Current Lua calls are single-key. If a future operation groups buckets, tag by the authoritative bucket owner, such as `{user:<user_id>}` or `{ip:<ip_hash>}`. |
 | RC-07 | Auth verification | Use `{email:<sha256_canonical_email>}` across code, attempts, and last-send keys. Implemented in backend auth key builders. |
 | RC-08 | Publish locks | Use `{project:<project_id>}` for publish locks so future project-scoped queue/lock coordination has a stable slot. Implemented in publish lock keys. |
-| RC-09 | Asynq queues | Keep Asynq's own queue hash tag, such as `asynq:{publish}:...`, and wire queues through Asynq Cluster options before Cluster cutover. |
+| RC-09 | Asynq queues | Keep Asynq's own queue hash tag, such as `asynq:{publish}:...`, and wire queues through Asynq Cluster options before Redis Cluster is enabled. |
 | RC-10 | Browser active lock | Use `{user:<user_id>}` for the active user/platform lock. Implemented in browser-session coordination keys. |
 | RC-11 | Browser quota | No shared tag is approved yet. User and tenant quota keys aggregate on different dimensions; tagging both by either side would weaken one quota. Keep this as a design decision for the quota rewrite. |
 | RC-12 | Browser live state and heartbeat | Use `{session:<session_id>}` for live session state. Worker heartbeats remain single-key by worker ref until the worker-ref-to-session index is redesigned. |

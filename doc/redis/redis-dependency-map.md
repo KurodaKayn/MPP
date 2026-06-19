@@ -67,4 +67,4 @@ Risk tags:
 
 ## Linked From
 
-- [Redis availability plan](./plan/redis-availability-plan.md)
+- [Redis availability plan](../plan/redis-availability-plan.md)
