@@ -154,14 +154,14 @@ func (s *BrowserSessionService) acquireRedisConcurrencyQuota(ctx context.Context
 	for _, scope := range scopes {
 		ok, err := s.acquireRedisConcurrencyQuotaScope(ctx, scope, sessionID, expiresAt, ttl)
 		if err != nil {
-			cleanupErr := s.releaseRedisConcurrencyQuotaScopes(ctx, acquired, sessionID)
+			cleanupErr := s.cleanupPartialRedisConcurrencyQuota(ctx, acquired, sessionID)
 			if cleanupErr != nil {
 				return errors.Join(err, cleanupErr)
 			}
 			return err
 		}
 		if !ok {
-			cleanupErr := s.releaseRedisConcurrencyQuotaScopes(ctx, acquired, sessionID)
+			cleanupErr := s.cleanupPartialRedisConcurrencyQuota(ctx, acquired, sessionID)
 			if cleanupErr != nil {
 				return errors.Join(scope.err, cleanupErr)
 			}
@@ -218,6 +218,12 @@ func (s *BrowserSessionService) releaseRedisConcurrencyQuota(ctx context.Context
 		{key: browserSessionQuotaUserKey(userID)},
 		{key: browserSessionQuotaTenantKey(tenantID)},
 	}, sessionID)
+}
+
+func (s *BrowserSessionService) cleanupPartialRedisConcurrencyQuota(ctx context.Context, scopes []browserSessionQuotaScope, sessionID uuid.UUID) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), redisCleanupTimeout)
+	defer cancel()
+	return s.releaseRedisConcurrencyQuotaScopes(cleanupCtx, scopes, sessionID)
 }
 
 func (s *BrowserSessionService) releaseRedisConcurrencyQuotaScopes(ctx context.Context, scopes []browserSessionQuotaScope, sessionID uuid.UUID) error {

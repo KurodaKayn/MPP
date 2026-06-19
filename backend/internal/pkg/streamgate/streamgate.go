@@ -27,7 +27,8 @@ const (
 	KindAI      = "ai"
 	KindBrowser = "browser"
 
-	defaultPrefix = "mpp:stream"
+	defaultPrefix       = "mpp:stream"
+	redisCleanupTimeout = 2 * time.Second
 )
 
 var (
@@ -224,13 +225,13 @@ func (l *Limiter) acquireRedis(ctx context.Context, req AcquireRequest, limits L
 	for _, scope := range scopes {
 		ok, err := l.acquireRedisScope(ctx, scope, connID, limits.TTL, now, expiresAt)
 		if err != nil {
-			if cleanupErr := l.cleanupRedisAcquire(ctx, keys[0], acquired, connID); cleanupErr != nil {
+			if cleanupErr := l.cleanupPartialRedisAcquire(ctx, keys[0], acquired, connID); cleanupErr != nil {
 				return "", errors.Join(err, cleanupErr)
 			}
 			return "", err
 		}
 		if !ok {
-			if cleanupErr := l.cleanupRedisAcquire(ctx, keys[0], acquired, connID); cleanupErr != nil {
+			if cleanupErr := l.cleanupPartialRedisAcquire(ctx, keys[0], acquired, connID); cleanupErr != nil {
 				return "", cleanupErr
 			}
 			return scope.name, nil
@@ -239,7 +240,7 @@ func (l *Limiter) acquireRedis(ctx context.Context, req AcquireRequest, limits L
 	}
 
 	if err := l.redis.Set(ctx, keys[0], payload, limits.TTL).Err(); err != nil {
-		if cleanupErr := l.cleanupRedisAcquire(ctx, keys[0], acquired, connID); cleanupErr != nil {
+		if cleanupErr := l.cleanupPartialRedisAcquire(ctx, keys[0], acquired, connID); cleanupErr != nil {
 			return "", errors.Join(fmt.Errorf("%w: %w", ErrUnavailable, err), cleanupErr)
 		}
 		return "", fmt.Errorf("%w: %w", ErrUnavailable, err)
@@ -308,6 +309,12 @@ return 1
 		return false, fmt.Errorf("%w: unexpected redis accepted flag", ErrUnavailable)
 	}
 	return accepted == 1, nil
+}
+
+func (l *Limiter) cleanupPartialRedisAcquire(ctx context.Context, connKey string, scopes []streamRedisScope, connID string) error {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), redisCleanupTimeout)
+	defer cancel()
+	return l.cleanupRedisAcquire(cleanupCtx, connKey, scopes, connID)
 }
 
 func (l *Limiter) cleanupRedisAcquire(ctx context.Context, connKey string, scopes []streamRedisScope, connID string) error {
