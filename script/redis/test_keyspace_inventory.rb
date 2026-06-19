@@ -117,7 +117,7 @@ module RedisKeyspaceInventory
       Dir.mktmpdir("redis-keyspace-inventory-test") do |dir|
         command_log = File.join(dir, "commands.log")
         redis_cli = File.join(dir, "redis-cli")
-        File.write(redis_cli, fake_redis_cli(command_log))
+        File.write(redis_cli, fake_redis_cli(command_log: command_log))
         FileUtils.chmod("+x", redis_cli)
 
         original_path = ENV["PATH"]
@@ -148,6 +148,84 @@ module RedisKeyspaceInventory
       end
     end
 
+    def test_live_scanner_passes_tls_ca_file_and_sni_to_redis_cli
+      Dir.mktmpdir("redis-keyspace-inventory-test") do |dir|
+        command_log = File.join(dir, "commands.log")
+        redis_cli = File.join(dir, "redis-cli")
+        ca_file = File.join(dir, "provider-ca.pem")
+        File.write(ca_file, "provider-ca")
+        File.write(redis_cli, fake_redis_cli(
+          command_log: command_log,
+          expected_options: {
+            "--cacert" => ca_file,
+            "--sni" => "redis.internal.example",
+          },
+        ))
+        FileUtils.chmod("+x", redis_cli)
+
+        original_path = ENV["PATH"]
+        ENV["PATH"] = "#{dir}:#{original_path}"
+        scanner = RedisCliScanner.new(
+          addr: "redis.example.invalid:6379",
+          password: "",
+          db: "0",
+          tls: true,
+          tls_ca_file: ca_file,
+          tls_server_name: "redis.internal.example",
+          scan_match: "mpp:*",
+          scan_count: 2,
+          max_keys: 1,
+          command_timeout_seconds: 5,
+        )
+
+        samples = scanner.scan
+
+        assert_equal ["mpp:dashboard:projects:list:v2:#{'a' * 64}"], samples.map(&:key)
+        commands = File.readlines(command_log, chomp: true)
+        assert_includes commands, "SCAN 0 MATCH mpp:* COUNT 2"
+      ensure
+        ENV["PATH"] = original_path
+      end
+    end
+
+    def test_live_scanner_writes_inline_tls_ca_to_temp_file
+      Dir.mktmpdir("redis-keyspace-inventory-test") do |dir|
+        command_log = File.join(dir, "commands.log")
+        ca_log = File.join(dir, "ca.log")
+        redis_cli = File.join(dir, "redis-cli")
+        File.write(redis_cli, fake_redis_cli(
+          command_log: command_log,
+          ca_log: ca_log,
+          expected_options: {
+            "--cacert" => :any,
+          },
+        ))
+        FileUtils.chmod("+x", redis_cli)
+
+        original_path = ENV["PATH"]
+        ENV["PATH"] = "#{dir}:#{original_path}"
+        scanner = RedisCliScanner.new(
+          addr: "redis.example.invalid:6379",
+          password: "",
+          db: "0",
+          tls: true,
+          tls_ca_cert: "inline-ca",
+          scan_match: "mpp:*",
+          scan_count: 2,
+          max_keys: 1,
+          command_timeout_seconds: 5,
+        )
+
+        scanner.scan
+
+        ca_payloads = File.readlines(ca_log, chomp: true)
+        refute_empty ca_payloads
+        assert ca_payloads.all? { |payload| payload == "inline-ca" }, ca_payloads.inspect
+      ensure
+        ENV["PATH"] = original_path
+      end
+    end
+
     private
 
     def pattern(report, name)
@@ -155,10 +233,40 @@ module RedisKeyspaceInventory
         flunk("missing pattern #{name}")
     end
 
-    def fake_redis_cli(command_log)
+    def fake_redis_cli(command_log:, expected_options: {}, ca_log: nil)
       <<~RUBY
         #!/usr/bin/env ruby
-        command = ARGV.reject { |arg| ["-u", "redis://redis.example.invalid:6379/0", "--raw"].include?(arg) }
+        args = ARGV.dup
+        expected_options = #{expected_options.inspect}
+        expected_options.each do |flag, expected_value|
+          index = args.index(flag)
+          if index.nil?
+            warn "missing expected flag: \#{flag}"
+            exit 1
+          end
+          args.delete_at(index)
+          next if flag == "--tls"
+
+          value = args.delete_at(index)
+          if flag == "--cacert" && #{ca_log.inspect}
+            File.open(#{ca_log.inspect}, "a") { |file| file.puts(File.read(value)) }
+          elsif expected_value != :any && value != expected_value
+            warn "unexpected \#{flag}: \#{value}"
+            exit 1
+          end
+        end
+        skip_next = false
+        command = args.each_with_index.reject do |arg, index|
+          if skip_next
+            skip_next = false
+            true
+          elsif ["-u", "--cacert", "--sni"].include?(arg)
+            skip_next = true
+            true
+          else
+            ["redis://redis.example.invalid:6379/0", "rediss://redis.example.invalid:6379/0", "--raw", "--tls"].include?(arg)
+          end
+        end.map(&:first)
         File.open(#{command_log.inspect}, "a") { |file| file.puts(command.join(" ")) }
         case command
         when ["SCAN", "0", "MATCH", "mpp:*", "COUNT", "2"]
