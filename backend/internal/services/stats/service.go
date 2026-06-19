@@ -19,7 +19,7 @@ type Service struct {
 	db         *gorm.DB
 	router     *dbrouter.Router
 	projects   *projectsvc.Service
-	cache      *redis.Client
+	cache      redis.UniversalClient
 	cacheTTL   time.Duration
 	cacheGroup *singleflight.Group
 	cacheGuard *redisdegrade.Guard
@@ -54,11 +54,11 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 	return &scoped
 }
 
-func (s *Service) UseRedis(client *redis.Client) {
+func (s *Service) UseRedis(client redis.UniversalClient) {
 	s.UseRedisCache(client)
 }
 
-func (s *Service) UseRedisCache(client *redis.Client) {
+func (s *Service) UseRedisCache(client redis.UniversalClient) {
 	if client == nil {
 		return
 	}
