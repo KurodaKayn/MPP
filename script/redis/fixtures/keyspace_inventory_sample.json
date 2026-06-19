@@ -1,7 +1,7 @@
 {
   "keys": [
     {
-      "key": "auth:code:register:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "key": "auth:code:{email:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}:register",
       "type": "string",
       "ttl_ms": 590000,
       "memory_bytes": 96
@@ -13,25 +13,25 @@
       "memory_bytes": 184
     },
     {
-      "key": "mpp:browser:session:11111111-1111-4111-8111-111111111111",
+      "key": "mpp:browser:session:{session:11111111-1111-4111-8111-111111111111}",
       "type": "string",
       "ttl_ms": 900000,
       "memory_bytes": 1200
     },
     {
-      "key": "mpp:dashboard:projects:list:v2:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "key": "mpp:dashboard:projects:list:v2:{dashboard:projects-list}:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "type": "string",
       "ttl_ms": 14000,
       "memory_bytes": 1024
     },
     {
-      "key": "mpp:dashboard:projects:list:v2:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "key": "mpp:dashboard:projects:list:v2:{dashboard:projects-list}:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       "type": "string",
       "ttl_ms": 10000,
       "memory_bytes": 1024
     },
     {
-      "key": "mpp:publish:lock:22222222-2222-4222-8222-222222222222:wechat",
+      "key": "mpp:publish:lock:{project:22222222-2222-4222-8222-222222222222}:wechat",
       "type": "string",
       "ttl_ms": 1780000,
       "memory_bytes": 128

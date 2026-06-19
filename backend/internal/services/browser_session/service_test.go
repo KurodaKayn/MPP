@@ -102,7 +102,31 @@ func setRedisLiveSession(t *testing.T, client *redis.Client, state map[string]an
 	require.True(t, ok)
 	payload, err := json.Marshal(state)
 	require.NoError(t, err)
-	require.NoError(t, client.Set(context.Background(), "mpp:browser:session:"+sessionID, payload, ttl).Err())
+	require.NoError(t, client.Set(context.Background(), browserSessionTestRedisKey(sessionID), payload, ttl).Err())
+}
+
+func browserSessionTestRedisKey(sessionID string) string {
+	return "mpp:browser:session:" + browserSessionTestRedisTag("session", sessionID)
+}
+
+func browserSessionTestActiveKey(userID uuid.UUID, platform string) string {
+	return "mpp:browser:active:" + browserSessionTestRedisTag("user", userID.String()) + ":" + strings.ToLower(platform)
+}
+
+func browserSessionTestStreamTokenKey(sessionID uuid.UUID, tokenHash string) string {
+	return browserSessionTestStreamTokenPrefix(sessionID) + strings.ToLower(tokenHash)
+}
+
+func browserSessionTestStreamTokenPrefix(sessionID uuid.UUID) string {
+	return "mpp:browser:stream-token:" + browserSessionTestRedisTag("session", sessionID.String()) + ":"
+}
+
+func browserSessionTestStreamCurrentKey(sessionID uuid.UUID) string {
+	return "mpp:browser:stream-current:" + browserSessionTestRedisTag("session", sessionID.String())
+}
+
+func browserSessionTestRedisTag(scope string, value string) string {
+	return "{" + strings.ToLower(strings.TrimSpace(scope)) + ":" + strings.ToLower(strings.TrimSpace(value)) + "}"
 }
 
 type dashboardAccountCacheInvalidation struct {
@@ -493,12 +517,12 @@ func TestBrowserSessionService_GetSessionReturnsGoneForExpiredRedisSession(t *te
 		ExpiresAt:         now.Add(-15 * time.Minute),
 	}
 	require.NoError(t, db.Create(&session).Error)
-	require.NoError(t, client.Set(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform, session.ID.String(), time.Hour).Err())
+	require.NoError(t, client.Set(context.Background(), browserSessionTestActiveKey(userID, platform), session.ID.String(), time.Hour).Err())
 
 	_, err := svc.GetSession(context.Background(), userID, session.ID)
 
 	require.ErrorIs(t, err, browsersession.ErrSessionGone)
-	assert.Equal(t, int64(0), client.Exists(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Val())
+	assert.Equal(t, int64(0), client.Exists(context.Background(), browserSessionTestActiveKey(userID, platform)).Val())
 
 	var savedSession models.RemoteBrowserSession
 	require.NoError(t, db.First(&savedSession, session.ID).Error)
@@ -548,7 +572,7 @@ func TestBrowserSessionService_RedisLiveStateOmitsInternalEndpointRefs(t *testin
 	resp, err := svc.StartSession(context.Background(), userID, platform)
 	require.NoError(t, err)
 
-	raw, err := client.Get(context.Background(), "mpp:browser:session:"+resp.SessionID.String()).Bytes()
+	raw, err := client.Get(context.Background(), browserSessionTestRedisKey(resp.SessionID.String())).Bytes()
 	require.NoError(t, err)
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(raw, &payload))
@@ -577,15 +601,15 @@ func TestBrowserSessionService_CancelSessionDeletesAllRedisStreamTokens(t *testi
 
 	resp, err := svc.StartSession(context.Background(), userID, platform)
 	require.NoError(t, err)
-	strayTokenKey := "mpp:browser:stream-token:" + resp.SessionID.String() + ":stray-token-hash"
+	strayTokenKey := browserSessionTestStreamTokenKey(resp.SessionID, "stray-token-hash")
 	require.NoError(t, client.Set(context.Background(), strayTokenKey, "{}", time.Hour).Err())
 
 	require.NoError(t, svc.CancelSession(context.Background(), userID, resp.SessionID))
 
-	tokenKeys, err := client.Keys(context.Background(), "mpp:browser:stream-token:"+resp.SessionID.String()+":*").Result()
+	tokenKeys, err := client.Keys(context.Background(), browserSessionTestStreamTokenPrefix(resp.SessionID)+"*").Result()
 	require.NoError(t, err)
 	assert.Empty(t, tokenKeys)
-	assert.Equal(t, int64(0), client.Exists(context.Background(), "mpp:browser:stream-current:"+resp.SessionID.String()).Val())
+	assert.Equal(t, int64(0), client.Exists(context.Background(), browserSessionTestStreamCurrentKey(resp.SessionID)).Val())
 }
 
 func TestBrowserSessionService_UnsupportedPlatform(t *testing.T) {
@@ -746,7 +770,7 @@ func TestBrowserSessionService_StartSessionRecoversStaleRedisActiveLock(t *testi
 		ExpiresAt:         time.Now().Add(13 * time.Minute),
 	}
 	require.NoError(t, db.Create(&staleSession).Error)
-	require.NoError(t, client.Set(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform, staleSession.ID.String(), time.Hour).Err())
+	require.NoError(t, client.Set(context.Background(), browserSessionTestActiveKey(userID, platform), staleSession.ID.String(), time.Hour).Err())
 	setRedisLiveSession(t, client, map[string]any{
 		"session_id":          staleSession.ID.String(),
 		"user_id":             userID.String(),
@@ -764,10 +788,10 @@ func TestBrowserSessionService_StartSessionRecoversStaleRedisActiveLock(t *testi
 	assert.Equal(t, models.BrowserSessionStatusReady, resp.Status)
 	assert.NotEqual(t, staleSession.ID, resp.SessionID)
 
-	activeSessionID, err := client.Get(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Result()
+	activeSessionID, err := client.Get(context.Background(), browserSessionTestActiveKey(userID, platform)).Result()
 	require.NoError(t, err)
 	assert.Equal(t, resp.SessionID.String(), activeSessionID)
-	assert.Equal(t, int64(0), client.Exists(context.Background(), "mpp:browser:session:"+staleSession.ID.String()).Val())
+	assert.Equal(t, int64(0), client.Exists(context.Background(), browserSessionTestRedisKey(staleSession.ID.String())).Val())
 
 	var savedStaleSession models.RemoteBrowserSession
 	require.NoError(t, db.First(&savedStaleSession, staleSession.ID).Error)
@@ -789,7 +813,7 @@ func TestBrowserSessionService_StartSessionPreservesReachableRedisActiveLock(t *
 	_, err = svc.StartSession(context.Background(), userID, platform)
 
 	require.ErrorIs(t, err, browsersession.ErrActiveSessionExists)
-	activeSessionID, err := client.Get(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Result()
+	activeSessionID, err := client.Get(context.Background(), browserSessionTestActiveKey(userID, platform)).Result()
 	require.NoError(t, err)
 	assert.Equal(t, resp.SessionID.String(), activeSessionID)
 }
@@ -864,7 +888,7 @@ func TestBrowserSessionService_GetSessionKeepsLiveRedisStateOnTransientWorkerRea
 		ExpiresAt:         time.Now().Add(10 * time.Minute),
 	}
 	require.NoError(t, db.Create(&session).Error)
-	require.NoError(t, client.Set(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform, session.ID.String(), time.Hour).Err())
+	require.NoError(t, client.Set(context.Background(), browserSessionTestActiveKey(userID, platform), session.ID.String(), time.Hour).Err())
 	require.NoError(t, client.Set(context.Background(), "mpp:browser:worker-heartbeat:"+workerSessionRef, session.ID.String(), time.Hour).Err())
 	setRedisLiveSession(t, client, map[string]any{
 		"session_id":          session.ID.String(),
@@ -889,8 +913,8 @@ func TestBrowserSessionService_GetSessionKeepsLiveRedisStateOnTransientWorkerRea
 	require.NoError(t, db.First(&savedSession, session.ID).Error)
 	assert.Equal(t, models.BrowserSessionStatusReady, savedSession.Status)
 	assert.Equal(t, "stale-token", savedSession.ConnectTokenHash)
-	assert.Equal(t, int64(1), client.Exists(context.Background(), "mpp:browser:active:"+userID.String()+":"+platform).Val())
-	assert.Equal(t, int64(1), client.Exists(context.Background(), "mpp:browser:session:"+session.ID.String()).Val())
+	assert.Equal(t, int64(1), client.Exists(context.Background(), browserSessionTestActiveKey(userID, platform)).Val())
+	assert.Equal(t, int64(1), client.Exists(context.Background(), browserSessionTestRedisKey(session.ID.String())).Val())
 	assert.Equal(t, int64(1), client.Exists(context.Background(), "mpp:browser:worker-heartbeat:"+workerSessionRef).Val())
 }
 
@@ -928,7 +952,7 @@ func TestBrowserSessionService_CancelSessionRemovesContinuityStateWhenCoordinati
 
 	require.NoError(t, svc.CancelSession(context.Background(), userID, session.ID))
 
-	assert.Equal(t, int64(0), continuityClient.Exists(context.Background(), "mpp:browser:session:"+session.ID.String()).Val())
+	assert.Equal(t, int64(0), continuityClient.Exists(context.Background(), browserSessionTestRedisKey(session.ID.String())).Val())
 	assert.Equal(t, int64(0), continuityClient.Exists(context.Background(), "mpp:browser:worker-heartbeat:"+workerSessionRef).Val())
 	assert.Equal(t, int64(0), continuityClient.ZCard(context.Background(), "mpp:browser:cleanup").Val())
 

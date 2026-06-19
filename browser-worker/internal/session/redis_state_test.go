@@ -40,6 +40,12 @@ func TestRedisConnectionConfigFromEnvUsesDirectEndpoint(t *testing.T) {
 	require.Equal(t, redisDialerRetryTimeout, options.DialerRetryTimeout)
 }
 
+func TestBrowserSessionRedisKeyUsesSessionHashTag(t *testing.T) {
+	sessionID := "11111111-1111-4111-8111-111111111111"
+
+	require.Equal(t, "mpp:browser:session:{session:"+sessionID+"}", browserSessionRedisKey(sessionID))
+}
+
 func TestRedisConnectionConfigFromEnvBuildsTLSOptions(t *testing.T) {
 	clearRedisEnv(t)
 	t.Setenv(redisAddrEnv, "redis.example.invalid:6379")

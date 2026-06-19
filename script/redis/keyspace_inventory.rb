@@ -102,8 +102,8 @@ module RedisKeyspaceInventory
 
   DECLARED_PATTERNS = [
     {
-      pattern: "auth:code:{scene}:{email_hash}",
-      regex: /\Aauth:code:[^:]+:[0-9a-f]{64}\z/,
+      pattern: "auth:code:{email_hash_tag}:{scene}",
+      regex: /\Aauth:code:\{email:[0-9a-f]{64}\}:[^:]+\z/,
       owner: "backend auth handler",
       reads: ["backend"],
       writes: ["backend"],
@@ -111,8 +111,8 @@ module RedisKeyspaceInventory
       notes: "Email verification and password reset code.",
     }.merge(AUTH_VERIFICATION_RESPONSIBILITY),
     {
-      pattern: "auth:code_attempts:{scene}:{email_hash}",
-      regex: /\Aauth:code_attempts:[^:]+:[0-9a-f]{64}\z/,
+      pattern: "auth:code_attempts:{email_hash_tag}:{scene}",
+      regex: /\Aauth:code_attempts:\{email:[0-9a-f]{64}\}:[^:]+\z/,
       owner: "backend auth handler",
       reads: ["backend"],
       writes: ["backend"],
@@ -120,8 +120,8 @@ module RedisKeyspaceInventory
       notes: "Failed verification attempt counter.",
     }.merge(AUTH_VERIFICATION_RESPONSIBILITY),
     {
-      pattern: "auth:last_send:{scene}:{email_hash}",
-      regex: /\Aauth:last_send:[^:]+:[0-9a-f]{64}\z/,
+      pattern: "auth:last_send:{email_hash_tag}:{scene}",
+      regex: /\Aauth:last_send:\{email:[0-9a-f]{64}\}:[^:]+\z/,
       owner: "backend auth handler",
       reads: ["backend"],
       writes: ["backend"],
@@ -183,8 +183,8 @@ module RedisKeyspaceInventory
       notes: "Global stream concurrency zset.",
     }.merge(STREAM_GATE_RESPONSIBILITY),
     {
-      pattern: "mpp:browser:active:{user_id}:{platform}",
-      regex: /\Ampp:browser:active:[0-9a-f-]{36}:[^:]+\z/,
+      pattern: "mpp:browser:active:{user_id_tag}:{platform}",
+      regex: /\Ampp:browser:active:\{user:[0-9a-f-]{36}\}:[^:]+\z/,
       owner: "backend browser session service",
       reads: ["backend"],
       writes: ["backend"],
@@ -192,8 +192,8 @@ module RedisKeyspaceInventory
       notes: "One active remote browser session per user and platform.",
     }.merge(BROWSER_COORDINATION_RESPONSIBILITY),
     {
-      pattern: "mpp:browser:session:{session_id}",
-      regex: /\Ampp:browser:session:[0-9a-f-]{36}\z/,
+      pattern: "mpp:browser:session:{session_id_tag}",
+      regex: /\Ampp:browser:session:\{session:[0-9a-f-]{36}\}\z/,
       owner: "backend/browser-worker browser session state",
       reads: ["backend", "browser-worker"],
       writes: ["backend", "browser-worker"],
@@ -201,8 +201,8 @@ module RedisKeyspaceInventory
       notes: "Remote browser live session JSON state.",
     }.merge(BROWSER_SESSION_RESPONSIBILITY),
     {
-      pattern: "mpp:browser:stream-token:{session_id}:{token_hash}",
-      regex: /\Ampp:browser:stream-token:[0-9a-f-]{36}:[^:]+\z/,
+      pattern: "mpp:browser:stream-token:{session_id_tag}:{token_hash}",
+      regex: /\Ampp:browser:stream-token:\{session:[0-9a-f-]{36}\}:[^:]+\z/,
       owner: "backend browser session service",
       reads: ["backend"],
       writes: ["backend"],
@@ -210,8 +210,8 @@ module RedisKeyspaceInventory
       notes: "Single-use browser stream token metadata.",
     }.merge(BROWSER_STREAM_TOKEN_RESPONSIBILITY),
     {
-      pattern: "mpp:browser:stream-current:{session_id}",
-      regex: /\Ampp:browser:stream-current:[0-9a-f-]{36}\z/,
+      pattern: "mpp:browser:stream-current:{session_id_tag}",
+      regex: /\Ampp:browser:stream-current:\{session:[0-9a-f-]{36}\}\z/,
       owner: "backend browser session service",
       reads: ["backend"],
       writes: ["backend"],
@@ -255,8 +255,8 @@ module RedisKeyspaceInventory
       notes: "Per-tenant remote browser session concurrency zset.",
     }.merge(BROWSER_COORDINATION_RESPONSIBILITY),
     {
-      pattern: "mpp:publish:lock:{project_id}:{platform}",
-      regex: /\Ampp:publish:lock:[0-9a-f-]{36}:[^:]+\z/,
+      pattern: "mpp:publish:lock:{project_id_tag}:{platform}",
+      regex: /\Ampp:publish:lock:\{project:[0-9a-f-]{36}\}:[^:]+\z/,
       owner: "backend publish service",
       reads: ["backend", "publish-worker"],
       writes: ["backend", "publish-worker"],
@@ -264,8 +264,8 @@ module RedisKeyspaceInventory
       notes: "Publish job idempotency and mutual-exclusion lock.",
     }.merge(PUBLISH_LOCK_RESPONSIBILITY),
     {
-      pattern: "mpp:dashboard:projects:list:v2:{params_hash}",
-      regex: /\Ampp:dashboard:projects:list:v2:[0-9a-f]{64}\z/,
+      pattern: "mpp:dashboard:projects:list:v2:{project_list_tag}:{params_hash}",
+      regex: /\Ampp:dashboard:projects:list:v2:\{dashboard:projects-list\}:[0-9a-f]{64}\z/,
       owner: "backend project service",
       reads: ["backend"],
       writes: ["backend"],
@@ -273,8 +273,8 @@ module RedisKeyspaceInventory
       notes: "Dashboard project list cache.",
     }.merge(DASHBOARD_CACHE_RESPONSIBILITY),
     {
-      pattern: "mpp:dashboard:projects:list-generation:v2",
-      regex: /\Ampp:dashboard:projects:list-generation:v2\z/,
+      pattern: "mpp:dashboard:projects:list-generation:v2:{project_list_tag}",
+      regex: /\Ampp:dashboard:projects:list-generation:v2:\{dashboard:projects-list\}\z/,
       owner: "backend project service",
       reads: ["backend"],
       writes: ["backend"],
@@ -372,8 +372,8 @@ module RedisKeyspaceInventory
       notes: "Pending X OAuth2 state and PKCE verifier.",
     }.merge(OAUTH2_STATE_RESPONSIBILITY),
     {
-      pattern: "mpp:dashboard:media-assets:resolve:v1:{asset_id}:actor:{user_id}",
-      regex: /\Ampp:dashboard:media-assets:resolve:v1:[0-9a-f-]{36}:actor:[0-9a-f-]{36}\z/,
+      pattern: "mpp:dashboard:media-assets:resolve:v1:{asset_id_tag}:actor:{user_id}",
+      regex: /\Ampp:dashboard:media-assets:resolve:v1:\{asset:[0-9a-f-]{36}\}:actor:[0-9a-f-]{36}\z/,
       owner: "backend media asset service",
       reads: ["backend"],
       writes: ["backend"],

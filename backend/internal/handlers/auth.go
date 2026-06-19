@@ -20,6 +20,7 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/middleware"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/rediskey"
 	"github.com/kurodakayn/mpp-backend/internal/services/email"
 )
 
@@ -217,15 +218,15 @@ func (h *AuthHandler) generateRandomCode(length int) (string, error) {
 }
 
 func verificationCodeKey(scene, email string) string {
-	return fmt.Sprintf("auth:code:%s:%s", scene, verificationEmailKeyDigest(email))
+	return fmt.Sprintf("auth:code:%s:%s", rediskey.Tag("email", verificationEmailKeyDigest(email)), rediskey.Part(scene))
 }
 
 func verificationAttemptKey(scene, email string) string {
-	return fmt.Sprintf("auth:code_attempts:%s:%s", scene, verificationEmailKeyDigest(email))
+	return fmt.Sprintf("auth:code_attempts:%s:%s", rediskey.Tag("email", verificationEmailKeyDigest(email)), rediskey.Part(scene))
 }
 
 func verificationLastSendKey(scene, email string) string {
-	return fmt.Sprintf("auth:last_send:%s:%s", scene, verificationEmailKeyDigest(email))
+	return fmt.Sprintf("auth:last_send:%s:%s", rediskey.Tag("email", verificationEmailKeyDigest(email)), rediskey.Part(scene))
 }
 
 func canonicalVerificationEmail(email string) string {

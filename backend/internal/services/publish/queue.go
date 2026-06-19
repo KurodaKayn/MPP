@@ -16,6 +16,7 @@ import (
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/rediskey"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 )
@@ -632,7 +633,7 @@ func publicationPublishingStale(pub models.ProjectPlatformPublication) bool {
 }
 
 func publishLockKey(projectID uuid.UUID, platform string) string {
-	return publishLockKeyPrefix + projectID.String() + ":" + platform
+	return publishLockKeyPrefix + rediskey.Tag("project", projectID.String()) + ":" + rediskey.Part(platform)
 }
 
 func publishCleanupContext(parent context.Context) (context.Context, context.CancelFunc) {

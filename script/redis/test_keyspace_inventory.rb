@@ -29,7 +29,7 @@ module RedisKeyspaceInventory
       assert_equal 7, report.dig("summary", "patterns_observed")
       assert_empty report.fetch("warnings").grep(/scan stopped/)
 
-      project_cache = pattern(report, "mpp:dashboard:projects:list:v2:{params_hash}")
+      project_cache = pattern(report, "mpp:dashboard:projects:list:v2:{project_list_tag}:{params_hash}")
       assert_equal "backend project service", project_cache.fetch("owner")
       assert_equal "declared", project_cache.fetch("owner_source")
       assert_equal "R2", project_cache.fetch("responsibility_tier")
@@ -110,7 +110,7 @@ module RedisKeyspaceInventory
       report = JSON.parse(stdout)
       assert_equal "fixture:#{FIXTURE}", report.fetch("source")
       assert_equal 8, report.dig("summary", "keys_observed")
-      assert pattern(report, "auth:code:{scene}:{email_hash}")
+      assert pattern(report, "auth:code:{email_hash_tag}:{scene}")
     end
 
     def test_live_scanner_uses_read_only_redis_metadata_commands
@@ -134,7 +134,7 @@ module RedisKeyspaceInventory
         )
         samples = scanner.scan
 
-        assert_equal ["mpp:dashboard:projects:list:v2:#{'a' * 64}", "mpp:browser:cleanup"], samples.map(&:key)
+        assert_equal ["mpp:dashboard:projects:list:v2:{dashboard:projects-list}:#{'a' * 64}", "mpp:browser:cleanup"], samples.map(&:key)
         assert_equal ["string", "zset"], samples.map(&:type)
         assert_equal [12_000, -1], samples.map(&:ttl_ms)
         assert_equal [128, 256], samples.map(&:memory_bytes)
@@ -180,7 +180,7 @@ module RedisKeyspaceInventory
 
         samples = scanner.scan
 
-        assert_equal ["mpp:dashboard:projects:list:v2:#{'a' * 64}"], samples.map(&:key)
+        assert_equal ["mpp:dashboard:projects:list:v2:{dashboard:projects-list}:#{'a' * 64}"], samples.map(&:key)
         commands = File.readlines(command_log, chomp: true)
         assert_includes commands, "SCAN 0 MATCH mpp:* COUNT 2"
       ensure
@@ -271,15 +271,15 @@ module RedisKeyspaceInventory
         case command
         when ["SCAN", "0", "MATCH", "mpp:*", "COUNT", "2"]
           puts "1"
-          puts "mpp:dashboard:projects:list:v2:#{"a" * 64}"
+          puts "mpp:dashboard:projects:list:v2:{dashboard:projects-list}:#{"a" * 64}"
         when ["SCAN", "1", "MATCH", "mpp:*", "COUNT", "2"]
           puts "0"
           puts "mpp:browser:cleanup"
-        when ["TYPE", "mpp:dashboard:projects:list:v2:#{"a" * 64}"]
+        when ["TYPE", "mpp:dashboard:projects:list:v2:{dashboard:projects-list}:#{"a" * 64}"]
           puts "string"
-        when ["PTTL", "mpp:dashboard:projects:list:v2:#{"a" * 64}"]
+        when ["PTTL", "mpp:dashboard:projects:list:v2:{dashboard:projects-list}:#{"a" * 64}"]
           puts "12000"
-        when ["MEMORY", "USAGE", "mpp:dashboard:projects:list:v2:#{"a" * 64}"]
+        when ["MEMORY", "USAGE", "mpp:dashboard:projects:list:v2:{dashboard:projects-list}:#{"a" * 64}"]
           puts "128"
         when ["TYPE", "mpp:browser:cleanup"]
           puts "zset"
