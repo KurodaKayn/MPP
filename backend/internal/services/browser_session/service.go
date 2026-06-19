@@ -73,8 +73,8 @@ type BrowserSessionService struct {
 	workerClient                     publisher.BrowserWorkerClient
 	cookieStore                      *publisher.CookieStore
 	adapters                         map[string]publisher.RemoteBrowserPlatformAdapter
-	coordinationRedisClient          *redis.Client
-	continuityRedisClient            *redis.Client
+	coordinationRedisClient          redis.UniversalClient
+	continuityRedisClient            redis.UniversalClient
 	quotaConfig                      BrowserSessionQuotaConfig
 	dashboardAccountCacheInvalidator DashboardAccountCacheInvalidator
 }
@@ -160,19 +160,19 @@ func (s *BrowserSessionService) RegisterSession(ctx context.Context, session *mo
 	return nil
 }
 
-func (s *BrowserSessionService) UseRedis(client *redis.Client) {
+func (s *BrowserSessionService) UseRedis(client redis.UniversalClient) {
 	s.UseRedisCoordination(client)
 	s.UseRedisContinuity(client)
 }
 
-func (s *BrowserSessionService) UseRedisCoordination(client *redis.Client) {
+func (s *BrowserSessionService) UseRedisCoordination(client redis.UniversalClient) {
 	if client == nil {
 		return
 	}
 	s.coordinationRedisClient = client
 }
 
-func (s *BrowserSessionService) UseRedisContinuity(client *redis.Client) {
+func (s *BrowserSessionService) UseRedisContinuity(client redis.UniversalClient) {
 	if client == nil {
 		return
 	}
