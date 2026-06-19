@@ -984,7 +984,11 @@ window because it deletes the Redis Pod.
 
 Use this procedure for Phase 2 production cutover from the existing self-hosted
 Redis StatefulSet to the self-hosted HA Redis topology. Do not use it for
-managed Redis or Redis Cluster migrations.
+managed Redis or Redis Cluster migrations. After issue #339, the
+`production-self-hosted-ha` overlay and `redis-ha-production` package are
+retired and this procedure is historical; use
+`doc/self-hosted-redis-decommission-record.md` for retention-window rollback
+from a historical chart and retained snapshot.
 
 Prerequisites:
 
@@ -997,7 +1001,7 @@ Prerequisites:
   HA Redis Pods read the same value.
 - The source Redis backup or storage snapshot for the cutover window exists
   and its restore path is known.
-- The target overlay renders and validates:
+- Before issue #339, the target overlay renders and validates:
 
 ```bash
 rendered="$(mktemp)"
@@ -1018,7 +1022,8 @@ kubectl get secret -n "$MPP_APP_NS" mpp-app-secrets \
 kubectl rollout status statefulset/redis -n "$MPP_APP_NS" --timeout=5m
 ```
 
-Prepare the HA target without changing application Redis traffic:
+Before issue #339, prepare the HA target without changing application Redis
+traffic:
 
 ```bash
 kubectl apply -k deploy/kubernetes/data-services/redis-ha-production
@@ -1108,7 +1113,7 @@ Expected migration result:
 - `summary.sample_ttl_mismatches=0`, except for documented expected TTL drift.
 - `warnings` is empty or explicitly accepted by the rollback owner.
 
-Switch app configuration to the HA endpoint:
+Before issue #339, switch app configuration to the HA endpoint:
 
 ```bash
 kubectl apply -k deploy/kubernetes/overlays/production-self-hosted-ha
@@ -1882,8 +1887,8 @@ Promotion checklist:
 - Container Images workflow completed for the target Git SHA.
 - For production-managed releases, pin the overlay with
   `ruby script/kubernetes/pin-overlay-images.rb --overlay deploy/kubernetes/overlays/production-managed --git-sha <full-git-sha>`.
-- For Phase 2 production self-hosted HA Redis cutovers, pin the overlay with
-  `ruby script/kubernetes/pin-overlay-images.rb --overlay deploy/kubernetes/overlays/production-self-hosted-ha --git-sha <full-git-sha>`.
+- The Phase 2 production self-hosted HA overlay is retired after issue #339 and
+  should not be pinned for new releases.
 - For provider-specific production overlays, run the `Kubernetes Image
   Promotion` workflow with the target overlay, full Git SHA, and image
   namespace, then review and apply the generated `promotion.patch`. The

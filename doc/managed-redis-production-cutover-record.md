@@ -68,7 +68,7 @@ record.
 | Provider persistence enabled | Snapshot or persistence policy, retention, RPO, and restore procedure are accepted | Pending |
 | Production managed overlay validated | Static and deployable manifest validation pass for the exact overlay and Git SHA | Pending |
 | Observability available | Redis SLO dashboard, Redis error-budget dashboard, Redis exporter, provider metrics, provider events, and app logs are available | Pending |
-| Rollback owner ready | Owner can apply the self-hosted HA overlay and coordinate snapshot restore if needed | Pending |
+| Rollback owner ready | Owner can apply the self-hosted HA overlay before issue #339, or use the issue #339 historical chart and snapshot after decommission | Pending |
 
 ## Data Movement And TTL Diff
 
@@ -125,7 +125,7 @@ value.
 | Check | Expected result | Evidence |
 | --- | --- | --- |
 | Self-hosted HA Redis retained | Source StatefulSets, Services, and PVCs remain intact through the soak | Pending |
-| Source overlay available | `deploy/kubernetes/overlays/production-self-hosted-ha` renders and remains applicable | Pending |
+| Source overlay available | Before issue #339, `deploy/kubernetes/overlays/production-self-hosted-ha` renders and remains applicable; after issue #339, use `doc/self-hosted-redis-decommission-record.md` for the historical Git SHA and snapshot rollback path | Pending |
 | Source data protected | Source backup or snapshot is retained and restore path is known | Pending |
 | Snapshot restore option confirmed | Restore target, owner, and expected RPO/RTO are recorded | Pending |
 | Emergency endpoint rollback tested or rehearsed | Operator can switch traffic back to Sentinel mode and restart Redis-dependent workloads | Pending |

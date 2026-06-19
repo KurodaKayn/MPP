@@ -53,7 +53,7 @@ if context.path_suffix?("deploy/kubernetes/data-services/redis-ha-nonprod")
 end
 
 if context.path_suffix?("deploy/kubernetes/data-services/redis-ha-production")
-  KubernetesValidation::DataServices.validate_redis_ha_production(context)
+  KubernetesValidation::EnvironmentOverlays.validate_retired_redis_ha_production(context)
 end
 
 if context.path_suffix?("deploy/kubernetes/data-services/self-hosted")
@@ -73,11 +73,7 @@ if context.path_suffix?("deploy/kubernetes/overlays/staging-self-hosted")
 end
 
 if context.path_suffix?("deploy/kubernetes/overlays/production-self-hosted-ha")
-  KubernetesValidation::AppBaseline.validate_workloads(context)
-  KubernetesValidation::BrowserRuntimeControl.validate(context)
-  KubernetesValidation::DataServices.validate_self_hosted(context)
-  KubernetesValidation::DataServices.validate_redis_ha_production(context)
-  KubernetesValidation::EnvironmentOverlays.validate_production_self_hosted_ha(context)
+  KubernetesValidation::EnvironmentOverlays.validate_retired_production_self_hosted_ha(context)
 end
 
 if context.path_suffix?("deploy/kubernetes/overlays/staging-managed")

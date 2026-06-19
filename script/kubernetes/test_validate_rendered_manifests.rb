@@ -16,6 +16,7 @@ class ValidateRenderedManifestsTest < Minitest::Test
   EXTERNAL_SECRETS_PACKAGE = "deploy/kubernetes/external-secrets"
   PRODUCTION_MANAGED_OVERLAY = "deploy/kubernetes/overlays/production-managed"
   PRODUCTION_SELF_HOSTED_HA_OVERLAY = "deploy/kubernetes/overlays/production-self-hosted-ha"
+  PRODUCTION_REDIS_HA_PACKAGE = "deploy/kubernetes/data-services/redis-ha-production"
 
   def test_deployable_validation_rejects_checked_in_staging_examples
     STAGING_OVERLAYS.each do |overlay|
@@ -89,27 +90,82 @@ class ValidateRenderedManifestsTest < Minitest::Test
     rendered&.unlink
   end
 
-  def test_production_self_hosted_ha_overlay_uses_sentinel_with_direct_rollback
+  def test_production_self_hosted_ha_overlay_is_retired
     rendered = render_overlay(PRODUCTION_SELF_HOSTED_HA_OVERLAY)
     documents = parse_documents(File.read(rendered.path))
-    app_config = document(documents, "ConfigMap", "mpp-app-config", "mpp-system")
-    external_secret = document(documents, "ExternalSecret", "mpp-app-secrets", "mpp-system")
-    redis_exporter = document(documents, "Deployment", "redis-exporter", "mpp-system")
-    redis_exporter_env = redis_exporter.dig("spec", "template", "spec", "containers")
-      .find { |entry| entry["name"] == "redis-exporter" }
-      .fetch("env")
+    marker = document(documents, "ConfigMap", "production-self-hosted-ha-retired", "mpp-system")
 
-    assert_equal "production", app_config.dig("data", "APP_ENV")
-    assert_equal "sentinel", app_config.dig("data", "REDIS_ENDPOINT_MODE")
-    assert_equal "redis-ha-sentinel:26379", app_config.dig("data", "REDIS_SENTINEL_ADDRS")
-    assert_equal "redis:6379", app_config.dig("data", "REDIS_ADDR")
-    assert external_secret.dig("spec", "data").any? { |entry| entry["secretKey"] == "REDIS_PASSWORD" }
-    assert_equal "redis://redis-ha-primary.mpp-system.svc.cluster.local:6379",
-                 redis_exporter_env.find { |entry| entry["name"] == "REDIS_ADDR" }.fetch("value")
+    assert_equal ["ConfigMap"], documents.map { |entry| entry["kind"] }.sort
+    assert_equal "retired", marker.dig("data", "status")
+    assert_equal "339", marker.dig("data", "retiredIssue")
+    assert_equal "deploy/kubernetes/overlays/production-managed", marker.dig("data", "activeOverlay")
+    assert_equal "doc/self-hosted-redis-decommission-record.md", marker.dig("data", "restoreRunbook")
 
     _stdout, stderr, status = run_validator(PRODUCTION_SELF_HOSTED_HA_OVERLAY, rendered.path)
 
-    assert status.success?, "production-self-hosted-ha validation failed: #{stderr}"
+    assert status.success?, "retired production-self-hosted-ha validation failed: #{stderr}"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_production_redis_ha_package_is_retired
+    rendered = render_overlay(PRODUCTION_REDIS_HA_PACKAGE)
+    documents = parse_documents(File.read(rendered.path))
+    marker = document(documents, "ConfigMap", "redis-ha-production-retired", "mpp-system")
+
+    assert_equal ["ConfigMap"], documents.map { |entry| entry["kind"] }.sort
+    assert_equal "retired", marker.dig("data", "status")
+    assert_equal "339", marker.dig("data", "retiredIssue")
+    assert_equal "deploy/kubernetes/overlays/production-managed", marker.dig("data", "activeOverlay")
+    assert_equal "doc/self-hosted-redis-decommission-record.md", marker.dig("data", "restoreRunbook")
+
+    _stdout, stderr, status = run_validator(PRODUCTION_REDIS_HA_PACKAGE, rendered.path)
+
+    assert status.success?, "retired production Redis HA validation failed: #{stderr}"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_retired_production_redis_ha_package_rejects_active_resources
+    rendered = mutated_render(PRODUCTION_REDIS_HA_PACKAGE) do |documents|
+      documents << {
+        "apiVersion" => "apps/v1",
+        "kind" => "StatefulSet",
+        "metadata" => {
+          "name" => "redis-ha-primary",
+          "namespace" => "mpp-system",
+        },
+        "spec" => {},
+      }
+    end
+
+    _stdout, stderr, status = run_validator(PRODUCTION_REDIS_HA_PACKAGE, rendered.path)
+
+    refute status.success?, "retired production Redis HA validation unexpectedly accepted active resources"
+    assert_includes stderr, "redis-ha-production is retired and must not render active production resources"
+    assert_includes stderr, "StatefulSet/mpp-system/redis-ha-primary"
+  ensure
+    rendered&.unlink
+  end
+
+  def test_retired_production_self_hosted_ha_overlay_rejects_active_resources
+    rendered = mutated_render(PRODUCTION_SELF_HOSTED_HA_OVERLAY) do |documents|
+      documents << {
+        "apiVersion" => "apps/v1",
+        "kind" => "StatefulSet",
+        "metadata" => {
+          "name" => "redis-ha-primary",
+          "namespace" => "mpp-system",
+        },
+        "spec" => {},
+      }
+    end
+
+    _stdout, stderr, status = run_validator(PRODUCTION_SELF_HOSTED_HA_OVERLAY, rendered.path)
+
+    refute status.success?, "retired production-self-hosted-ha validation unexpectedly accepted active resources"
+    assert_includes stderr, "production-self-hosted-ha is retired and must not render active production resources"
+    assert_includes stderr, "StatefulSet/mpp-system/redis-ha-primary"
   ensure
     rendered&.unlink
   end

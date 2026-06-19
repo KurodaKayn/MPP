@@ -1,38 +1,21 @@
-# Production HA Redis
+# Retired Production HA Redis Package
 
-This package is the production-eligible wrapper for the Phase 2 self-hosted HA
-Redis topology. It reuses the validated primary, replica, and Sentinel
-manifests from `deploy/kubernetes/data-services/redis-ha-nonprod`, then opens
-the HA Redis NetworkPolicy to `redis-exporter` so the production cutover can
-monitor the HA target.
+This package used to render the production self-hosted HA Redis topology for
+the Phase 2 cutover. It is retired by issue #339 after production moved to
+managed Redis and completed the agreed soak.
 
-Use this package only after the non-production failover drill and migration
-rehearsal have passed. It can be applied before the endpoint switch to create
-the HA target while application traffic still uses `REDIS_ENDPOINT_MODE=direct`
-and `REDIS_ADDR=redis:6379`. It does not remove the existing `redis` Service or
-StatefulSet; production cutover keeps that direct endpoint available as the
-rollback path until the soak window is closed.
+Do not apply this package to production to recreate Redis. It now renders only
+the `redis-ha-production-retired` ConfigMap, which records that
+`deploy/kubernetes/overlays/production-managed` is the active production Redis
+path.
 
-Production app traffic should use:
+Use `doc/self-hosted-redis-decommission-record.md` for no-traffic evidence,
+retained backup details, deletion steps, and recreate-from-history rollback
+notes during the retention window. The non-production HA validation package at
+`deploy/kubernetes/data-services/redis-ha-nonprod` remains available for
+staging drills and Redis HA behavior tests.
 
-```yaml
-REDIS_ENDPOINT_MODE: sentinel
-REDIS_SENTINEL_ADDRS: redis-ha-sentinel:26379
-REDIS_SENTINEL_MASTER_NAME: mpp-redis-ha
-REDIS_ADDR: redis:6379
-REDIS_TLS: "false"
-```
-
-Before applying this package or a production overlay that includes it:
-
-- Confirm the source Redis snapshot or backup for the cutover window exists.
-- Confirm `mpp-app-secrets` includes `REDIS_PASSWORD` for self-hosted Redis
-  auth.
-- Run the production prechecks in `doc/kubernetes-operations-runbook.md`.
-- Migrate Redis data while apps still use `REDIS_ENDPOINT_MODE=direct`.
-- Apply the endpoint switch only inside the approved maintenance window.
-
-Render and validate:
+Validation:
 
 ```bash
 rendered="$(mktemp)"
@@ -40,10 +23,4 @@ kubectl kustomize deploy/kubernetes/data-services/redis-ha-production > "$render
 ruby script/kubernetes/validate-rendered-manifests.rb \
   deploy/kubernetes/data-services/redis-ha-production \
   "$rendered"
-```
-
-Prepare the HA target before final data migration:
-
-```bash
-kubectl apply -k deploy/kubernetes/data-services/redis-ha-production
 ```
