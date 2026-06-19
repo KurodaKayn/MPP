@@ -8,7 +8,7 @@ Phase 1-2 target: pragmatic high availability. After a single Redis Pod, node, o
 
 Production final target: Redis Cluster. The final state must support multiple shards, multiple replicas, automatic failover, TLS/auth, backup and restore, maintenance windows, and clear SLA ownership. Prefer a provider-backed managed Redis Cluster. If managed Redis is unavailable, use a mature chart/operator to self-host Redis Cluster.
 
-Current overall progress: about `65%`.
+Current overall progress: about `69%`.
 
 | Phase | Weight | Current Completion | Status | Done | Next |
 | --- | ---: | ---: | --- | --- | --- |
@@ -16,7 +16,7 @@ Current overall progress: about `65%`.
 | Phase 1: single-instance hardening | 15% | 100% | Done | Current single-instance deployment direction clear; Redis persistence baseline, probes, resources, graceful termination, backup baseline, restore runbook, runtime config hardening, and capacity guardrail alerts added | Maintain as HA fallback baseline |
 | Phase 2: self-hosted HA | 20% | 100% | Done | HA deployment, endpoint abstraction, failover validation, migration rehearsal, and production HA cutover completed | Use HA setup as the baseline for managed Redis validation |
 | Phase 3: app-side fault tolerance | 20% | 100% | Done | Role-specific Redis timeout/retry baselines, degraded cache modes, cache stampede protection, lock safety hardening, and Redis error-budget reporting added | Use app-side metrics during HA failover validation and operational drills |
-| Phase 4: production managed Redis HA | 15% | 0% | Not Started | Target direction chosen | Build parameterized Redis endpoint and migration runbook |
+| Phase 4: production managed Redis HA | 15% | 25% | In Progress | Provider endpoint parameterization is complete; [managed Redis non-production validation report](../managed-redis-nonprod-validation.md) added for latency, failover, restore, TLS/auth, metrics, teardown, and risk evidence | Run the selected provider validation and record observed evidence before migration runbook work |
 | Phase 5: Redis Cluster target state | 15% | 0% | Not Started | Final target confirmed | Design key model, client compatibility, and cutover path |
 | Phase 6: drills and operations loop | 5% | 0% | Not Started | Not yet started | Add periodic failover, restore, and capacity drills |
 
@@ -139,7 +139,7 @@ This phase moves production from self-managed Redis HA to managed Redis HA. It i
 | PR | Goal | Main Changes | Acceptance | Rollback | Out Of Scope |
 | --- | --- | --- | --- | --- | --- |
 | PR 4.1: Parameterize provider Redis endpoint | Make managed migration config-only | Add env/config support for managed endpoint, TLS, auth, database index, CA if needed | Non-prod app connects to managed Redis by config only | Point config back to self-hosted HA | No production cutover |
-| PR 4.2: Managed Redis non-prod validation | Verify provider behavior | Test latency, failover, backup restore, TLS/auth, metrics | Validation report includes RTO/RPO, latency, failover result | Tear down non-prod managed Redis | No production traffic |
+| PR 4.2: Managed Redis non-prod validation | Verify provider behavior | Use the [managed Redis non-production validation report](../managed-redis-nonprod-validation.md) to test latency, failover, backup restore, TLS/auth, metrics/log visibility, teardown safety, and provider limitations | Validation report includes observed RTO/RPO, latency, failover behavior, restore result, provider limitations, and required production settings | Tear down non-prod managed Redis | No production traffic |
 | PR 4.3: Production migration runbook | Make cutover repeatable | Write exact steps: precheck, freeze if needed, data copy, TTL diff, switch, monitor, rollback | Runbook dry-run completed | Revert runbook | No infra change |
 | PR 4.4: Production managed Redis cutover | Move production to managed HA | Execute runbook; monitor error rate, latency, memory, cache hit rate | Production stable for agreed soak period | Switch endpoint back to self-hosted HA; restore snapshot if required | No Cluster sharding |
 | PR 4.5: Decommission old self-hosted Redis | Remove duplicate ops burden | After soak, stop old Redis writes, keep backup, remove old deployment | No traffic to old Redis; backup retained | Recreate from previous chart and snapshot | No app behavior change |
