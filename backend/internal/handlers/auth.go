@@ -26,13 +26,13 @@ import (
 
 type AuthHandler struct {
 	db                   *gorm.DB
-	redis                *redis.Client
+	redis                redis.UniversalClient
 	email                email.EmailService
 	jwtSigningKey        []byte
 	usernameLoginEnabled bool
 }
 
-func NewAuthHandler(db *gorm.DB, redis *redis.Client, email email.EmailService, jwtSigningKey []byte) *AuthHandler {
+func NewAuthHandler(db *gorm.DB, redis redis.UniversalClient, email email.EmailService, jwtSigningKey []byte) *AuthHandler {
 	return &AuthHandler{
 		db:            db,
 		redis:         redis,

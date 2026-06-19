@@ -75,7 +75,7 @@ func (l *Lease) Release(ctx context.Context) error {
 
 type Limiter struct {
 	config Config
-	redis  *redis.Client
+	redis  redis.UniversalClient
 	memory *memoryStore
 }
 
@@ -94,7 +94,7 @@ func (e *LimitError) Unwrap() error {
 	return ErrLimitExceeded
 }
 
-func New(redisClient *redis.Client, config Config) *Limiter {
+func New(redisClient redis.UniversalClient, config Config) *Limiter {
 	config = normalizeConfig(config)
 	if !config.Enabled {
 		return nil
