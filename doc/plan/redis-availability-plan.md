@@ -8,7 +8,7 @@ Phase 1-2 target: pragmatic high availability. After a single Redis Pod, node, o
 
 Production final target: Redis Cluster. The final state must support multiple shards, multiple replicas, automatic failover, TLS/auth, backup and restore, maintenance windows, and clear SLA ownership. Prefer a provider-backed managed Redis Cluster. If managed Redis is unavailable, use a mature chart/operator to self-host Redis Cluster.
 
-Current overall progress: about `69%`.
+Current overall progress: about `80%`.
 
 | Phase | Weight | Current Completion | Status | Done | Next |
 | --- | ---: | ---: | --- | --- | --- |
@@ -16,7 +16,7 @@ Current overall progress: about `69%`.
 | Phase 1: single-instance hardening | 15% | 100% | Done | Current single-instance deployment direction clear; Redis persistence baseline, probes, resources, graceful termination, backup baseline, restore runbook, runtime config hardening, and capacity guardrail alerts added | Maintain as HA fallback baseline |
 | Phase 2: self-hosted HA | 20% | 100% | Done | HA deployment, endpoint abstraction, failover validation, migration rehearsal, and production HA cutover completed | Use HA setup as the baseline for managed Redis validation |
 | Phase 3: app-side fault tolerance | 20% | 100% | Done | Role-specific Redis timeout/retry baselines, degraded cache modes, cache stampede protection, lock safety hardening, and Redis error-budget reporting added | Use app-side metrics during HA failover validation and operational drills |
-| Phase 4: production managed Redis HA | 15% | 40% | In Progress | Provider endpoint parameterization is complete; [managed Redis non-production validation report](../managed-redis-nonprod-validation.md) added for latency, failover, restore, TLS/auth, metrics, teardown, and risk evidence; [production migration runbook](../managed-redis-production-migration-runbook.md) added for prechecks, freeze, copy, TTL diff, switch, monitoring, and rollback; [production cutover record](../managed-redis-production-cutover-record.md) added for issue #338 evidence capture | Execute the production cutover and record the agreed soak, rollback, and snapshot evidence |
+| Phase 4: production managed Redis HA | 15% | 100% | Done | Provider endpoint parameterization, [managed Redis non-production validation](../managed-redis-nonprod-validation.md), [production migration runbook](../managed-redis-production-migration-runbook.md), [production cutover record](../managed-redis-production-cutover-record.md), and [self-hosted Redis decommission record](../self-hosted-redis-decommission-record.md) completed | Start Phase 5 Redis Cluster key model, client compatibility, and cutover path design |
 | Phase 5: Redis Cluster target state | 15% | 0% | Not Started | Final target confirmed | Design key model, client compatibility, and cutover path |
 | Phase 6: drills and operations loop | 5% | 0% | Not Started | Not yet started | Add periodic failover, restore, and capacity drills |
 
@@ -124,6 +124,8 @@ Current Phase 3 status: done. Redis clients now use responsibility-aware timeout
 ## 8. Phase 4: Production Managed Redis HA Intermediate State
 
 This phase moves production from self-managed Redis HA to managed Redis HA. It is not the final topology. It reduces operational burden before Redis Cluster.
+
+Current Phase 4 status: done. Production has moved to managed Redis HA, the agreed soak has completed, rollback/snapshot evidence has been recorded, and old self-hosted Redis has been decommissioned with retained recovery evidence.
 
 ### 8.1 Managed HA Selection Criteria
 
