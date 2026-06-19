@@ -245,7 +245,7 @@ func (s *Service) refreshProjectReadModel(projectID uuid.UUID) {
 	s.readModels.RefreshProjectAsync(s.requestContext(), projectID)
 }
 
-func deleteDashboardProjectListCacheKeys(ctx context.Context, client *redis.Client, guard *redisdegrade.Guard) {
+func deleteDashboardProjectListCacheKeys(ctx context.Context, client redis.UniversalClient, guard *redisdegrade.Guard) {
 	var cursor uint64
 	for {
 		type scanResult struct {
