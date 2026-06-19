@@ -26,6 +26,7 @@ paste secret values into the record.
 | Observability | Grafana dashboards `MPP Redis SLO Baseline` and `MPP Redis Error Budget (App-Side)`, Redis exporter, provider metrics, provider event log, and application logs available |
 | Rollback owner | Named owner with access to apply `deploy/kubernetes/overlays/production-self-hosted-ha` and to restore Redis snapshots if required |
 | Artifacts directory | Local path such as `artifacts/redis-managed-cutover/<run-id>` for inventory, copy, TTL diff, and monitoring evidence |
+| Cutover record | `doc/managed-redis-production-cutover-record.md` copied or updated with real issue #338 production evidence |
 
 Set the shell context for every command block:
 
@@ -38,6 +39,14 @@ export RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 export ARTIFACT_DIR="artifacts/redis-managed-cutover/${RUN_ID}"
 mkdir -p "$ARTIFACT_DIR"
 ```
+
+## Production Cutover Record
+
+Use `doc/managed-redis-production-cutover-record.md` as the execution record
+for issue #338. Keep it redacted, attach artifact paths or dashboard links, and
+do not mark the issue complete until prechecks, data movement, TTL diff,
+endpoint switch, soak monitoring, and rollback readiness are all accepted with
+real production evidence.
 
 ## Dry Run Record
 
@@ -376,11 +385,22 @@ Required Prometheus checks:
 ```promql
 max(redis_up{service="redis"})
 max by (cmd, quantile) (redis_latency_percentiles_usec{service="redis",quantile=~"0.95|0.99"}) / 1000000
+max(redis_memory_used_bytes{service="redis"})
+(
+  (max(redis_memory_max_bytes{service="redis"}) - max(redis_memory_used_bytes{service="redis"}))
+  / max(redis_memory_max_bytes{service="redis"})
+) and max(redis_memory_max_bytes{service="redis"}) > 0
+max(redis_connected_clients{service="redis"})
 sum(rate(redis_rejected_connections_total{service="redis"}[5m])) or vector(0)
 sum(rate(redis_evicted_keys_total{service="redis"}[5m])) or vector(0)
 sum(rate(mpp_redis_operations_total{status="error"}[5m])) or vector(0)
 sum(rate(mpp_redis_fallback_total[5m])) or vector(0)
 sum by (group, error_class) (rate(mpp_redis_errors_total[5m]))
+(
+  sum(rate(mpp_redis_cache_hits_total[5m]))
+  /
+  (sum(rate(mpp_redis_cache_hits_total[5m])) + sum(rate(mpp_redis_cache_misses_total[5m])))
+) or vector(0)
 ```
 
 Record:
@@ -389,10 +409,13 @@ Record:
 | --- | --- |
 | Redis availability | Pending |
 | Redis p95/p99 latency | Pending |
+| Redis memory usage and headroom | Pending |
+| Redis connection count | Pending |
 | Rejected connections | Pending |
 | Evictions | Pending |
 | App Redis error rate | Pending |
 | App fallback rate | Pending |
+| Cache hit rate | Pending |
 | Provider failover or maintenance events | Pending |
 | User-facing incident reports | Pending |
 | Rollback decision | Pending |
@@ -461,8 +484,10 @@ the bad state that triggered rollback.
 Attach these artifacts to the change record:
 
 ```text
-Issue: #337
+Runbook issue: #337
+Cutover issue: #338
 Run ID:
+Cutover record:
 Production dry run evidence:
 Non-production validation report:
 Managed provider and plan:
