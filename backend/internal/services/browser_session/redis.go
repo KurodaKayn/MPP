@@ -146,66 +146,88 @@ func (s *BrowserSessionService) acquireRedisConcurrencyQuota(ctx context.Context
 	if ttl <= 0 {
 		ttl = browserSessionRedisGrace
 	}
+	scopes := []browserSessionQuotaScope{
+		{name: "user", key: browserSessionQuotaUserKey(userID), limit: config.UserConcurrencyLimit, err: ErrUserQuotaExceeded},
+		{name: "tenant", key: browserSessionQuotaTenantKey(tenantID), limit: config.TenantConcurrencyLimit, err: ErrTenantQuotaExceeded},
+	}
+	var acquired []browserSessionQuotaScope
+	for _, scope := range scopes {
+		ok, err := s.acquireRedisConcurrencyQuotaScope(ctx, scope, sessionID, expiresAt, ttl)
+		if err != nil {
+			cleanupErr := s.releaseRedisConcurrencyQuotaScopes(ctx, acquired, sessionID)
+			if cleanupErr != nil {
+				return errors.Join(err, cleanupErr)
+			}
+			return err
+		}
+		if !ok {
+			cleanupErr := s.releaseRedisConcurrencyQuotaScopes(ctx, acquired, sessionID)
+			if cleanupErr != nil {
+				return errors.Join(scope.err, cleanupErr)
+			}
+			return scope.err
+		}
+		acquired = append(acquired, scope)
+	}
+	return nil
+}
+
+type browserSessionQuotaScope struct {
+	name  string
+	key   string
+	limit int64
+	err   error
+}
+
+func (s *BrowserSessionService) acquireRedisConcurrencyQuotaScope(ctx context.Context, scope browserSessionQuotaScope, sessionID uuid.UUID, expiresAt time.Time, ttl time.Duration) (bool, error) {
 	const script = `
 local now_ms = tonumber(ARGV[1])
 local expires_at_ms = tonumber(ARGV[2])
 local ttl_ms = tonumber(ARGV[3])
 local session_id = ARGV[4]
-local user_limit = tonumber(ARGV[5])
-local tenant_limit = tonumber(ARGV[6])
-
-redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", now_ms)
-redis.call("ZREMRANGEBYSCORE", KEYS[2], "-inf", now_ms)
-
-if user_limit > 0 and redis.call("ZCARD", KEYS[1]) >= user_limit then
-	return "user"
-end
-if tenant_limit > 0 and redis.call("ZCARD", KEYS[2]) >= tenant_limit then
-	return "tenant"
-end
+local limit = tonumber(ARGV[5])
 
 redis.call("ZADD", KEYS[1], expires_at_ms, session_id)
 redis.call("PEXPIRE", KEYS[1], ttl_ms)
-redis.call("ZADD", KEYS[2], expires_at_ms, session_id)
-redis.call("PEXPIRE", KEYS[2], ttl_ms)
-return "ok"
+redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", now_ms)
+
+if limit > 0 and redis.call("ZCARD", KEYS[1]) > limit then
+	redis.call("ZREM", KEYS[1], session_id)
+	return 0
+end
+return 1
 `
-	result, err := s.coordinationRedisClient.Eval(ctx, script, []string{
-		browserSessionQuotaUserKey(userID),
-		browserSessionQuotaTenantKey(tenantID),
-	},
+	result, err := s.coordinationRedisClient.Eval(ctx, script, []string{scope.key},
 		time.Now().UnixMilli(),
 		expiresAt.UnixMilli(),
 		ttl.Milliseconds(),
 		sessionID.String(),
-		config.UserConcurrencyLimit,
-		config.TenantConcurrencyLimit,
-	).Result()
+		scope.limit,
+	).Int()
 	if err != nil {
-		return err
+		return false, err
 	}
-	switch fmt.Sprint(result) {
-	case "ok":
-		return nil
-	case "user":
-		return ErrUserQuotaExceeded
-	case "tenant":
-		return ErrTenantQuotaExceeded
-	default:
-		return fmt.Errorf("unexpected browser session quota result: %v", result)
-	}
+	return result == 1, nil
 }
 
 func (s *BrowserSessionService) releaseRedisConcurrencyQuota(ctx context.Context, userID uuid.UUID, tenantID string, sessionID uuid.UUID) error {
 	if s.coordinationRedisClient == nil {
 		return nil
 	}
-	_, err := s.coordinationRedisClient.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-		pipe.ZRem(ctx, browserSessionQuotaUserKey(userID), sessionID.String())
-		pipe.ZRem(ctx, browserSessionQuotaTenantKey(tenantID), sessionID.String())
-		return nil
-	})
-	return err
+	return s.releaseRedisConcurrencyQuotaScopes(ctx, []browserSessionQuotaScope{
+		{key: browserSessionQuotaUserKey(userID)},
+		{key: browserSessionQuotaTenantKey(tenantID)},
+	}, sessionID)
+}
+
+func (s *BrowserSessionService) releaseRedisConcurrencyQuotaScopes(ctx context.Context, scopes []browserSessionQuotaScope, sessionID uuid.UUID) error {
+	var releaseErrs []error
+	for _, scope := range scopes {
+		if err := s.coordinationRedisClient.ZRem(ctx, scope.key, sessionID.String()).Err(); err != nil {
+			releaseErrs = append(releaseErrs, fmt.Errorf("%s quota release: %w", scope.name, err))
+		}
+	}
+	return errors.Join(releaseErrs...)
 }
 
 func (s *BrowserSessionService) saveRedisLiveSession(ctx context.Context, state browserSessionLiveState) error {

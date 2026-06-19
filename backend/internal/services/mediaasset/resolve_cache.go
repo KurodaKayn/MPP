@@ -158,9 +158,11 @@ func deleteResolvedMediaAssetCacheKeys(ctx context.Context, client *redis.Client
 			return
 		}
 		if len(result.keys) > 0 {
-			_ = redisdegrade.DoWork(guard, "cache_invalidate", func() error {
-				return client.Del(ctx, result.keys...).Err()
-			})
+			for _, key := range result.keys {
+				_ = redisdegrade.DoWork(guard, "cache_invalidate", func() error {
+					return client.Del(ctx, key).Err()
+				})
+			}
 		}
 		if result.next == 0 {
 			return

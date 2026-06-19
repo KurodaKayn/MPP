@@ -47,19 +47,23 @@ func (s *BrowserSessionService) rotateRedisStreamToken(ctx context.Context, sess
 	if err != nil {
 		return time.Time{}, err
 	}
-	const script = `
-local old_hash = redis.call("GET", KEYS[1])
-if old_hash and old_hash ~= ARGV[1] then
-	redis.call("DEL", ARGV[4] .. old_hash)
-end
-redis.call("SET", KEYS[2], ARGV[2], "PX", ARGV[3])
-redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[3])
-return 1
-`
-	return expiresAt, s.coordinationRedisClient.Eval(ctx, script, []string{
-		browserSessionStreamCurrentKey(sessionID),
-		browserSessionStreamTokenKey(sessionID, tokenHash),
-	}, tokenHash, payload, ttl.Milliseconds(), browserSessionStreamTokenKeyPrefixFor(sessionID)).Err()
+	currentKey := browserSessionStreamCurrentKey(sessionID)
+	oldHash, err := s.coordinationRedisClient.Get(ctx, currentKey).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return time.Time{}, err
+	}
+	tokenKey := browserSessionStreamTokenKey(sessionID, tokenHash)
+	if err := s.coordinationRedisClient.Set(ctx, tokenKey, payload, ttl).Err(); err != nil {
+		return time.Time{}, err
+	}
+	if err := s.coordinationRedisClient.Set(ctx, currentKey, tokenHash, ttl).Err(); err != nil {
+		_ = s.coordinationRedisClient.Del(ctx, tokenKey).Err()
+		return time.Time{}, err
+	}
+	if oldHash != "" && oldHash != tokenHash {
+		_ = s.coordinationRedisClient.Del(ctx, browserSessionStreamTokenKey(sessionID, oldHash)).Err()
+	}
+	return expiresAt, nil
 }
 
 func (s *BrowserSessionService) readRedisStreamToken(ctx context.Context, sessionID uuid.UUID, tokenHash string, consume bool) (browserStreamTokenMeta, bool, error) {
@@ -71,14 +75,15 @@ func (s *BrowserSessionService) readRedisStreamToken(ctx context.Context, sessio
 	var err error
 	if consume {
 		const script = `
+if redis.call("GET", KEYS[2]) ~= ARGV[1] then
+	return nil
+end
 local payload = redis.call("GET", KEYS[1])
 if not payload then
 	return nil
 end
 redis.call("DEL", KEYS[1])
-if redis.call("GET", KEYS[2]) == ARGV[1] then
-	redis.call("DEL", KEYS[2])
-end
+redis.call("DEL", KEYS[2])
 return payload
 `
 		var result any
@@ -94,6 +99,16 @@ return payload
 			}
 		}
 	} else {
+		currentHash, currentErr := s.coordinationRedisClient.Get(ctx, browserSessionStreamCurrentKey(sessionID)).Result()
+		if errors.Is(currentErr, redis.Nil) {
+			return browserStreamTokenMeta{}, false, nil
+		}
+		if currentErr != nil {
+			return browserStreamTokenMeta{}, false, currentErr
+		}
+		if currentHash != tokenHash {
+			return browserStreamTokenMeta{}, false, nil
+		}
 		raw, err = s.coordinationRedisClient.Get(ctx, tokenKey).Bytes()
 	}
 	if errors.Is(err, redis.Nil) {
@@ -136,7 +151,13 @@ func (s *BrowserSessionService) deleteRedisStreamToken(ctx context.Context, sess
 	if err := iter.Err(); err != nil {
 		return err
 	}
-	return s.coordinationRedisClient.Del(ctx, keys...).Err()
+	var deleteErrs []error
+	for _, key := range keys {
+		if err := s.coordinationRedisClient.Del(ctx, key).Err(); err != nil {
+			deleteErrs = append(deleteErrs, err)
+		}
+	}
+	return errors.Join(deleteErrs...)
 }
 
 func (s *BrowserSessionService) hasCurrentStreamToken(ctx context.Context, session models.RemoteBrowserSession) (bool, error) {
