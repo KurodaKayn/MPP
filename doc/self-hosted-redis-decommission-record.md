@@ -176,7 +176,7 @@ kubectl delete cronjob -n "$MPP_APP_NS" \
   redis-backup --ignore-not-found
 
 kubectl delete configmap -n "$MPP_APP_NS" \
-  redis-persistence-config --ignore-not-found
+  redis-persistence-config redis-ha-config --ignore-not-found
 
 kubectl delete networkpolicy -n "$MPP_APP_NS" \
   redis-app-access redis-ha-internal-access --ignore-not-found
@@ -196,15 +196,15 @@ kubectl delete pvc -n "$MPP_APP_NS" \
 Confirm only managed Redis resources remain in the active production path:
 
 ```bash
-kubectl get statefulset,svc,pvc,networkpolicy -n "$MPP_APP_NS" \
+kubectl get statefulset,svc,pvc,configmap,networkpolicy -n "$MPP_APP_NS" \
   | grep -E 'redis-ha|redis ' \
   | tee "$ARTIFACT_DIR/post-delete-redis-resources.txt" || true
 ```
 
 Expected result: no old `redis` or `redis-ha-*` StatefulSets, old Redis PVCs,
-Redis backup CronJob, or old Redis NetworkPolicies remain. A `redis`
-ExternalName Service may remain when the managed overlay uses it as a stable
-in-cluster alias for the provider endpoint.
+Redis backup CronJob, old Redis ConfigMaps, or old Redis NetworkPolicies
+remain. A `redis` ExternalName Service may remain when the managed overlay uses
+it as a stable in-cluster alias for the provider endpoint.
 
 ## Rollback During Retention Window
 
