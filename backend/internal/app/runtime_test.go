@@ -7,6 +7,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/glebarez/sqlite"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
@@ -90,8 +91,12 @@ func TestNewRuntimeBuildsRedisRoleClientsWhenConfigured(t *testing.T) {
 	if runtime.RedisClient == nil || runtime.RedisCoordination == nil || runtime.RedisCache == nil || runtime.RedisQueue == nil || runtime.RedisSessionContinuity == nil {
 		t.Fatal("expected all redis role clients to be wired")
 	}
-	if runtime.RedisCoordination.Options().DialTimeout.String() != "500ms" {
-		t.Fatalf("expected coordination client baseline, got %s", runtime.RedisCoordination.Options().DialTimeout)
+	coordinationClient, ok := runtime.RedisCoordination.(*redis.Client)
+	if !ok {
+		t.Fatalf("expected coordination client to be a direct redis client, got %T", runtime.RedisCoordination)
+	}
+	if coordinationClient.Options().DialTimeout.String() != "500ms" {
+		t.Fatalf("expected coordination client baseline, got %s", coordinationClient.Options().DialTimeout)
 	}
 }
 
