@@ -17,7 +17,7 @@ const defaultHTTPPort = "8080"
 
 type HealthServerConfig struct {
 	Ready              *atomic.Bool
-	RedisClient        *redis.Client
+	RedisClient        redis.UniversalClient
 	ObservabilitySuite *observability.Suite
 	DBRouter           *db.Router
 	SQLDB              *gorm.DB

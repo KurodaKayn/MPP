@@ -42,11 +42,11 @@ type Runtime struct {
 	Config                 RuntimeConfig
 	JWTSigningKey          []byte
 	MockLogin              bool
-	RedisClient            *redis.Client
-	RedisCoordination      *redis.Client
-	RedisCache             *redis.Client
-	RedisQueue             *redis.Client
-	RedisSessionContinuity *redis.Client
+	RedisClient            redis.UniversalClient
+	RedisCoordination      redis.UniversalClient
+	RedisCache             redis.UniversalClient
+	RedisQueue             redis.UniversalClient
+	RedisSessionContinuity redis.UniversalClient
 	ObservabilitySuite     *observability.Suite
 	DashboardService       *dashboardsvc.DashboardService
 	CollabDocumentService  *collabdoc.Service
@@ -214,14 +214,14 @@ func (r *Runtime) Close() error {
 	if r == nil {
 		return nil
 	}
-	clients := []*redis.Client{
+	clients := []redis.UniversalClient{
 		r.RedisClient,
 		r.RedisCoordination,
 		r.RedisCache,
 		r.RedisQueue,
 		r.RedisSessionContinuity,
 	}
-	seen := map[*redis.Client]struct{}{}
+	seen := map[redis.UniversalClient]struct{}{}
 	var firstErr error
 	for _, client := range clients {
 		if client == nil {

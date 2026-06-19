@@ -23,8 +23,8 @@ import (
 type serverConfig struct {
 	runtimeConfig      app.RuntimeConfig
 	jwtSigningKey      []byte
-	redisClient        *redis.Client
-	rateLimitRedis     *redis.Client
+	redisClient        redis.UniversalClient
+	rateLimitRedis     redis.UniversalClient
 	mockLogin          bool
 	ready              *atomic.Bool
 	sqlDB              *gorm.DB
