@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -203,6 +204,47 @@ func TestRedisLimiterUsesClusterSafeCommandShape(t *testing.T) {
 	require.NoError(t, lease.Release(context.Background()))
 }
 
+func TestRedisLimiterCleansPartialAcquireAfterContextCancel(t *testing.T) {
+	redisServer := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	hook := &streamGateCancelAfterFirstEvalHook{cancel: cancel}
+	client.AddHook(hook)
+
+	limiter := New(client, Config{
+		Enabled: true,
+		Prefix:  "mpp:test:stream",
+		AI: Limits{
+			User:   2,
+			Tenant: 2,
+			IP:     2,
+			Global: 2,
+			TTL:    time.Minute,
+		},
+	})
+	req := AcquireRequest{
+		Kind:     KindAI,
+		UserID:   uuid.New(),
+		TenantID: "tenant-1",
+		IP:       "203.0.113.10",
+		Resource: "content",
+	}
+
+	lease, err := limiter.Acquire(ctx, req)
+	require.Error(t, err)
+	require.Nil(t, lease)
+	require.True(t, hook.cancelled.Load())
+
+	keys := limiter.keys(req, "")
+	for _, key := range keys[1:] {
+		require.Equal(t, int64(0), client.ZCard(context.Background(), key).Val(), key)
+	}
+}
+
 type streamGateClusterGuardHook struct{}
 
 func (streamGateClusterGuardHook) DialHook(next redis.DialHook) redis.DialHook {
@@ -291,4 +333,27 @@ func streamGateClientMetadataPipeline(cmds []redis.Cmder) bool {
 		}
 	}
 	return true
+}
+
+type streamGateCancelAfterFirstEvalHook struct {
+	cancel    context.CancelFunc
+	cancelled atomic.Bool
+}
+
+func (h *streamGateCancelAfterFirstEvalHook) DialHook(next redis.DialHook) redis.DialHook {
+	return next
+}
+
+func (h *streamGateCancelAfterFirstEvalHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		err := next(ctx, cmd)
+		if err == nil && strings.EqualFold(cmd.Name(), "eval") && h.cancelled.CompareAndSwap(false, true) {
+			h.cancel()
+		}
+		return err
+	}
+}
+
+func (h *streamGateCancelAfterFirstEvalHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
 }
