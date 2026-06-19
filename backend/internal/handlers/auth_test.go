@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/rediskey"
 	"github.com/kurodakayn/mpp-backend/internal/services/email"
 )
 
@@ -47,6 +48,19 @@ func setupMiniRedis(t *testing.T) *redis.Client {
 func storeVerificationCode(t *testing.T, rdb *redis.Client, scene, email, code string) {
 	t.Helper()
 	require.NoError(t, rdb.Set(context.Background(), verificationCodeKey(scene, email), code, 0).Err())
+}
+
+func TestVerificationRedisKeysShareEmailHashTag(t *testing.T) {
+	email := "Person@example.com"
+
+	codeKey := verificationCodeKey("register", email)
+	attemptKey := verificationAttemptKey("register", email)
+	lastSendKey := verificationLastSendKey("register", email)
+
+	require.True(t, rediskey.ShareTag(codeKey, attemptKey, lastSendKey))
+	tag, ok := rediskey.ExtractTag(codeKey)
+	require.True(t, ok)
+	require.Equal(t, "email:"+verificationEmailKeyDigest(email), tag)
 }
 
 func assertNoRedisKeyContains(t *testing.T, keys []string, values ...string) {
