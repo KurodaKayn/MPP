@@ -57,7 +57,7 @@ func (s *MemoryXOAuth2StateStore) Consume(ctx context.Context, state string) (xO
 }
 
 type RedisXOAuth2StateStore struct {
-	client *redis.Client
+	client redis.UniversalClient
 	prefix string
 }
 
@@ -69,7 +69,7 @@ type redisXOAuth2PendingState struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
-func NewRedisXOAuth2StateStore(client *redis.Client) *RedisXOAuth2StateStore {
+func NewRedisXOAuth2StateStore(client redis.UniversalClient) *RedisXOAuth2StateStore {
 	return &RedisXOAuth2StateStore{
 		client: client,
 		prefix: xOAuth2StateKeyPrefix,

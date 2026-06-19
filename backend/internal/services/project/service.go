@@ -43,7 +43,7 @@ type Service struct {
 	db                *gorm.DB
 	router            *dbrouter.Router
 	collabDocuments   *collabdoc.Service
-	cache             *redis.Client
+	cache             redis.UniversalClient
 	cacheTTL          time.Duration
 	cacheGroup        *singleflight.Group
 	projectListGuard  *redisdegrade.Guard
@@ -80,11 +80,11 @@ func (s *Service) SetCollabDocumentService(svc *collabdoc.Service) {
 	s.collabDocuments = svc
 }
 
-func (s *Service) UseRedis(client *redis.Client) {
+func (s *Service) UseRedis(client redis.UniversalClient) {
 	s.UseRedisCache(client)
 }
 
-func (s *Service) UseRedisCache(client *redis.Client) {
+func (s *Service) UseRedisCache(client redis.UniversalClient) {
 	if client == nil {
 		return
 	}

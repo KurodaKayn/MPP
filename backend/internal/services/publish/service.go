@@ -184,12 +184,12 @@ func (s *Service) SetDashboardReadModelUpdater(updater DashboardReadModelUpdater
 	s.readModels = updater
 }
 
-func (s *Service) UseRedis(client *redis.Client) {
+func (s *Service) UseRedis(client redis.UniversalClient) {
 	s.UseRedisCoordination(client)
 	s.UseRedisQueue(client)
 }
 
-func (s *Service) UseRedisCoordination(client *redis.Client) {
+func (s *Service) UseRedisCoordination(client redis.UniversalClient) {
 	if client == nil {
 		return
 	}
@@ -199,7 +199,7 @@ func (s *Service) UseRedisCoordination(client *redis.Client) {
 	}
 }
 
-func (s *Service) UseRedisQueue(client *redis.Client) {
+func (s *Service) UseRedisQueue(client redis.UniversalClient) {
 	if client == nil {
 		return
 	}

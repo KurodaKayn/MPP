@@ -20,3 +20,14 @@ func TestDashboardProjectListKeysUseFamilyHashTag(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "dashboard:projects-list", tag)
 }
+
+func TestDashboardProjectListScanPatternUsesFamilyHashTag(t *testing.T) {
+	cacheKey := dashboardProjectListCacheKey(dashboardProjectListCacheParams{
+		Generation: "1",
+		Page:       1,
+		Limit:      20,
+	})
+
+	require.True(t, rediskey.ShareTag(cacheKey, dashboardProjectListCachePattern))
+	require.Contains(t, dashboardProjectListCachePattern, dashboardProjectListCacheHashTag)
+}

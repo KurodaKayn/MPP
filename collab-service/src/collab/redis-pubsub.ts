@@ -1,14 +1,16 @@
-import { createClient, createSentinel } from "redis";
+import { createClient, createCluster, createSentinel } from "redis";
 import { applyUpdate } from "yjs";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import type { Document } from "@hocuspocus/server";
-import type { RedisClientOptions } from "redis";
+import type { RedisClientOptions, RedisClusterOptions } from "redis";
 import type { ConnectionOptions as TLSConnectionOptions } from "node:tls";
 import type { CollabConfig } from "../config.js";
 
 type RedisSentinelOptions = Parameters<typeof createSentinel>[0];
+type RedisClusterRootNode = RedisClusterOptions["rootNodes"][number];
+type RedisClusterDefaults = NonNullable<RedisClusterOptions["defaults"]>;
 type RedisSocketOptions = NonNullable<RedisClientOptions["socket"]>;
 
 const remoteUpdateHashTTLMS = 60_000;
@@ -20,6 +22,7 @@ const redisCommandQueueMaxLength = 256;
 const redisMaxReconnectDelayMS = 2_000;
 const redisMaxReconnectRetries = 3;
 const redisReconnectJitterMS = 50;
+const redisClusterMaxCommandRedirections = 8;
 
 interface CollabUpdateEnvelope {
   actorUserId?: string;
@@ -206,6 +209,11 @@ export function createRedisCollabPubSub(
 }
 
 export function createRedisClientFromConfig(config: CollabConfig): RedisClient {
+  if (config.REDIS_ENDPOINT_MODE === "cluster") {
+    return createCluster(
+      redisClusterOptionsFromConfig(config),
+    ) as unknown as RedisClient;
+  }
   if (config.REDIS_ENDPOINT_MODE === "sentinel") {
     return createSentinel(
       redisSentinelOptionsFromConfig(config),
@@ -228,6 +236,43 @@ export function redisClientOptionsFromConfig(
     socket: redisSocketOptionsFromConfig(config),
     url: redisUrlFromConfig(config),
   };
+}
+
+export function redisClusterOptionsFromConfig(
+  config: CollabConfig,
+): RedisClusterOptions {
+  return {
+    defaults: redisClusterDefaultsFromConfig(config),
+    maxCommandRedirections: redisClusterMaxCommandRedirections,
+    rootNodes: redisClusterRootNodesFromConfig(config),
+  };
+}
+
+function redisClusterDefaultsFromConfig(
+  config: CollabConfig,
+): RedisClusterDefaults {
+  return {
+    commandsQueueMaxLength: redisCommandQueueMaxLength,
+    disableOfflineQueue: true,
+    database: config.REDIS_DB,
+    pingInterval: redisPingIntervalMS,
+    password: config.REDIS_PASSWORD || undefined,
+    socket: redisSocketOptionsFromConfig(config),
+  };
+}
+
+export function redisClusterRootNodesFromConfig(
+  config: CollabConfig,
+): RedisClusterRootNode[] {
+  return redisSeedAddressesFromConfig(config).map((address) => ({
+    url: redisUrlFromAddress(address, config.REDIS_TLS),
+  }));
+}
+
+function redisSeedAddressesFromConfig(config: CollabConfig): string[] {
+  return config.REDIS_ADDR.split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
 }
 
 function redisSocketOptionsFromConfig(
@@ -308,17 +353,20 @@ export function redisSentinelRootNodesFromConfig(
 }
 
 function redisUrlFromConfig(config: CollabConfig): string {
-  const raw = config.REDIS_ADDR.trim();
+  return redisUrlFromAddress(config.REDIS_ADDR.trim(), config.REDIS_TLS);
+}
+
+function redisUrlFromAddress(raw: string, tls: boolean): string {
   if (raw.startsWith("rediss://")) {
     return raw;
   }
   if (raw.startsWith("redis://")) {
-    if (!config.REDIS_TLS) {
+    if (!tls) {
       return raw;
     }
     return `rediss://${raw.slice("redis://".length)}`;
   }
-  const scheme = config.REDIS_TLS ? "rediss" : "redis";
+  const scheme = tls ? "rediss" : "redis";
   return `${scheme}://${raw}`;
 }
 

@@ -34,11 +34,11 @@ type DashboardRebuildTaskInfo struct {
 }
 
 type RedisDashboardRebuildQueue struct {
-	redisClient *redis.Client
+	redisClient redis.UniversalClient
 	asynqClient *asynq.Client
 }
 
-func NewRedisDashboardRebuildQueue(client *redis.Client) *RedisDashboardRebuildQueue {
+func NewRedisDashboardRebuildQueue(client redis.UniversalClient) *RedisDashboardRebuildQueue {
 	if client == nil {
 		return nil
 	}

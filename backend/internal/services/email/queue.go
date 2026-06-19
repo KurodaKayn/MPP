@@ -32,11 +32,11 @@ type codeEmailJob struct {
 }
 
 type AsyncEmailService struct {
-	redisClient *redis.Client
+	redisClient redis.UniversalClient
 	asynqClient *asynq.Client
 }
 
-func NewAsyncEmailService(client *redis.Client) *AsyncEmailService {
+func NewAsyncEmailService(client redis.UniversalClient) *AsyncEmailService {
 	return &AsyncEmailService{
 		redisClient: client,
 		asynqClient: asynq.NewClientFromRedisClient(client),

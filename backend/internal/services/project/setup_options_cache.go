@@ -240,7 +240,7 @@ func (s *Service) invalidateBrandProfileOptionsCache(workspaceID uuid.UUID) {
 	deleteContentSetupOptionsCacheKeys(ctx, s.cache, s.contentSetupGuard, contentSetupOptionsWorkspacePattern(contentSetupResourceBrandProfiles, workspaceID))
 }
 
-func deleteContentSetupOptionsCacheKeys(ctx context.Context, client *redis.Client, guard *redisdegrade.Guard, pattern string) {
+func deleteContentSetupOptionsCacheKeys(ctx context.Context, client redis.UniversalClient, guard *redisdegrade.Guard, pattern string) {
 	var cursor uint64
 	for {
 		type scanResult struct {
@@ -295,7 +295,7 @@ func (s *Service) contentSetupOptionsCacheGeneration(ctx context.Context, resour
 	return "workspace:" + workspaceGeneration, nil
 }
 
-func contentSetupOptionsGeneration(ctx context.Context, client *redis.Client, guard *redisdegrade.Guard, key string) (string, error) {
+func contentSetupOptionsGeneration(ctx context.Context, client redis.UniversalClient, guard *redisdegrade.Guard, key string) (string, error) {
 	generation, err := redisdegrade.CallWork(guard, "cache_read", func() (string, error) {
 		return client.Get(ctx, key).Result()
 	})

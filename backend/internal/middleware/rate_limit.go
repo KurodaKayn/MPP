@@ -32,7 +32,7 @@ var defaultRateLimitPolicyYAML []byte
 
 type RateLimitConfig struct {
 	Enabled     bool
-	RedisClient *redis.Client
+	RedisClient redis.UniversalClient
 	KeyPrefix   string
 	FailOpen    bool
 	guard       *redisdegrade.Guard
@@ -111,7 +111,7 @@ local ttl = redis.call("PTTL", KEYS[1])
 return { current, ttl }
 `
 
-func DefaultRateLimitConfig(client *redis.Client) RateLimitConfig {
+func DefaultRateLimitConfig(client redis.UniversalClient) RateLimitConfig {
 	policy, err := rateLimitPolicyFromYAML(defaultRateLimitPolicyYAML)
 	if err != nil {
 		panic(err)
@@ -119,7 +119,7 @@ func DefaultRateLimitConfig(client *redis.Client) RateLimitConfig {
 	return rateLimitConfigFromPolicy(client, policy)
 }
 
-func rateLimitConfigFromPolicy(client *redis.Client, policy rateLimitPolicy) RateLimitConfig {
+func rateLimitConfigFromPolicy(client redis.UniversalClient, policy rateLimitPolicy) RateLimitConfig {
 	return RateLimitConfig{
 		Enabled:     client != nil,
 		RedisClient: client,
@@ -149,7 +149,7 @@ func rateLimitConfigFromPolicy(client *redis.Client, policy rateLimitPolicy) Rat
 	}
 }
 
-func RateLimitConfigFromEnv(client *redis.Client) (RateLimitConfig, error) {
+func RateLimitConfigFromEnv(client redis.UniversalClient) (RateLimitConfig, error) {
 	policy, err := rateLimitPolicyFromYAML(defaultRateLimitPolicyYAML)
 	if err != nil {
 		return RateLimitConfig{}, err
@@ -342,7 +342,7 @@ func rateLimitCategory(method, route string) string {
 	}
 }
 
-func checkRateLimitBuckets(ctx context.Context, client *redis.Client, prefix string, guard *redisdegrade.Guard, buckets []rateLimitBucket) (rateLimitResult, error) {
+func checkRateLimitBuckets(ctx context.Context, client redis.UniversalClient, prefix string, guard *redisdegrade.Guard, buckets []rateLimitBucket) (rateLimitResult, error) {
 	var selected rateLimitResult
 	for _, bucket := range buckets {
 		current, ttl, err := incrementRateLimitBucket(ctx, client, guard, rateLimitRedisKey(prefix, bucket), bucket.Window)
@@ -370,7 +370,7 @@ func checkRateLimitBuckets(ctx context.Context, client *redis.Client, prefix str
 	return selected, nil
 }
 
-func incrementRateLimitBucket(ctx context.Context, client *redis.Client, guard *redisdegrade.Guard, key string, window time.Duration) (int64, time.Duration, error) {
+func incrementRateLimitBucket(ctx context.Context, client redis.UniversalClient, guard *redisdegrade.Guard, key string, window time.Duration) (int64, time.Duration, error) {
 	raw, err := redisdegrade.CallWork(guard, "rate_limit", func() (any, error) {
 		return client.Eval(ctx, redisRateLimitScript, []string{key}, window.Milliseconds()).Result()
 	})

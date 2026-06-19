@@ -205,12 +205,12 @@ func (s *DashboardService) SetPublishQueue(queue publishsvc.PublishQueue) {
 	s.SetQueue(queue)
 }
 
-func (s *DashboardService) UseRedis(client *redis.Client) {
+func (s *DashboardService) UseRedis(client redis.UniversalClient) {
 	s.UseRedisCache(client)
 	s.UseRedisQueue(client)
 }
 
-func (s *DashboardService) UseRedisCache(client *redis.Client) {
+func (s *DashboardService) UseRedisCache(client redis.UniversalClient) {
 	if client == nil {
 		return
 	}
@@ -220,7 +220,7 @@ func (s *DashboardService) UseRedisCache(client *redis.Client) {
 	s.Stats.UseRedisCache(client)
 }
 
-func (s *DashboardService) UseRedisQueue(client *redis.Client) {
+func (s *DashboardService) UseRedisQueue(client redis.UniversalClient) {
 	if client == nil {
 		return
 	}

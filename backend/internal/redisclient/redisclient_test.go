@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,7 +42,9 @@ func TestNewFromEnvAppliesPoolOverrides(t *testing.T) {
 		require.NoError(t, client.Close())
 	})
 
-	options := client.Options()
+	directClient, ok := client.(*redis.Client)
+	require.True(t, ok)
+	options := directClient.Options()
 	require.Equal(t, redisServer.Addr(), options.Addr)
 	require.Equal(t, 2, options.DB)
 	require.Equal(t, 32, options.PoolSize)
@@ -108,6 +111,82 @@ func TestConfigFromEnvBuildsSentinelEndpoint(t *testing.T) {
 	require.Equal(t, 24, options.PoolSize)
 	require.Equal(t, 3, options.MinIdleConns)
 	require.Equal(t, 9, options.MaxIdleConns)
+}
+
+func TestConfigFromEnvBuildsClusterEndpoint(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(endpointModeEnv, endpointModeCluster)
+	t.Setenv(addrEnv, " redis-cluster-0:6379,redis-cluster-1:6379 ")
+	t.Setenv(passwordEnv, "redis-secret")
+	t.Setenv(tlsEnv, "true")
+	t.Setenv(tlsCACertEnv, testRedisCACertPEM)
+	t.Setenv(tlsServerNameEnv, "redis.internal.example")
+	t.Setenv(poolSizeEnv, "24")
+	t.Setenv(minIdleConnsEnv, "3")
+	t.Setenv(maxIdleConnsEnv, "9")
+
+	config, err := ConfigFromEnv()
+	require.NoError(t, err)
+
+	require.Equal(t, endpointModeCluster, config.EndpointMode)
+	require.Equal(t, []string{"redis-cluster-0:6379", "redis-cluster-1:6379"}, config.ClusterAddrs)
+	require.Equal(t, "redis-secret", config.Password)
+	require.Zero(t, config.DB)
+	require.True(t, config.TLS)
+
+	options := clusterOptions(config, RoleQueue)
+	require.Equal(t, []string{"redis-cluster-0:6379", "redis-cluster-1:6379"}, options.Addrs)
+	require.Equal(t, "redis-secret", options.Password)
+	require.Equal(t, clusterMaxRedirects, options.MaxRedirects)
+	require.Equal(t, clusterStateReloadInterval, options.ClusterStateReloadInterval)
+	require.Equal(t, 2, options.MaxRetries)
+	require.Equal(t, 50*time.Millisecond, options.MinRetryBackoff)
+	require.Equal(t, 250*time.Millisecond, options.MaxRetryBackoff)
+	require.Equal(t, 1*time.Second, options.DialTimeout)
+	require.Equal(t, 2*time.Second, options.ReadTimeout)
+	require.Equal(t, 2*time.Second, options.WriteTimeout)
+	require.NotNil(t, options.TLSConfig)
+	require.Equal(t, "redis.internal.example", options.TLSConfig.ServerName)
+	require.Equal(t, 24, options.PoolSize)
+	require.Equal(t, 3, options.MinIdleConns)
+	require.Equal(t, 9, options.MaxIdleConns)
+
+	client := newClient(config, RoleQueue)
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+	_, ok := client.(*redis.ClusterClient)
+	require.True(t, ok)
+}
+
+func TestConfigFromEnvBuildsClusterEndpointFromURLs(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(endpointModeEnv, endpointModeCluster)
+	t.Setenv(addrEnv, "rediss://cluster-user:cluster-pass@redis-cluster-0:6380?addr=redis-cluster-1:6379")
+
+	config, err := ConfigFromEnv()
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"redis-cluster-0:6380", "redis-cluster-1:6379"}, config.ClusterAddrs)
+	require.True(t, config.TLS)
+	require.Equal(t, "cluster-user", config.Username)
+	require.Equal(t, "cluster-pass", config.Password)
+
+	options := clusterOptions(config, RoleDefault)
+	require.Equal(t, "cluster-user", options.Username)
+	require.Equal(t, "cluster-pass", options.Password)
+	require.NotNil(t, options.TLSConfig)
+}
+
+func TestConfigFromEnvRejectsConflictingClusterURLPasswords(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(endpointModeEnv, endpointModeCluster)
+	t.Setenv(addrEnv, "redis://:one@redis-cluster-0:6379,redis://:two@redis-cluster-1:6379")
+
+	_, err := ConfigFromEnv()
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "conflicting passwords")
 }
 
 func TestConfigFromEnvBuildsTLSOptions(t *testing.T) {
@@ -274,9 +353,15 @@ func TestNewClientSetFromEnvBuildsDistinctRoleClients(t *testing.T) {
 	require.NotNil(t, clients.Session)
 	require.NotSame(t, clients.Default, clients.Coordination)
 	require.NotSame(t, clients.Default, clients.Queue)
-	require.Equal(t, 500*time.Millisecond, clients.Coordination.Options().DialTimeout)
-	require.Equal(t, 2*time.Second, clients.Queue.Options().ReadTimeout)
-	require.Equal(t, 1*time.Second, clients.Session.Options().ReadTimeout)
+	coordinationClient, ok := clients.Coordination.(*redis.Client)
+	require.True(t, ok)
+	queueClient, ok := clients.Queue.(*redis.Client)
+	require.True(t, ok)
+	sessionClient, ok := clients.Session.(*redis.Client)
+	require.True(t, ok)
+	require.Equal(t, 500*time.Millisecond, coordinationClient.Options().DialTimeout)
+	require.Equal(t, 2*time.Second, queueClient.Options().ReadTimeout)
+	require.Equal(t, 1*time.Second, sessionClient.Options().ReadTimeout)
 }
 
 func TestConfigFromEnvUsesSentinelMasterOverride(t *testing.T) {
@@ -301,9 +386,22 @@ func TestConfigFromEnvRejectsMissingSentinelAddrs(t *testing.T) {
 	require.Contains(t, err.Error(), endpointModeEnv)
 }
 
-func TestConfigFromEnvRejectsUnknownEndpointMode(t *testing.T) {
+func TestConfigFromEnvRejectsClusterWithNonZeroDB(t *testing.T) {
 	clearRedisEnv(t)
 	t.Setenv(endpointModeEnv, "cluster")
+	t.Setenv(addrEnv, "redis-cluster-0:6379")
+	t.Setenv(dbEnv, "1")
+
+	_, err := ConfigFromEnv()
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), dbEnv)
+	require.Contains(t, err.Error(), endpointModeCluster)
+}
+
+func TestConfigFromEnvRejectsUnknownEndpointMode(t *testing.T) {
+	clearRedisEnv(t)
+	t.Setenv(endpointModeEnv, "unknown")
 
 	_, err := ConfigFromEnv()
 

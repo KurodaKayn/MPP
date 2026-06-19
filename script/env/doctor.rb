@@ -177,6 +177,8 @@ class EnvDoctor
       add_error(path, name, "must be a three-letter currency code") unless value.match?(/\A[A-Za-z]{3}\z/)
     when "hostport_or_url"
       validate_hostport_or_url(path, name, value)
+    when "csv_hostport_or_url"
+      csv_values(value).each { |entry| validate_hostport_or_url(path, name, entry) }
     when "address"
       validate_hostport(path, name, value)
     when "csv"
@@ -340,7 +342,7 @@ class EnvDoctor
       "admin@example.com"
     when "currency"
       "USD"
-    when "hostport_or_url", "csv_hostport"
+    when "hostport_or_url", "csv_hostport", "csv_hostport_or_url"
       "redis:6379"
     when "address"
       "0.0.0.0:8080"

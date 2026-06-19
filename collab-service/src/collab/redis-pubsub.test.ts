@@ -7,6 +7,8 @@ import { encodeStateAsUpdate } from "yjs";
 
 import { loadConfig } from "../config.js";
 import {
+  redisClusterOptionsFromConfig,
+  redisClusterRootNodesFromConfig,
   redisClientOptionsFromConfig,
   redisSentinelOptionsFromConfig,
   redisSentinelRootNodesFromConfig,
@@ -219,6 +221,66 @@ describe("redisClientOptionsFromConfig", () => {
     expect(reconnectDelay).toBeGreaterThanOrEqual(400);
     expect(reconnectDelay).toBeLessThan(450);
     expect(options.socket?.reconnectStrategy?.(4)).toBeInstanceOf(Error);
+  });
+});
+
+describe("redisClusterOptionsFromConfig", () => {
+  it("builds cluster options from config", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      REDIS_ENDPOINT_MODE: "cluster",
+      REDIS_ADDR: " redis-cluster-0:6379,redis-cluster-1:6379 ",
+      REDIS_PASSWORD: "redis-secret",
+      REDIS_TLS: "true",
+      REDIS_TLS_CA_CERT: testRedisCACertPEM,
+      REDIS_TLS_SERVER_NAME: "redis.internal.example",
+    });
+
+    const options = redisClusterOptionsFromConfig(config);
+
+    expect(options.maxCommandRedirections).toBe(8);
+    expect(options.rootNodes).toEqual([
+      { url: "rediss://redis-cluster-0:6379" },
+      { url: "rediss://redis-cluster-1:6379" },
+    ]);
+    expect(options.defaults).toMatchObject({
+      commandsQueueMaxLength: 256,
+      disableOfflineQueue: true,
+      database: 0,
+      pingInterval: 15_000,
+      password: "redis-secret",
+      socket: {
+        ca: testRedisCACertPEM,
+        connectTimeout: 1_000,
+        servername: "redis.internal.example",
+        socketTimeout: 1_000,
+        tls: true,
+      },
+    });
+  });
+
+  it("rejects cluster mode with non-zero db", () => {
+    expect(() =>
+      loadConfig({
+        NODE_ENV: "test",
+        REDIS_ENDPOINT_MODE: "cluster",
+        REDIS_ADDR: "redis-cluster-0:6379",
+        REDIS_DB: "1",
+      }),
+    ).toThrow(/REDIS_DB/);
+  });
+
+  it("parses cluster seed nodes", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      REDIS_ENDPOINT_MODE: "cluster",
+      REDIS_ADDR: "redis-cluster-0:6379,redis-cluster-1:6379",
+    });
+
+    expect(redisClusterRootNodesFromConfig(config)).toEqual([
+      { url: "redis://redis-cluster-0:6379" },
+      { url: "redis://redis-cluster-1:6379" },
+    ]);
   });
 });
 

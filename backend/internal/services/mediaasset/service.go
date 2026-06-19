@@ -29,7 +29,7 @@ type Service struct {
 	projects      *projectsvc.Service
 	objectStorage objectstorage.Client
 	storageConfig objectstorage.Config
-	cache         *redis.Client
+	cache         redis.UniversalClient
 	cacheTTL      time.Duration
 	cacheGuard    *redisdegrade.Guard
 	cacheGroup    *singleflight.Group
@@ -67,11 +67,11 @@ func (s *Service) UseObjectStorage(client objectstorage.Client, config objectsto
 	s.storageConfig = config
 }
 
-func (s *Service) UseRedis(client *redis.Client) {
+func (s *Service) UseRedis(client redis.UniversalClient) {
 	s.UseRedisCache(client)
 }
 
-func (s *Service) UseRedisCache(client *redis.Client) {
+func (s *Service) UseRedisCache(client redis.UniversalClient) {
 	if client == nil {
 		return
 	}
