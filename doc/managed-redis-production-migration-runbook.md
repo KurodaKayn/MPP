@@ -24,7 +24,7 @@ paste secret values into the record.
 | Secrets | `mpp-app-secrets` contains `REDIS_PASSWORD` only when the provider or source requires auth; External Secrets remote key paths are recorded, not the secret values |
 | Provider settings | HA/failover enabled, private network access enabled, auth/TLS configured, persistence or scheduled snapshots enabled, retention and documented RPO/RTO accepted |
 | Observability | Grafana dashboards `MPP Redis SLO Baseline` and `MPP Redis Error Budget (App-Side)`, Redis exporter, provider metrics, provider event log, and application logs available |
-| Rollback owner | Named owner with access to apply `deploy/kubernetes/overlays/production-self-hosted-ha` and to restore Redis snapshots if required |
+| Rollback owner | Named owner with access to apply `deploy/kubernetes/overlays/production-self-hosted-ha` before issue #339, or recreate it from the historical Git SHA and retained snapshot after decommission |
 | Artifacts directory | Local path such as `artifacts/redis-managed-cutover/<run-id>` for inventory, copy, TTL diff, and monitoring evidence |
 | Cutover record | `doc/managed-redis-production-cutover-record.md` copied or updated with real issue #338 production evidence |
 
@@ -421,7 +421,9 @@ Record:
 | Rollback decision | Pending |
 
 Keep self-hosted HA Redis and its PVCs intact until the Phase 4.5
-decommissioning issue is complete and the rollback owner signs off.
+decommissioning issue is complete and the rollback owner signs off. After issue
+#339, use `doc/self-hosted-redis-decommission-record.md` for rollback evidence,
+retained snapshot details, and recreate-from-history instructions.
 
 ## 7. Rollback
 
@@ -435,9 +437,9 @@ Roll back application traffic when any stop condition occurs during the window:
 - TTL diff shows missing critical state after switch;
 - provider import produced partial data or corruption warnings.
 
-Switch traffic back to self-hosted HA Redis by applying the previous production
-self-hosted HA overlay or by patching the live ConfigMap while preparing the
-overlay rollback:
+Before issue #339, switch traffic back to self-hosted HA Redis by applying the
+previous production self-hosted HA overlay or by patching the live ConfigMap
+while preparing the overlay rollback:
 
 ```bash
 kubectl apply -k "$SOURCE_OVERLAY"
@@ -478,6 +480,10 @@ restart the Redis-dependent workloads.
 Do not copy data back from managed Redis during emergency rollback unless the
 incident commander explicitly accepts the risk. A reverse copy can reintroduce
 the bad state that triggered rollback.
+
+After issue #339 decommissions the old deployment, this fast endpoint rollback
+is no longer available. Recreate the historical self-hosted chart and restore
+the retained snapshot by following `doc/self-hosted-redis-decommission-record.md`.
 
 ## 8. Closeout
 
