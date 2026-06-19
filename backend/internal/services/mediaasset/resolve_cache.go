@@ -142,7 +142,7 @@ func (s *Service) invalidateResolvedMediaAssetCache(assetID uuid.UUID) {
 	deleteResolvedMediaAssetCacheKeys(ctx, s.cache, s.cacheGuard, assetID)
 }
 
-func deleteResolvedMediaAssetCacheKeys(ctx context.Context, client *redis.Client, guard *redisdegrade.Guard, assetID uuid.UUID) {
+func deleteResolvedMediaAssetCacheKeys(ctx context.Context, client redis.UniversalClient, guard *redisdegrade.Guard, assetID uuid.UUID) {
 	var cursor uint64
 	pattern := resolvedMediaAssetCachePrefix + ":" + rediskey.Tag("asset", assetID.String()) + ":*"
 	for {
