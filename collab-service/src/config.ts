@@ -70,7 +70,9 @@ const BaseEnvSchema = z.object({
   ),
   DB_CONN_MAX_LIFETIME: EnvDurationMillis("30m"),
   DB_CONN_MAX_IDLE_TIME: EnvDurationMillis("5m"),
-  REDIS_ENDPOINT_MODE: z.enum(["direct", "sentinel"]).default("direct"),
+  REDIS_ENDPOINT_MODE: z
+    .enum(["direct", "sentinel", "cluster"])
+    .default("direct"),
   REDIS_ADDR: z.string().default("redis:6379"),
   REDIS_PASSWORD: z.string().default(""),
   REDIS_DB: z.coerce.number().int().nonnegative().default(0),
@@ -99,6 +101,22 @@ const EnvSchema = BaseEnvSchema.superRefine((config, ctx) => {
       path: ["REDIS_SENTINEL_ADDRS"],
       message: "must be set when REDIS_ENDPOINT_MODE=sentinel",
     });
+  }
+  if (config.REDIS_ENDPOINT_MODE === "cluster") {
+    if (config.REDIS_ADDR.trim() === "") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["REDIS_ADDR"],
+        message: "must be set when REDIS_ENDPOINT_MODE=cluster",
+      });
+    }
+    if (config.REDIS_DB !== 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["REDIS_DB"],
+        message: "must be 0 when REDIS_ENDPOINT_MODE=cluster",
+      });
+    }
   }
 });
 
