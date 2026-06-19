@@ -73,11 +73,11 @@ type PublishQueue interface {
 }
 
 type RedisPublishQueue struct {
-	redisClient *redis.Client
+	redisClient redis.UniversalClient
 	asynqClient *asynq.Client
 }
 
-func NewRedisPublishQueue(client *redis.Client) *RedisPublishQueue {
+func NewRedisPublishQueue(client redis.UniversalClient) *RedisPublishQueue {
 	return &RedisPublishQueue{
 		redisClient: client,
 		asynqClient: asynq.NewClientFromRedisClient(client),
