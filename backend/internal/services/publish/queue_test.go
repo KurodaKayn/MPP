@@ -18,11 +18,23 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/rediskey"
 	"github.com/kurodakayn/mpp-backend/internal/publisher"
 	platformaccount "github.com/kurodakayn/mpp-backend/internal/services/platform_account"
 )
 
 type queueTestPublisher struct{}
+
+func TestPublishLockKeyUsesProjectHashTag(t *testing.T) {
+	projectID := uuid.New()
+
+	key := publishLockKey(projectID, "Wechat")
+
+	tag, ok := rediskey.ExtractTag(key)
+	require.True(t, ok)
+	require.Equal(t, "project:"+projectID.String(), tag)
+	require.Equal(t, publishLockKeyPrefix+rediskey.Tag("project", projectID.String())+":wechat", key)
+}
 
 func (p queueTestPublisher) ValidateConfig(_ []byte) error {
 	return nil
