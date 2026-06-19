@@ -16,7 +16,9 @@ Required overlay inputs:
   provider or private CA requires a custom root certificate path.
 - A reachable Redis endpoint through `REDIS_ENDPOINT_MODE=direct` and
   `REDIS_ADDR`, or through `REDIS_ENDPOINT_MODE=sentinel` with
-  `REDIS_SENTINEL_ADDRS` and `REDIS_SENTINEL_MASTER_NAME`.
+  `REDIS_SENTINEL_ADDRS` and `REDIS_SENTINEL_MASTER_NAME`, or through
+  `REDIS_ENDPOINT_MODE=cluster` with `REDIS_ADDR` set to one or more
+  comma-separated seed nodes. Cluster mode requires `REDIS_DB=0`.
 - Redis TLS policy through `REDIS_TLS`; set `REDIS_TLS_CA_CERT`,
   `REDIS_TLS_CA_FILE`, or `REDIS_TLS_SERVER_NAME` only when the provider
   requires custom trust material or a documented SNI override.
