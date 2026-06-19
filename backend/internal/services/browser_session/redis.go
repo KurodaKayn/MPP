@@ -11,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/rediskey"
 )
 
 type browserSessionLiveState struct {
@@ -67,7 +68,7 @@ func (s *BrowserSessionService) cleanupRedisSessionForTenant(ctx context.Context
 }
 
 func browserSessionActiveKey(userID uuid.UUID, platform string) string {
-	return browserSessionActiveKeyPrefix + userID.String() + ":" + platform
+	return browserSessionActiveKeyPrefix + rediskey.Tag("user", userID.String()) + ":" + rediskey.Part(platform)
 }
 
 func browserSessionQuotaUserKey(userID uuid.UUID) string {
@@ -79,19 +80,19 @@ func browserSessionQuotaTenantKey(tenantID string) string {
 }
 
 func browserSessionKey(sessionID uuid.UUID) string {
-	return browserSessionKeyPrefix + sessionID.String()
+	return browserSessionKeyPrefix + rediskey.Tag("session", sessionID.String())
 }
 
 func browserSessionStreamTokenKey(sessionID uuid.UUID, tokenHash string) string {
-	return browserSessionStreamTokenPrefix + sessionID.String() + ":" + tokenHash
+	return browserSessionStreamTokenPrefix + rediskey.Tag("session", sessionID.String()) + ":" + rediskey.Part(tokenHash)
 }
 
 func browserSessionStreamTokenKeyPrefixFor(sessionID uuid.UUID) string {
-	return browserSessionStreamTokenPrefix + sessionID.String() + ":"
+	return browserSessionStreamTokenPrefix + rediskey.Tag("session", sessionID.String()) + ":"
 }
 
 func browserSessionStreamCurrentKey(sessionID uuid.UUID) string {
-	return browserSessionStreamCurrentPrefix + sessionID.String()
+	return browserSessionStreamCurrentPrefix + rediskey.Tag("session", sessionID.String())
 }
 
 func browserSessionWorkerHeartbeatKey(workerSessionRef string) string {

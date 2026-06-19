@@ -277,11 +277,42 @@ func (s *RedisStateStore) DeleteHeartbeat(ctx context.Context, workerSessionRef 
 }
 
 func browserSessionRedisKey(sessionID string) string {
-	return browserSessionKeyPrefix + sessionID
+	return browserSessionKeyPrefix + redisHashTag("session", sessionID)
 }
 
 func browserSessionHeartbeatKey(workerSessionRef string) string {
 	return browserSessionHeartbeatPrefix + workerSessionRef
+}
+
+func redisHashTag(scope string, value string) string {
+	return "{" + redisKeyPart(scope) + ":" + redisKeyPart(value) + "}"
+}
+
+func redisKeyPart(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "unknown"
+	}
+
+	var builder strings.Builder
+	lastDash := false
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == ':' || r == '.' {
+			builder.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			builder.WriteByte('-')
+			lastDash = true
+		}
+	}
+
+	result := strings.Trim(builder.String(), "-")
+	if result == "" {
+		return "unknown"
+	}
+	return result
 }
 
 func browserSessionLiveTTL(expiresAt time.Time) time.Duration {
