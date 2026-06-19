@@ -39,20 +39,25 @@ var (
 )
 
 const (
-	endpointModeDirect    = "direct"
-	endpointModeSentinel  = "sentinel"
-	sentinelMasterDefault = "mpp-redis-ha"
+	endpointModeDirect         = "direct"
+	endpointModeSentinel       = "sentinel"
+	endpointModeCluster        = "cluster"
+	sentinelMasterDefault      = "mpp-redis-ha"
+	clusterMaxRedirects        = 8
+	clusterStateReloadInterval = 10 * time.Second
 )
 
 type Config struct {
 	EndpointMode       string
 	Addr               string
+	Username           string
 	Password           string
 	DB                 int
 	TLS                bool
 	TLSCACert          string
 	TLSCAFile          string
 	TLSServerName      string
+	ClusterAddrs       []string
 	SentinelAddrs      []string
 	SentinelMasterName string
 	tls                *tls.Config
@@ -70,11 +75,11 @@ const (
 )
 
 type ClientSet struct {
-	Default      *redis.Client
-	Coordination *redis.Client
-	Cache        *redis.Client
-	Queue        *redis.Client
-	Session      *redis.Client
+	Default      redis.UniversalClient
+	Coordination redis.UniversalClient
+	Cache        redis.UniversalClient
+	Queue        redis.UniversalClient
+	Session      redis.UniversalClient
 }
 
 type roleConfig struct {
@@ -97,11 +102,11 @@ type poolConfig struct {
 	ConnMaxLifetime time.Duration
 }
 
-func NewFromEnv(ctx context.Context) (*redis.Client, error) {
+func NewFromEnv(ctx context.Context) (redis.UniversalClient, error) {
 	return NewRoleFromEnv(ctx, RoleDefault)
 }
 
-func NewRoleFromEnv(ctx context.Context, role Role) (*redis.Client, error) {
+func NewRoleFromEnv(ctx context.Context, role Role) (redis.UniversalClient, error) {
 	config, err := ConfigFromEnv()
 	if err != nil {
 		return nil, err
@@ -119,7 +124,7 @@ func NewClientSetFromEnv(ctx context.Context) (*ClientSet, error) {
 	clientSet := &ClientSet{}
 	builders := []struct {
 		role Role
-		dst  **redis.Client
+		dst  *redis.UniversalClient
 	}{
 		{role: RoleDefault, dst: &clientSet.Default},
 		{role: RoleCoordination, dst: &clientSet.Coordination},
@@ -158,6 +163,13 @@ func ConfigFromEnv() (Config, error) {
 		if config.Addr == "" {
 			return Config{}, ErrNotConfigured
 		}
+	case endpointModeCluster:
+		if err := config.configureClusterFromEnv(); err != nil {
+			return Config{}, err
+		}
+		if len(config.ClusterAddrs) == 0 {
+			return Config{}, fmt.Errorf("%s must be set when %s=cluster", addrEnv, endpointModeEnv)
+		}
 	case endpointModeSentinel:
 		config.SentinelAddrs = csvEnv(sentinelAddrsEnv)
 		config.SentinelMasterName = strings.TrimSpace(os.Getenv(sentinelMasterEnv))
@@ -173,6 +185,9 @@ func ConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	if endpointMode == endpointModeCluster && db != 0 {
+		return Config{}, fmt.Errorf("invalid %s: must be 0 when %s=cluster", dbEnv, endpointModeEnv)
+	}
 	pool, err := poolConfigFromEnv()
 	if err != nil {
 		return Config{}, err
@@ -186,7 +201,7 @@ func ConfigFromEnv() (Config, error) {
 	return config, nil
 }
 
-func New(ctx context.Context, config Config, role Role) (*redis.Client, error) {
+func New(ctx context.Context, config Config, role Role) (redis.UniversalClient, error) {
 	if err := config.configureTLS(); err != nil {
 		return nil, err
 	}
@@ -199,15 +214,21 @@ func New(ctx context.Context, config Config, role Role) (*redis.Client, error) {
 	return client, nil
 }
 
-func newClient(config Config, role Role) *redis.Client {
-	if config.EndpointMode == endpointModeSentinel {
+func newClient(config Config, role Role) redis.UniversalClient {
+	switch config.EndpointMode {
+	case endpointModeCluster:
+		client := redis.NewClusterClient(clusterOptions(config, role))
+		client.AddHook(newLoggingHook(role))
+		return client
+	case endpointModeSentinel:
 		client := redis.NewFailoverClient(failoverOptions(config, role))
 		client.AddHook(newLoggingHook(role))
 		return client
+	default:
+		client := redis.NewClient(options(config, role))
+		client.AddHook(newLoggingHook(role))
+		return client
 	}
-	client := redis.NewClient(options(config, role))
-	client.AddHook(newLoggingHook(role))
-	return client
 }
 
 func options(config Config, role Role) *redis.Options {
@@ -250,6 +271,29 @@ func failoverOptions(config Config, role Role) *redis.FailoverOptions {
 		DialerRetryTimeout: roleSettings.DialerRetryTimeout,
 	}
 	applyFailoverPoolConfig(options, config.pool)
+	return options
+}
+
+func clusterOptions(config Config, role Role) *redis.ClusterOptions {
+	roleSettings := roleSettings(role)
+	options := &redis.ClusterOptions{
+		Addrs:                      append([]string(nil), config.ClusterAddrs...),
+		Username:                   config.Username,
+		Password:                   config.Password,
+		TLSConfig:                  config.tlsConfig(),
+		MaxRedirects:               clusterMaxRedirects,
+		ClusterStateReloadInterval: clusterStateReloadInterval,
+		DialTimeout:                roleSettings.DialTimeout,
+		ReadTimeout:                roleSettings.ReadTimeout,
+		WriteTimeout:               roleSettings.WriteTimeout,
+		PoolTimeout:                roleSettings.PoolTimeout,
+		MaxRetries:                 roleSettings.MaxRetries,
+		MinRetryBackoff:            roleSettings.MinRetryBackoff,
+		MaxRetryBackoff:            roleSettings.MaxRetryBackoff,
+		DialerRetries:              roleSettings.DialerRetries,
+		DialerRetryTimeout:         roleSettings.DialerRetryTimeout,
+	}
+	applyClusterPoolConfig(options, config.pool)
 	return options
 }
 
@@ -340,14 +384,27 @@ func applyFailoverPoolConfig(options *redis.FailoverOptions, config poolConfig) 
 	options.ConnMaxLifetime = config.ConnMaxLifetime
 }
 
+func applyClusterPoolConfig(options *redis.ClusterOptions, config poolConfig) {
+	if options == nil {
+		return
+	}
+	options.PoolSize = config.PoolSize
+	options.MinIdleConns = config.MinIdleConns
+	options.MaxIdleConns = config.MaxIdleConns
+	options.ConnMaxIdleTime = config.ConnMaxIdleTime
+	options.ConnMaxLifetime = config.ConnMaxLifetime
+}
+
 func endpointModeFromEnv() (string, error) {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(endpointModeEnv))) {
 	case "", endpointModeDirect:
 		return endpointModeDirect, nil
 	case endpointModeSentinel:
 		return endpointModeSentinel, nil
+	case endpointModeCluster:
+		return endpointModeCluster, nil
 	default:
-		return "", fmt.Errorf("%s must be one of: %s, %s", endpointModeEnv, endpointModeDirect, endpointModeSentinel)
+		return "", fmt.Errorf("%s must be one of: %s, %s, %s", endpointModeEnv, endpointModeDirect, endpointModeSentinel, endpointModeCluster)
 	}
 }
 
@@ -385,7 +442,7 @@ func poolConfigFromEnv() (poolConfig, error) {
 	}, nil
 }
 
-func pingWithRetry(ctx context.Context, client *redis.Client) error {
+func pingWithRetry(ctx context.Context, client redis.UniversalClient) error {
 	var lastErr error
 	for range 10 {
 		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -408,14 +465,14 @@ func (c *ClientSet) Close() error {
 	if c == nil {
 		return nil
 	}
-	clients := []*redis.Client{
+	clients := []redis.UniversalClient{
 		c.Default,
 		c.Coordination,
 		c.Cache,
 		c.Queue,
 		c.Session,
 	}
-	seen := make(map[*redis.Client]struct{}, len(clients))
+	seen := make(map[redis.UniversalClient]struct{}, len(clients))
 	var firstErr error
 	for _, client := range clients {
 		if client == nil {
@@ -533,6 +590,45 @@ func csvEnv(name string) []string {
 		}
 	}
 	return values
+}
+
+func (c *Config) configureClusterFromEnv() error {
+	addrs := csvEnv(addrEnv)
+	normalized := make([]string, 0, len(addrs))
+	var urlUsername string
+	var urlPassword string
+	for _, addr := range addrs {
+		if !strings.Contains(addr, "://") {
+			normalized = append(normalized, addr)
+			continue
+		}
+		options, err := redis.ParseClusterURL(addr)
+		if err != nil {
+			return fmt.Errorf("invalid %s cluster URL: %w", addrEnv, err)
+		}
+		normalized = append(normalized, options.Addrs...)
+		if options.Username != "" {
+			if urlUsername != "" && urlUsername != options.Username {
+				return fmt.Errorf("invalid %s cluster URL: conflicting usernames", addrEnv)
+			}
+			urlUsername = options.Username
+		}
+		if options.Password != "" {
+			if urlPassword != "" && urlPassword != options.Password {
+				return fmt.Errorf("invalid %s cluster URL: conflicting passwords", addrEnv)
+			}
+			urlPassword = options.Password
+		}
+		if options.TLSConfig != nil {
+			c.TLS = true
+		}
+	}
+	c.ClusterAddrs = normalized
+	c.Username = urlUsername
+	if c.Password == "" {
+		c.Password = urlPassword
+	}
+	return nil
 }
 
 func redisTLSConfig(config Config) (*tls.Config, error) {
