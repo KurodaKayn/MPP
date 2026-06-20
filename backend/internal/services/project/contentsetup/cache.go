@@ -1,4 +1,4 @@
-package project
+package contentsetup
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
-	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/cachettl"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
 )
@@ -209,13 +208,13 @@ func refreshContentSetupOptionsCache[T any](
 	return resp, nil
 }
 
-func (s *Service) invalidateContentTemplateOptionsCache(userID uuid.UUID, workspaceID uuid.UUID, scope string) {
+func (s *Service) InvalidateContentTemplateOptionsCache(userID uuid.UUID, workspaceID uuid.UUID, scope string) {
 	if s.cache == nil {
 		return
 	}
 	ctx, cancel := contentSetupOptionsInvalidationContext(s.requestContext())
 	defer cancel()
-	if scope == models.ContentTemplateScopeWorkspace {
+	if scope == "workspace" {
 		_ = redisdegrade.DoWork(s.contentSetupGuard, "cache_invalidate", func() error {
 			return s.cache.Incr(ctx, contentSetupOptionsWorkspaceGenerationKey(contentSetupResourceTemplates, workspaceID)).Err()
 		})
@@ -228,7 +227,7 @@ func (s *Service) invalidateContentTemplateOptionsCache(userID uuid.UUID, worksp
 	deleteContentSetupOptionsCacheKeys(ctx, s.cache, s.contentSetupGuard, contentSetupOptionsUserPattern(contentSetupResourceTemplates, userID))
 }
 
-func (s *Service) invalidateBrandProfileOptionsCache(workspaceID uuid.UUID) {
+func (s *Service) InvalidateBrandProfileOptionsCache(workspaceID uuid.UUID) {
 	if s.cache == nil {
 		return
 	}
@@ -238,6 +237,13 @@ func (s *Service) invalidateBrandProfileOptionsCache(workspaceID uuid.UUID) {
 		return s.cache.Incr(ctx, contentSetupOptionsWorkspaceGenerationKey(contentSetupResourceBrandProfiles, workspaceID)).Err()
 	})
 	deleteContentSetupOptionsCacheKeys(ctx, s.cache, s.contentSetupGuard, contentSetupOptionsWorkspacePattern(contentSetupResourceBrandProfiles, workspaceID))
+}
+
+func (s *Service) requestContext() context.Context {
+	if s.db != nil && s.db.Statement != nil && s.db.Statement.Context != nil {
+		return s.db.Statement.Context
+	}
+	return context.Background()
 }
 
 func deleteContentSetupOptionsCacheKeys(ctx context.Context, client redis.UniversalClient, guard *redisdegrade.Guard, pattern string) {

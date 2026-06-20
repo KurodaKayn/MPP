@@ -17,11 +17,12 @@ import (
 	platformcapabilities "github.com/kurodakayn/mpp-backend/internal/platformcapabilities"
 	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
+	"github.com/kurodakayn/mpp-backend/internal/services/project/projecterr"
 )
 
 var ErrForbidden = accesspolicy.ErrForbidden
-var ErrInvalidProject = errors.New("invalid project")
-var ErrInvalidProjectCollaborator = errors.New("invalid project collaborator")
+var ErrInvalidProject = projecterr.ErrInvalidProject
+var ErrInvalidProjectCollaborator = projecterr.ErrInvalidProjectCollaborator
 var ErrProjectCollabUnavailable = errors.New("project collaboration unavailable")
 var ErrProjectDeletionBlocked = errors.New("project deletion blocked")
 
@@ -74,6 +75,14 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 		scoped.collabDocuments = s.collabDocuments.WithContext(ctx)
 	}
 	return &scoped
+}
+
+func (s *Service) DB() *gorm.DB {
+	return s.db
+}
+
+func (s *Service) RequestContext() context.Context {
+	return s.requestContext()
 }
 
 func (s *Service) SetCollabDocumentService(svc *collabdoc.Service) {

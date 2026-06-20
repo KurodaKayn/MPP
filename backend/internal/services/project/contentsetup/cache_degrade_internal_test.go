@@ -1,4 +1,4 @@
-package project
+package contentsetup
 
 import (
 	"sync"
