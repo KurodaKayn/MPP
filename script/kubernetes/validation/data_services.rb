@@ -106,6 +106,7 @@ module KubernetesValidation
       validate_redis_cluster_backup(context)
       validate_redis_cluster_network_policy(context)
       validate_redis_cluster_keeps_existing_traffic(context)
+      validate_redis_cluster_cli_mtls(context)
     end
 
     def validate_redis_ha_production(context)
@@ -436,6 +437,16 @@ module KubernetesValidation
       end
       unless anti_affinity
         context.add_error("#{label} must prefer hostname anti-affinity across Redis Cluster Pods")
+      end
+    end
+
+    def validate_redis_cluster_cli_mtls(context)
+      context.find_lines(/redis-cli .*--tls/).each do |line|
+        unless line.include?("--cacert /tls/ca.crt") &&
+               line.include?("--cert /tls/tls.crt") &&
+               line.include?("--key /tls/tls.key")
+          context.add_error("non-prod Redis Cluster redis-cli TLS calls must provide client cert and key: #{line}")
+        end
       end
     end
 

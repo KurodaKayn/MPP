@@ -207,7 +207,7 @@ spec:
                   - sh
                   - -ec
                   - |
-                    redis-cli --tls --cacert /tls/ca.crt --no-auth-warning -a "$REDIS_PASSWORD" SHUTDOWN SAVE || true
+                    redis-cli --tls --cacert /tls/ca.crt --cert /tls/tls.crt --key /tls/tls.key --no-auth-warning -a "$REDIS_PASSWORD" SHUTDOWN SAVE || true
           readinessProbe:
             exec:
               command:
@@ -215,7 +215,7 @@ spec:
                 - -ec
                 - |
                   redis_cli() {
-                    redis-cli --tls --cacert /tls/ca.crt --raw --no-auth-warning -a "$REDIS_PASSWORD" "$@"
+                    redis-cli --tls --cacert /tls/ca.crt --cert /tls/tls.crt --key /tls/tls.key --raw --no-auth-warning -a "$REDIS_PASSWORD" "$@"
                   }
                   redis_cli PING | grep -q PONG
                   redis_cli CLUSTER INFO | tr -d '\r' | grep -q '^cluster_state:ok$'
@@ -229,7 +229,7 @@ spec:
               command:
                 - sh
                 - -ec
-                - redis-cli --tls --cacert /tls/ca.crt --no-auth-warning -a "$REDIS_PASSWORD" PING | grep -q PONG
+                - redis-cli --tls --cacert /tls/ca.crt --cert /tls/tls.crt --key /tls/tls.key --no-auth-warning -a "$REDIS_PASSWORD" PING | grep -q PONG
             initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 5
@@ -326,7 +326,7 @@ spec:
           args:
             - |
               redis_cli() {
-                redis-cli --tls --cacert /tls/ca.crt --no-auth-warning -a "$REDIS_PASSWORD" "$@"
+                redis-cli --tls --cacert /tls/ca.crt --cert /tls/tls.crt --key /tls/tls.key --no-auth-warning -a "$REDIS_PASSWORD" "$@"
               }
               first_node="${REDIS_CLUSTER_NODES%% *}"
               for node in $REDIS_CLUSTER_NODES; do
@@ -339,7 +339,7 @@ spec:
               fi
               # redis-cluster-0.redis-cluster-headless.mpp-system.svc.cluster.local is the bootstrap anchor.
               set -- $REDIS_CLUSTER_NODES
-              redis-cli --tls --cacert /tls/ca.crt --no-auth-warning -a "$REDIS_PASSWORD" \
+              redis-cli --tls --cacert /tls/ca.crt --cert /tls/tls.crt --key /tls/tls.key --no-auth-warning -a "$REDIS_PASSWORD" \
                 --cluster create \
                 "$1" "$2" "$3" "$4" "$5" "$6" \
                 --cluster-replicas 1 \
@@ -520,8 +520,8 @@ spec:
                   for node in $REDIS_CLUSTER_NODES; do
                     host="${node%:*}"
                     port="${node##*:}"
-                    redis-cli --tls --cacert /tls/ca.crt --no-auth-warning -a "$REDIS_PASSWORD" -h "$host" -p "$port" BGSAVE SCHEDULE || true
-                    redis-cli --tls --cacert /tls/ca.crt --no-auth-warning -a "$REDIS_PASSWORD" -h "$host" -p "$port" CLUSTER NODES > "$backup_dir/${host}.cluster-nodes.txt"
+                    redis-cli --tls --cacert /tls/ca.crt --cert /tls/tls.crt --key /tls/tls.key --no-auth-warning -a "$REDIS_PASSWORD" -h "$host" -p "$port" BGSAVE SCHEDULE || true
+                    redis-cli --tls --cacert /tls/ca.crt --cert /tls/tls.crt --key /tls/tls.key --no-auth-warning -a "$REDIS_PASSWORD" -h "$host" -p "$port" CLUSTER NODES > "$backup_dir/${host}.cluster-nodes.txt"
                   done
                   echo "$first_node" > "$backup_dir/cluster-source.txt"
                   echo "Redis Cluster backup marker written to $backup_dir"
