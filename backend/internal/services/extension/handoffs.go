@@ -12,8 +12,8 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/textutil"
 	platformcapabilities "github.com/kurodakayn/mpp-backend/internal/platformcapabilities"
-	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 )
 
@@ -101,7 +101,7 @@ func extensionPrepublishPreview(raw datatypes.JSON) string {
 		}
 		value = strings.TrimSpace(value)
 		if value != "" {
-			return projectsvc.TruncateRunes(value, extensionPreviewLimit)
+			return textutil.TruncateRunes(value, extensionPreviewLimit)
 		}
 	}
 
