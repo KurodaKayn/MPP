@@ -12,6 +12,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	pkghtml "github.com/kurodakayn/mpp-backend/internal/pkg/html"
 	projectsvc "github.com/kurodakayn/mpp-backend/internal/services/project"
+	"github.com/kurodakayn/mpp-backend/internal/services/publicationpayload"
 	publishsvc "github.com/kurodakayn/mpp-backend/internal/services/publish"
 )
 
@@ -91,7 +92,7 @@ func (s *Service) ensurePrepublishPublications(project *models.Project, platform
 			var publication models.ProjectPlatformPublication
 			err := tx.Where("project_id = ? AND platform = ?", project.ID, platform).First(&publication).Error
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				config, adaptedContent, status, err := projectsvc.BuildPendingPublicationPayload(project.Title, "", "")
+				config, adaptedContent, status, err := publicationpayload.BuildPending(project.Title, "", "")
 				if err != nil {
 					return err
 				}

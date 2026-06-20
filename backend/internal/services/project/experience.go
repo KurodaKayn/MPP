@@ -17,6 +17,7 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/services/project/publicationselection"
 )
 
 const projectShareTokenBytes = 32
@@ -212,7 +213,7 @@ func (s *Service) RestoreProjectVersion(projectID uuid.UUID, userID uuid.UUID, v
 		if err := createProjectVersion(tx, project, userID, "version_restore"); err != nil {
 			return err
 		}
-		if err := markProjectDraftsStale(tx, project.ID); err != nil {
+		if err := publicationselection.MarkDraftsStale(tx, project.ID); err != nil {
 			return err
 		}
 		var publications []models.ProjectPlatformPublication
