@@ -2,10 +2,7 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  getPlatformDefaultLabel,
-  PLATFORM_TABS,
-} from "@/lib/content/platforms";
+import { PLATFORM_TABS } from "@/lib/content/platforms";
 import type { ContentValue } from "@/lib/content/types";
 import {
   cancelBrowserSession,
@@ -23,8 +20,8 @@ import {
   type ProjectPublications,
 } from "@/lib/dashboard/api";
 import {
-  createPlatformPublishIdempotencyKey,
   createPublishAttemptKey,
+  publishExistingProjectToPlatforms,
   type PublishPlatform,
 } from "../_lib/publish-content";
 import { type PrepublishDraft } from "../_stores/content-page-store";
@@ -71,13 +68,6 @@ type PublishAttemptState = {
   key: string;
   signature: string;
 };
-
-class PublishStatusError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PublishStatusError";
-  }
-}
 
 function isPublishPlatform(platform: string): platform is PublishPlatform {
   return PLATFORM_TABS.some((item) => item.value === platform);
@@ -387,97 +377,17 @@ export function useContentPublishWorkflow({
     });
 
     const publishAttemptKey = getPublishAttemptKey();
-    const results = await Promise.allSettled(
-      automaticPublishPlatforms.map(async (platform) => {
-        const result = await publishProject(projectId, platform, {
-          idempotencyKey: createPlatformPublishIdempotencyKey(
-            publishAttemptKey,
-            platform,
-          ),
-        });
-        if (result.status === "failed" || result.status === "error") {
-          throw new PublishStatusError(
-            result.error_message ||
-              `${getPlatformDefaultLabel(platform)} ${t("publish.failed")}`,
-          );
-        }
-        return {
-          platform,
-          status: result.status,
-        };
-      }),
-    );
-
-    const succeeded: PublishPlatform[] = [];
-    const failed: { message: string; platform: PublishPlatform }[] = [];
-    const pendingPlatforms: PublishPlatform[] = [];
-    let retryable = false;
-
-    results.forEach((result, index) => {
-      const platform = automaticPublishPlatforms[index];
-      if (result.status === "fulfilled") {
-        if (
-          result.value.status === "queued" ||
-          result.value.status === "publishing"
-        ) {
-          pendingPlatforms.push(platform);
-          return;
-        }
-        succeeded.push(result.value.platform);
-        return;
-      }
-
-      if (!(result.reason instanceof PublishStatusError)) {
-        retryable = true;
-      }
-      failed.push({
-        message:
-          result.reason instanceof Error
-            ? result.reason.message
-            : t("common.retryLater"),
-        platform,
-      });
-    });
-
-    if (pendingPlatforms.length > 0) {
-      const finalPublications = await waitForProjectPublications(
+    return publishExistingProjectToPlatforms(
+      {
+        attemptKey: publishAttemptKey,
+        platforms: automaticPublishPlatforms,
         projectId,
-        automaticPublishPlatforms,
-      );
-      const finalPublicationMap = new Map(
-        finalPublications.items.map((publication) => [
-          publication.platform,
-          publication,
-        ]),
-      );
-
-      pendingPlatforms.forEach((platform) => {
-        const publication = finalPublicationMap.get(platform);
-        if (!publication) {
-          failed.push({
-            message: t("publish.statusMissing", {
-              platform: getPlatformDefaultLabel(platform),
-            }),
-            platform,
-          });
-          return;
-        }
-
-        if (publication.status === "succeeded") {
-          succeeded.push(platform);
-          return;
-        }
-
-        failed.push({
-          message:
-            publication.error_message ||
-            `${getPlatformDefaultLabel(platform)} ${t("publish.failed")}`,
-          platform,
-        });
-      });
-    }
-
-    return { failed, retryable, succeeded };
+      },
+      {
+        publishProject,
+        waitForProjectPublications,
+      },
+    );
   };
 
   const openXPostIntent = async () => {

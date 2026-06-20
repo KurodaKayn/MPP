@@ -3,6 +3,7 @@ import type { ContentValue } from "@/lib/content/types";
 import type {
   CreateProjectInput,
   ProjectListItem,
+  ProjectPublications,
   PublishProjectOptions,
   PublishResult,
 } from "@/lib/dashboard/api";
@@ -34,6 +35,12 @@ type FailedPublish = {
 export type PublishContentResult = {
   failed: FailedPublish[];
   project: ProjectListItem;
+  succeeded: PublishPlatform[];
+};
+
+export type PublishExistingProjectResult = {
+  failed: FailedPublish[];
+  retryable: boolean;
   succeeded: PublishPlatform[];
 };
 
@@ -71,16 +78,58 @@ export async function publishContentToPlatforms(
     input.platforms,
   );
 
+  const result = await publishExistingProjectToPlatforms(
+    {
+      attemptKey: publishAttemptKey,
+      platforms: input.platforms,
+      projectId: project.id,
+    },
+    {
+      publishProject: dependencies.publishProject,
+      waitForProjectPublications: waitForPublications,
+    },
+  );
+
+  return {
+    failed: result.failed,
+    project,
+    succeeded: result.succeeded,
+  };
+}
+
+export async function publishExistingProjectToPlatforms(
+  input: {
+    attemptKey: string;
+    platforms: PublishPlatform[];
+    projectId: string;
+  },
+  dependencies: {
+    publishProject: PublishContentDependencies["publishProject"];
+    waitForProjectPublications?: (
+      projectId: string,
+      platforms: PublishPlatform[],
+    ) => Promise<ProjectPublications>;
+  },
+): Promise<PublishExistingProjectResult> {
+  const waitForPublications =
+    dependencies.waitForProjectPublications ?? waitForProjectPublications;
   const results = await Promise.allSettled(
     input.platforms.map(async (platform) => {
-      const result = await dependencies.publishProject(project.id, platform, {
-        idempotencyKey: createPlatformPublishIdempotencyKey(
-          publishAttemptKey,
-          platform,
-        ),
-      });
+      const result = await dependencies.publishProject(
+        input.projectId,
+        platform,
+        {
+          idempotencyKey: createPlatformPublishIdempotencyKey(
+            input.attemptKey,
+            platform,
+          ),
+        },
+      );
       if (result.status === "failed" || result.status === "error") {
-        throw new Error(result.error_message || `${platform} publish failed`);
+        throw new PublishPlatformError(
+          result.error_message || `${platform} publish failed`,
+          false,
+        );
       }
       return {
         platform,
@@ -92,6 +141,7 @@ export async function publishContentToPlatforms(
   const succeeded: PublishPlatform[] = [];
   const failed: FailedPublish[] = [];
   const pendingPlatforms: PublishPlatform[] = [];
+  let retryable = false;
 
   results.forEach((result, index) => {
     const platform = input.platforms[index];
@@ -107,6 +157,11 @@ export async function publishContentToPlatforms(
       return;
     }
 
+    if (!(result.reason instanceof PublishPlatformError)) {
+      retryable = true;
+    } else {
+      retryable ||= result.reason.retryable;
+    }
     failed.push({
       message:
         result.reason instanceof Error
@@ -118,7 +173,7 @@ export async function publishContentToPlatforms(
 
   if (pendingPlatforms.length > 0) {
     const finalPublications = await waitForPublications(
-      project.id,
+      input.projectId,
       input.platforms,
     );
     const finalPublicationMap = new Map(
@@ -152,7 +207,17 @@ export async function publishContentToPlatforms(
 
   return {
     failed,
-    project,
+    retryable,
     succeeded,
   };
+}
+
+class PublishPlatformError extends Error {
+  constructor(
+    message: string,
+    readonly retryable: boolean,
+  ) {
+    super(message);
+    this.name = "PublishPlatformError";
+  }
 }
