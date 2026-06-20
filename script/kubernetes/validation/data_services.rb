@@ -380,15 +380,14 @@ module KubernetesValidation
     def validate_redis_cluster_keeps_existing_traffic(context)
       app_config = context.document("ConfigMap", "mpp-app-config", "mpp-system")
       if app_config
-        unless app_config.data["REDIS_ADDR"] == "redis:6379"
-          context.add_error("non-prod Redis Cluster validation must keep app REDIS_ADDR on existing redis:6379")
-        end
-
         case app_config.data["REDIS_ENDPOINT_MODE"]
         when nil, "", "direct"
+          unless app_config.data["REDIS_ADDR"] == "redis:6379"
+            context.add_error("non-prod Redis Cluster validation must keep app REDIS_ADDR on existing redis:6379")
+          end
         when "cluster"
-          if app_config.data["REDIS_CLUSTER_ADDRS"].to_s != "redis-cluster.mpp-system.svc.cluster.local:6379"
-            context.add_error("non-prod Redis Cluster validation must point REDIS_CLUSTER_ADDRS at redis-cluster.mpp-system.svc.cluster.local:6379")
+          if app_config.data["REDIS_ADDR"].to_s != "redis-cluster.mpp-system.svc.cluster.local:6379"
+            context.add_error("non-prod Redis Cluster validation must point REDIS_ADDR at redis-cluster.mpp-system.svc.cluster.local:6379")
           end
           unless app_config.data["REDIS_TLS"] == "true"
             context.add_error("non-prod Redis Cluster validation must enable REDIS_TLS=true for cluster mode")

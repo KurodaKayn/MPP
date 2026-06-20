@@ -76,14 +76,18 @@ Only use Cluster mode in non-production after the validation record is complete:
 
 ```yaml
 REDIS_ENDPOINT_MODE: cluster
-REDIS_CLUSTER_ADDRS: redis-cluster.mpp-system.svc.cluster.local:6379
+REDIS_ADDR: redis-cluster.mpp-system.svc.cluster.local:6379
 REDIS_TLS: "true"
-REDIS_ADDR: redis:6379
 ```
 
-`REDIS_ADDR` remains the direct rollback endpoint. To roll back app traffic, set
-`REDIS_ENDPOINT_MODE=direct`, confirm `REDIS_ADDR=redis:6379`, and restart the
-non-production app Deployments.
+To roll back app traffic, patch the direct-mode values and restart the
+non-production app Deployments:
+
+```yaml
+REDIS_ENDPOINT_MODE: direct
+REDIS_ADDR: redis:6379
+REDIS_TLS: "false"
+```
 
 ## Metrics
 

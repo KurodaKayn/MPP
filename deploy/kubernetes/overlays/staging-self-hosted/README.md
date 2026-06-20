@@ -54,7 +54,7 @@ Before applying this overlay to a shared staging cluster:
   `REDIS_SENTINEL_MASTER_NAME=mpp-redis-ha`. Keep `REDIS_ADDR=redis:6379` as the
   direct-mode rollback endpoint.
 - To rehearse Redis Cluster traffic, patch `mpp-app-config` to
-  `REDIS_ENDPOINT_MODE=cluster`, `REDIS_CLUSTER_ADDRS=redis-cluster.mpp-system.svc.cluster.local:6379`,
+  `REDIS_ENDPOINT_MODE=cluster`, `REDIS_ADDR=redis-cluster.mpp-system.svc.cluster.local:6379`,
   and `REDIS_TLS=true`. Keep `REDIS_ADDR=redis:6379` as the direct rollback
   endpoint.
 - To roll app traffic back from HA Redis, set `REDIS_ENDPOINT_MODE=direct` and
