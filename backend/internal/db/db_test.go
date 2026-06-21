@@ -170,6 +170,53 @@ func TestCreateDefaultMonthlyPartitionSQLUsesDefaultPartition(t *testing.T) {
 	require.Contains(t, sql, " DEFAULT")
 }
 
+func TestBackfillExtensionExecutionEventClaims(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		TranslateError: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, database.AutoMigrate(
+		&models.ExtensionExecutionEvent{},
+		&models.ExtensionExecutionEventClaim{},
+	))
+
+	olderID := uuid.New()
+	newerID := uuid.New()
+	older := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Hour)
+	require.NoError(t, database.Create(&models.ExtensionExecutionEvent{
+		ID:              newerID,
+		CallbackTokenID: uuid.New(),
+		ExecutionID:     "execution-newer",
+		ProjectID:       uuid.New(),
+		UserID:          uuid.New(),
+		EventID:         "event-1",
+		Platform:        "x",
+		Status:          "failed",
+		Metadata:        []byte(`{}`),
+		CreatedAt:       newer,
+	}).Error)
+	require.NoError(t, database.Create(&models.ExtensionExecutionEvent{
+		ID:              olderID,
+		CallbackTokenID: uuid.New(),
+		ExecutionID:     "execution-older",
+		ProjectID:       uuid.New(),
+		UserID:          uuid.New(),
+		EventID:         "event-1",
+		Platform:        "x",
+		Status:          "failed",
+		Metadata:        []byte(`{}`),
+		CreatedAt:       older,
+	}).Error)
+
+	require.NoError(t, backfillExtensionExecutionEventClaims(database))
+	require.NoError(t, backfillExtensionExecutionEventClaims(database))
+
+	var claim models.ExtensionExecutionEventClaim
+	require.NoError(t, database.First(&claim, "event_id = ?", "event-1").Error)
+	require.Equal(t, olderID, claim.RecordID)
+}
+
 func TestConnectionPoolConfigFromEnvUsesDefaults(t *testing.T) {
 	clearConnectionPoolEnv(t)
 

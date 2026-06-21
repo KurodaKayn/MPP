@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -242,12 +243,16 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 			EventID:  eventID,
 			RecordID: event.ID,
 		}
-		if err := tx.Create(&claim).Error; err != nil {
-			if errors.Is(err, gorm.ErrDuplicatedKey) {
-				duplicate = true
-				return loadClaimedExtensionEvent(tx, eventID, &event)
-			}
-			return err
+		result := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "event_id"}},
+			DoNothing: true,
+		}).Create(&claim)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			duplicate = true
+			return loadClaimedExtensionEvent(tx, eventID, &event)
 		}
 		if err := tx.Create(&event).Error; err != nil {
 			return err

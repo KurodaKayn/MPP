@@ -178,7 +178,7 @@ func ensureMonthlyPartitionedTable(database *gorm.DB, table monthlyPartitionedTa
 	if err := ensureDefaultMonthlyPartition(database, table.name); err != nil {
 		return err
 	}
-	return ensureRollingMonthlyPartitions(database, table.name, now)
+	return ensureRollingMonthlyPartitions(database, table, now)
 }
 
 func postgresPartitionedTableState(database *gorm.DB, tableName string) (partitioned bool, exists bool, err error) {
@@ -210,10 +210,10 @@ func migrateRegularTableToMonthlyPartitions(database *gorm.DB, table monthlyPart
 	if err := ensureDefaultMonthlyPartition(database, table.name); err != nil {
 		return err
 	}
-	if err := ensureRollingMonthlyPartitions(database, table.name, now); err != nil {
+	if err := ensureRollingMonthlyPartitions(database, table, now); err != nil {
 		return err
 	}
-	if err := ensureLegacyDataMonthlyPartitions(database, table.name, legacyName); err != nil {
+	if err := ensureLegacyDataMonthlyPartitions(database, table, legacyName); err != nil {
 		return err
 	}
 	if err := copyLegacyRowsIntoPartitionedTable(database, table, legacyName, now); err != nil {
@@ -222,17 +222,17 @@ func migrateRegularTableToMonthlyPartitions(database *gorm.DB, table monthlyPart
 	return database.Exec(fmt.Sprintf("DROP TABLE %s", quotePostgresIdentifier(legacyName))).Error
 }
 
-func ensureRollingMonthlyPartitions(database *gorm.DB, tableName string, now time.Time) error {
+func ensureRollingMonthlyPartitions(database *gorm.DB, table monthlyPartitionedTable, now time.Time) error {
 	start := monthStartUTC(now).AddDate(0, -monthlyPartitionPastMonths, 0)
 	for offset := 0; offset <= monthlyPartitionPastMonths+monthlyPartitionFutureMonths; offset++ {
-		if err := ensureMonthlyPartition(database, tableName, start.AddDate(0, offset, 0)); err != nil {
+		if err := ensureMonthlyPartition(database, table, start.AddDate(0, offset, 0)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func ensureLegacyDataMonthlyPartitions(database *gorm.DB, tableName string, legacyName string) error {
+func ensureLegacyDataMonthlyPartitions(database *gorm.DB, table monthlyPartitionedTable, legacyName string) error {
 	var minCreatedAt, maxCreatedAt sql.NullTime
 	if err := database.Raw(fmt.Sprintf(
 		"SELECT MIN(created_at), MAX(created_at) FROM %s",
@@ -247,24 +247,24 @@ func ensureLegacyDataMonthlyPartitions(database *gorm.DB, tableName string, lega
 	start := monthStartUTC(minCreatedAt.Time)
 	end := monthStartUTC(maxCreatedAt.Time)
 	for partitionStart := start; !partitionStart.After(end); partitionStart = partitionStart.AddDate(0, 1, 0) {
-		if err := ensureMonthlyPartition(database, tableName, partitionStart); err != nil {
+		if err := ensureMonthlyPartition(database, table, partitionStart); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func ensureMonthlyPartition(database *gorm.DB, tableName string, partitionStart time.Time) error {
+func ensureMonthlyPartition(database *gorm.DB, table monthlyPartitionedTable, partitionStart time.Time) error {
 	partitionStart = monthStartUTC(partitionStart)
 	partitionEnd := partitionStart.AddDate(0, 1, 0)
-	hasRows, err := defaultPartitionHasRowsInRange(database, tableName, partitionStart, partitionEnd)
+	hasRows, err := defaultPartitionHasRowsInRange(database, table.name, partitionStart, partitionEnd)
 	if err != nil {
 		return err
 	}
 	if hasRows {
-		return nil
+		return drainDefaultRowsIntoMonthlyPartition(database, table, partitionStart, partitionEnd)
 	}
-	return database.Exec(createMonthlyPartitionSQL(tableName, partitionStart, partitionEnd)).Error
+	return database.Exec(createMonthlyPartitionSQL(table.name, partitionStart, partitionEnd)).Error
 }
 
 func ensureDefaultMonthlyPartition(database *gorm.DB, tableName string) error {
@@ -287,6 +287,54 @@ func defaultPartitionHasRowsInRange(database *gorm.DB, tableName string, partiti
 		quotePostgresIdentifier(defaultPartitionName),
 	), partitionStart, partitionEnd).Row().Scan(&hasRows)
 	return hasRows, err
+}
+
+func drainDefaultRowsIntoMonthlyPartition(database *gorm.DB, table monthlyPartitionedTable, partitionStart time.Time, partitionEnd time.Time) error {
+	tempTableName := fmt.Sprintf("tmp_%s_%s_%d", table.name, partitionStart.UTC().Format("200601"), time.Now().UTC().UnixNano())
+	columnList := quotedColumnList(table.columns)
+	defaultPartitionName := defaultMonthlyPartitionName(table.name)
+
+	return database.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(fmt.Sprintf(
+			"LOCK TABLE %s IN ACCESS EXCLUSIVE MODE",
+			quotePostgresIdentifier(table.name),
+		)).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(fmt.Sprintf(
+			"CREATE TEMP TABLE %s ON COMMIT DROP AS SELECT %s FROM %s WHERE false",
+			quotePostgresIdentifier(tempTableName),
+			columnList,
+			quotePostgresIdentifier(defaultPartitionName),
+		)).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(fmt.Sprintf(
+			"INSERT INTO %s (%s) SELECT %s FROM %s WHERE created_at >= ? AND created_at < ?",
+			quotePostgresIdentifier(tempTableName),
+			columnList,
+			columnList,
+			quotePostgresIdentifier(defaultPartitionName),
+		), partitionStart, partitionEnd).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(fmt.Sprintf(
+			"DELETE FROM %s WHERE created_at >= ? AND created_at < ?",
+			quotePostgresIdentifier(defaultPartitionName),
+		), partitionStart, partitionEnd).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(createMonthlyPartitionSQL(table.name, partitionStart, partitionEnd)).Error; err != nil {
+			return err
+		}
+		return tx.Exec(fmt.Sprintf(
+			"INSERT INTO %s (%s) SELECT %s FROM %s",
+			quotePostgresIdentifier(table.name),
+			columnList,
+			columnList,
+			quotePostgresIdentifier(tempTableName),
+		)).Error
+	})
 }
 
 func copyLegacyRowsIntoPartitionedTable(database *gorm.DB, table monthlyPartitionedTable, legacyName string, now time.Time) error {

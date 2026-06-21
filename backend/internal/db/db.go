@@ -384,6 +384,9 @@ func syncSchemaUnlocked(database *gorm.DB) error {
 	); err != nil {
 		return err
 	}
+	if err := backfillExtensionExecutionEventClaims(database); err != nil {
+		return err
+	}
 
 	// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
 	if err := database.Exec(`
