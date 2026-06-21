@@ -15,13 +15,13 @@ Current overall progress: about `58%`. This number is manually estimated by phas
 
 | Phase | Weight | Current completion | Status | Completed | Not done / next steps |
 | ----- | ------ | ------------------ | ------ | --------- | --------------------- |
-| Phase 0: Data-layer baseline inventory | 10% | 100% | Done | GORM query observability, `mpp_db_*` metrics, dashboard query-plan audit script, `pg_stat_statements`, database baseline audit script, PostgreSQL exporter table-level health and 24h row-growth panels, read/write consistency classification, and versioned migration rules for complex DDL | Continue implementing code routing, migration executor, partitioning, and archiving according to this checklist in later phases |
+| Phase 0: Data-layer baseline inventory | 10% | 100% | Done | GORM query observability, `mpp_db_*` metrics, dashboard query-plan audit script, `pg_stat_statements`, database baseline audit script, PostgreSQL exporter table-level health and 24h row-growth panels, and read/write consistency classification | Continue implementing code routing, partitioning, and archiving according to this checklist in later phases |
 | Phase 1: Single-database connection pool, indexing, pagination, and lifecycle governance | 15% | 100% | Done | backend/publish-worker/collab-service application connection pools, Redis client connection pool, PgBouncer writer pool, composite indexes, keyset list pagination, list queries avoiding the large `source_content` field, event/session history retention periods, and R2/S3 cold-event archive worker | None; Phase 2 is complete, and later work moves into Phase 3/4 read replicas, partitioning, and recovery flows |
 | Phase 2: Read models and cache first | 15% | 100% | Done | Redis and Asynq dependencies are reusable; admin dashboard stats, admin project list, and dashboard account summary have short-TTL Redis cache; stats/project list/account cache misses are merged with singleflight; project, prepublish, publish, and account write paths invalidate the related dashboard cache; `workspace_dashboard_stats` and `project_list_summaries` read models are in place, and APIs prefer read models when coverage is complete; async refresh triggers after project save, platform sync, publish completion, and member changes; admin rebuild API, Asynq queue, and worker support full read-model rebuild | None |
 | Phase 3: Read/write splitting | 15% | 100% | Done | Optional `DB_READER_*` connection, application-level DB Router, signed sticky writer, consistency routing for project/stats/workspace/platform_account/publish/prepublish/mediaasset/browser_session/extension, consistency-level inventories for dashboard/publish/collab-service, self-hosted PostgreSQL read replica, managed `postgres-reader` entry point, PgBouncer reader pool, replica lag monitoring and automatic fallback to writer when over threshold | None; Phase 4 continues partitioning, archiving, and recovery flows |
 | Phase 4: Single-database partitioning, archiving, and hot/cold tiering | 15% | 15% | In progress | Collaborative editing already has state + update batch + compaction foundation; event and terminal-session history already have row-level R2/S3 archive worker | Time partitioning for event tables, hash partitioning for collaborative batches, cold partition export, recovery flow |
-| Phase 5: Citus preparation | 20% | 5% | Not started | Workspace model, `projects.workspace_id`, and personal workspace ID already exist | Global `workspace_id`, Citus distribution column/colocation design, unique constraint and foreign-key review, migration rehearsal |
-| Phase 6: Citus distributed PostgreSQL operation | 10% | 0% | Deferred | None | Citus shadow cluster, small-tenant migration rehearsal, worker/coordinator monitoring and backup, large-tenant isolation strategy |
+| Phase 5: Citus preparation | 20% | 5% | Not started | Workspace model, `projects.workspace_id`, and personal workspace ID already exist | Global `workspace_id`, Citus distribution column/colocation design, unique constraint and foreign-key review |
+| Phase 6: Citus distributed PostgreSQL operation | 10% | 0% | Deferred | None | Future Citus cluster design, worker/coordinator monitoring and backup, large-tenant isolation strategy |
 
 ### 0.1 Progress Update Rules
 
@@ -42,8 +42,8 @@ Current overall progress = Σ(phase weight * phase current completion)
 Phase completion can be estimated from the checklist, but must be adjusted by acceptance quality:
 
 - Design-only work without code, configuration, scripts, or a verification entry point can count for at most `20%` of that phase.
-- Implementation without monitoring, rollback, or rebuild paths can count for at most `60%` of that phase.
-- A phase can be marked `Done` only when implementation, verification entry point, rollback/rebuild method, and documentation status are all updated.
+- Implementation without monitoring or rebuild paths can count for at most `60%` of that phase.
+- A phase can be marked `Done` only when implementation, verification entry point, rebuild method where applicable, and documentation status are all updated.
 - A `Deferred` phase does not gain completion just because it is intentionally not being done; only trigger conditions are recorded.
 
 Atomic commit guidance:
@@ -67,8 +67,7 @@ Atomic commit guidance:
 | Event-table partitioning and archiving | In progress | `publish_events`, `extension_execution_events`, `project_activities`, `workspace_activities`, and terminal `remote_browser_sessions` have default retention periods; the `archive` worker can batch-export JSONL to R2/S3 and delete old hot-table rows after successful upload | Time partitioning, cold partition export, and recovery flow are not implemented | `backend/internal/services/archive/config.go`, `backend/internal/services/archive/worker.go`, `backend/internal/services/archive/worker_test.go` |
 | Collaboration batch governance | In progress | `collab_document_states`, `collab_document_update_batches`, and compaction/retention foundations exist | `document_id` hash partitioning and cold archiving are not implemented | `backend/internal/models/collab.go`, `collab-service/src/persistence/document-persistence.ts` |
 | Outbox/CDC/event stream | In progress | The publishing queue path has a transactional Outbox: `EnqueuePublishProject` writes `outbox_events` in the same transaction and dispatches immediately after commit; publish worker starts an outbox dispatcher and supports retries for failed/stale processing records; Asynq continues to serve as the task-execution queue, and `PublishEvent` continues to serve as publishing audit | Currently covers only `publish.job_requested`; general business-event outbox, Debezium, and Redpanda/Kafka CDC are not implemented | `backend/internal/services/publish/queue.go`, `backend/internal/services/publish/outbox.go`, `backend/internal/models/models.go` |
-| Citus target state | Not started | Confirmed `workspace_id` as the most suitable distribution-column direction | Citus distributed tables, reference tables, colocation, and migration rehearsal are not implemented | Phase 5/6 in this document |
-| Complex DDL migration rules | Done | Versioned migration rules are defined, including complex DDL trigger conditions, script naming, expand/contract flow, rollback, and verification requirements | Before the first complex DDL, choose and implement either `goose` or Atlas as the executor | Phase 0 complex DDL versioned migration rules in this document |
+| Citus target state | Not started | Confirmed `workspace_id` as the most suitable distribution-column direction | Citus distributed tables, reference tables, and colocation are not implemented | Phase 5/6 in this document |
 
 ### 0.3 Phase Checklist
 
@@ -80,7 +79,6 @@ Atomic commit guidance:
 - [x] Add a baseline audit script for query fingerprints, table sizes, index sizes, and dead tuples.
 - [x] Build dashboards for table row count, 24h row growth, table size, index size, dead tuples, vacuum state. Verification entry point: `deploy/docker/observability/postgres-exporter/queries.yml`, `deploy/docker/observability/grafana/dashboards/mpp-observability-baseline.json`.
 - [x] Mark DB calls in dashboard, publish, and collab-service with consistency levels. Verification entry point: Phase 0 consistency-level inventory in this document.
-- [x] Define versioned migration rules for complex DDL. Verification entry point: Phase 0 complex DDL versioned migration rules in this document.
 
 #### Phase 1: Single-database Connection Pool, Indexing, Pagination, and Lifecycle Governance
 
@@ -133,13 +131,11 @@ Atomic commit guidance:
 - [ ] Design Citus distributed tables, reference tables, and colocated table groups.
 - [ ] Review unique constraints, foreign keys, and cross-tenant joins.
 - [ ] Add `workspace_id` to worker payloads.
-- [ ] Write a shadow migration and rollback flow from single-database PostgreSQL to Citus.
 
 #### Phase 6: Citus Distributed PostgreSQL Operation
 
-- [ ] Set up a Citus shadow cluster.
-- [ ] Import test workspaces or new workspaces for validation.
-- [ ] Rehearse migration of one low-risk existing workspace.
+- [ ] Set up a Citus validation cluster when horizontal scaling is actually needed.
+- [ ] Import synthetic or new workspaces for validation.
 - [ ] Configure PgBouncer, monitoring, backup, and failure drills for Citus coordinator/workers.
 - [ ] Govern worker concurrency by `workspace_id`.
 - [ ] Define large-tenant isolation strategy using an independent Citus cluster or independent PostgreSQL.
@@ -234,9 +230,9 @@ Core principles:
 | Collaborative update batch growth | PostgreSQL hash partition by `document_id` + compaction + retention | The unique key of `collab_document_update_batches` contains `document_id`, and document-hash partitioning matches the load path better | Partitioning by `created_at`, which breaks document-local uniqueness and loading efficiency |
 | Cold-data archive | R2/S3 + Parquet/JSONL + background archive worker | The project already points toward R2/S3 object storage, and archived data remains traceable offline | Deleting historical events with no recovery path |
 | Multi-consumer event stream | Outbox + Debezium + Redpanda/Kafka | Introduce only when notifications, auditing, search, recommendations, and data warehouse all consume events | Introducing Kafka/Pulsar directly at the current publishing-queue stage |
-| Horizontal table/database splitting | Citus distributed PostgreSQL + application-level workspace data-access boundary | MPP is tenant-oriented SaaS, `workspace_id` can serve as a stable distribution column, and Citus preserves the PostgreSQL ecosystem while reducing custom shard-routing cost | Vitess/MySQL migration; ShardingSphere transparent proxy as the first choice |
+| Horizontal table/database splitting | Citus distributed PostgreSQL + application-level workspace data-access boundary | MPP is tenant-oriented SaaS, `workspace_id` can serve as a stable distribution column, and Citus preserves the PostgreSQL ecosystem while reducing custom shard-routing cost | Rewriting around Vitess/MySQL; ShardingSphere transparent proxy as the first choice |
 | Full-text search | Start with PostgreSQL full-text/trigram, later OpenSearch | Early content search can reuse PostgreSQL; split out when search becomes an independent product capability | Adding OpenSearch early for simple title search |
-| Online migration governance | Versioned migration tool `goose` or Atlas + `CREATE INDEX CONCURRENTLY` | Current GORM AutoMigrate fits early-stage simple models; partitioning/sharding/online indexes require explicit migration scripts | Continuing to rely on AutoMigrate for complex DDL |
+| Schema initialization | GORM AutoMigrate for undeployed/local environments | The project has no production dataset yet, so the current priority is a clean target schema | Keeping startup-time legacy compatibility code and compatibility DDL |
 
 ## 6. Progressive Phase Roadmap
 
@@ -252,7 +248,7 @@ Work items:
 - Build table-level growth dashboards: row count, table size, index size, dead tuples, and vacuum state.
 - Enable `pg_stat_statements` for PostgreSQL and align SQL hashes with the existing GORM QueryObserver hashes.
 - Review whether all high-frequency queries carry stable filters such as `workspace_id`, `user_id`, `project_id`, and `document_id`.
-- Define versioned migration rules; complex DDL no longer depends only on GORM AutoMigrate.
+- Keep the target schema clean; before real deployment, prefer direct model/schema changes over compatibility code.
 
 Acceptance criteria:
 
@@ -288,7 +284,7 @@ dashboard / publish / collab-service DB-call consistency inventory:
 | dashboard | Platform account connection state, account grants, account credentials / cookie reads | `read-your-write` | Cache miss and grant checks continue using `StrongRead`; publishing credentials must not use Redis display cache | `backend/internal/services/platform_account/service.go` |
 | publish | Pre-publish reads for project, publication, platform account, and media resource availability | `read-your-write` | Uses DB Router `StrongRead`/sticky writer; publishing credentials, media references, and publication state machine do not use replicas | `backend/internal/services/publish/service.go`, `backend/internal/services/publish/media_refs.go` |
 | publish | Publish queueing, idempotency checks, publish event, outbox event, publication status update, retry/claim | `writer` | Uses DB Router `Writer`; transactional outbox and state machine must not use reader | `backend/internal/services/publish/queue.go`, `backend/internal/services/publish/outbox.go` |
-| publish | Publishing history, low-priority audit reports, growth analysis | `analytics-read` | Not currently a separate read model; can migrate to reader/archive query after Phase 4/Outbox | `backend/internal/models/models.go` |
+| publish | Publishing history, low-priority audit reports, growth analysis | `analytics-read` | Not currently a separate read model; can move to reader/archive query after Phase 4/Outbox | `backend/internal/models/models.go` |
 | prepublish | Pre-read for project, publication, and draft sync | `read-your-write` | Uses DB Router `StrongRead` to avoid syncing stale content before replica catches up after user save | `backend/internal/services/prepublish/drafts.go` |
 | prepublish | Draft sync, publication update, and cache invalidation trigger | `writer` | Uses DB Router `Writer`; transaction reads do not use replicas | `backend/internal/services/prepublish/drafts.go` |
 | mediaasset | Upload completion, deletion, object-storage status update | `writer` | Uses DB Router `Writer`; metadata state changes do not use replicas | `backend/internal/services/mediaasset/assets.go` |
@@ -298,20 +294,13 @@ dashboard / publish / collab-service DB-call consistency inventory:
 | extension | Prepublish candidate list display | `eventual-read` | Uses DB Router `EventualRead`, allows short delay, and is protected by replica-lag fallback | `backend/internal/services/extension/handoffs.go` |
 | collab-service | Reading state and update batches when opening a document | `read-your-write` | Current node-postgres pool connects only to writer; before introducing reader, latest flush for the same document must be visible | `collab-service/src/persistence/document-persistence.ts` |
 | collab-service | Initialize document state, append update batch, `FOR UPDATE` seq lock, store compacted state, sync project source content, prune compacted batches | `writer` | All currently go to writer; transactions, locks, writes, and compaction forbid reader | `collab-service/src/persistence/document-persistence.ts` |
-| collab-service | Offline collaboration batch growth analysis, archive validation, rebuild rehearsal | `analytics-read` | After Phase 4, can execute on reader or archive replica; must not affect online flush | Phase 4 in this document |
+| collab-service | Offline collaboration batch growth analysis, archive validation, rebuild checks | `analytics-read` | After Phase 4, can execute on reader or archive replica; must not affect online flush | Phase 4 in this document |
 
-Complex DDL versioned migration rules:
+Pre-deployment schema rule:
 
-| Rule | Requirement |
-| ---- | ----------- |
-| Trigger conditions | Any partitioning, table/column rename, column type rewrite, non-null/unique/foreign-key constraint, bulk backfill, `CREATE INDEX CONCURRENTLY`, large-table delete/archive, Citus distribution-column change, or colocate change must use versioned migration and cannot depend only on GORM AutoMigrate. |
-| Tool and directory | Phase 0 completes the rule definition; before the first complex DDL, choose either `goose` or Atlas and put scripts into one migration directory. Naming uses `YYYYMMDDHHMMSS_<domain>_<intent>.up.sql` / `.down.sql` or the equivalent format for the selected tool. |
-| expand/contract | Split by default into expand, backfill, verify, contract. expand only adds backward-compatible structures; backfill is batched, rate-limited, and resumable; contract runs only after all application versions no longer read the old structure. |
-| Locks and timeouts | Each migration explicitly sets `lock_timeout` and `statement_timeout`; large-table indexes use `CREATE INDEX CONCURRENTLY`; PostgreSQL `CONCURRENTLY` statements must not be placed inside a transaction block. |
-| Constraint rollout | Large-table constraints prefer `NOT VALID` first, then `VALIDATE CONSTRAINT` after validation passes; `NOT NULL` requires backfill first, then a check constraint or tightening during a maintenance window. |
-| Idempotency and rollback | Scripts must include existence checks or repeat-execution protection; `.down.sql` must at least roll back metadata changes. Irreversible data deletion must first archive to R2/S3 and declare the recovery path in migration notes. |
-| Verification entry point | Migration PRs must include `EXPLAIN` or `script/db/audit_dashboard_query_plans.sh` results, before/after summaries from `script/db/audit_database_baseline.sh`, estimated lock time, and rollback plan. |
-| AutoMigrate boundary | AutoMigrate is kept only for early simple model sync and local development; production complex DDL is run by versioned migration first, and application startup migration must not handle large-table rewrites, partitioning, concurrent indexes, or dangerous constraints. |
+- The project has not been deployed with real customer data yet, so database changes should target the clean desired schema directly.
+- Keep startup schema initialization focused on the desired current schema.
+- Keep `AutoMigrate` as the local/development schema initializer before real deployment policy exists.
 
 Benefits:
 
@@ -321,7 +310,7 @@ Benefits:
 Costs:
 
 - Requires adding database-side observability and a small amount of query annotation.
-- The team needs discipline around migration scripts.
+- The team needs discipline to avoid carrying compatibility code before it is needed.
 
 ### Phase 1: Single-database Connection Pool, Indexing, Pagination, and Lifecycle Governance
 
@@ -342,13 +331,13 @@ Recommended technology:
 
 - PgBouncer.
 - PostgreSQL `pg_stat_statements`, `VACUUM`/`ANALYZE` monitoring.
-- `goose` or Atlas for complex migrations.
+- GORM AutoMigrate for local/undeployed schema initialization.
 - R2/S3 archive.
 
 Benefits:
 
 - Improves stability without changing the broad business-code structure.
-- Reduces migration risk for later read/write splitting and sharding.
+- Keeps the target schema straightforward before real deployment.
 
 Costs:
 
@@ -452,8 +441,8 @@ Work items:
 - Partition `remote_browser_sessions` by `created_at` or `expires_at`, and archive completed historical sessions by retention period.
 - Prefer hash partitioning `collab_document_update_batches` by `document_id`, because the query path loads by document and sorts by seq.
 - Keep compaction for collaborative update batches: `collab_document_states` stores compacted state, and old batches are kept only for the auditable window.
-- Build an archive flow: after a partition freezes, export it to R2/S3, then detach/drop the partition.
-- Write a clear recovery flow for each archived data domain: import from object storage into a temporary table without polluting hot tables directly.
+- Build an archive flow: after data leaves the hot window, export it to R2/S3, then delete or detach cold data according to the chosen storage layout.
+- Write a clear restore flow for each archived data domain when archived records need inspection.
 
 Recommended technology:
 
@@ -471,7 +460,7 @@ Benefits:
 Costs:
 
 - Unique constraints on partitioned tables must include the partition key, so existing unique indexes need redesign.
-- GORM AutoMigrate is not suitable for directly managing complex partitioning; explicit migrations are required.
+- GORM AutoMigrate is not suitable for directly managing complex partitioning; design partition DDL separately when this phase becomes real.
 - Queries must include time or tenant filters, otherwise they still scan many partitions.
 
 ### Phase 5: Citus Preparation
@@ -483,26 +472,25 @@ When to apply:
 - One workspace or a few large customers become clear hotspots that affect other tenants.
 - Single-database backup/restore time already exceeds the business RTO.
 
-Goal: first make the code and data model satisfy Citus distributed-table constraints, then actually move into distributed PostgreSQL.
+Goal: shape the code and data model so a future Citus deployment is possible without rewriting business logic.
 
 Work items:
 
-- Confirm `workspace_id` is required on all project-domain tables; tables without it need to add it or derive it stably from `project_id`.
+- Confirm `workspace_id` is required on all project-domain tables before production schema freezes.
 - Use `workspace_id` as the Citus distribution column, and colocate projects, publishing targets, publishing events, project activities, comments, versions, and media metadata as much as possible.
 - Revisit unique constraints and foreign keys: unique constraints on distributed tables must include the distribution column, and cross-distribution-column foreign keys and cross-tenant joins must not be core paths.
 - Design small tables such as `users`, global configuration, and platform dictionaries as reference tables or keep them in the control domain; whether `workspaces` and `workspace_members` should be reference tables depends on scale and permission-query paths.
-- `platform_accounts` is currently user + platform scoped, so first keep it as control-domain data; if accounts later become workspace assets, add `workspace_id` and move them into the colocated table group.
+- `platform_accounts` is currently user + platform scoped, so first keep it as control-domain data; if accounts later become workspace assets, model them directly in the colocated table group.
 - Add `workspace_id` to every asynchronous task payload; workers must not locate data by `project_id` alone.
 - Change repository/service DB entry points to `ForWorkspace(ctx, workspaceID)` or an equivalent data-access boundary, so Citus/single-database differences are not scattered through business code.
 - Define cross-tenant restrictions: no cross-workspace transactions; global statistics are generated through read models, CDC, or offline warehouse.
-- Define migration from single-database PostgreSQL to Citus: shadow cluster, data replication, row-count and checksum validation, read-only gray rollout, write freeze, final cutover, and rollback window.
 
 Recommended technology:
 
 - Citus coordinator + worker nodes.
 - Citus colocated distributed tables, with `workspace_id` preferred as the distribution column.
 - Reference tables for small global dimension tables.
-- Application-level workspace data-access boundary for expressing tenant context, read/write consistency, and migration gray rollout; it is not the primary sharding implementation.
+- Application-level workspace data-access boundary for expressing tenant context and read/write consistency; it is not the primary sharding implementation.
 
 Benefits:
 
@@ -512,24 +500,24 @@ Benefits:
 
 Costs:
 
-- This is the highest-cost phase: distributed-table DDL, unique constraints, foreign keys, migration, backup, monitoring, and failure recovery all become more complex.
+- This is the highest-cost phase: distributed-table DDL, unique constraints, foreign keys, backup, monitoring, and failure recovery all become more complex.
 - Cross-workspace queries, admin statistics, and admin lists need read models or asynchronous aggregation.
 - If a single workspace becomes a super-hotspot, Citus can expand overall multi-tenant capacity but cannot automatically spread one tenant's write hotspot infinitely; large tenants or business hotspots need separate isolation.
 
 ### Phase 6: Citus Distributed PostgreSQL Operation
 
-When to apply: after Phase 5 Citus constraint refactoring, task routing, migration tooling, and rollback rehearsals are complete, migrate the first non-core small tenant.
+When to apply: after Phase 5 Citus constraint refactoring and task routing are complete, and new growth clearly requires horizontal write capacity.
 
-Goal: gradually move from single-database PostgreSQL into a Citus coordinator + worker nodes distributed PostgreSQL runtime.
+Goal: operate Citus as a future PostgreSQL-compatible distributed runtime for new or synthetic workspaces first.
 
 Work items:
 
-- Set up a Citus shadow cluster first, and import a batch of new or test workspaces.
-- Choose one low-risk existing workspace for migration rehearsal, validating colocated joins, publishing-state transitions, collaborative editing, and dashboard read models.
+- Set up a Citus validation cluster when horizontal scaling is actually needed.
+- Import synthetic or new workspaces for validation, checking colocated joins, publishing-state transitions, collaborative editing, and dashboard read models.
 - Configure PgBouncer, backups, monitoring, capacity thresholds, and failure drills separately for Citus coordinator and worker nodes.
 - Apply Asynq worker concurrency limits by `workspace_id` and Citus cluster capacity, so single-tenant tasks do not overwhelm workers or the database.
 - Build cross-tenant admin read models: tenant list, project count, publish count, and capacity watermarks.
-- Build a large-tenant isolation strategy: when necessary, migrate large workspaces to an independent Citus cluster or independent PostgreSQL.
+- Build a large-tenant isolation strategy: when necessary, place large workspaces on an independent Citus cluster or independent PostgreSQL.
 
 Recommended technology:
 
@@ -555,7 +543,7 @@ Costs:
 | Query type | Default route | Example | Notes |
 | ---------- | ------------- | ------- | ----- |
 | Write transaction | Writer | Create project, save content, sync platform draft, advance publishing state | All reads and writes inside the transaction stay on writer |
-| Immediate read after write | Writer or sticky writer | Refresh details after saving a project, poll status after publishing | Avoid UI state rollback caused by replica lag |
+| Immediate read after write | Writer or sticky writer | Refresh details after saving a project, poll status after publishing | Avoid stale UI state caused by replica lag |
 | Delay-tolerant business read | Reader | Project list, historical publishing events, workspace activities | Must tolerate second-level delay |
 | Statistical read | Read model / Reader | dashboard totals, success/failure statistics | Prefer read model, then reader |
 | Audit archive read | Archive / offline | Publishing events beyond retention period | Does not query hot tables by default |
@@ -571,11 +559,11 @@ Reasons:
 - Project and publishing flows inside one workspace need local transactions; cross-workspace transactions should not become core paths.
 - Citus colocated distributed tables require a stable distribution column. Designing around `workspace_id` keeps common joins inside the same workspace within one colocated table group.
 
-Compatibility strategy:
+Pre-deployment modeling strategy:
 
 - Personal user projects belong to personal workspaces, using `PersonalWorkspaceID(userID)`.
-- Historical tables that only have `user_id` should backfill `workspace_id` through project or personal workspace before migration.
-- `platform_accounts` is currently user + platform scoped and is better kept in the control domain first; if accounts later become workspace assets, migrate them into a colocated table group distributed by `workspace_id`.
+- New project-domain tables should include `workspace_id` from the beginning when they need tenant-local querying.
+- `platform_accounts` is currently user + platform scoped and is better kept in the control domain first; if accounts later become workspace assets, model them in a colocated table group distributed by `workspace_id`.
 
 ### 7.3 Table Partitioning Recommendations
 
@@ -610,12 +598,12 @@ Trigger conditions for introducing Redpanda/Kafka:
 | Phase | Main benefits | Main costs | Risks |
 | ----- | ------------- | ---------- | ----- |
 | Phase 0 | See real bottlenecks and avoid mistaken decomposition | Add monitoring and classification | Metrics definitions are inconsistent |
-| Phase 1 | Improve single-database stability and control connections/slow SQL | PgBouncer and migration discipline | Misconfigured connection pool causes cascading failure |
+| Phase 1 | Improve single-database stability and control connections/slow SQL | PgBouncer and lifecycle discipline | Misconfigured connection pool causes cascading failure |
 | Phase 2 | Significantly reduce high-frequency dashboard read pressure | Read-model delay and rebuild logic | Read model briefly inconsistent with fact tables |
-| Phase 3 | Horizontally scale read traffic | Complex read-after-write consistency | Replica lag makes UI state roll back |
+| Phase 3 | Horizontally scale read traffic | Complex read-after-write consistency | Replica lag makes UI state stale |
 | Phase 4 | Reduce hot-table and index bloat | Partition DDL and archive flow | Wrong partition key makes queries slower |
-| Phase 5 | Data model becomes Citus-ready | Distribution column, constraints, migration, testing complexity | Cross-tenant transactions enter core paths accidentally |
-| Phase 6 | Horizontal scaling within PostgreSQL ecosystem | Highest Citus operational cost | Distributed-table migration rollback and global statistics are complex |
+| Phase 5 | Data model becomes Citus-ready | Distribution column, constraints, testing complexity | Cross-tenant transactions enter core paths accidentally |
+| Phase 6 | Horizontal scaling within PostgreSQL ecosystem | Highest Citus operational cost | Distributed-table operation and global statistics are complex |
 
 ## 9. Recommended Execution Order
 
@@ -623,7 +611,7 @@ Short term:
 
 1. Build database observability and query classification.
 2. Add PostgreSQL-side metrics and `pg_stat_statements`.
-3. Move complex DDL out of GORM AutoMigrate into versioned migrations.
+3. Keep schema initialization clean and remove legacy compatibility paths before deployment.
 4. Design dashboard read models and Redis cache strategy.
 5. Define retention and archive strategy for event tables and collaborative update batches.
 
@@ -640,5 +628,5 @@ Long term:
 1. Complete `workspace_id` across all domains.
 2. Design Citus distributed tables and reference tables.
 3. Workspace-aware worker concurrency governance.
-4. Small-tenant migration rehearsal.
-5. Citus production cluster cutover.
+4. Validate Citus with synthetic or new workspaces before any real tenant data exists.
+5. Decide whether Citus production operation is still justified.
