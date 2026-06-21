@@ -175,6 +175,9 @@ func ensureMonthlyPartitionedTable(database *gorm.DB, table monthlyPartitionedTa
 			return err
 		}
 	}
+	if err := ensureDefaultMonthlyPartition(database, table.name); err != nil {
+		return err
+	}
 	return ensureRollingMonthlyPartitions(database, table.name, now)
 }
 
@@ -202,6 +205,9 @@ func migrateRegularTableToMonthlyPartitions(database *gorm.DB, table monthlyPart
 	}
 
 	if err := database.Exec(table.createSQL).Error; err != nil {
+		return err
+	}
+	if err := ensureDefaultMonthlyPartition(database, table.name); err != nil {
 		return err
 	}
 	if err := ensureRollingMonthlyPartitions(database, table.name, now); err != nil {
@@ -251,7 +257,36 @@ func ensureLegacyDataMonthlyPartitions(database *gorm.DB, tableName string, lega
 func ensureMonthlyPartition(database *gorm.DB, tableName string, partitionStart time.Time) error {
 	partitionStart = monthStartUTC(partitionStart)
 	partitionEnd := partitionStart.AddDate(0, 1, 0)
+	hasRows, err := defaultPartitionHasRowsInRange(database, tableName, partitionStart, partitionEnd)
+	if err != nil {
+		return err
+	}
+	if hasRows {
+		return nil
+	}
 	return database.Exec(createMonthlyPartitionSQL(tableName, partitionStart, partitionEnd)).Error
+}
+
+func ensureDefaultMonthlyPartition(database *gorm.DB, tableName string) error {
+	return database.Exec(createDefaultMonthlyPartitionSQL(tableName)).Error
+}
+
+func defaultPartitionHasRowsInRange(database *gorm.DB, tableName string, partitionStart time.Time, partitionEnd time.Time) (bool, error) {
+	defaultPartitionName := defaultMonthlyPartitionName(tableName)
+	var exists bool
+	if err := database.Raw("SELECT to_regclass(?) IS NOT NULL", defaultPartitionName).Row().Scan(&exists); err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, nil
+	}
+
+	var hasRows bool
+	err := database.Raw(fmt.Sprintf(
+		"SELECT EXISTS (SELECT 1 FROM %s WHERE created_at >= ? AND created_at < ?)",
+		quotePostgresIdentifier(defaultPartitionName),
+	), partitionStart, partitionEnd).Row().Scan(&hasRows)
+	return hasRows, err
 }
 
 func copyLegacyRowsIntoPartitionedTable(database *gorm.DB, table monthlyPartitionedTable, legacyName string, now time.Time) error {
@@ -275,6 +310,18 @@ func createMonthlyPartitionSQL(tableName string, partitionStart time.Time, parti
 		quotePostgresTimestampLiteral(partitionStart),
 		quotePostgresTimestampLiteral(partitionEnd),
 	)
+}
+
+func createDefaultMonthlyPartitionSQL(tableName string) string {
+	return fmt.Sprintf(
+		"CREATE TABLE IF NOT EXISTS %s PARTITION OF %s DEFAULT",
+		quotePostgresIdentifier(defaultMonthlyPartitionName(tableName)),
+		quotePostgresIdentifier(tableName),
+	)
+}
+
+func defaultMonthlyPartitionName(tableName string) string {
+	return tableName + "_default"
 }
 
 func quotedColumnList(columns []string) string {

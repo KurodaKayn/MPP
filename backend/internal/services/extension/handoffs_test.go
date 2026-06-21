@@ -402,6 +402,10 @@ func TestRecordExtensionEventAcceptsKnownTokenAndDeduplicatesEventID(t *testing.
 	assert.Equal(t, "event-1", events[0].EventID)
 	assert.Equal(t, "user_review", events[0].Status)
 	assert.Contains(t, string(events[0].Metadata), "DYNAMIC_DOUYIN")
+
+	var claim models.ExtensionExecutionEventClaim
+	require.NoError(t, db.First(&claim, "event_id = ?", "event-1").Error)
+	assert.Equal(t, events[0].ID, claim.RecordID)
 }
 
 func TestRecordExtensionEventMarksXPublicationReadyForUserReview(t *testing.T) {
@@ -538,6 +542,18 @@ func TestRecordExtensionEventDoesNotApplyDuplicatePublicationUpdate(t *testing.T
 	second, err := s.RecordExtensionEvent(req)
 	require.NoError(t, err)
 	assert.True(t, second.Duplicate)
+
+	var eventCount int64
+	require.NoError(t, db.Model(&models.ExtensionExecutionEvent{}).
+		Where("event_id = ?", req.EventID).
+		Count(&eventCount).Error)
+	assert.Equal(t, int64(1), eventCount)
+
+	var claimCount int64
+	require.NoError(t, db.Model(&models.ExtensionExecutionEventClaim{}).
+		Where("event_id = ?", req.EventID).
+		Count(&claimCount).Error)
+	assert.Equal(t, int64(1), claimCount)
 
 	var publication models.ProjectPlatformPublication
 	require.NoError(t, db.First(&publication, "project_id = ? AND platform = ?", project.ID, "x").Error)

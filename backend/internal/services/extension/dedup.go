@@ -1,10 +1,23 @@
 package extension
 
-import "gorm.io/gorm"
+import (
+	"errors"
 
-func lockExtensionEventID(tx *gorm.DB, eventID string) error {
-	if tx == nil || tx.Name() != "postgres" {
-		return nil
+	"gorm.io/gorm"
+
+	"github.com/kurodakayn/mpp-backend/internal/models"
+)
+
+func loadClaimedExtensionEvent(tx *gorm.DB, eventID string, event *models.ExtensionExecutionEvent) error {
+	var claim models.ExtensionExecutionEventClaim
+	if err := tx.First(&claim, "event_id = ?", eventID).Error; err != nil {
+		return err
 	}
-	return tx.Exec("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", eventID).Error
+	if err := tx.First(event, "id = ?", claim.RecordID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }

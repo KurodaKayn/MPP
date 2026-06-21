@@ -483,6 +483,12 @@ func SetupTestDB() *gorm.DB {
 	)`)
 	db.Exec(`CREATE INDEX idx_extension_execution_events_event_id ON extension_execution_events(event_id)`)
 
+	db.Exec(`CREATE TABLE extension_execution_event_claims (
+		event_id TEXT PRIMARY KEY,
+		record_id TEXT NOT NULL UNIQUE,
+		created_at DATETIME NOT NULL
+	)`)
+
 	return db
 }
 

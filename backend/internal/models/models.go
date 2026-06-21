@@ -680,6 +680,12 @@ type ExtensionExecutionEvent struct {
 	CreatedAt       time.Time      `gorm:"primaryKey;not null;index:idx_extension_execution_events_archive_created_id,priority:1"`
 }
 
+type ExtensionExecutionEventClaim struct {
+	EventID   string    `gorm:"primaryKey;not null"`
+	RecordID  uuid.UUID `gorm:"type:uuid;not null;uniqueIndex"`
+	CreatedAt time.Time `gorm:"not null;index"`
+}
+
 // BeforeCreate hook to generate UUID if not set
 func (u *User) BeforeCreate(_ *gorm.DB) (err error) {
 	if u.ID == uuid.Nil {
@@ -944,6 +950,13 @@ func (e *ExtensionExecutionEvent) BeforeCreate(_ *gorm.DB) (err error) {
 	}
 	if e.CreatedAt.IsZero() {
 		e.CreatedAt = time.Now().UTC()
+	}
+	return
+}
+
+func (c *ExtensionExecutionEventClaim) BeforeCreate(_ *gorm.DB) (err error) {
+	if c.CreatedAt.IsZero() {
+		c.CreatedAt = time.Now().UTC()
 	}
 	return
 }

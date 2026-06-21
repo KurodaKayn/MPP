@@ -148,6 +148,7 @@ func TestMonthlyPartitionedEventModelsUsePartitionCompatiblePrimaryKeys(t *testi
 
 		require.ElementsMatch(t, []string{"id", "created_at"}, primaryKeyColumns, tableName)
 	}
+	require.True(t, database.Migrator().HasTable(&models.ExtensionExecutionEventClaim{}))
 }
 
 func TestCreateMonthlyPartitionSQLUsesMonthRange(t *testing.T) {
@@ -159,6 +160,14 @@ func TestCreateMonthlyPartitionSQLUsesMonthRange(t *testing.T) {
 	require.Contains(t, sql, `PARTITION OF "publish_events"`)
 	require.Contains(t, sql, `TIMESTAMPTZ '2026-06-01 00:00:00+00'`)
 	require.Contains(t, sql, `TIMESTAMPTZ '2026-07-01 00:00:00+00'`)
+}
+
+func TestCreateDefaultMonthlyPartitionSQLUsesDefaultPartition(t *testing.T) {
+	sql := createDefaultMonthlyPartitionSQL("publish_events")
+
+	require.Contains(t, sql, `"publish_events_default"`)
+	require.Contains(t, sql, `PARTITION OF "publish_events"`)
+	require.Contains(t, sql, " DEFAULT")
 }
 
 func TestConnectionPoolConfigFromEnvUsesDefaults(t *testing.T) {

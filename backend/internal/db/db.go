@@ -379,6 +379,7 @@ func syncSchemaUnlocked(database *gorm.DB) error {
 		&models.CollabDocumentState{},
 		&models.CollabDocumentUpdateBatch{},
 		&models.ExtensionCallbackToken{},
+		&models.ExtensionExecutionEventClaim{},
 		&models.ExtensionExecutionEvent{},
 	); err != nil {
 		return err

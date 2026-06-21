@@ -164,7 +164,7 @@ func TestDeleteProjectRemovesOwnerProjectAndDependents(t *testing.T) {
 		Token:       "callback-token",
 		ExpiresAt:   time.Now().Add(time.Hour),
 	}).Error)
-	require.NoError(t, db.Create(&models.ExtensionExecutionEvent{
+	extensionEvent := models.ExtensionExecutionEvent{
 		CallbackTokenID: uuid.New(),
 		ExecutionID:     "execution-1",
 		ProjectID:       project.ID,
@@ -173,6 +173,11 @@ func TestDeleteProjectRemovesOwnerProjectAndDependents(t *testing.T) {
 		Platform:        "wechat",
 		Status:          "queued",
 		Metadata:        datatypes.JSON([]byte(`{}`)),
+	}
+	require.NoError(t, db.Create(&extensionEvent).Error)
+	require.NoError(t, db.Create(&models.ExtensionExecutionEventClaim{
+		EventID:  extensionEvent.EventID,
+		RecordID: extensionEvent.ID,
 	}).Error)
 
 	err := s.DeleteProject(project.ID, owner.ID)
@@ -190,6 +195,7 @@ func TestDeleteProjectRemovesOwnerProjectAndDependents(t *testing.T) {
 	require.Zero(t, countRows(t, db, &models.PlatformAccountGrant{}, "project_id = ?", project.ID))
 	require.Zero(t, countRows(t, db, &models.ExtensionCallbackToken{}, "project_id = ?", project.ID))
 	require.Zero(t, countRows(t, db, &models.ExtensionExecutionEvent{}, "project_id = ?", project.ID))
+	require.Zero(t, countRows(t, db, &models.ExtensionExecutionEventClaim{}, "record_id = ?", extensionEvent.ID))
 	require.Zero(t, countRows(t, db, &models.PublishEvent{}, "project_id = ?", project.ID))
 	require.Zero(t, countRows(t, db, &models.ScheduledPublication{}, "project_id = ?", project.ID))
 	require.Zero(t, countRows(t, db, &models.PublishAttempt{}, "scheduled_publication_id = ?", schedule.ID))

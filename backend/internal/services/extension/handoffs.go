@@ -222,6 +222,7 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 	}
 
 	event := models.ExtensionExecutionEvent{
+		ID:              uuid.New(),
 		CallbackTokenID: token.ID,
 		ExecutionID:     token.ExecutionID,
 		ProjectID:       token.ProjectID,
@@ -237,22 +238,18 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 	}
 	duplicate := false
 	if err := s.writerDB().Transaction(func(tx *gorm.DB) error {
-		if err := lockExtensionEventID(tx, eventID); err != nil {
-			return err
+		claim := models.ExtensionExecutionEventClaim{
+			EventID:  eventID,
+			RecordID: event.ID,
 		}
-		var existing models.ExtensionExecutionEvent
-		if err := tx.First(&existing, "event_id = ?", eventID).Error; err == nil {
-			event = existing
-			duplicate = true
-			return nil
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := tx.Create(&claim).Error; err != nil {
+			if errors.Is(err, gorm.ErrDuplicatedKey) {
+				duplicate = true
+				return loadClaimedExtensionEvent(tx, eventID, &event)
+			}
 			return err
 		}
 		if err := tx.Create(&event).Error; err != nil {
-			if errors.Is(err, gorm.ErrDuplicatedKey) {
-				duplicate = true
-				return tx.First(&event, "event_id = ?", eventID).Error
-			}
 			return err
 		}
 		return applyExtensionPublicationEvent(tx, token, event)
