@@ -55,8 +55,10 @@ Before applying this overlay to a shared staging cluster:
   direct-mode rollback endpoint.
 - To rehearse Redis Cluster traffic, patch `mpp-app-config` to
   `REDIS_ENDPOINT_MODE=cluster`, `REDIS_ADDR=redis-cluster.mpp-system.svc.cluster.local:6379`,
-  and `REDIS_TLS=true`. Keep `REDIS_ADDR=redis:6379` as the direct rollback
-  endpoint.
+  `REDIS_TLS=true`, `REDIS_TLS_CA_FILE=/etc/mpp/redis/ca.crt`,
+  `REDIS_TLS_CERT_FILE=/etc/mpp/redis/tls.crt`, and
+  `REDIS_TLS_KEY_FILE=/etc/mpp/redis/tls.key`. Keep `REDIS_ADDR=redis:6379`
+  as the direct rollback endpoint.
 - To roll app traffic back from HA Redis, set `REDIS_ENDPOINT_MODE=direct` and
   confirm `REDIS_ADDR=redis:6379`; no business logic change is required.
 - Remove `../../data-services/redis-ha-nonprod` from this overlay to roll back
