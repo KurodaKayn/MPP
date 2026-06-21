@@ -19,6 +19,9 @@ type PublishContentInput = {
 
 type PublishContentDependencies = {
   createProject: (input: CreateProjectInput) => Promise<ProjectListItem>;
+  formatPublicationMissingMessage?: (platform: PublishPlatform) => string;
+  formatPublishFailedMessage?: (platform: PublishPlatform) => string;
+  formatRetryLaterMessage?: () => string;
   publishProject: (
     projectId: string,
     platform: PublishPlatform,
@@ -85,6 +88,10 @@ export async function publishContentToPlatforms(
       projectId: project.id,
     },
     {
+      formatPublicationMissingMessage:
+        dependencies.formatPublicationMissingMessage,
+      formatPublishFailedMessage: dependencies.formatPublishFailedMessage,
+      formatRetryLaterMessage: dependencies.formatRetryLaterMessage,
       publishProject: dependencies.publishProject,
       waitForProjectPublications: waitForPublications,
     },
@@ -104,6 +111,9 @@ export async function publishExistingProjectToPlatforms(
     projectId: string;
   },
   dependencies: {
+    formatPublicationMissingMessage?: PublishContentDependencies["formatPublicationMissingMessage"];
+    formatPublishFailedMessage?: PublishContentDependencies["formatPublishFailedMessage"];
+    formatRetryLaterMessage?: PublishContentDependencies["formatRetryLaterMessage"];
     publishProject: PublishContentDependencies["publishProject"];
     waitForProjectPublications?: (
       projectId: string,
@@ -127,7 +137,8 @@ export async function publishExistingProjectToPlatforms(
       );
       if (result.status === "failed" || result.status === "error") {
         throw new PublishPlatformError(
-          result.error_message || `${platform} publish failed`,
+          result.error_message ||
+            formatPublishFailedMessage(dependencies, platform),
           false,
         );
       }
@@ -166,7 +177,7 @@ export async function publishExistingProjectToPlatforms(
       message:
         result.reason instanceof Error
           ? result.reason.message
-          : "Please try again later.",
+          : formatRetryLaterMessage(dependencies),
       platform,
     });
   });
@@ -187,7 +198,7 @@ export async function publishExistingProjectToPlatforms(
       const publication = finalPublicationMap.get(platform);
       if (!publication) {
         failed.push({
-          message: `${platform} publication status not returned`,
+          message: formatPublicationMissingMessage(dependencies, platform),
           platform,
         });
         return;
@@ -199,7 +210,9 @@ export async function publishExistingProjectToPlatforms(
       }
 
       failed.push({
-        message: publication.error_message || `${platform} publish failed`,
+        message:
+          publication.error_message ||
+          formatPublishFailedMessage(dependencies, platform),
         platform,
       });
     });
@@ -220,4 +233,33 @@ class PublishPlatformError extends Error {
     super(message);
     this.name = "PublishPlatformError";
   }
+}
+
+function formatPublishFailedMessage(
+  dependencies: Pick<PublishContentDependencies, "formatPublishFailedMessage">,
+  platform: PublishPlatform,
+) {
+  return (
+    dependencies.formatPublishFailedMessage?.(platform) ??
+    `${platform} publish failed`
+  );
+}
+
+function formatPublicationMissingMessage(
+  dependencies: Pick<
+    PublishContentDependencies,
+    "formatPublicationMissingMessage"
+  >,
+  platform: PublishPlatform,
+) {
+  return (
+    dependencies.formatPublicationMissingMessage?.(platform) ??
+    `${platform} publication status not returned`
+  );
+}
+
+function formatRetryLaterMessage(
+  dependencies: Pick<PublishContentDependencies, "formatRetryLaterMessage">,
+) {
+  return dependencies.formatRetryLaterMessage?.() ?? "Please try again later.";
 }

@@ -187,6 +187,8 @@ export function useContentPublishWorkflow({
         ? t(item.label, { defaultValue: item.defaultLabel })
         : platform;
     });
+  const getPlatformLabel = (platform: PublishPlatform) =>
+    getSelectedPlatformLabels([platform])[0] ?? platform;
 
   const validateContentFields = () => {
     if (!title.trim() || !hasBodyContent) {
@@ -384,6 +386,13 @@ export function useContentPublishWorkflow({
         projectId,
       },
       {
+        formatPublicationMissingMessage: (platform) =>
+          t("publish.statusMissing", {
+            platform: getPlatformLabel(platform),
+          }),
+        formatPublishFailedMessage: (platform) =>
+          `${getPlatformLabel(platform)} ${t("publish.failed")}`,
+        formatRetryLaterMessage: () => t("common.retryLater"),
         publishProject,
         waitForProjectPublications,
       },
