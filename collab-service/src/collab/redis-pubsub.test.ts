@@ -178,6 +178,42 @@ describe("redisClientOptionsFromConfig", () => {
     });
   });
 
+  it("reads TLS client certificate options from files", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mpp-redis-client-cert-"));
+    const certFile = join(dir, "client.crt");
+    const keyFile = join(dir, "client.key");
+    writeFileSync(certFile, testRedisClientCertPEM);
+    writeFileSync(keyFile, testRedisClientKeyPEM);
+    const config = loadConfig({
+      NODE_ENV: "test",
+      REDIS_ADDR: "redis.example.invalid:6379",
+      REDIS_TLS: "true",
+      REDIS_TLS_CERT_FILE: certFile,
+      REDIS_TLS_KEY_FILE: keyFile,
+    });
+
+    const options = redisClientOptionsFromConfig(config);
+
+    expect(options.socket).toMatchObject({
+      cert: testRedisClientCertPEM,
+      key: testRedisClientKeyPEM,
+      tls: true,
+    });
+  });
+
+  it("rejects incomplete TLS client certificate options", () => {
+    const config = loadConfig({
+      NODE_ENV: "test",
+      REDIS_ADDR: "redis.example.invalid:6379",
+      REDIS_TLS: "true",
+      REDIS_TLS_CERT_FILE: "/tmp/redis-client.crt",
+    });
+
+    expect(() => redisClientOptionsFromConfig(config)).toThrow(
+      /REDIS_TLS_CERT_FILE/,
+    );
+  });
+
   it("upgrades explicit redis URLs when REDIS_TLS is enabled", () => {
     const config = loadConfig({
       NODE_ENV: "test",
@@ -376,3 +412,20 @@ tYGsODtHm/A35rOUUfx34E9PUIQXrm7HPIHbThi64/vJFd2dzvB/966Z2YCtkBf2
 eXFaNn/Uv31V+R4jo/IoXT3Ge5aU2/HCF4GLt86Hny8lrZI/rzBtD+mvxHiPCeVH
 kXlb94L5hmllJh6r7idCx5YrKWYGYCc=
 -----END CERTIFICATE-----`;
+
+const testRedisClientCertPEM = `-----BEGIN CERTIFICATE-----
+MIIBfTCCASOgAwIBAgIBATAKBggqhkjOPQQDAjAXMRUwEwYDVQQDEwxyZWRpcy1j
+bGllbnQwHhcNMjYwMTAxMDAwMDAwWhcNMjcwMTAxMDAwMDAwWjAXMRUwEwYDVQQD
+EwxyZWRpcy1jbGllbnQwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASlQ67fO3vT
+YCz7zD0MyoQ7gGmC6a9LdbwH4Q4YHjKiNF9JpEORxk4g7FND6dH1grn6iJ2IGlzE
+N0R0B3kzVYwWo1MwUTAdBgNVHQ4EFgQU2a9Z5v6f5uUeV2l6EcnfwbkwvRswHwYD
+VR0jBBgwFoAU2a9Z5v6f5uUeV2l6EcnfwbkwvRswDwYDVR0TAQH/BAUwAwEB/zAK
+BggqhkjOPQQDAgNJADBGAiEAyBTnx37EGUIo7PrpV67EMAWs7N8hJlmdGr6vH3Of
+tGQCIQD5VdY7B/zag98SfOvdiX5j1EbkruWyXEFUvc+hjRLCTg==
+-----END CERTIFICATE-----`;
+
+const testRedisClientKeyPEM = `-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEILMuW4ZfYwR5l+8a9XJduP/9O6n2pMSYjRoXrEGLZQ2ZoAoGCCqGSM49
+AwEHoUQDQgAEpUOu3zt702As+8w9DMqEO4BpgumvS3W8B+EOGB4yojRfSaRDkcZO
+IOxTQ+nR9YK5+oidGDpcxDdEdAd5M1WMFg==
+-----END EC PRIVATE KEY-----`;

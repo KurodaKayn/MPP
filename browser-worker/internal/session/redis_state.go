@@ -23,6 +23,8 @@ const (
 	redisTLSEnv                = "REDIS_TLS"
 	redisTLSCACertEnv          = "REDIS_TLS_CA_CERT"
 	redisTLSCAFileEnv          = "REDIS_TLS_CA_FILE"
+	redisTLSCertFileEnv        = "REDIS_TLS_CERT_FILE"
+	redisTLSKeyFileEnv         = "REDIS_TLS_KEY_FILE"
 	redisTLSServerNameEnv      = "REDIS_TLS_SERVER_NAME"
 	redisSentinelAddrsEnv      = "REDIS_SENTINEL_ADDRS"
 	redisSentinelMasterEnv     = "REDIS_SENTINEL_MASTER_NAME"
@@ -68,6 +70,8 @@ type redisConnectionConfig struct {
 	TLS                bool
 	TLSCACert          string
 	TLSCAFile          string
+	TLSCertFile        string
+	TLSKeyFile         string
 	TLSServerName      string
 	ClusterAddrs       []string
 	SentinelAddrs      []string
@@ -132,6 +136,8 @@ func redisConnectionConfigFromEnv() (redisConnectionConfig, error) {
 		TLS:          redisEnvFlagEnabled(redisTLSEnv),
 		TLSCACert:    strings.TrimSpace(os.Getenv(redisTLSCACertEnv)),
 		TLSCAFile:    strings.TrimSpace(os.Getenv(redisTLSCAFileEnv)),
+		TLSCertFile:  strings.TrimSpace(os.Getenv(redisTLSCertFileEnv)),
+		TLSKeyFile:   strings.TrimSpace(os.Getenv(redisTLSKeyFileEnv)),
 		TLSServerName: strings.TrimSpace(
 			os.Getenv(redisTLSServerNameEnv),
 		),
@@ -463,7 +469,28 @@ func redisTLSConfig(config redisConnectionConfig) (*tls.Config, error) {
 	} else {
 		tlsConfig.RootCAs = rootCAs
 	}
+	clientCertificate, ok, err := redisTLSClientCertificate(config.TLSCertFile, config.TLSKeyFile)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		tlsConfig.Certificates = []tls.Certificate{clientCertificate}
+	}
 	return tlsConfig, nil
+}
+
+func redisTLSClientCertificate(certFile string, keyFile string) (tls.Certificate, bool, error) {
+	if certFile == "" && keyFile == "" {
+		return tls.Certificate{}, false, nil
+	}
+	if certFile == "" || keyFile == "" {
+		return tls.Certificate{}, false, fmt.Errorf("%s and %s must be set together", redisTLSCertFileEnv, redisTLSKeyFileEnv)
+	}
+	certificate, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return tls.Certificate{}, false, fmt.Errorf("failed to load Redis TLS client certificate from %s and %s: %w", redisTLSCertFileEnv, redisTLSKeyFileEnv, err)
+	}
+	return certificate, true, nil
 }
 
 func redisTLSRootCAs(inlineCert string, certFile string) (*x509.CertPool, error) {
@@ -515,6 +542,9 @@ func (c redisConnectionConfig) tlsConfig() *tls.Config {
 			ServerName: c.TLSServerName,
 		}
 		tlsConfig.RootCAs, _ = redisTLSRootCAs(c.TLSCACert, c.TLSCAFile)
+		if clientCertificate, ok, err := redisTLSClientCertificate(c.TLSCertFile, c.TLSKeyFile); err == nil && ok {
+			tlsConfig.Certificates = []tls.Certificate{clientCertificate}
+		}
 		return tlsConfig
 	}
 	return c.tls.Clone()

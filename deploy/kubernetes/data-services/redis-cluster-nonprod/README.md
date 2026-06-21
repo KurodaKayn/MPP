@@ -7,7 +7,8 @@ the intended production-style shape without changing production Redis:
 - TLS-only Redis traffic on `6379` and Cluster bus traffic on `16379`.
 - Password auth from `mpp-app-secrets/REDIS_PASSWORD`.
 - TLS material from a pre-created `mpp-redis-cluster-tls` Secret with
-  `ca.crt`, `tls.crt`, and `tls.key`.
+  `ca.crt`, `tls.crt`, and `tls.key`; app clients authenticate with Redis
+  password auth plus the mounted client certificate and key.
 - A bootstrap Job that runs `redis-cli --cluster create` with one replica per
   master.
 - A cluster-aware `redis_exporter` Deployment for per-node and slot metrics.
@@ -78,6 +79,9 @@ Only use Cluster mode in non-production after the validation record is complete:
 REDIS_ENDPOINT_MODE: cluster
 REDIS_ADDR: redis-cluster.mpp-system.svc.cluster.local:6379
 REDIS_TLS: "true"
+REDIS_TLS_CA_FILE: /etc/mpp/redis/ca.crt
+REDIS_TLS_CERT_FILE: /etc/mpp/redis/tls.crt
+REDIS_TLS_KEY_FILE: /etc/mpp/redis/tls.key
 ```
 
 To roll back app traffic, patch the direct-mode values and restart the

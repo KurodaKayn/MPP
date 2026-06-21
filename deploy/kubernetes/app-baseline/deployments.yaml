@@ -173,6 +173,10 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: X_OAUTH2_CLIENT_SECRET
+          volumeMounts:
+            - name: redis-tls
+              mountPath: /etc/mpp/redis
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /ready
@@ -196,6 +200,11 @@ spec:
             limits:
               cpu: "1"
               memory: 1Gi
+      volumes:
+        - name: redis-tls
+          secret:
+            secretName: mpp-redis-cluster-tls
+            optional: true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -303,6 +312,10 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: X_OAUTH2_CLIENT_SECRET
+          volumeMounts:
+            - name: redis-tls
+              mountPath: /etc/mpp/redis
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /ready
@@ -326,6 +339,11 @@ spec:
             limits:
               cpu: "1"
               memory: 1Gi
+      volumes:
+        - name: redis-tls
+          secret:
+            secretName: mpp-redis-cluster-tls
+            optional: true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -398,6 +416,10 @@ spec:
                 secretKeyRef:
                   name: mpp-app-secrets
                   key: BROWSER_WORKER_INTERNAL_TOKEN
+          volumeMounts:
+            - name: redis-tls
+              mountPath: /etc/mpp/redis
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /ready
@@ -421,6 +443,11 @@ spec:
             limits:
               cpu: "1"
               memory: 512Mi
+      volumes:
+        - name: redis-tls
+          secret:
+            secretName: mpp-redis-cluster-tls
+            optional: true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -657,6 +684,10 @@ spec:
                   name: mpp-app-secrets
                   key: REDIS_PASSWORD
                   optional: true
+          volumeMounts:
+            - name: redis-tls
+              mountPath: /etc/mpp/redis
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /ready
@@ -680,3 +711,8 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: redis-tls
+          secret:
+            secretName: mpp-redis-cluster-tls
+            optional: true

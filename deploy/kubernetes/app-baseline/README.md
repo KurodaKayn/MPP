@@ -20,8 +20,9 @@ Required overlay inputs:
   `REDIS_ENDPOINT_MODE=cluster` with `REDIS_ADDR` set to one or more
   comma-separated seed nodes. Cluster mode requires `REDIS_DB=0`.
 - Redis TLS policy through `REDIS_TLS`; set `REDIS_TLS_CA_CERT`,
-  `REDIS_TLS_CA_FILE`, or `REDIS_TLS_SERVER_NAME` only when the provider
-  requires custom trust material or a documented SNI override.
+  `REDIS_TLS_CA_FILE`, `REDIS_TLS_CERT_FILE`, `REDIS_TLS_KEY_FILE`, or
+  `REDIS_TLS_SERVER_NAME` only when the endpoint requires custom trust
+  material, client certificate auth, or a documented SNI override.
 - Public collaboration routing through `COLLAB_WEBSOCKET_URL_BASE`.
 - Public HTTP routing through the `mpp-public-gateway` Ingress. The baseline
   routes `/collab` to `collab-service` for WebSocket traffic and all remaining

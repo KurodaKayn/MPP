@@ -138,6 +138,8 @@ func DryRunConfigMap() Object {
 		"REDIS_TLS":                                    "true",
 		"REDIS_TLS_CA_CERT":                            "",
 		"REDIS_TLS_CA_FILE":                            "",
+		"REDIS_TLS_CERT_FILE":                          "",
+		"REDIS_TLS_KEY_FILE":                           "",
 		"REDIS_TLS_SERVER_NAME":                        "",
 		"REDIS_SENTINEL_ADDRS":                         "",
 		"REDIS_SENTINEL_MASTER_NAME":                   "mpp-redis-ha",
