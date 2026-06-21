@@ -212,13 +212,6 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 		return nil, ErrExtensionCallbackTokenInvalid
 	}
 
-	var existing models.ExtensionExecutionEvent
-	if err := s.writerDB().First(&existing, "event_id = ?", eventID).Error; err == nil {
-		return &dto.ExtensionEventCallbackResponse{Accepted: true, Duplicate: true}, nil
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
-
 	metadata := datatypes.JSON([]byte(`{}`))
 	if req.Metadata != nil {
 		payload, err := json.Marshal(req.Metadata)
@@ -242,8 +235,24 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 		ErrorMessage:    strings.TrimSpace(req.ErrorMessage),
 		Metadata:        metadata,
 	}
+	duplicate := false
 	if err := s.writerDB().Transaction(func(tx *gorm.DB) error {
+		if err := lockExtensionEventID(tx, eventID); err != nil {
+			return err
+		}
+		var existing models.ExtensionExecutionEvent
+		if err := tx.First(&existing, "event_id = ?", eventID).Error; err == nil {
+			event = existing
+			duplicate = true
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		if err := tx.Create(&event).Error; err != nil {
+			if errors.Is(err, gorm.ErrDuplicatedKey) {
+				duplicate = true
+				return tx.First(&event, "event_id = ?", eventID).Error
+			}
 			return err
 		}
 		return applyExtensionPublicationEvent(tx, token, event)
@@ -251,7 +260,7 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 		return nil, err
 	}
 
-	return &dto.ExtensionEventCallbackResponse{Accepted: true, Duplicate: false}, nil
+	return &dto.ExtensionEventCallbackResponse{Accepted: true, Duplicate: duplicate}, nil
 }
 
 func applyExtensionPublicationEvent(tx *gorm.DB, token models.ExtensionCallbackToken, event models.ExtensionExecutionEvent) error {

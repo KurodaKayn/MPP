@@ -289,7 +289,7 @@ type ProjectActivity struct {
 	TargetUserID *uuid.UUID     `gorm:"type:uuid;index"`
 	EventType    string         `gorm:"not null;index"`
 	Metadata     datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt    time.Time      `gorm:"not null;index:idx_project_activities_project_created_at,priority:2;index:idx_project_activities_archive_created_id,priority:1"`
+	CreatedAt    time.Time      `gorm:"primaryKey;not null;index:idx_project_activities_project_created_at,priority:2;index:idx_project_activities_archive_created_id,priority:1"`
 	Project      Project        `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
 	Actor        User           `gorm:"foreignKey:ActorUserID;constraint:OnDelete:CASCADE"`
 	TargetUser   *User          `gorm:"foreignKey:TargetUserID;constraint:OnDelete:SET NULL"`
@@ -430,7 +430,7 @@ type WorkspaceActivity struct {
 	TargetUserID *uuid.UUID     `gorm:"type:uuid;index"`
 	EventType    string         `gorm:"not null;index"`
 	Metadata     datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt    time.Time      `gorm:"not null;index:idx_workspace_activities_workspace_created_at,priority:2;index:idx_workspace_activities_archive_created_id,priority:1"`
+	CreatedAt    time.Time      `gorm:"primaryKey;not null;index:idx_workspace_activities_workspace_created_at,priority:2;index:idx_workspace_activities_archive_created_id,priority:1"`
 	Workspace    Workspace      `gorm:"foreignKey:WorkspaceID;constraint:OnDelete:CASCADE"`
 	Actor        User           `gorm:"foreignKey:ActorUserID;constraint:OnDelete:CASCADE"`
 	TargetUser   *User          `gorm:"foreignKey:TargetUserID;constraint:OnDelete:SET NULL"`
@@ -523,7 +523,7 @@ type PublishEvent struct {
 	PublishURL     string
 	ErrorMessage   string
 	Metadata       datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt      time.Time      `gorm:"index:idx_publish_events_archive_created_id,priority:1"`
+	CreatedAt      time.Time      `gorm:"primaryKey;not null;index:idx_publish_events_archive_created_id,priority:1"`
 }
 
 type ScheduledPublication struct {
@@ -669,7 +669,7 @@ type ExtensionExecutionEvent struct {
 	ExecutionID     string    `gorm:"not null;index"`
 	ProjectID       uuid.UUID `gorm:"type:uuid;not null;index"`
 	UserID          uuid.UUID `gorm:"type:uuid;not null;index"`
-	EventID         string    `gorm:"not null;uniqueIndex"`
+	EventID         string    `gorm:"not null;index"`
 	Platform        string    `gorm:"not null;index"`
 	Status          string    `gorm:"not null;index"`
 	Message         string
@@ -677,7 +677,7 @@ type ExtensionExecutionEvent struct {
 	PublishURL      string
 	ErrorMessage    string
 	Metadata        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt       time.Time      `gorm:"index:idx_extension_execution_events_archive_created_id,priority:1"`
+	CreatedAt       time.Time      `gorm:"primaryKey;not null;index:idx_extension_execution_events_archive_created_id,priority:1"`
 }
 
 // BeforeCreate hook to generate UUID if not set
@@ -767,6 +767,9 @@ func (e *PublishEvent) BeforeCreate(_ *gorm.DB) (err error) {
 	if e.ID == uuid.Nil {
 		e.ID = uuid.New()
 	}
+	if e.CreatedAt.IsZero() {
+		e.CreatedAt = time.Now().UTC()
+	}
 	return
 }
 
@@ -820,6 +823,9 @@ func (a *WorkspaceActivity) BeforeCreate(_ *gorm.DB) (err error) {
 	if a.ID == uuid.Nil {
 		a.ID = uuid.New()
 	}
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = time.Now().UTC()
+	}
 	return
 }
 
@@ -846,6 +852,9 @@ func (i *WorkspaceInvite) BeforeCreate(_ *gorm.DB) (err error) {
 func (a *ProjectActivity) BeforeCreate(_ *gorm.DB) (err error) {
 	if a.ID == uuid.Nil {
 		a.ID = uuid.New()
+	}
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = time.Now().UTC()
 	}
 	return
 }
@@ -932,6 +941,9 @@ func (t *ExtensionCallbackToken) BeforeCreate(_ *gorm.DB) (err error) {
 func (e *ExtensionExecutionEvent) BeforeCreate(_ *gorm.DB) (err error) {
 	if e.ID == uuid.Nil {
 		e.ID = uuid.New()
+	}
+	if e.CreatedAt.IsZero() {
+		e.CreatedAt = time.Now().UTC()
 	}
 	return
 }

@@ -101,7 +101,9 @@ func openPostgresDatabase(dsn string) (*gorm.DB, error) {
 	database, err := gorm.Open(postgres.New(postgres.Config{
 		DSN:                  dsn,
 		PreferSimpleProtocol: true,
-	}), &gorm.Config{})
+	}), &gorm.Config{
+		TranslateError: true,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -331,6 +333,10 @@ func syncSchema(database *gorm.DB) error {
 }
 
 func syncSchemaUnlocked(database *gorm.DB) error {
+	if err := ensureMonthlyEventPartitions(database, time.Now().UTC()); err != nil {
+		return err
+	}
+
 	if err := database.AutoMigrate(
 		&models.User{},
 		&models.Workspace{},
