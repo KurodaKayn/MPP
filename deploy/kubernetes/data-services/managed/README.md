@@ -36,9 +36,6 @@ Required overlay inputs:
   overlay or provider configuration. For production-like managed Redis, require
   provider-backed persistence, scheduled snapshots, and a documented restore
   point objective instead of relying on any in-cluster PVC.
-- Complete `doc/managed-redis-nonprod-validation.md` against a non-production
-  managed Redis instance before using this package for production Redis
-  migration planning.
 
 Do not store provider credentials in this package. Materialize them through a
 Kubernetes Secret or an external secret manager.

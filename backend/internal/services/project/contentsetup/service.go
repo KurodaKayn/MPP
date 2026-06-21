@@ -1,28 +1,84 @@
-package project
+package contentsetup
 
 import (
+	"context"
 	"encoding/json"
 	"maps"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/singleflight"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
+	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
+	"github.com/kurodakayn/mpp-backend/internal/services/project/projecterr"
 )
+
+type NormalizeProjectPlatformsFunc func([]string) ([]string, error)
+type SanitizeProjectSourceContentFunc func(string) string
+type EnsurePersonalWorkspaceFunc func(*gorm.DB, uuid.UUID) error
+type ContentTemplateMediaUsageRefresher func(*gorm.DB, uuid.UUID, models.ContentTemplate) error
+
+type Dependencies struct {
+	NormalizeProjectPlatforms       NormalizeProjectPlatformsFunc
+	SanitizeProjectSourceContent    SanitizeProjectSourceContentFunc
+	EnsurePersonalWorkspace         EnsurePersonalWorkspaceFunc
+	RefreshContentTemplateMediaUses ContentTemplateMediaUsageRefresher
+}
+
+type CacheConfig struct {
+	Client redis.UniversalClient
+	TTL    time.Duration
+	Group  *singleflight.Group
+	Guard  *redisdegrade.Guard
+}
+
+type Service struct {
+	db                *gorm.DB
+	cache             redis.UniversalClient
+	cacheTTL          time.Duration
+	cacheGroup        *singleflight.Group
+	contentSetupGuard *redisdegrade.Guard
+	deps              Dependencies
+}
+
+func NewService(db *gorm.DB, cache CacheConfig, deps Dependencies) *Service {
+	return &Service{
+		db:                db,
+		cache:             cache.Client,
+		cacheTTL:          cache.TTL,
+		cacheGroup:        cache.Group,
+		contentSetupGuard: cache.Guard,
+		deps:              deps,
+	}
+}
+
+func (s *Service) WithContext(ctx context.Context) *Service {
+	if ctx == nil {
+		return s
+	}
+	scoped := *s
+	scoped.db = s.db.WithContext(ctx)
+	scoped.cacheGroup = s.cacheGroup
+	return &scoped
+}
 
 func (s *Service) ListContentTemplates(userID uuid.UUID, workspaceID uuid.UUID) (*dto.ContentTemplatesResponse, error) {
 	if userID == uuid.Nil {
-		return nil, ErrInvalidProject
+		return nil, projecterr.ErrInvalidProject
 	}
 	workspaceID = workspaceIDForUser(userID, workspaceID)
 	if err := s.ensurePersonalWorkspaceForUser(userID, workspaceID); err != nil {
 		return nil, err
 	}
 	if workspaceID != models.PersonalWorkspaceID(userID) {
-		if _, err := workspaceProjectAccessRoleWithDB(s.db, workspaceID, userID); err != nil {
+		if _, err := accesspolicy.WorkspaceProjectRoleWithDB(s.db, workspaceID, userID); err != nil {
 			return nil, err
 		}
 	}
@@ -49,7 +105,7 @@ func (s *Service) computeContentTemplates(userID uuid.UUID, workspaceID uuid.UUI
 
 func (s *Service) CreateContentTemplate(userID uuid.UUID, workspaceID uuid.UUID, req dto.CreateContentTemplateRequest) (*dto.ContentTemplate, error) {
 	if userID == uuid.Nil {
-		return nil, ErrInvalidProject
+		return nil, projecterr.ErrInvalidProject
 	}
 	workspaceID = workspaceIDForUser(userID, workspaceID)
 	if err := s.ensurePersonalWorkspaceForUser(userID, workspaceID); err != nil {
@@ -63,30 +119,30 @@ func (s *Service) CreateContentTemplate(userID uuid.UUID, workspaceID uuid.UUID,
 		}
 	}
 	if scope == models.ContentTemplateScopeSystem {
-		return nil, ErrForbidden
+		return nil, accesspolicy.ErrForbidden
 	}
 	if scope != models.ContentTemplateScopePersonal && scope != models.ContentTemplateScopeWorkspace {
-		return nil, ErrInvalidProject
+		return nil, projecterr.ErrInvalidProject
 	}
 	if scope == models.ContentTemplateScopeWorkspace {
-		role, err := workspaceProjectAccessRoleWithDB(s.db, workspaceID, userID)
+		role, err := accesspolicy.WorkspaceProjectRoleWithDB(s.db, workspaceID, userID)
 		if err != nil {
 			return nil, err
 		}
-		if !CanEditProjectRole(role) {
-			return nil, ErrForbidden
+		if !accesspolicy.CanEditProjectRole(role) {
+			return nil, accesspolicy.ErrForbidden
 		}
 	}
 
 	name := strings.TrimSpace(req.Name)
 	titleTemplate := strings.TrimSpace(req.TitleTemplate)
-	sourceTemplate := sanitizeProjectSourceContent(req.SourceTemplate)
-	platforms, err := NormalizeProjectPlatforms(req.DefaultPlatforms)
+	sourceTemplate := s.deps.SanitizeProjectSourceContent(req.SourceTemplate)
+	platforms, err := s.deps.NormalizeProjectPlatforms(req.DefaultPlatforms)
 	if err != nil {
 		return nil, err
 	}
 	if name == "" || titleTemplate == "" || sourceTemplate == "" || len(platforms) == 0 {
-		return nil, ErrInvalidProject
+		return nil, projecterr.ErrInvalidProject
 	}
 
 	defaultPlatforms, err := json.Marshal(platforms)
@@ -122,24 +178,24 @@ func (s *Service) CreateContentTemplate(userID uuid.UUID, workspaceID uuid.UUID,
 		if err := tx.Create(&template).Error; err != nil {
 			return err
 		}
-		return refreshContentTemplateMediaUsages(tx, workspaceID, template)
+		return s.deps.RefreshContentTemplateMediaUses(tx, workspaceID, template)
 	}); err != nil {
 		return nil, err
 	}
-	s.invalidateContentTemplateOptionsCache(userID, workspaceID, scope)
+	s.InvalidateContentTemplateOptionsCache(userID, workspaceID, scope)
 	resp := contentTemplateFromModel(template)
 	return &resp, nil
 }
 
 func (s *Service) ListBrandProfiles(userID uuid.UUID, workspaceID uuid.UUID) (*dto.BrandProfilesResponse, error) {
 	if userID == uuid.Nil {
-		return nil, ErrInvalidProject
+		return nil, projecterr.ErrInvalidProject
 	}
 	workspaceID = workspaceIDForUser(userID, workspaceID)
 	if err := s.ensurePersonalWorkspaceForUser(userID, workspaceID); err != nil {
 		return nil, err
 	}
-	if _, err := workspaceProjectAccessRoleWithDB(s.db, workspaceID, userID); err != nil {
+	if _, err := accesspolicy.WorkspaceProjectRoleWithDB(s.db, workspaceID, userID); err != nil {
 		return nil, err
 	}
 	return s.getCachedBrandProfiles(userID, workspaceID)
@@ -159,23 +215,23 @@ func (s *Service) computeBrandProfiles(workspaceID uuid.UUID) (*dto.BrandProfile
 
 func (s *Service) CreateBrandProfile(userID uuid.UUID, workspaceID uuid.UUID, req dto.CreateBrandProfileRequest) (*dto.BrandProfile, error) {
 	if userID == uuid.Nil {
-		return nil, ErrInvalidProject
+		return nil, projecterr.ErrInvalidProject
 	}
 	workspaceID = workspaceIDForUser(userID, workspaceID)
 	if err := s.ensurePersonalWorkspaceForUser(userID, workspaceID); err != nil {
 		return nil, err
 	}
-	role, err := workspaceProjectAccessRoleWithDB(s.db, workspaceID, userID)
+	role, err := accesspolicy.WorkspaceProjectRoleWithDB(s.db, workspaceID, userID)
 	if err != nil {
 		return nil, err
 	}
-	if !CanEditProjectRole(role) {
-		return nil, ErrForbidden
+	if !accesspolicy.CanEditProjectRole(role) {
+		return nil, accesspolicy.ErrForbidden
 	}
 
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		return nil, ErrInvalidProject
+		return nil, projecterr.ErrInvalidProject
 	}
 	bannedWords, err := json.Marshal(normalizeStringList(req.BannedWords))
 	if err != nil {
@@ -199,12 +255,12 @@ func (s *Service) CreateBrandProfile(userID uuid.UUID, workspaceID uuid.UUID, re
 	if err := s.db.Create(&profile).Error; err != nil {
 		return nil, err
 	}
-	s.invalidateBrandProfileOptionsCache(workspaceID)
+	s.InvalidateBrandProfileOptionsCache(workspaceID)
 	resp := brandProfileFromModel(profile)
 	return &resp, nil
 }
 
-func (s *Service) contentTemplateForProject(userID uuid.UUID, workspaceID uuid.UUID, templateID *uuid.UUID) (models.ContentTemplate, bool, error) {
+func (s *Service) ContentTemplateForProject(userID uuid.UUID, workspaceID uuid.UUID, templateID *uuid.UUID) (models.ContentTemplate, bool, error) {
 	if templateID == nil || *templateID == uuid.Nil {
 		return models.ContentTemplate{}, false, nil
 	}
@@ -215,10 +271,10 @@ func (s *Service) contentTemplateForProject(userID uuid.UUID, workspaceID uuid.U
 	if contentTemplateAccessible(template, userID, workspaceID) {
 		return template, true, nil
 	}
-	return models.ContentTemplate{}, false, ErrForbidden
+	return models.ContentTemplate{}, false, accesspolicy.ErrForbidden
 }
 
-func (s *Service) validateBrandProfileForProject(userID uuid.UUID, workspaceID uuid.UUID, brandProfileID *uuid.UUID) error {
+func (s *Service) ValidateBrandProfileForProject(userID uuid.UUID, workspaceID uuid.UUID, brandProfileID *uuid.UUID) error {
 	if brandProfileID == nil || *brandProfileID == uuid.Nil {
 		return nil
 	}
@@ -227,9 +283,9 @@ func (s *Service) validateBrandProfileForProject(userID uuid.UUID, workspaceID u
 		return err
 	}
 	if profile.WorkspaceID != workspaceID {
-		return ErrForbidden
+		return accesspolicy.ErrForbidden
 	}
-	if _, err := workspaceProjectAccessRoleWithDB(s.db, workspaceID, userID); err != nil {
+	if _, err := accesspolicy.WorkspaceProjectRoleWithDB(s.db, workspaceID, userID); err != nil {
 		return err
 	}
 	return nil
@@ -295,7 +351,7 @@ func (s *Service) ensurePersonalWorkspaceForUser(userID uuid.UUID, workspaceID u
 		return nil
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		return ensurePersonalWorkspace(tx, userID)
+		return s.deps.EnsurePersonalWorkspace(tx, userID)
 	})
 }
 
@@ -322,15 +378,23 @@ func stringListFromJSON(raw datatypes.JSON) []string {
 	return items
 }
 
-func contentTemplateDefaultPlatforms(template *models.ContentTemplate) ([]string, error) {
+func mapFromJSON(value datatypes.JSON) map[string]any {
+	var parsed map[string]any
+	if err := json.Unmarshal(value, &parsed); err != nil || parsed == nil {
+		return map[string]any{}
+	}
+	return parsed
+}
+
+func ContentTemplateDefaultPlatforms(template *models.ContentTemplate, normalize NormalizeProjectPlatformsFunc) ([]string, error) {
 	if template == nil {
 		return nil, nil
 	}
 	platforms := stringListFromJSON(template.DefaultPlatforms)
-	return NormalizeProjectPlatforms(platforms)
+	return normalize(platforms)
 }
 
-func contentTemplatePlatformConfig(template *models.ContentTemplate, platform string) map[string]any {
+func ContentTemplatePlatformConfig(template *models.ContentTemplate, platform string) map[string]any {
 	if template == nil {
 		return nil
 	}
@@ -341,7 +405,7 @@ func contentTemplatePlatformConfig(template *models.ContentTemplate, platform st
 	return nil
 }
 
-func mergePublicationConfig(base datatypes.JSON, extra map[string]any) (datatypes.JSON, error) {
+func MergePublicationConfig(base datatypes.JSON, extra map[string]any) (datatypes.JSON, error) {
 	if len(extra) == 0 {
 		return base, nil
 	}

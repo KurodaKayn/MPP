@@ -85,9 +85,8 @@ module KubernetesValidation
       if marker
         expected = {
           "status" => "retired",
-          "retiredIssue" => "339",
           "activeOverlay" => "deploy/kubernetes/overlays/production-managed",
-          "restoreRunbook" => "doc/self-hosted-redis-decommission-record.md",
+          "retirementNote" => "not-an-active-deployment-path",
         }
         expected.each do |key, value|
           unless marker.data[key] == value

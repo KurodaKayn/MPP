@@ -1,7 +1,6 @@
 package project
 
 import (
-	"encoding/json"
 	"errors"
 
 	"github.com/google/uuid"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	projectpublication "github.com/kurodakayn/mpp-backend/internal/services/project/publication"
 )
 
 func (s *Service) enrichProjectDetail(detail *dto.ProjectDetail, project models.Project, userID *uuid.UUID) error {
@@ -17,7 +17,7 @@ func (s *Service) enrichProjectDetail(detail *dto.ProjectDetail, project models.
 	}
 	detail.PublicationDetails = make([]dto.PublicationDetail, 0, len(project.Publications))
 	for _, publication := range project.Publications {
-		detail.PublicationDetails = append(detail.PublicationDetails, publicationDetailFromModel(publication, true))
+		detail.PublicationDetails = append(detail.PublicationDetails, projectpublication.DetailFromModel(publication, true))
 	}
 	if userID == nil {
 		if detail.PermissionSources == nil {
@@ -109,40 +109,4 @@ func appendProjectPermissionSource(sources []dto.ProjectPermissionSource, source
 		}
 	}
 	return append(sources, source)
-}
-
-func publicationDetailFromModel(pub models.ProjectPlatformPublication, includeContent bool) dto.PublicationDetail {
-	var rawConfig map[string]any
-	_ = json.Unmarshal(pub.Config, &rawConfig)
-	safeConfig := filterConfig(rawConfig)
-
-	var rawContent map[string]any
-	_ = json.Unmarshal(pub.AdaptedContent, &rawContent)
-	safeContent := rawContent
-	if !includeContent {
-		safeContent = summarizeAdaptedContent(rawContent)
-	}
-	if safeContent == nil {
-		safeContent = map[string]any{}
-	}
-
-	return dto.PublicationDetail{
-		ID:             pub.ID,
-		Platform:       pub.Platform,
-		Enabled:        pub.Enabled,
-		Status:         pub.Status,
-		DraftStatus:    pub.DraftStatus,
-		ReviewStatus:   pub.ReviewStatus,
-		SyncRequired:   pub.SyncRequired,
-		ErrorMessage:   pub.ErrorMessage,
-		Config:         safeConfig,
-		AdaptedContent: safeContent,
-		PublishURL:     pub.PublishURL,
-		RemoteID:       pub.RemoteID,
-		RetryCount:     pub.RetryCount,
-		LastAttemptAt:  pub.LastAttemptAt,
-		PublishedAt:    pub.PublishedAt,
-		CreatedAt:      pub.CreatedAt,
-		UpdatedAt:      pub.UpdatedAt,
-	}
 }

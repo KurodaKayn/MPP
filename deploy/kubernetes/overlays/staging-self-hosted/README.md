@@ -29,6 +29,10 @@ The checked-in values are intentionally non-production:
   overlay keeps `REDIS_ENDPOINT_MODE=direct` and `REDIS_ADDR=redis:6379`, so app
   traffic stays on the existing single-instance Redis while the HA topology is
   validated.
+- The non-production Redis Cluster package deploys a six-node TLS/auth cluster
+  beside the existing Redis instance, along with bootstrap, backup, and
+  exporter resources. It keeps the default app traffic on `redis:6379` until a
+  deliberate cluster cutover is rehearsed.
 
 Before applying this overlay to a shared staging cluster:
 
@@ -49,10 +53,17 @@ Before applying this overlay to a shared staging cluster:
   `REDIS_SENTINEL_ADDRS=redis-ha-sentinel:26379`, and
   `REDIS_SENTINEL_MASTER_NAME=mpp-redis-ha`. Keep `REDIS_ADDR=redis:6379` as the
   direct-mode rollback endpoint.
+- To rehearse Redis Cluster traffic, patch `mpp-app-config` to
+  `REDIS_ENDPOINT_MODE=cluster`, `REDIS_ADDR=redis-cluster.mpp-system.svc.cluster.local:6379`,
+  and `REDIS_TLS=true`. Keep `REDIS_ADDR=redis:6379` as the direct rollback
+  endpoint.
 - To roll app traffic back from HA Redis, set `REDIS_ENDPOINT_MODE=direct` and
   confirm `REDIS_ADDR=redis:6379`; no business logic change is required.
 - Remove `../../data-services/redis-ha-nonprod` from this overlay to roll back
   the parallel HA validation topology after app traffic is back on direct mode.
+- Remove `../../data-services/redis-cluster-nonprod` from this overlay to roll
+  back the Redis Cluster validation topology after app traffic is back on direct
+  mode.
 - Patch the `mpp-data-backups` PVC, `postgres-backup` and `redis-backup`
   schedules, and `BACKUP_RETENTION_DAYS` before keeping useful staging data in
   the StatefulSets.

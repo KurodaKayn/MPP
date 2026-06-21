@@ -66,10 +66,6 @@ Before applying this overlay to production:
   `ClusterSecretStore`, and replace every `ExternalSecret` remote key with the
   production provider path. Add a `REDIS_PASSWORD` remote key when the managed
   Redis provider requires auth.
-- After the issue #339 decommission, self-hosted HA rollback requires the
-  retained snapshot and historical chart noted in
-  `doc/self-hosted-redis-decommission-record.md`; do not apply the retired
-  `production-self-hosted-ha` overlay as a normal rollback path.
 - For provider-specific overlays, keep the shared runtime, app, and data-service
   resources from this overlay and patch only provider hostnames, TLS/ingress
   details, secret-store bindings, CA mounts, and immutable image tags.

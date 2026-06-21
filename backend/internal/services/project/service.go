@@ -14,14 +14,14 @@ import (
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
-	platformcapabilities "github.com/kurodakayn/mpp-backend/internal/platformcapabilities"
 	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
+	"github.com/kurodakayn/mpp-backend/internal/services/project/projecterr"
 )
 
 var ErrForbidden = accesspolicy.ErrForbidden
-var ErrInvalidProject = errors.New("invalid project")
-var ErrInvalidProjectCollaborator = errors.New("invalid project collaborator")
+var ErrInvalidProject = projecterr.ErrInvalidProject
+var ErrInvalidProjectCollaborator = projecterr.ErrInvalidProjectCollaborator
 var ErrProjectCollabUnavailable = errors.New("project collaboration unavailable")
 var ErrProjectDeletionBlocked = errors.New("project deletion blocked")
 
@@ -36,8 +36,6 @@ type DashboardReadModelUpdater interface {
 	RefreshProjectAsync(ctx context.Context, projectID uuid.UUID)
 	RefreshWorkspaceAsync(ctx context.Context, workspaceID uuid.UUID)
 }
-
-var allowedProjectPlatforms = platformcapabilities.ProjectPlatformSet()
 
 type Service struct {
 	db                *gorm.DB
@@ -74,6 +72,14 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 		scoped.collabDocuments = s.collabDocuments.WithContext(ctx)
 	}
 	return &scoped
+}
+
+func (s *Service) DB() *gorm.DB {
+	return s.db
+}
+
+func (s *Service) RequestContext() context.Context {
+	return s.requestContext()
 }
 
 func (s *Service) SetCollabDocumentService(svc *collabdoc.Service) {

@@ -96,6 +96,19 @@ module KubernetesValidation
       validate_redis_ha_keeps_existing_traffic(context)
     end
 
+    def validate_redis_cluster_nonprod(context)
+      validate_redis_cluster_services(context)
+      validate_redis_cluster_config(context)
+      validate_redis_cluster_tls_material(context)
+      validate_redis_cluster_stateful_set(context)
+      validate_redis_cluster_bootstrap_job(context)
+      validate_redis_cluster_exporter(context)
+      validate_redis_cluster_backup(context)
+      validate_redis_cluster_network_policy(context)
+      validate_redis_cluster_keeps_existing_traffic(context)
+      validate_redis_cluster_cli_mtls(context)
+    end
+
     def validate_redis_ha_production(context)
       validate_redis_ha_services(context)
       validate_redis_ha_config(context)
@@ -118,6 +131,322 @@ module KubernetesValidation
       validate_redis_ha_sentinel(context)
       validate_redis_ha_network_policy(context)
       validate_redis_ha_production_traffic(context)
+    end
+
+    def validate_redis_cluster_services(context)
+      service = context.require_document("Service", "redis-cluster", "mpp-system")
+      if service
+        selector = service.spec["selector"] || {}
+        context.add_error("non-prod Redis Cluster Service must select redis-cluster Pods") unless selector["app.kubernetes.io/component"] == "redis-cluster"
+        service_port = Array(service.spec["ports"]).find { |entry| entry["name"] == "redis-tls" && entry["port"] == 6379 }
+        context.add_error("non-prod Redis Cluster Service must expose TLS port 6379") unless service_port
+      end
+
+      headless = context.require_document("Service", "redis-cluster-headless", "mpp-system")
+      if headless
+        context.add_error("non-prod Redis Cluster headless Service must be headless") unless headless.spec["clusterIP"] == "None"
+        selector = headless.spec["selector"] || {}
+        context.add_error("non-prod Redis Cluster headless Service must select redis-cluster Pods") unless selector["app.kubernetes.io/component"] == "redis-cluster"
+      end
+
+      exporter_service = context.require_document("Service", "redis-cluster-exporter", "mpp-system")
+      if exporter_service
+        port = Array(exporter_service.spec["ports"]).find { |entry| entry["name"] == "metrics" && entry["port"] == 9121 }
+        context.add_error("non-prod Redis Cluster exporter Service must expose metrics port 9121") unless port
+      end
+    end
+
+    def validate_redis_cluster_config(context)
+      config = context.require_document("ConfigMap", "redis-cluster-config", "mpp-system")
+      return unless config
+
+      redis_config = redis_config_lines(config.data["redis.conf"])
+      validate_redis_runtime_common_policy(context, redis_config)
+      validate_redis_persistence_common_policy(context, redis_config)
+      validate_overlay_redis_persistence_policy(context, redis_config)
+
+      {
+        "protected-mode yes" => "non-prod Redis Cluster config must enable protected mode",
+        "port 0" => "non-prod Redis Cluster config must disable plain TCP",
+        "tls-port 6379" => "non-prod Redis Cluster config must enable TLS on 6379",
+        "tls-auth-clients yes" => "non-prod Redis Cluster config must require TLS client auth",
+        "tls-replication yes" => "non-prod Redis Cluster config must require TLS for replication",
+        "tls-cluster yes" => "non-prod Redis Cluster config must require TLS for cluster bus traffic",
+        "cluster-enabled yes" => "non-prod Redis Cluster config must enable cluster mode",
+        "cluster-require-full-coverage yes" => "non-prod Redis Cluster config must require full slot coverage",
+        "cluster-allow-reads-when-down no" => "non-prod Redis Cluster config must block reads when down",
+        "cluster-migration-barrier 1" => "non-prod Redis Cluster config must keep migration barrier at 1",
+        "latency-monitor-threshold 100" => "non-prod Redis Cluster config must enable latency monitoring",
+      }.each do |line, message|
+        context.add_error(message) unless redis_config.include?(line)
+      end
+    end
+
+    def validate_redis_cluster_stateful_set(context)
+      stateful_set = context.require_document("StatefulSet", "redis-cluster", "mpp-system")
+      return unless stateful_set
+
+      context.add_error("non-prod Redis Cluster StatefulSet must use redis-cluster-headless") unless stateful_set.spec["serviceName"] == "redis-cluster-headless"
+      context.add_error("non-prod Redis Cluster StatefulSet must run 6 replicas") unless stateful_set.spec["replicas"] == 6
+      context.add_error("non-prod Redis Cluster StatefulSet must start Pods in parallel") unless stateful_set.spec["podManagementPolicy"] == "Parallel"
+
+      selector_component = stateful_set.spec.dig("selector", "matchLabels", "app.kubernetes.io/component")
+      pod_component = stateful_set.pod_labels["app.kubernetes.io/component"]
+      unless selector_component == "redis-cluster" && pod_component == "redis-cluster"
+        context.add_error("non-prod Redis Cluster StatefulSet must select redis-cluster Pods")
+      end
+
+      validate_redis_ha_pod_security(context, stateful_set, "non-prod Redis Cluster StatefulSet")
+      validate_redis_cluster_scheduling_spread(context, stateful_set, "non-prod Redis Cluster StatefulSet")
+
+      redis_container = stateful_set.container("redis")
+      unless redis_container
+        context.add_error("non-prod Redis Cluster StatefulSet must define a redis container")
+        return
+      end
+
+      context.add_error("non-prod Redis Cluster container must use redis:7-alpine") unless redis_container["image"] == "docker.io/library/redis:7-alpine"
+      validate_resources(context, redis_container, "non-prod Redis Cluster container")
+      validate_redis_ha_container_security(context, redis_container, "non-prod Redis Cluster container")
+
+      args_text = Array(redis_container["args"]).join("\n")
+      {
+        "--requirepass" => "non-prod Redis Cluster container must require client auth",
+        "--masterauth" => "non-prod Redis Cluster container must require replica auth",
+        "--cluster-announce-hostname" => "non-prod Redis Cluster container must announce the pod hostname",
+        "--cluster-announce-tls-port" => "non-prod Redis Cluster container must announce the TLS port",
+        "--cluster-announce-bus-port" => "non-prod Redis Cluster container must announce the cluster bus port",
+      }.each do |needle, message|
+        context.add_error(message) unless args_text.include?(needle)
+      end
+
+      context.add_error("non-prod Redis Cluster container must read REDIS_PASSWORD from mpp-app-secrets") unless Array(redis_container["env"]).any? { |entry| entry["name"] == "REDIS_PASSWORD" && entry.dig("valueFrom", "secretKeyRef", "name") == "mpp-app-secrets" }
+
+      readiness = Array(redis_container.dig("readinessProbe", "exec", "command")).join("\n")
+      unless readiness.include?("CLUSTER INFO") && readiness.include?("CLUSTER SLOTS") && readiness.include?("cluster_state:ok")
+        context.add_error("non-prod Redis Cluster readiness must verify cluster state and slots")
+      end
+      liveness = Array(redis_container.dig("livenessProbe", "exec", "command")).join("\n")
+      unless liveness.include?("redis-cli") && liveness.match?(/\bPING\b/)
+        context.add_error("non-prod Redis Cluster livenessProbe must ping Redis")
+      end
+
+      config_mount = Array(redis_container["volumeMounts"]).find do |mount|
+        mount["name"] == "redis-cluster-config" &&
+          mount["mountPath"] == "/usr/local/etc/redis" &&
+          mount["readOnly"] == true
+      end
+      tls_mount = Array(redis_container["volumeMounts"]).find do |mount|
+        mount["name"] == "redis-cluster-tls" &&
+          mount["mountPath"] == "/tls" &&
+          mount["readOnly"] == true
+      end
+      data_mount = Array(redis_container["volumeMounts"]).find { |mount| mount["name"] == "redis-cluster-data" && mount["mountPath"] == "/data" }
+      context.add_error("non-prod Redis Cluster container must mount redis-cluster-config read-only") unless config_mount
+      context.add_error("non-prod Redis Cluster container must mount TLS material read-only") unless tls_mount
+      context.add_error("non-prod Redis Cluster container must mount persistent data at /data") unless data_mount
+
+      config_volume = Array(stateful_set.pod_spec["volumes"]).find { |volume| volume.dig("configMap", "name") == "redis-cluster-config" }
+      tls_volume = Array(stateful_set.pod_spec["volumes"]).find { |volume| volume.dig("secret", "secretName") == "mpp-redis-cluster-tls" }
+      context.add_error("non-prod Redis Cluster StatefulSet must mount redis-cluster-config") unless config_volume
+      context.add_error("non-prod Redis Cluster StatefulSet must mount TLS secret") unless tls_volume
+
+      validate_redis_ha_data_claim(context, stateful_set, "redis-cluster-data", "non-prod Redis Cluster")
+    end
+
+    def validate_redis_cluster_bootstrap_job(context)
+      job = context.require_document("Job", "redis-cluster-bootstrap", "mpp-system")
+      return unless job
+
+      context.add_error("non-prod Redis Cluster bootstrap Job must set activeDeadlineSeconds <= 900") unless job.spec["activeDeadlineSeconds"].to_i <= 900
+      pod_spec = job.pod_spec
+      context.add_error("non-prod Redis Cluster bootstrap Job must not mount service account tokens") unless pod_spec["automountServiceAccountToken"] == false
+      context.add_error("non-prod Redis Cluster bootstrap Job must run as non-root") unless pod_spec.dig("securityContext", "runAsNonRoot") == true
+
+      container = job.container("bootstrap")
+      unless container
+        context.add_error("non-prod Redis Cluster bootstrap Job must define a bootstrap container")
+        return
+      end
+
+      context.add_error("non-prod Redis Cluster bootstrap container must use redis:7-alpine") unless container["image"] == "docker.io/library/redis:7-alpine"
+      validate_resources(context, container, "non-prod Redis Cluster bootstrap container")
+      validate_redis_ha_container_security(context, container, "non-prod Redis Cluster bootstrap container")
+
+      args_text = Array(container["args"]).join("\n")
+      {
+        "--cluster create" => "non-prod Redis Cluster bootstrap Job must create the cluster",
+        "--cluster-replicas 1" => "non-prod Redis Cluster bootstrap Job must use one replica per master",
+        "--cluster-yes" => "non-prod Redis Cluster bootstrap Job must auto-approve the cluster creation prompt",
+        "cluster_state:ok" => "non-prod Redis Cluster bootstrap Job must be idempotent",
+        "redis-cluster-headless.mpp-system.svc.cluster.local" => "non-prod Redis Cluster bootstrap Job must target the cluster Pods",
+      }.each do |needle, message|
+        context.add_error(message) unless args_text.include?(needle)
+      end
+    end
+
+    def validate_redis_cluster_exporter(context)
+      deployment = context.require_document("Deployment", "redis-cluster-exporter", "mpp-system")
+      return unless deployment
+
+      pod_spec = deployment.pod_spec
+      context.add_error("non-prod Redis Cluster exporter must not mount service account tokens") unless pod_spec["automountServiceAccountToken"] == false
+      context.add_error("non-prod Redis Cluster exporter must run as non-root") unless pod_spec.dig("securityContext", "runAsNonRoot") == true
+
+      container = deployment.container("redis-cluster-exporter")
+      unless container
+        context.add_error("non-prod Redis Cluster exporter Deployment must define a redis-cluster-exporter container")
+        return
+      end
+
+      context.add_error("non-prod Redis Cluster exporter must use oliver006/redis_exporter:v1.86.0") unless container["image"] == "oliver006/redis_exporter:v1.86.0"
+      validate_resources(context, container, "non-prod Redis Cluster exporter container")
+      validate_redis_exporter_security(context, container)
+
+      env = Array(container["env"]).each_with_object({}) { |entry, result| result[entry["name"]] = entry["value"] }
+      context.add_error("non-prod Redis Cluster exporter must point to a TLS Redis endpoint") unless env["REDIS_ADDR"].to_s.start_with?("rediss://")
+      context.add_error("non-prod Redis Cluster exporter must set REDIS_EXPORTER_IS_CLUSTER=true") unless env["REDIS_EXPORTER_IS_CLUSTER"] == "true"
+
+      tls_mount = Array(container["volumeMounts"]).find do |mount|
+        mount["name"] == "redis-cluster-tls" &&
+          mount["mountPath"] == "/tls" &&
+          mount["readOnly"] == true
+      end
+      context.add_error("non-prod Redis Cluster exporter must mount TLS material") unless tls_mount
+    end
+
+    def validate_redis_cluster_backup(context)
+      cronjob = context.require_document("CronJob", "redis-cluster-backup", "mpp-system")
+      return unless cronjob
+
+      context.add_error("non-prod Redis Cluster backup CronJob must forbid concurrent runs") unless cronjob.spec["concurrencyPolicy"] == "Forbid"
+      context.add_error("non-prod Redis Cluster backup CronJob must keep failed job history") unless cronjob.spec["failedJobsHistoryLimit"]
+      context.add_error("non-prod Redis Cluster backup CronJob must keep successful job history") unless cronjob.spec["successfulJobsHistoryLimit"]
+      context.add_error("non-prod Redis Cluster backup CronJob must schedule every six hours") unless cronjob.spec["schedule"] == "17 */6 * * *"
+
+      job_spec = cronjob.spec.dig("jobTemplate", "spec") || {}
+      context.add_error("non-prod Redis Cluster backup CronJob must set activeDeadlineSeconds <= 900") unless job_spec["activeDeadlineSeconds"].to_i <= 900
+
+      pod_spec = job_spec.dig("template", "spec") || {}
+      context.add_error("non-prod Redis Cluster backup CronJob must not mount service account tokens") unless pod_spec["automountServiceAccountToken"] == false
+      context.add_error("non-prod Redis Cluster backup CronJob must run as non-root") unless pod_spec.dig("securityContext", "runAsNonRoot") == true
+
+      container = Array(pod_spec["containers"]).find { |entry| entry["name"] == "redis-cluster-backup" }
+      unless container
+        context.add_error("non-prod Redis Cluster backup CronJob must define a redis-cluster-backup container")
+        return
+      end
+
+      context.add_error("non-prod Redis Cluster backup container must use redis:7-alpine") unless container["image"] == "docker.io/library/redis:7-alpine"
+      validate_resources(context, container, "non-prod Redis Cluster backup container")
+      validate_redis_ha_container_security(context, container, "non-prod Redis Cluster backup container")
+
+      args_text = Array(container["args"]).join("\n")
+      {
+        "BGSAVE" => "non-prod Redis Cluster backup container must trigger Redis snapshots",
+        "CLUSTER NODES" => "non-prod Redis Cluster backup container must capture cluster topology",
+        "/backups/redis-cluster" => "non-prod Redis Cluster backup container must write backup markers under /backups/redis-cluster",
+        "redis-cluster-headless.mpp-system.svc.cluster.local" => "non-prod Redis Cluster backup container must target the cluster Pods",
+      }.each do |needle, message|
+        context.add_error(message) unless args_text.include?(needle)
+      end
+
+      backup_mount = Array(container["volumeMounts"]).find { |mount| mount["name"] == "backups" && mount["mountPath"] == "/backups" }
+      tls_mount = Array(container["volumeMounts"]).find { |mount| mount["name"] == "redis-cluster-tls" && mount["mountPath"] == "/tls" && mount["readOnly"] == true }
+      context.add_error("non-prod Redis Cluster backup container must mount backup storage") unless backup_mount
+      context.add_error("non-prod Redis Cluster backup container must mount TLS material") unless tls_mount
+    end
+
+    def validate_redis_cluster_network_policy(context)
+      policy = context.require_document("NetworkPolicy", "redis-cluster-internal-access", "mpp-system")
+      return unless policy
+
+      selector = policy.spec.dig("podSelector", "matchLabels") || {}
+      context.add_error("non-prod Redis Cluster NetworkPolicy must select redis-cluster Pods") unless selector["app.kubernetes.io/component"] == "redis-cluster"
+
+      from_components = Array(policy.spec["ingress"]).flat_map { |rule| Array(rule["from"]) }
+        .flat_map { |entry| Array(entry.dig("podSelector", "matchExpressions")) }
+        .select { |entry| entry["key"] == "app.kubernetes.io/component" }
+        .flat_map { |entry| Array(entry["values"]) }
+      ["redis-cluster", "redis-cluster-bootstrap", "redis-cluster-backup", "redis-cluster-exporter", "backend", "publish-worker", "browser-worker", "collab-service"].each do |component|
+        context.add_error("non-prod Redis Cluster NetworkPolicy must allow #{component} ingress") unless from_components.include?(component)
+      end
+
+      ports = Array(policy.spec["ingress"]).flat_map { |rule| Array(rule["ports"]) }.map { |entry| entry["port"] }
+      context.add_error("non-prod Redis Cluster NetworkPolicy must allow Redis port 6379") unless ports.include?(6379)
+      context.add_error("non-prod Redis Cluster NetworkPolicy must allow cluster bus port 16379") unless ports.include?(16379)
+    end
+
+    def validate_redis_cluster_keeps_existing_traffic(context)
+      app_config = context.document("ConfigMap", "mpp-app-config", "mpp-system")
+      if app_config
+        case app_config.data["REDIS_ENDPOINT_MODE"]
+        when nil, "", "direct"
+          unless app_config.data["REDIS_ADDR"] == "redis:6379"
+            context.add_error("non-prod Redis Cluster validation must keep app REDIS_ADDR on existing redis:6379")
+          end
+        when "cluster"
+          if app_config.data["REDIS_ADDR"].to_s != "redis-cluster.mpp-system.svc.cluster.local:6379"
+            context.add_error("non-prod Redis Cluster validation must point REDIS_ADDR at redis-cluster.mpp-system.svc.cluster.local:6379")
+          end
+          unless app_config.data["REDIS_TLS"] == "true"
+            context.add_error("non-prod Redis Cluster validation must enable REDIS_TLS=true for cluster mode")
+          end
+        else
+          context.add_error("non-prod Redis Cluster validation must use direct or cluster endpoint mode")
+        end
+      end
+    end
+
+    def validate_redis_cluster_tls_material(context)
+      secret = context.document("Secret", "mpp-redis-cluster-tls", "mpp-system")
+      return unless secret
+
+      data = secret.data
+      ["ca.crt", "tls.crt", "tls.key"].each do |key|
+        context.add_error("non-prod Redis Cluster TLS secret must include #{key}") unless data[key].to_s != ""
+      end
+      context.add_error("non-prod Redis Cluster TLS secret must be a kubernetes.io/tls Secret") unless secret.object.dig("type") == "kubernetes.io/tls"
+    end
+
+    def validate_redis_cluster_scheduling_spread(context, workload, label)
+      pod_spec = workload.pod_spec
+      selector = {
+        "matchLabels" => {
+          "app.kubernetes.io/name" => "mpp",
+          "app.kubernetes.io/component" => "redis-cluster",
+        },
+      }
+      spread = Array(pod_spec["topologySpreadConstraints"]).find do |entry|
+        entry["topologyKey"] == "kubernetes.io/hostname" &&
+          entry["whenUnsatisfiable"] == "ScheduleAnyway" &&
+          entry.dig("labelSelector", "matchLabels") == selector["matchLabels"]
+      end
+      unless spread
+        context.add_error("#{label} must prefer hostname topology spread across Redis Cluster Pods")
+      end
+
+      anti_affinity_terms = Array(
+        pod_spec.dig("affinity", "podAntiAffinity", "preferredDuringSchedulingIgnoredDuringExecution"),
+      )
+      anti_affinity = anti_affinity_terms.find do |entry|
+        term = entry["podAffinityTerm"] || {}
+        term["topologyKey"] == "kubernetes.io/hostname" &&
+          term.dig("labelSelector", "matchLabels") == selector["matchLabels"]
+      end
+      unless anti_affinity
+        context.add_error("#{label} must prefer hostname anti-affinity across Redis Cluster Pods")
+      end
+    end
+
+    def validate_redis_cluster_cli_mtls(context)
+      context.find_lines(/redis-cli .*--tls/).each do |line|
+        unless line.include?("--cacert /tls/ca.crt") &&
+               line.include?("--cert /tls/tls.crt") &&
+               line.include?("--key /tls/tls.key")
+          context.add_error("non-prod Redis Cluster redis-cli TLS calls must provide client cert and key: #{line}")
+        end
+      end
     end
 
     def validate_redis_exporter(context)
