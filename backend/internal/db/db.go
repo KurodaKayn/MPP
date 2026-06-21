@@ -10,10 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
 )
@@ -23,11 +21,6 @@ var DefaultRouter *Router
 
 //go:embed seed/seed_data.sql
 var seedDataSQL string
-
-// Stable app-specific key for the Postgres transaction advisory lock around migrations.
-const migrationAdvisoryLockKey = 776770001
-const devFallbackPasswordHash = "$2a$10$JuGX0AMl3DS3eGm/yRvY2OZLm4QuTuoIgRT4ucmVs/BCwoPYARN4C" //nolint:gosec // Development fallback is a bcrypt hash, not a plaintext password.
-const disabledPasswordHash = "legacy-password-reset-required"
 
 const (
 	dbMaxOpenConnsEnv    = "DB_MAX_OPEN_CONNS"
@@ -74,8 +67,8 @@ func InitDB() {
 	DefaultRouter = NewRouter(database)
 	fmt.Println("Database connection established")
 
-	if err := migrate(database); err != nil {
-		log.Fatal("Failed to migrate database:", err)
+	if err := syncSchema(database); err != nil {
+		log.Fatal("Failed to initialize database schema:", err)
 	}
 
 	reader, err := optionalPostgresReadReplicaFromEnv()
@@ -331,343 +324,79 @@ func durationFromEnv(name string, fallback time.Duration) (time.Duration, error)
 	return value, nil
 }
 
-func migrate(database *gorm.DB) error {
-	return withMigrationLock(database, func(migrationDB *gorm.DB) error {
-		if err := prepareUserEmailMigration(migrationDB); err != nil {
-			return err
-		}
-		if err := prepareUserPasswordHashMigration(migrationDB); err != nil {
-			return err
-		}
-		if err := preparePlatformAccountWorkspaceMigration(migrationDB); err != nil {
-			return err
-		}
-		if err := prepareRemoteBrowserSessionRuntimeReferenceMigration(migrationDB); err != nil {
-			return err
-		}
-		if err := migrationDB.AutoMigrate(
-			&models.User{},
-			&models.Workspace{},
-			&models.WorkspaceMember{},
-			&models.WorkspaceInvite{},
-			&models.WorkspaceActivity{},
-			&models.WorkspaceDashboardStats{},
-			&models.Notification{},
-			&models.PlatformAccount{},
-			&models.PlatformAccountGrant{},
-			&models.Project{},
-			&models.ContentTemplate{},
-			&models.BrandProfile{},
-			&models.ProjectCollaborator{},
-			&models.ProjectActivity{},
-			&models.ProjectComment{},
-			&models.ProjectVersion{},
-			&models.ProjectShareLink{},
-			&models.MediaAsset{},
-			&models.MediaAssetUsage{},
-			&models.ProjectPlatformPublication{},
-			&models.ProjectListSummary{},
-			&models.ScheduledPublication{},
-			&models.PublishAttempt{},
-			&models.RemoteBrowserSession{},
-			&models.PublishEvent{},
-			&models.AIContextSnapshot{},
-			&models.AIGrowthOptimizationRun{},
-			&models.AIProposal{},
-			&models.AIDraftingSession{},
-			&models.AIDraftingMessage{},
-			&models.AIToolCall{},
-			&models.AIDraftingSessionSummary{},
-			&models.AISessionEvent{},
-			&models.AIUsageRecord{},
-			&models.WorkspaceQuotaAggregate{},
-			&models.OutboxEvent{},
-			&models.CollabDocument{},
-			&models.CollabDocumentCollaborator{},
-			&models.CollabDocumentState{},
-			&models.CollabDocumentUpdateBatch{},
-			&models.ExtensionCallbackToken{},
-			&models.ExtensionExecutionEvent{},
-		); err != nil {
-			return err
-		}
+func syncSchema(database *gorm.DB) error {
+	if err := database.AutoMigrate(
+		&models.User{},
+		&models.Workspace{},
+		&models.WorkspaceMember{},
+		&models.WorkspaceInvite{},
+		&models.WorkspaceActivity{},
+		&models.WorkspaceDashboardStats{},
+		&models.Notification{},
+		&models.PlatformAccount{},
+		&models.PlatformAccountGrant{},
+		&models.Project{},
+		&models.ContentTemplate{},
+		&models.BrandProfile{},
+		&models.ProjectCollaborator{},
+		&models.ProjectActivity{},
+		&models.ProjectComment{},
+		&models.ProjectVersion{},
+		&models.ProjectShareLink{},
+		&models.MediaAsset{},
+		&models.MediaAssetUsage{},
+		&models.ProjectPlatformPublication{},
+		&models.ProjectListSummary{},
+		&models.ScheduledPublication{},
+		&models.PublishAttempt{},
+		&models.RemoteBrowserSession{},
+		&models.PublishEvent{},
+		&models.AIContextSnapshot{},
+		&models.AIGrowthOptimizationRun{},
+		&models.AIProposal{},
+		&models.AIDraftingSession{},
+		&models.AIDraftingMessage{},
+		&models.AIToolCall{},
+		&models.AIDraftingSessionSummary{},
+		&models.AISessionEvent{},
+		&models.AIUsageRecord{},
+		&models.WorkspaceQuotaAggregate{},
+		&models.OutboxEvent{},
+		&models.CollabDocument{},
+		&models.CollabDocumentCollaborator{},
+		&models.CollabDocumentState{},
+		&models.CollabDocumentUpdateBatch{},
+		&models.ExtensionCallbackToken{},
+		&models.ExtensionExecutionEvent{},
+	); err != nil {
+		return err
+	}
 
-		if err := migratePublicationStatuses(migrationDB); err != nil {
-			return err
-		}
-
-		if err := backfillPersonalWorkspaces(migrationDB); err != nil {
-			return err
-		}
-		if err := backfillPlatformAccountWorkspaces(migrationDB); err != nil {
-			return err
-		}
-
-		// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
-		if err := migrationDB.Exec(`
+	// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
+	if err := database.Exec(`
 		CREATE UNIQUE INDEX IF NOT EXISTS ux_remote_browser_sessions_active_user_platform
 		ON remote_browser_sessions (user_id, platform)
 		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
 	`).Error; err != nil {
-			return err
-		}
-		if migrationDB.Name() == "postgres" {
-			if err := migrationDB.Exec(`
-				CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_accounts_workspace_platform_remote
-				ON platform_accounts (workspace_id, platform, platform_user_id)
-				WHERE platform_user_id IS NOT NULL AND platform_user_id <> ''
-			`).Error; err != nil {
-				return err
-			}
-			if err := migrationDB.Exec(`
-				CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_accounts_workspace_platform_display
-				ON platform_accounts (workspace_id, platform, display_name)
-				WHERE (platform_user_id IS NULL OR platform_user_id = '') AND display_name IS NOT NULL AND display_name <> ''
-			`).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-func migratePublicationStatuses(database *gorm.DB) error {
-	if !database.Migrator().HasTable(&models.ProjectPlatformPublication{}) {
-		return nil
+		return err
 	}
-
-	statusMap := map[string]string{
-		"pending":   models.PublicationStatusDraft,
-		"adapted":   models.PublicationStatusDraft,
-		"published": models.PublicationStatusSucceeded,
-		"disabled":  models.PublicationStatusCancelled,
-	}
-	for oldStatus, newStatus := range statusMap {
-		if err := database.Model(&models.ProjectPlatformPublication{}).
-			Where("status = ?", oldStatus).
-			Update("status", newStatus).Error; err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func backfillPersonalWorkspaces(database *gorm.DB) error {
-	var users []models.User
-	return database.FindInBatches(&users, 100, func(tx *gorm.DB, _ int) error {
-		for _, user := range users {
-			workspaceID := models.PersonalWorkspaceID(user.ID)
-			workspace := models.Workspace{
-				ID:          workspaceID,
-				OwnerUserID: user.ID,
-				Name:        models.PersonalWorkspaceName,
-				Slug:        models.PersonalWorkspaceSlug(user.ID),
-				Status:      models.WorkspaceStatusActive,
-			}
-			if err := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "id"}},
-				DoNothing: true,
-			}).Create(&workspace).Error; err != nil {
-				return err
-			}
-
-			now := time.Now()
-			member := models.WorkspaceMember{
-				WorkspaceID: workspaceID,
-				UserID:      user.ID,
-				Role:        models.WorkspaceRoleOwner,
-				JoinedAt:    &now,
-			}
-			if err := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "workspace_id"}, {Name: "user_id"}},
-				DoNothing: true,
-			}).Create(&member).Error; err != nil {
-				return err
-			}
-
-			if err := tx.Model(&models.Project{}).
-				Where("user_id = ? AND workspace_id IS NULL", user.ID).
-				Update("workspace_id", workspaceID).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	}).Error
-}
-
-func preparePlatformAccountWorkspaceMigration(database *gorm.DB) error {
-	if database.Name() != "postgres" {
-		return nil
-	}
-	if !database.Migrator().HasTable(&models.PlatformAccount{}) {
-		return nil
-	}
-	return database.Exec(`DROP INDEX IF EXISTS idx_platform_accounts_user_platform`).Error
-}
-
-func prepareRemoteBrowserSessionRuntimeReferenceMigration(database *gorm.DB) error {
-	if database.Name() != "postgres" {
-		return nil
-	}
-	if !database.Migrator().HasTable(&models.RemoteBrowserSession{}) {
-		return nil
-	}
-	if !database.Migrator().HasColumn(&models.RemoteBrowserSession{}, "runtime_reference") {
-		if err := database.Exec(`ALTER TABLE remote_browser_sessions ADD COLUMN runtime_reference jsonb NOT NULL DEFAULT '{}'::jsonb`).Error; err != nil {
-			return err
-		}
-	}
-	if database.Migrator().HasColumn(&models.RemoteBrowserSession{}, "container_id") {
+	if database.Name() == "postgres" {
 		if err := database.Exec(`
-			UPDATE remote_browser_sessions
-			SET runtime_reference = jsonb_build_object(
-				'driver', 'docker',
-				'runtime_id', container_id,
-				'cdp_endpoint', jsonb_build_object('host', '', 'port', 0),
-				'stream_endpoint', jsonb_build_object('host', '', 'port', 0),
-				'cleanup_labels', '{}'::jsonb
-			)
-			WHERE container_id <> ''
-				AND (runtime_reference IS NULL OR runtime_reference = '{}'::jsonb)
+			CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_accounts_workspace_platform_remote
+			ON platform_accounts (workspace_id, platform, platform_user_id)
+			WHERE platform_user_id IS NOT NULL AND platform_user_id <> ''
 		`).Error; err != nil {
 			return err
 		}
-		if err := database.Exec(`ALTER TABLE remote_browser_sessions DROP COLUMN IF EXISTS container_id`).Error; err != nil {
-			return err
-		}
-	}
-	if database.Migrator().HasColumn(&models.RemoteBrowserSession{}, "cdp_endpoint_ref") {
-		if err := database.Exec(`ALTER TABLE remote_browser_sessions DROP COLUMN IF EXISTS cdp_endpoint_ref`).Error; err != nil {
+		if err := database.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_accounts_workspace_platform_display
+			ON platform_accounts (workspace_id, platform, display_name)
+			WHERE (platform_user_id IS NULL OR platform_user_id = '') AND display_name IS NOT NULL AND display_name <> ''
+		`).Error; err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func backfillPlatformAccountWorkspaces(database *gorm.DB) error {
-	if !database.Migrator().HasTable(&models.PlatformAccount{}) {
-		return nil
-	}
-	var accounts []models.PlatformAccount
-	return database.FindInBatches(&accounts, 100, func(tx *gorm.DB, _ int) error {
-		for _, account := range accounts {
-			updates := map[string]any{}
-			if account.WorkspaceID == nil || *account.WorkspaceID == uuid.Nil {
-				workspaceID := models.PersonalWorkspaceID(account.UserID)
-				updates["workspace_id"] = workspaceID
-			}
-			if account.OwnerUserID == nil {
-				updates["owner_user_id"] = account.UserID
-			}
-			if account.ConnectedByUserID == nil {
-				updates["connected_by_user_id"] = account.UserID
-			}
-			if strings.TrimSpace(account.DisplayName) == "" {
-				displayName := account.Username
-				if strings.TrimSpace(displayName) == "" {
-					displayName = account.Platform
-				}
-				updates["display_name"] = displayName
-			}
-			if strings.TrimSpace(account.ShareScope) == "" {
-				updates["share_scope"] = models.PlatformAccountSharePrivate
-			}
-			if strings.TrimSpace(account.HealthStatus) == "" {
-				updates["health_status"] = healthStatusForPlatformAccountStatus(account.Status)
-			}
-			if strings.TrimSpace(account.CredentialSecretRef) == "" {
-				updates["credential_secret_ref"] = "platform-account:" + account.ID.String()
-			}
-			if len(updates) > 0 {
-				if err := tx.Model(&models.PlatformAccount{}).Where("id = ?", account.ID).Updates(updates).Error; err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}).Error
-}
-
-func healthStatusForPlatformAccountStatus(status string) string {
-	switch status {
-	case models.PlatformAccountStatusConnected:
-		return models.PlatformAccountHealthHealthy
-	case models.PlatformAccountStatusFailed:
-		return models.PlatformAccountHealthFailed
-	case models.PlatformAccountStatusNeedsReauth:
-		return models.PlatformAccountHealthNeedsReauth
-	default:
-		return models.PlatformAccountHealthUnknown
-	}
-}
-
-func prepareUserEmailMigration(database *gorm.DB) error {
-	if database.Name() != "postgres" {
-		return nil
-	}
-	if !database.Migrator().HasTable(&models.User{}) {
-		return nil
-	}
-
-	if !database.Migrator().HasColumn(&models.User{}, "email") {
-		if err := database.Exec(`ALTER TABLE users ADD COLUMN email text`).Error; err != nil {
-			return err
-		}
-	}
-
-	if err := database.Exec(`
-		UPDATE users
-		SET email = username || '-' || substring(id::text, 1, 8) || '@local.invalid'
-		WHERE email IS NULL OR email = ''
-	`).Error; err != nil {
-		return err
-	}
-	if err := database.Exec(`ALTER TABLE users ALTER COLUMN email SET NOT NULL`).Error; err != nil {
-		return err
-	}
-	return database.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email)`).Error
-}
-
-func prepareUserPasswordHashMigration(database *gorm.DB) error {
-	if database.Name() != "postgres" {
-		return nil
-	}
-	if !database.Migrator().HasTable(&models.User{}) {
-		return nil
-	}
-
-	if !database.Migrator().HasColumn(&models.User{}, "password_hash") {
-		if err := database.Exec(`ALTER TABLE users ADD COLUMN password_hash text`).Error; err != nil {
-			return err
-		}
-	}
-
-	passwordHash := disabledPasswordHash
-	if devSeedEnabled() {
-		passwordHash = devFallbackPasswordHash
-	}
-
-	if err := database.Exec(`
-		UPDATE users
-		SET password_hash = ?
-		WHERE password_hash IS NULL OR password_hash = ''
-	`, passwordHash).Error; err != nil {
-		return err
-	}
-	return database.Exec(`ALTER TABLE users ALTER COLUMN password_hash SET NOT NULL`).Error
-}
-
-func withMigrationLock(database *gorm.DB, run func(*gorm.DB) error) error {
-	if database.Name() != "postgres" {
-		return run(database)
-	}
-
-	return database.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", migrationAdvisoryLockKey).Error; err != nil {
-			return err
-		}
-		return run(tx)
-	})
 }
 
 func seed(database *gorm.DB) error {

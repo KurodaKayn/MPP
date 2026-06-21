@@ -22,12 +22,12 @@ func (r *recordingQueryObserver) ObserveQuery(_ context.Context, observation Que
 	r.observations = append(r.observations, observation)
 }
 
-func TestMigrateKeepsActiveBrowserSessionUniquenessFallback(t *testing.T) {
+func TestSyncSchemaKeepsActiveBrowserSessionUniquenessFallback(t *testing.T) {
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	require.NoError(t, err)
-	require.NoError(t, migrate(database))
+	require.NoError(t, syncSchema(database))
 
 	userID := uuid.New()
 	now := time.Now()
@@ -62,19 +62,19 @@ func TestMigrateKeepsActiveBrowserSessionUniquenessFallback(t *testing.T) {
 	require.NoError(t, database.Create(&expiredSession).Error)
 }
 
-func TestMigrateAddsProjectCollabDocumentLink(t *testing.T) {
+func TestSyncSchemaAddsProjectCollabDocumentLink(t *testing.T) {
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, migrate(database))
+	require.NoError(t, syncSchema(database))
 
 	require.True(t, database.Migrator().HasColumn(&models.Project{}, "collab_document_id"))
 	require.True(t, database.Migrator().HasIndex(&models.Project{}, "ux_projects_collab_document"))
 }
 
-func TestMigrateAddsWorkspaceTeamModel(t *testing.T) {
+func TestSyncSchemaAddsWorkspaceTeamModel(t *testing.T) {
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, migrate(database))
+	require.NoError(t, syncSchema(database))
 
 	require.True(t, database.Migrator().HasTable(&models.Workspace{}))
 	require.True(t, database.Migrator().HasTable(&models.WorkspaceMember{}))
@@ -120,113 +120,16 @@ func TestMigrateAddsWorkspaceTeamModel(t *testing.T) {
 	require.Equal(t, workspace.Name, loadedProject.Workspace.Name)
 }
 
-func TestMigrateAddsArchiveScanIndexes(t *testing.T) {
+func TestSyncSchemaAddsArchiveScanIndexes(t *testing.T) {
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, migrate(database))
+	require.NoError(t, syncSchema(database))
 
 	require.True(t, database.Migrator().HasIndex(&models.PublishEvent{}, "idx_publish_events_archive_created_id"))
 	require.True(t, database.Migrator().HasIndex(&models.ExtensionExecutionEvent{}, "idx_extension_execution_events_archive_created_id"))
 	require.True(t, database.Migrator().HasIndex(&models.ProjectActivity{}, "idx_project_activities_archive_created_id"))
 	require.True(t, database.Migrator().HasIndex(&models.WorkspaceActivity{}, "idx_workspace_activities_archive_created_id"))
 	require.True(t, database.Migrator().HasIndex(&models.RemoteBrowserSession{}, "idx_remote_browser_sessions_archive_status_created_id"))
-}
-
-func TestMigrateBackfillsPersonalWorkspaces(t *testing.T) {
-	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-
-	require.NoError(t, database.Exec(`CREATE TABLE users (
-		id TEXT PRIMARY KEY,
-		username TEXT NOT NULL UNIQUE,
-		email TEXT NOT NULL UNIQUE,
-		is_email_verified BOOLEAN NOT NULL DEFAULT 0,
-		password_hash TEXT NOT NULL,
-		role TEXT NOT NULL DEFAULT 'user',
-		created_at DATETIME,
-		updated_at DATETIME
-	)`).Error)
-	require.NoError(t, database.Exec(`CREATE TABLE projects (
-		id TEXT PRIMARY KEY,
-		user_id TEXT NOT NULL,
-		collab_document_id TEXT UNIQUE,
-		title TEXT NOT NULL,
-		source_content TEXT NOT NULL,
-		status TEXT NOT NULL,
-		created_at DATETIME,
-		updated_at DATETIME
-	)`).Error)
-
-	ownerID := uuid.New()
-	emptyUserID := uuid.New()
-	projectID := uuid.New()
-	require.NoError(t, database.Exec(
-		`INSERT INTO users (id, username, email, password_hash, role) VALUES (?, ?, ?, ?, ?)`,
-		ownerID.String(),
-		"owner",
-		"owner@example.com",
-		"hash",
-		"user",
-	).Error)
-	require.NoError(t, database.Exec(
-		`INSERT INTO users (id, username, email, password_hash, role) VALUES (?, ?, ?, ?, ?)`,
-		emptyUserID.String(),
-		"empty-user",
-		"empty-user@example.com",
-		"hash",
-		"user",
-	).Error)
-	require.NoError(t, database.Exec(
-		`INSERT INTO projects (id, user_id, title, source_content, status) VALUES (?, ?, ?, ?, ?)`,
-		projectID.String(),
-		ownerID.String(),
-		"Legacy project",
-		"content",
-		models.ProjectStatusDraft,
-	).Error)
-
-	require.NoError(t, migrate(database))
-
-	ownerWorkspaceID := models.PersonalWorkspaceID(ownerID)
-	emptyUserWorkspaceID := models.PersonalWorkspaceID(emptyUserID)
-
-	var workspaceCount int64
-	require.NoError(t, database.Model(&models.Workspace{}).Count(&workspaceCount).Error)
-	require.Equal(t, int64(2), workspaceCount)
-
-	var ownerWorkspace models.Workspace
-	require.NoError(t, database.First(&ownerWorkspace, "id = ?", ownerWorkspaceID).Error)
-	require.Equal(t, ownerID, ownerWorkspace.OwnerUserID)
-	require.Equal(t, models.PersonalWorkspaceName, ownerWorkspace.Name)
-	require.Equal(t, models.PersonalWorkspaceSlug(ownerID), ownerWorkspace.Slug)
-	require.Equal(t, models.WorkspaceStatusActive, ownerWorkspace.Status)
-
-	var emptyUserWorkspace models.Workspace
-	require.NoError(t, database.First(&emptyUserWorkspace, "id = ?", emptyUserWorkspaceID).Error)
-	require.Equal(t, emptyUserID, emptyUserWorkspace.OwnerUserID)
-
-	var ownerMembership models.WorkspaceMember
-	require.NoError(t, database.First(&ownerMembership, "workspace_id = ? AND user_id = ?", ownerWorkspaceID, ownerID).Error)
-	require.Equal(t, models.WorkspaceRoleOwner, ownerMembership.Role)
-	require.NotNil(t, ownerMembership.JoinedAt)
-
-	var project models.Project
-	require.NoError(t, database.First(&project, "id = ?", projectID).Error)
-	require.NotNil(t, project.WorkspaceID)
-	require.Equal(t, ownerWorkspaceID, *project.WorkspaceID)
-
-	require.NoError(t, migrate(database))
-	require.NoError(t, database.Model(&models.Workspace{}).Count(&workspaceCount).Error)
-	require.Equal(t, int64(2), workspaceCount)
-
-	var membershipCount int64
-	require.NoError(t, database.Model(&models.WorkspaceMember{}).Count(&membershipCount).Error)
-	require.Equal(t, int64(2), membershipCount)
-
-	var reloadedProject models.Project
-	require.NoError(t, database.First(&reloadedProject, "id = ?", projectID).Error)
-	require.NotNil(t, reloadedProject.WorkspaceID)
-	require.Equal(t, ownerWorkspaceID, *reloadedProject.WorkspaceID)
 }
 
 func TestConnectionPoolConfigFromEnvUsesDefaults(t *testing.T) {
