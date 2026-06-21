@@ -713,7 +713,7 @@ func seedProjectListCacheProject(t *testing.T, db *gorm.DB, user models.User, ti
 		require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 			ProjectID: project.ID,
 			Platform:  platform,
-			Status:    models.PublicationStatusPublished,
+			Status:    models.PublicationStatusSucceeded,
 		}).Error)
 	}
 	return project
@@ -747,7 +747,7 @@ func seedWorkspaceProjectListCacheProject(t *testing.T, db *gorm.DB, user models
 		require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 			ProjectID: project.ID,
 			Platform:  platform,
-			Status:    models.PublicationStatusPublished,
+			Status:    models.PublicationStatusSucceeded,
 		}).Error)
 	}
 	return project

@@ -46,7 +46,7 @@ func (s *Service) SyncProjectPrepublish(projectID uuid.UUID, userID uuid.UUID, r
 	}
 	if len(platforms) == 0 {
 		for _, publication := range project.Publications {
-			if publication.Enabled && publication.Status != models.PublicationStatusDisabled {
+			if publication.Enabled && publication.Status != models.PublicationStatusCancelled {
 				platforms = append(platforms, publication.Platform)
 			}
 		}
@@ -112,7 +112,7 @@ func (s *Service) ensurePrepublishPublications(project *models.Project, platform
 				return err
 			}
 
-			if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
+			if !publication.Enabled || publication.Status == models.PublicationStatusCancelled {
 				if err := tx.Model(&publication).Updates(map[string]any{
 					"draft_status":  models.PublicationDraftStatusUnsynced,
 					"enabled":       true,
@@ -250,7 +250,7 @@ func (s *Service) UpdateProjectPrepublishDraft(projectID uuid.UUID, userID uuid.
 		"remote_id":       "",
 		"review_status":   models.PublicationReviewStatusDraft,
 		"retry_count":     0,
-		"status":          models.PublicationStatusAdapted,
+		"status":          models.PublicationStatusDraft,
 		"sync_required":   false,
 	}).Error; err != nil {
 		return nil, err

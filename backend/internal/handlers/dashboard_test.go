@@ -574,7 +574,7 @@ func TestUserDashboardHandlerListExtensionPrepublishReturnsCurrentUserItems(t *t
 		ProjectID:      project.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: []byte(`{"text":"douyin preview"}`),
 	}).Error)
 
@@ -622,7 +622,7 @@ func TestUserDashboardHandlerCreateExtensionHandoffReturnsHandoff(t *testing.T) 
 		ProjectID:      project.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: []byte(`{"format":"text","text":"douyin body"}`),
 	}).Error)
 
@@ -675,7 +675,7 @@ func TestUserDashboardHandlerRecordExtensionEventAcceptsCallbackTokenWithoutUser
 		ProjectID:      project.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: []byte(`{"format":"text","text":"douyin body"}`),
 	}).Error)
 	handoff, err := service.CreateExtensionHandoff(user.ID, dto.CreateExtensionHandoffRequest{
@@ -816,7 +816,7 @@ func TestUserDashboardHandlerGetAndUpdateProject(t *testing.T) {
 		ProjectID: project.ID,
 		Platform:  "wechat",
 		Enabled:   true,
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	}).Error)
 
 	getContext, getRecorder := newHandlerTestContext(e, http.MethodGet, "/api/user/dashboard/projects/"+project.ID.String())
@@ -1434,7 +1434,7 @@ func TestUserDashboardHandlerSaveProjectContentPreservesPrepublishDraft(t *testi
 		ProjectID:      project.ID,
 		Platform:       "zhihu",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: []byte(`{"format":"markdown","markdown":"AI draft"}`),
 	}).Error)
 
@@ -1460,7 +1460,7 @@ func TestUserDashboardHandlerSaveProjectContentPreservesPrepublishDraft(t *testi
 
 	var publication models.ProjectPlatformPublication
 	require.NoError(t, db.First(&publication, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
-	require.Equal(t, models.PublicationStatusAdapted, publication.Status)
+	require.Equal(t, models.PublicationStatusDraft, publication.Status)
 	require.JSONEq(t, `{"format":"markdown","markdown":"AI draft"}`, string(publication.AdaptedContent))
 }
 
@@ -1483,14 +1483,14 @@ func TestUserDashboardHandlerSaveProjectPlatformsPreservesSelectedDrafts(t *test
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: []byte(`{"format":"html","html":"Wechat draft"}`),
 	}).Error)
 	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "zhihu",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: []byte(`{"format":"markdown","markdown":"Zhihu AI draft"}`),
 	}).Error)
 
@@ -1512,12 +1512,12 @@ func TestUserDashboardHandlerSaveProjectPlatformsPreservesSelectedDrafts(t *test
 	var wechat models.ProjectPlatformPublication
 	require.NoError(t, db.First(&wechat, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
 	require.False(t, wechat.Enabled)
-	require.Equal(t, models.PublicationStatusDisabled, wechat.Status)
+	require.Equal(t, models.PublicationStatusCancelled, wechat.Status)
 
 	var zhihu models.ProjectPlatformPublication
 	require.NoError(t, db.First(&zhihu, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
 	require.True(t, zhihu.Enabled)
-	require.Equal(t, models.PublicationStatusAdapted, zhihu.Status)
+	require.Equal(t, models.PublicationStatusDraft, zhihu.Status)
 	require.JSONEq(t, `{"format":"markdown","markdown":"Zhihu AI draft"}`, string(zhihu.AdaptedContent))
 }
 
@@ -1573,7 +1573,7 @@ func TestUserDashboardHandlerSyncProjectPrepublish(t *testing.T) {
 		ProjectID: project.ID,
 		Platform:  "zhihu",
 		Enabled:   true,
-		Status:    models.PublicationStatusPending,
+		Status:    models.PublicationStatusDraft,
 		Config:    []byte(`{"title":"Sync title"}`),
 	}).Error)
 
@@ -1597,7 +1597,7 @@ func TestUserDashboardHandlerSyncProjectPrepublish(t *testing.T) {
 	require.Equal(t, project.ID, resp.ProjectID)
 	require.Len(t, resp.Items, 1)
 	require.Equal(t, "zhihu", resp.Items[0].Platform)
-	require.Equal(t, models.PublicationStatusAdapted, resp.Items[0].Status)
+	require.Equal(t, models.PublicationStatusDraft, resp.Items[0].Status)
 	require.Equal(t, "markdown", resp.Items[0].AdaptedContent["format"])
 	require.Contains(t, resp.Items[0].AdaptedContent["markdown"], "**sync**")
 }
@@ -1671,7 +1671,7 @@ func TestUserDashboardHandlerUpdateProjectPrepublishDraft(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "zhihu",
 		Enabled:        true,
-		Status:         models.PublicationStatusPublished,
+		Status:         models.PublicationStatusSucceeded,
 		AdaptedContent: []byte(`{"format":"markdown","markdown":"# Old"}`),
 		RemoteID:       "remote-id",
 		PublishURL:     "https://example.com/post",
@@ -1696,7 +1696,7 @@ func TestUserDashboardHandlerUpdateProjectPrepublishDraft(t *testing.T) {
 	var resp dto.ProjectPublicationsResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Len(t, resp.Items, 1)
-	require.Equal(t, models.PublicationStatusAdapted, resp.Items[0].Status)
+	require.Equal(t, models.PublicationStatusDraft, resp.Items[0].Status)
 	require.Equal(t, "## Updated", resp.Items[0].AdaptedContent["markdown"])
 	require.Empty(t, resp.Items[0].PublishURL)
 	require.Empty(t, resp.Items[0].RemoteID)
@@ -1930,7 +1930,7 @@ func TestUserDashboardHandlerPublishProjectRejectsDisabledPublication(t *testing
 		ProjectID: project.ID,
 		Platform:  "wechat",
 		Enabled:   false,
-		Status:    models.PublicationStatusDisabled,
+		Status:    models.PublicationStatusCancelled,
 	}).Error)
 
 	req := httptest.NewRequest(
@@ -1972,7 +1972,7 @@ func TestUserDashboardHandlerCreatesXManualPublishIntent(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "x",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: []byte(`{"text":"manual x post"}`),
 	}).Error)
 

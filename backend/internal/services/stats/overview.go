@@ -75,7 +75,7 @@ func (s *Service) computeStats(scopeUserID *uuid.UUID) (*dto.DashboardStatsRespo
 	}
 
 	// Published publications count
-	pubPubQuery := readDB.Model(&models.ProjectPlatformPublication{}).Where("project_platform_publications.status = ?", models.PublicationStatusPublished)
+	pubPubQuery := readDB.Model(&models.ProjectPlatformPublication{}).Where("project_platform_publications.status = ?", models.PublicationStatusSucceeded)
 	if scopeUserID != nil {
 		pubPubQuery = pubPubQuery.Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
 			Scopes(func(db *gorm.DB) *gorm.DB {
@@ -330,7 +330,7 @@ func (s *Service) computeWorkspaceStats(workspaceID uuid.UUID) (*dto.DashboardSt
 	pubQuery := readDB.Model(&models.ProjectPlatformPublication{}).
 		Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
 		Where(where, args...)
-	if err := pubQuery.Where("project_platform_publications.status = ?", models.PublicationStatusPublished).
+	if err := pubQuery.Where("project_platform_publications.status = ?", models.PublicationStatusSucceeded).
 		Count(&stats.TotalPublishedPublications).Error; err != nil {
 		return nil, err
 	}

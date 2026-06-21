@@ -516,15 +516,22 @@ spec:
                   backup_dir="/backups/redis-cluster/$(date -u +%Y%m%dT%H%M%SZ)"
                   mkdir -p "$backup_dir"
                   first_node="${REDIS_CLUSTER_NODES%% *}"
-                  # redis-cluster-0.redis-cluster-headless.mpp-system.svc.cluster.local is the backup anchor.
+                  # REDIS_CLUSTER_NODES targets redis-cluster-headless.mpp-system.svc.cluster.local pod DNS entries.
                   for node in $REDIS_CLUSTER_NODES; do
                     host="${node%:*}"
                     port="${node##*:}"
-                    redis-cli --tls --cacert /tls/ca.crt --cert /tls/tls.crt --key /tls/tls.key --no-auth-warning -a "$REDIS_PASSWORD" -h "$host" -p "$port" BGSAVE SCHEDULE || true
-                    redis-cli --tls --cacert /tls/ca.crt --cert /tls/tls.crt --key /tls/tls.key --no-auth-warning -a "$REDIS_PASSWORD" -h "$host" -p "$port" CLUSTER NODES > "$backup_dir/${host}.cluster-nodes.txt"
+                    redis_cli() {
+                      redis-cli --tls --cacert /tls/ca.crt --cert /tls/tls.crt --key /tls/tls.key --no-auth-warning -a "$REDIS_PASSWORD" -h "$host" -p "$port" "$@"
+                    }
+                    redis_cli BGSAVE SCHEDULE || true
+                    redis_cli CLUSTER NODES > "$backup_dir/${host}.cluster-nodes.txt"
+                    role="$(redis_cli INFO replication | tr -d '\r' | awk -F: '/^role:/{print $2}')"
+                    if [ "$role" = "master" ]; then
+                      redis-cli --tls --cacert /tls/ca.crt --cert /tls/tls.crt --key /tls/tls.key --no-auth-warning -a "$REDIS_PASSWORD" -h "$host" -p "$port" --rdb "$backup_dir/${host}.rdb"
+                    fi
                   done
                   echo "$first_node" > "$backup_dir/cluster-source.txt"
-                  echo "Redis Cluster backup marker written to $backup_dir"
+                  echo "Redis Cluster RDB exports and topology files written to $backup_dir"
               resources:
                 requests:
                   cpu: 25m

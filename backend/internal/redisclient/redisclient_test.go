@@ -2,8 +2,15 @@ package redisclient
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -225,6 +232,22 @@ func TestConfigFromEnvBuildsTLSOptionsFromCAFile(t *testing.T) {
 	require.NotNil(t, options.TLSConfig.RootCAs)
 }
 
+func TestConfigFromEnvBuildsTLSOptionsWithClientCertificate(t *testing.T) {
+	clearRedisEnv(t)
+	certFile, keyFile := writeTestRedisClientCertificate(t)
+	t.Setenv(addrEnv, "redis.example.invalid:6379")
+	t.Setenv(tlsEnv, "true")
+	t.Setenv(tlsCertFileEnv, certFile)
+	t.Setenv(tlsKeyFileEnv, keyFile)
+
+	config, err := ConfigFromEnv()
+	require.NoError(t, err)
+
+	options := options(config, RoleDefault)
+	require.NotNil(t, options.TLSConfig)
+	require.Len(t, options.TLSConfig.Certificates, 1)
+}
+
 func TestConfigFromEnvRejectsInvalidTLSCA(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -252,6 +275,33 @@ func TestConfigFromEnvRejectsInvalidTLSCA(t *testing.T) {
 
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tt.envName)
+		})
+	}
+}
+
+func TestConfigFromEnvRejectsIncompleteTLSClientCertificate(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+	}{
+		{name: "missing key", env: map[string]string{tlsCertFileEnv: "/tmp/redis-client.crt"}},
+		{name: "missing cert", env: map[string]string{tlsKeyFileEnv: "/tmp/redis-client.key"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearRedisEnv(t)
+			t.Setenv(addrEnv, "redis.example.invalid:6379")
+			t.Setenv(tlsEnv, "true")
+			for key, value := range tt.env {
+				t.Setenv(key, value)
+			}
+
+			_, err := ConfigFromEnv()
+
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tlsCertFileEnv)
+			require.Contains(t, err.Error(), tlsKeyFileEnv)
 		})
 	}
 }
@@ -448,6 +498,8 @@ func clearRedisEnv(t *testing.T) {
 		tlsEnv,
 		tlsCACertEnv,
 		tlsCAFileEnv,
+		tlsCertFileEnv,
+		tlsKeyFileEnv,
 		tlsServerNameEnv,
 		sentinelAddrsEnv,
 		sentinelMasterEnv,
@@ -459,6 +511,31 @@ func clearRedisEnv(t *testing.T) {
 	} {
 		t.Setenv(name, "")
 	}
+}
+
+func writeTestRedisClientCertificate(t *testing.T) (string, string) {
+	t.Helper()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "redis-client"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	require.NoError(t, err)
+	keyDER := x509.MarshalPKCS1PrivateKey(privateKey)
+
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "redis-client.crt")
+	keyFile := filepath.Join(dir, "redis-client.key")
+	require.NoError(t, os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER}), 0o600))
+	require.NoError(t, os.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyDER}), 0o600))
+	return certFile, keyFile
 }
 
 const testRedisCACertPEM = `-----BEGIN CERTIFICATE-----

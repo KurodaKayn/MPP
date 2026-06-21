@@ -299,6 +299,11 @@ function redisTLSOptionsFromConfig(
   if (ca) {
     (options as TLSConnectionOptions).ca = ca;
   }
+  const clientCertificate = redisTLSClientCertificateFromConfig(config);
+  if (clientCertificate) {
+    (options as TLSConnectionOptions).cert = clientCertificate.cert;
+    (options as TLSConnectionOptions).key = clientCertificate.key;
+  }
   if (config.REDIS_TLS_SERVER_NAME.trim()) {
     (options as TLSConnectionOptions).servername =
       config.REDIS_TLS_SERVER_NAME.trim();
@@ -316,6 +321,25 @@ function redisTLSCAFromConfig(config: CollabConfig): string | undefined {
     return readFileSync(caFile, "utf8");
   }
   return undefined;
+}
+
+function redisTLSClientCertificateFromConfig(
+  config: CollabConfig,
+): { cert: string; key: string } | undefined {
+  const certFile = config.REDIS_TLS_CERT_FILE.trim();
+  const keyFile = config.REDIS_TLS_KEY_FILE.trim();
+  if (!certFile && !keyFile) {
+    return undefined;
+  }
+  if (!certFile || !keyFile) {
+    throw new Error(
+      "REDIS_TLS_CERT_FILE and REDIS_TLS_KEY_FILE must be set together",
+    );
+  }
+  return {
+    cert: readFileSync(certFile, "utf8"),
+    key: readFileSync(keyFile, "utf8"),
+  };
 }
 
 export function redisSentinelOptionsFromConfig(

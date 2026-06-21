@@ -7,11 +7,13 @@ the intended production-style shape without changing production Redis:
 - TLS-only Redis traffic on `6379` and Cluster bus traffic on `16379`.
 - Password auth from `mpp-app-secrets/REDIS_PASSWORD`.
 - TLS material from a pre-created `mpp-redis-cluster-tls` Secret with
-  `ca.crt`, `tls.crt`, and `tls.key`.
+  `ca.crt`, `tls.crt`, and `tls.key`; app clients authenticate with Redis
+  password auth plus the mounted client certificate and key.
 - A bootstrap Job that runs `redis-cli --cluster create` with one replica per
   master.
 - A cluster-aware `redis_exporter` Deployment for per-node and slot metrics.
-- A backup CronJob that schedules node snapshots and records Cluster topology.
+- A backup CronJob that exports RDB files from primary nodes and records
+  Cluster topology.
 
 It intentionally does not replace the existing `redis` Service or switch app
 traffic by default. Non-production apps keep using `REDIS_ENDPOINT_MODE=direct`
@@ -53,7 +55,7 @@ Record every drill in this table before promoting Cluster settings elsewhere.
 | Slots | `redis-cli --tls --cacert ca.crt -a "$REDIS_PASSWORD" -h redis-cluster-0.redis-cluster-headless.mpp-system.svc.cluster.local CLUSTER SLOTS` | Slots `0..16383` covered | |
 | Failover | `redis-cli --tls --cacert ca.crt -a "$REDIS_PASSWORD" -h <replica> CLUSTER FAILOVER` | Replica promoted and clients recover | |
 | Reshard | `redis-cli --tls --cacert ca.crt -a "$REDIS_PASSWORD" --cluster reshard <node>:6379` | Slots move without uncovered slots | |
-| Backup | `kubectl create job --from=cronjob/redis-cluster-backup redis-cluster-backup-manual -n "$MPP_APP_NS"` | Backup marker and topology files created | |
+| Backup | `kubectl create job --from=cronjob/redis-cluster-backup redis-cluster-backup-manual -n "$MPP_APP_NS"` | RDB files for primary nodes plus topology files created | |
 | Restore | Restore RDB/AOF data into a fresh non-prod Cluster and run `CLUSTER INFO` | `cluster_state:ok`; sampled app keys read back | |
 | Metrics | Scrape `redis-cluster-exporter:9121/metrics` | Per-node, memory, command, keyspace, and Cluster metrics visible | |
 | Hot keys | `redis-cli --tls --cacert ca.crt -a "$REDIS_PASSWORD" --hotkeys -h <node>` | Hot-key sample recorded or provider gap noted | |
@@ -78,6 +80,9 @@ Only use Cluster mode in non-production after the validation record is complete:
 REDIS_ENDPOINT_MODE: cluster
 REDIS_ADDR: redis-cluster.mpp-system.svc.cluster.local:6379
 REDIS_TLS: "true"
+REDIS_TLS_CA_FILE: /etc/mpp/redis/ca.crt
+REDIS_TLS_CERT_FILE: /etc/mpp/redis/tls.crt
+REDIS_TLS_KEY_FILE: /etc/mpp/redis/tls.key
 ```
 
 To roll back app traffic, patch the direct-mode values and restart the

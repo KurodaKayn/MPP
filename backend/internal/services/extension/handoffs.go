@@ -138,7 +138,7 @@ func (s *Service) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensi
 				}
 				return err
 			}
-			if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
+			if !publication.Enabled || publication.Status == models.PublicationStatusCancelled {
 				return ErrPublicationDisabled
 			}
 			adaptedContent, err := extensionHandoffAdaptedContent(publication.AdaptedContent)
@@ -269,7 +269,7 @@ func extensionPublicationUpdatesForEvent(event models.ExtensionExecutionEvent) m
 	switch event.Status {
 	case "user_review":
 		updates := map[string]any{
-			"status":        models.PublicationStatusAdapted,
+			"status":        models.PublicationStatusDraft,
 			"draft_status":  models.PublicationDraftStatusReady,
 			"review_status": models.PublicationReviewStatusReviewing,
 			"error_message": "",

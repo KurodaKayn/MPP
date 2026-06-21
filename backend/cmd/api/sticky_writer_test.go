@@ -27,7 +27,7 @@ func TestServerStickyWriterCookieRoutesAdminStatsToWriter(t *testing.T) {
 	writer := testsupport.SetupTestDB()
 	reader := testsupport.SetupTestDB()
 	router := dbrouter.NewRouter(writer, dbrouter.WithReader(reader))
-	seedAdminStatsRouteDatabase(t, writer, "writer", 1, models.PublicationStatusPublished)
+	seedAdminStatsRouteDatabase(t, writer, "writer", 1, models.PublicationStatusSucceeded)
 	seedAdminStatsRouteDatabase(t, reader, "reader", 2, models.PublicationStatusFailed)
 
 	server, err := newServer(serverConfig{
@@ -65,7 +65,7 @@ func TestServerRejectsForgedStickyWriterCookie(t *testing.T) {
 	writer := testsupport.SetupTestDB()
 	reader := testsupport.SetupTestDB()
 	router := dbrouter.NewRouter(writer, dbrouter.WithReader(reader))
-	seedAdminStatsRouteDatabase(t, writer, "writer", 1, models.PublicationStatusPublished)
+	seedAdminStatsRouteDatabase(t, writer, "writer", 1, models.PublicationStatusSucceeded)
 	seedAdminStatsRouteDatabase(t, reader, "reader", 2, models.PublicationStatusFailed)
 
 	server, err := newServer(serverConfig{
@@ -102,7 +102,7 @@ func TestServerEventualAdminStatsStillUseReaderWithoutStickyCookie(t *testing.T)
 	writer := testsupport.SetupTestDB()
 	reader := testsupport.SetupTestDB()
 	router := dbrouter.NewRouter(writer, dbrouter.WithReader(reader))
-	seedAdminStatsRouteDatabase(t, writer, "writer", 1, models.PublicationStatusPublished)
+	seedAdminStatsRouteDatabase(t, writer, "writer", 1, models.PublicationStatusSucceeded)
 	seedAdminStatsRouteDatabase(t, reader, "reader", 2, models.PublicationStatusFailed)
 
 	server, err := newServer(serverConfig{

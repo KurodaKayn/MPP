@@ -52,7 +52,7 @@ func ReconcileSelected(tx *gorm.DB, projectID uuid.UUID, platforms []string, mod
 			continue
 		}
 
-		if mode == ReconcileResetAll || !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
+		if mode == ReconcileResetAll || !publication.Enabled || publication.Status == models.PublicationStatusCancelled {
 			config, err := configForPlatform(publication.Platform)
 			if err != nil {
 				return nil, err
@@ -104,7 +104,7 @@ func createPendingPublication(projectID uuid.UUID, platform string, config datat
 		ProjectID:      projectID,
 		Platform:       platform,
 		Enabled:        true,
-		Status:         models.PublicationStatusPending,
+		Status:         models.PublicationStatusDraft,
 		SyncRequired:   true,
 		Config:         config,
 		AdaptedContent: datatypes.JSON([]byte(`{}`)),
@@ -115,7 +115,7 @@ func disablePublication(tx *gorm.DB, publication models.ProjectPlatformPublicati
 	return tx.Model(&publication).Updates(map[string]any{
 		"enabled":       false,
 		"error_message": "",
-		"status":        models.PublicationStatusDisabled,
+		"status":        models.PublicationStatusCancelled,
 	})
 }
 
@@ -124,7 +124,7 @@ func resetPublicationForDraft(tx *gorm.DB, publication models.ProjectPlatformPub
 		"draft_status":  models.PublicationDraftStatusUnsynced,
 		"enabled":       true,
 		"review_status": models.PublicationReviewStatusDraft,
-		"status":        models.PublicationStatusPending,
+		"status":        models.PublicationStatusDraft,
 		"sync_required": true,
 	}
 	if mode == ReconcileResetAll {

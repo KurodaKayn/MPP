@@ -36,7 +36,7 @@ func TestGetStats(t *testing.T) {
 	db.Create(&p1)
 	db.Create(&p2)
 
-	db.Create(&models.ProjectPlatformPublication{ProjectID: p1.ID, Platform: "wechat", Status: models.PublicationStatusPublished})
+	db.Create(&models.ProjectPlatformPublication{ProjectID: p1.ID, Platform: "wechat", Status: models.PublicationStatusSucceeded})
 	db.Create(&models.ProjectPlatformPublication{ProjectID: p2.ID, Platform: "zhihu", Status: models.PublicationStatusFailed})
 
 	// Test Admin scope (nil scopeUserID)
@@ -77,7 +77,7 @@ func TestGetStatsUsesCompleteWorkspaceReadModel(t *testing.T) {
 			UpdatedAt:     now,
 		}
 		require.NoError(t, db.Create(&project).Error)
-		publicationStatus := models.PublicationStatusPublished
+		publicationStatus := models.PublicationStatusSucceeded
 		if i >= 5 {
 			publicationStatus = models.PublicationStatusFailed
 		}
@@ -146,7 +146,7 @@ func TestGetStatsCachesGlobalDashboardStats(t *testing.T) {
 	s := services.NewDashboardService(db)
 	s.UseRedis(redisClient)
 
-	seedStatsOverviewProject(t, db, "cached-a", models.PublicationStatusPublished)
+	seedStatsOverviewProject(t, db, "cached-a", models.PublicationStatusSucceeded)
 
 	stats, err := s.WithContext(context.Background()).GetStats(nil)
 	require.NoError(t, err)
@@ -185,7 +185,7 @@ func TestCreateProjectInvalidatesDashboardStatsCache(t *testing.T) {
 	s := services.NewDashboardService(db)
 	s.UseRedis(redisClient)
 
-	user := seedStatsOverviewProject(t, db, "stats-create", models.PublicationStatusPublished)
+	user := seedStatsOverviewProject(t, db, "stats-create", models.PublicationStatusSucceeded)
 
 	stats, err := s.WithContext(context.Background()).GetStats(nil)
 	require.NoError(t, err)
@@ -213,7 +213,7 @@ func TestStatsCacheIgnoresStaleRefillAfterInvalidation(t *testing.T) {
 	s.UseRedis(redisClient)
 	ctx := context.Background()
 
-	user := seedStatsOverviewProject(t, db, "stats-cache-race", models.PublicationStatusPublished)
+	user := seedStatsOverviewProject(t, db, "stats-cache-race", models.PublicationStatusSucceeded)
 
 	first, err := s.WithContext(ctx).GetStats(nil)
 	require.NoError(t, err)
@@ -307,7 +307,7 @@ func TestGetStatsBypassesCacheForStickyEventualCounts(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), readerStats.TotalFailedPublications)
 
-	seedStatsOverviewProject(t, writer, "writer", models.PublicationStatusPublished)
+	seedStatsOverviewProject(t, writer, "writer", models.PublicationStatusSucceeded)
 	stickyCtx := dbrouter.WithStickyWriter(context.Background(), time.Now().Add(time.Minute))
 
 	stickyStats, err := s.WithContext(stickyCtx).GetStats(nil)
@@ -324,7 +324,7 @@ func TestGetStatsFallsBackToDatabaseWhenCachedPayloadIsInvalid(t *testing.T) {
 	s := services.NewDashboardService(db)
 	s.UseRedis(redisClient)
 
-	seedStatsOverviewProject(t, db, "fallback", models.PublicationStatusPublished)
+	seedStatsOverviewProject(t, db, "fallback", models.PublicationStatusSucceeded)
 	_, err := s.WithContext(context.Background()).GetStats(nil)
 	require.NoError(t, err)
 	cacheKey := requireSingleStatsCacheKey(t, redisClient)
@@ -364,7 +364,7 @@ func TestGetStatsRepairsSemanticallyInvalidCachedPayload(t *testing.T) {
 	s := services.NewDashboardService(db)
 	s.UseRedis(redisClient)
 
-	seedStatsOverviewProject(t, db, "semantic-invalid-a", models.PublicationStatusPublished)
+	seedStatsOverviewProject(t, db, "semantic-invalid-a", models.PublicationStatusSucceeded)
 	_, err := s.WithContext(context.Background()).GetStats(nil)
 	require.NoError(t, err)
 	cacheKey := requireSingleStatsCacheKey(t, redisClient)
@@ -398,7 +398,7 @@ func TestGetStatsCachesScopedUserDashboardStats(t *testing.T) {
 	s := services.NewDashboardService(db)
 	s.UseRedis(redisClient)
 
-	user := seedStatsOverviewProject(t, db, "scoped-a", models.PublicationStatusPublished)
+	user := seedStatsOverviewProject(t, db, "scoped-a", models.PublicationStatusSucceeded)
 
 	stats, err := s.WithContext(context.Background()).GetStats(&user.ID)
 	require.NoError(t, err)
@@ -453,7 +453,7 @@ func TestGetStatsBypassesScopedCacheForStickyWriter(t *testing.T) {
 	s := services.NewDashboardService(db)
 	s.UseRedis(redisClient)
 
-	user := seedStatsOverviewProject(t, db, "scoped-sticky", models.PublicationStatusPublished)
+	user := seedStatsOverviewProject(t, db, "scoped-sticky", models.PublicationStatusSucceeded)
 
 	stats, err := s.WithContext(context.Background()).GetStats(&user.ID)
 	require.NoError(t, err)
@@ -492,7 +492,7 @@ func TestGetWorkspaceStatsCachesScopedDashboardStats(t *testing.T) {
 
 	owner := seedStatsUser(t, db, "workspace-cache-owner")
 	workspaceID := seedStatsWorkspace(t, db, owner, "workspace-cache")
-	seedStatsWorkspaceProject(t, db, owner.ID, workspaceID, "workspace-cache-a", models.PublicationStatusPublished)
+	seedStatsWorkspaceProject(t, db, owner.ID, workspaceID, "workspace-cache-a", models.PublicationStatusSucceeded)
 
 	stats, err := s.WithContext(context.Background()).GetWorkspaceStats(workspaceID, owner.ID)
 	require.NoError(t, err)
@@ -578,7 +578,7 @@ func TestWorkspaceMembershipInvalidatesScopedStatsCache(t *testing.T) {
 	owner := seedStatsUser(t, db, "membership-cache-owner")
 	member := seedStatsUser(t, db, "membership-cache-member")
 	workspaceID := seedStatsWorkspace(t, db, owner, "membership-cache")
-	seedStatsWorkspaceProject(t, db, owner.ID, workspaceID, "membership-cache-project", models.PublicationStatusPublished)
+	seedStatsWorkspaceProject(t, db, owner.ID, workspaceID, "membership-cache-project", models.PublicationStatusSucceeded)
 
 	beforeStats, err := s.WithContext(ctx).GetStats(&member.ID)
 	require.NoError(t, err)
@@ -708,7 +708,7 @@ func TestGetWorkspaceStatsFallbackIncludesLegacyPersonalProjects(t *testing.T) {
 		ID:        uuid.New(),
 		ProjectID: project.ID,
 		Platform:  "wechat",
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	}).Error)
 	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 		ID:        uuid.New(),
@@ -737,7 +737,7 @@ func TestGetStatsUsesReaderForEventualCounts(t *testing.T) {
 	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
 		ProjectID: project.ID,
 		Platform:  "wechat",
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	}).Error)
 
 	var writerUsers int64
@@ -762,7 +762,7 @@ func TestGetStatsCollapsesConcurrentCacheMisses(t *testing.T) {
 	s := services.NewDashboardService(db)
 	s.UseRedis(redisClient)
 
-	seedStatsOverviewProject(t, db, "stats-singleflight", models.PublicationStatusPublished)
+	seedStatsOverviewProject(t, db, "stats-singleflight", models.PublicationStatusSucceeded)
 
 	queryCount := registerBlockingStatsQueryCounter(t, db)
 	results := runConcurrentStatsRequests(t, s, queryCount)
@@ -985,7 +985,7 @@ func seedStatsLifecycleProject(t *testing.T, db *gorm.DB, prefix string) (models
 		ProjectID: project.ID,
 		Platform:  "wechat",
 		Enabled:   true,
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	}).Error)
 	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 		ProjectID: project.ID,
@@ -1066,7 +1066,7 @@ func TestGetStatsUsesWriterForStickyEventualCounts(t *testing.T) {
 	require.NoError(t, writer.Create(&models.ProjectPlatformPublication{
 		ProjectID: writerProject.ID,
 		Platform:  "wechat",
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	}).Error)
 
 	readerUser := models.User{Username: "stale-reader-user", Email: "stale-reader-user@example.com", PasswordHash: "hash"}
@@ -1104,7 +1104,7 @@ func TestGetStatsUsesWriterForScopedCounts(t *testing.T) {
 	require.NoError(t, writer.Create(&models.ProjectPlatformPublication{
 		ProjectID: currentProject.ID,
 		Platform:  "wechat",
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	}).Error)
 
 	staleProject := models.Project{UserID: user.ID, Title: "stale-reader-project", SourceContent: "content", Status: models.ProjectStatusReady}
@@ -1112,7 +1112,7 @@ func TestGetStatsUsesWriterForScopedCounts(t *testing.T) {
 	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
 		ProjectID: staleProject.ID,
 		Platform:  "wechat",
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	}).Error)
 	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
 		ProjectID: staleProject.ID,

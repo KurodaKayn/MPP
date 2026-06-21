@@ -35,7 +35,7 @@ func TestListProjects(t *testing.T) {
 	db.Create(&p2)
 	db.Create(&p3)
 
-	db.Create(&models.ProjectPlatformPublication{ProjectID: p1.ID, Platform: "wechat", Status: models.PublicationStatusPublished, PublishURL: "url1"})
+	db.Create(&models.ProjectPlatformPublication{ProjectID: p1.ID, Platform: "wechat", Status: models.PublicationStatusSucceeded, PublishURL: "url1"})
 
 	// Test global admin pagination
 	res, err := s.ListProjects(1, 10, "", "", "", nil)
@@ -218,7 +218,7 @@ func TestListProjectsUsesReaderForAdminList(t *testing.T) {
 	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
 		ProjectID: project.ID,
 		Platform:  "wechat",
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	}).Error)
 
 	var writerProjects int64
@@ -303,7 +303,7 @@ func TestGetProjectUsesReaderForAdminDetail(t *testing.T) {
 	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
 		ProjectID:  project.ID,
 		Platform:   "wechat",
-		Status:     models.PublicationStatusPublished,
+		Status:     models.PublicationStatusSucceeded,
 		PublishURL: "https://example.test/reader",
 	}).Error)
 
@@ -408,7 +408,7 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 
 	var wechatPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", resp.ID, "wechat").Error)
-	assert.Equal(t, models.PublicationStatusPending, wechatPub.Status)
+	assert.Equal(t, models.PublicationStatusDraft, wechatPub.Status)
 
 	var config map[string]string
 	require.NoError(t, json.Unmarshal(wechatPub.Config, &config))
@@ -422,7 +422,7 @@ func TestCreateProjectCreatesSelectedPublications(t *testing.T) {
 
 	var douyinPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", resp.ID, "douyin").Error)
-	assert.Equal(t, models.PublicationStatusPending, douyinPub.Status)
+	assert.Equal(t, models.PublicationStatusDraft, douyinPub.Status)
 }
 
 func TestCreateProjectAppliesContentTemplateDefaults(t *testing.T) {
@@ -591,7 +591,7 @@ func TestGetProjectReturnsSourceContentForOwner(t *testing.T) {
 		ProjectID: project.ID,
 		Platform:  "wechat",
 		Enabled:   true,
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	})
 	db.Create(&models.ProjectCollaborator{
 		ProjectID: project.ID,
@@ -638,7 +638,7 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 		ProjectID:    project.ID,
 		Platform:     "wechat",
 		Enabled:      true,
-		Status:       models.PublicationStatusPublished,
+		Status:       models.PublicationStatusSucceeded,
 		PublishURL:   "https://example.com/old",
 		RemoteID:     "old-remote",
 		PublishedAt:  &publishedAt,
@@ -674,12 +674,12 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 	var wechatPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
 	assert.False(t, wechatPub.Enabled)
-	assert.Equal(t, models.PublicationStatusDisabled, wechatPub.Status)
+	assert.Equal(t, models.PublicationStatusCancelled, wechatPub.Status)
 
 	var zhihuPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
 	assert.True(t, zhihuPub.Enabled)
-	assert.Equal(t, models.PublicationStatusPending, zhihuPub.Status)
+	assert.Equal(t, models.PublicationStatusDraft, zhihuPub.Status)
 	assert.Empty(t, zhihuPub.ErrorMessage)
 	assert.Empty(t, zhihuPub.PublishURL)
 	assert.Nil(t, zhihuPub.PublishedAt)
@@ -687,7 +687,7 @@ func TestUpdateProjectRebuildsSelectedPublications(t *testing.T) {
 	var douyinPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", project.ID, "douyin").Error)
 	assert.True(t, douyinPub.Enabled)
-	assert.Equal(t, models.PublicationStatusPending, douyinPub.Status)
+	assert.Equal(t, models.PublicationStatusDraft, douyinPub.Status)
 
 	_, err = s.UpdateProject(project.ID, stranger.ID, dto.UpdateProjectRequest{
 		Title:         "Not allowed",
@@ -740,7 +740,7 @@ func TestUpdateProjectSyncsLinkedCollabDocumentSnapshot(t *testing.T) {
 		ProjectID: project.ID,
 		Platform:  "wechat",
 		Enabled:   true,
-		Status:    models.PublicationStatusPending,
+		Status:    models.PublicationStatusDraft,
 	}).Error)
 
 	updated, err := s.UpdateProject(project.ID, owner.ID, dto.UpdateProjectRequest{
@@ -795,7 +795,7 @@ func TestUpdateProjectPreservesRequestContentForUninitializedLinkedCollabDocumen
 		ProjectID: project.ID,
 		Platform:  "wechat",
 		Enabled:   true,
-		Status:    models.PublicationStatusPending,
+		Status:    models.PublicationStatusDraft,
 	}).Error)
 
 	updated, err := s.UpdateProject(project.ID, owner.ID, dto.UpdateProjectRequest{
@@ -837,7 +837,7 @@ func TestUpdateProjectAllowsEditorAndRejectsViewer(t *testing.T) {
 		ProjectID: project.ID,
 		Platform:  "wechat",
 		Enabled:   true,
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	}).Error)
 	require.NoError(t, db.Create(&models.ProjectCollaborator{
 		ProjectID: project.ID,
@@ -865,12 +865,12 @@ func TestUpdateProjectAllowsEditorAndRejectsViewer(t *testing.T) {
 	var wechatPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
 	require.False(t, wechatPub.Enabled)
-	require.Equal(t, models.PublicationStatusDisabled, wechatPub.Status)
+	require.Equal(t, models.PublicationStatusCancelled, wechatPub.Status)
 
 	var zhihuPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
 	require.True(t, zhihuPub.Enabled)
-	require.Equal(t, models.PublicationStatusPending, zhihuPub.Status)
+	require.Equal(t, models.PublicationStatusDraft, zhihuPub.Status)
 
 	_, err = s.UpdateProject(project.ID, viewer.ID, dto.UpdateProjectRequest{
 		Title:         "Viewer title",
@@ -1102,7 +1102,7 @@ func TestSaveProjectPlatformsAllowsEditorAndRejectsViewer(t *testing.T) {
 		ProjectID: project.ID,
 		Platform:  "wechat",
 		Enabled:   true,
-		Status:    models.PublicationStatusAdapted,
+		Status:    models.PublicationStatusDraft,
 	}).Error)
 	require.NoError(t, db.Create(&models.ProjectCollaborator{
 		ProjectID: project.ID,
@@ -1126,7 +1126,7 @@ func TestSaveProjectPlatformsAllowsEditorAndRejectsViewer(t *testing.T) {
 	var zhihuPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
 	require.True(t, zhihuPub.Enabled)
-	require.Equal(t, models.PublicationStatusPending, zhihuPub.Status)
+	require.Equal(t, models.PublicationStatusDraft, zhihuPub.Status)
 
 	_, err = s.SaveProjectPlatforms(project.ID, viewer.ID, dto.SaveProjectPlatformsRequest{
 		Platforms: []string{"wechat"},

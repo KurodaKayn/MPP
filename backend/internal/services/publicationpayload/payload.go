@@ -16,7 +16,7 @@ func BuildPending(title, summary, coverImageURL string) (datatypes.JSON, datatyp
 		return nil, nil, "", err
 	}
 
-	return config, datatypes.JSON([]byte(`{}`)), models.PublicationStatusPending, nil
+	return config, datatypes.JSON([]byte(`{}`)), models.PublicationStatusDraft, nil
 }
 
 func DefaultConfig(title, summary, coverImageURL string) (datatypes.JSON, error) {

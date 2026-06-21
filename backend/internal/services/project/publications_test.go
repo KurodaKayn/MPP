@@ -35,7 +35,7 @@ func TestGetProjectPublications(t *testing.T) {
 	pub := models.ProjectPlatformPublication{
 		ProjectID:      p.ID,
 		Platform:       "wechat",
-		Status:         models.PublicationStatusPublished,
+		Status:         models.PublicationStatusSucceeded,
 		Config:         datatypes.JSON(configJSON),
 		AdaptedContent: datatypes.JSON(contentJSON),
 	}
@@ -79,7 +79,7 @@ func TestGetProjectPublicationsUsesReaderForAdminDetail(t *testing.T) {
 	require.NoError(t, reader.Create(&models.ProjectPlatformPublication{
 		ProjectID:  project.ID,
 		Platform:   "wechat",
-		Status:     models.PublicationStatusPublished,
+		Status:     models.PublicationStatusSucceeded,
 		PublishURL: "https://example.test/reader",
 	}).Error)
 
@@ -88,7 +88,7 @@ func TestGetProjectPublicationsUsesReaderForAdminDetail(t *testing.T) {
 	require.Equal(t, project.ID, res.ProjectID)
 	require.Len(t, res.Items, 1)
 	require.Equal(t, "wechat", res.Items[0].Platform)
-	require.Equal(t, models.PublicationStatusPublished, res.Items[0].Status)
+	require.Equal(t, models.PublicationStatusSucceeded, res.Items[0].Status)
 }
 
 func TestGetProjectPublicationsUsesWriterForScopedDetail(t *testing.T) {
@@ -103,7 +103,7 @@ func TestGetProjectPublicationsUsesWriterForScopedDetail(t *testing.T) {
 	require.NoError(t, writer.Create(&models.ProjectPlatformPublication{
 		ProjectID: currentProject.ID,
 		Platform:  "wechat",
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	}).Error)
 
 	staleReaderProject := models.Project{
@@ -125,7 +125,7 @@ func TestGetProjectPublicationsUsesWriterForScopedDetail(t *testing.T) {
 	require.Equal(t, currentProject.ID, res.ProjectID)
 	require.Len(t, res.Items, 1)
 	require.Equal(t, "wechat", res.Items[0].Platform)
-	require.Equal(t, models.PublicationStatusPublished, res.Items[0].Status)
+	require.Equal(t, models.PublicationStatusSucceeded, res.Items[0].Status)
 }
 
 func TestGetProjectPublicationsUsesWriterForStickyAdminDetail(t *testing.T) {
@@ -142,7 +142,7 @@ func TestGetProjectPublicationsUsesWriterForStickyAdminDetail(t *testing.T) {
 	require.NoError(t, writer.Create(&models.ProjectPlatformPublication{
 		ProjectID: currentProject.ID,
 		Platform:  "wechat",
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	}).Error)
 
 	staleReaderProject := models.Project{
@@ -164,5 +164,5 @@ func TestGetProjectPublicationsUsesWriterForStickyAdminDetail(t *testing.T) {
 	require.Equal(t, currentProject.ID, res.ProjectID)
 	require.Len(t, res.Items, 1)
 	require.Equal(t, "wechat", res.Items[0].Platform)
-	require.Equal(t, models.PublicationStatusPublished, res.Items[0].Status)
+	require.Equal(t, models.PublicationStatusSucceeded, res.Items[0].Status)
 }

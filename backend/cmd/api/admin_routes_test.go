@@ -88,7 +88,7 @@ func newAdminRouteTestServer(t *testing.T, signingKey ...byte) http.Handler {
 		ID:        uuid.New(),
 		ProjectID: projectID,
 		Platform:  "wechat",
-		Status:    models.PublicationStatusPublished,
+		Status:    models.PublicationStatusSucceeded,
 	}).Error)
 
 	server, err := newServer(serverConfig{

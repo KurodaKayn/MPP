@@ -395,7 +395,7 @@ func TestEnqueuePublishProjectQueuesAndLocksPublication(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Queued post"}`),
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}).Error)
@@ -452,7 +452,7 @@ func TestEnqueuePublishProjectInvalidatesDashboardCaches(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Queued cache post"}`),
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}).Error)
@@ -503,7 +503,7 @@ func TestEnqueuePublishProjectRejectsProjectEditor(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Queued post"}`),
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}).Error)
@@ -543,7 +543,7 @@ func TestEnqueuePublishProjectRejectsProjectViewer(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Queued post"}`),
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}).Error)
@@ -578,7 +578,7 @@ func TestEnqueuePublishProjectReplaysDuplicateWhenLockWinsBeforeQueuedEvent(t *t
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Queued post"}`),
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}
@@ -635,7 +635,7 @@ func TestEnqueuePublishProjectDoesNotPersistScheduleWhenLockIsHeld(t *testing.T)
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Queued post"}`),
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}
@@ -681,7 +681,7 @@ func TestFlushScheduledPublicationsPublishesDueSchedules(t *testing.T) {
 		Platform:          "wechat",
 		PlatformAccountID: &account.ID,
 		Enabled:           true,
-		Status:            models.PublicationStatusAdapted,
+		Status:            models.PublicationStatusDraft,
 		Config:            datatypes.JSON(`{"title":"Scheduled post"}`),
 		AdaptedContent:    datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}
@@ -811,7 +811,7 @@ func TestEnqueuePublishProjectLeavesFailedDispatchInOutboxForRetry(t *testing.T)
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Queued post"}`),
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}).Error)
@@ -1086,7 +1086,7 @@ func TestEnqueuePublishProjectRejectsPublicationChangedToSyncingAfterLock(t *tes
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Queued post"}`),
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}
