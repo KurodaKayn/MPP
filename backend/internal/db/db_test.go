@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -130,6 +131,34 @@ func TestSyncSchemaAddsArchiveScanIndexes(t *testing.T) {
 	require.True(t, database.Migrator().HasIndex(&models.ProjectActivity{}, "idx_project_activities_archive_created_id"))
 	require.True(t, database.Migrator().HasIndex(&models.WorkspaceActivity{}, "idx_workspace_activities_archive_created_id"))
 	require.True(t, database.Migrator().HasIndex(&models.RemoteBrowserSession{}, "idx_remote_browser_sessions_archive_status_created_id"))
+}
+
+func TestMonthlyPartitionedEventModelsUsePartitionCompatiblePrimaryKeys(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, syncSchema(database))
+
+	for _, tableName := range []string{
+		"publish_events",
+		"extension_execution_events",
+		"project_activities",
+		"workspace_activities",
+	} {
+		primaryKeyColumns := sqlitePrimaryKeyColumns(t, database, tableName)
+
+		require.ElementsMatch(t, []string{"id", "created_at"}, primaryKeyColumns, tableName)
+	}
+}
+
+func TestCreateMonthlyPartitionSQLUsesMonthRange(t *testing.T) {
+	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	sql := createMonthlyPartitionSQL("publish_events", start, start.AddDate(0, 1, 0))
+
+	require.Contains(t, sql, `"publish_events_2026_06"`)
+	require.Contains(t, sql, `PARTITION OF "publish_events"`)
+	require.Contains(t, sql, `TIMESTAMPTZ '2026-06-01 00:00:00+00'`)
+	require.Contains(t, sql, `TIMESTAMPTZ '2026-07-01 00:00:00+00'`)
 }
 
 func TestConnectionPoolConfigFromEnvUsesDefaults(t *testing.T) {
@@ -447,4 +476,30 @@ func setDatabaseConnectionEnv(t *testing.T) {
 	t.Setenv("DB_PASSWORD", "postgres")
 	t.Setenv("DB_NAME", "poster_db")
 	t.Setenv("DB_PORT", "5432")
+}
+
+func sqlitePrimaryKeyColumns(t *testing.T, database *gorm.DB, tableName string) []string {
+	t.Helper()
+
+	rows, err := database.Raw("PRAGMA table_info(" + tableName + ")").Rows()
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, rows.Close())
+	}()
+
+	columns := []string{}
+	for rows.Next() {
+		var cid int
+		var name string
+		var dataType string
+		var notNull int
+		var defaultValue sql.NullString
+		var primaryKeyPosition int
+		require.NoError(t, rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &primaryKeyPosition))
+		if primaryKeyPosition > 0 {
+			columns = append(columns, name)
+		}
+	}
+	require.NoError(t, rows.Err())
+	return columns
 }

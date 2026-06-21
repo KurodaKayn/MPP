@@ -118,7 +118,9 @@ func (f *FakeXOAuth2Provider) Me(_ context.Context, _ string) (pkgx.User, error)
 }
 
 func SetupTestDB() *gorm.DB {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		TranslateError: true,
+	})
 	if err != nil {
 		panic("failed to connect database")
 	}
@@ -217,13 +219,14 @@ func SetupTestDB() *gorm.DB {
 	)`)
 
 	db.Exec(`CREATE TABLE workspace_activities (
-		id TEXT PRIMARY KEY,
+		id TEXT NOT NULL,
 		workspace_id TEXT NOT NULL,
 		actor_user_id TEXT NOT NULL,
 		target_user_id TEXT,
 		event_type TEXT NOT NULL,
 		metadata TEXT NOT NULL DEFAULT '{}',
-		created_at DATETIME NOT NULL
+		created_at DATETIME NOT NULL,
+		PRIMARY KEY (id, created_at)
 	)`)
 
 	db.Exec(`CREATE TABLE workspace_dashboard_stats (
@@ -292,13 +295,14 @@ func SetupTestDB() *gorm.DB {
 	)`)
 
 	db.Exec(`CREATE TABLE project_activities (
-		id TEXT PRIMARY KEY,
+		id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		actor_user_id TEXT NOT NULL,
 		target_user_id TEXT,
 		event_type TEXT NOT NULL,
 		metadata TEXT NOT NULL DEFAULT '{}',
-		created_at DATETIME NOT NULL
+		created_at DATETIME NOT NULL,
+		PRIMARY KEY (id, created_at)
 	)`)
 
 	db.Exec(`CREATE TABLE project_comments (
@@ -461,12 +465,12 @@ func SetupTestDB() *gorm.DB {
 	)`)
 
 	db.Exec(`CREATE TABLE extension_execution_events (
-		id TEXT PRIMARY KEY,
+		id TEXT NOT NULL,
 		callback_token_id TEXT NOT NULL,
 		execution_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		user_id TEXT NOT NULL,
-		event_id TEXT NOT NULL UNIQUE,
+		event_id TEXT NOT NULL,
 		platform TEXT NOT NULL,
 		status TEXT NOT NULL,
 		message TEXT,
@@ -474,8 +478,10 @@ func SetupTestDB() *gorm.DB {
 		publish_url TEXT,
 		error_message TEXT,
 		metadata TEXT NOT NULL DEFAULT '{}',
-		created_at DATETIME
+		created_at DATETIME NOT NULL,
+		PRIMARY KEY (id, created_at)
 	)`)
+	db.Exec(`CREATE INDEX idx_extension_execution_events_event_id ON extension_execution_events(event_id)`)
 
 	return db
 }
