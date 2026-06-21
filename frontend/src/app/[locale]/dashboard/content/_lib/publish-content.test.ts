@@ -2,7 +2,10 @@
 
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectListItem, ProjectPublications } from "@/lib/dashboard/api";
-import { publishContentToPlatforms } from "./publish-content";
+import {
+  publishContentToPlatforms,
+  publishExistingProjectToPlatforms,
+} from "./publish-content";
 
 const project: ProjectListItem = {
   created_at: "2026-05-29T12:00:00Z",
@@ -166,5 +169,72 @@ describe("publishContentToPlatforms", () => {
       project,
       succeeded: ["wechat"],
     });
+  });
+
+  it("uses caller-provided messages for fallback publish failures", async () => {
+    const createProject = vi.fn(async () => project);
+    const publishProject = vi.fn(async () => ({
+      status: "failed" as const,
+    }));
+
+    const result = await publishContentToPlatforms(
+      {
+        content: {
+          firstImageSrc: "",
+          html: "<p>Body</p>",
+          text: "Body",
+        },
+        platforms: ["wechat"],
+        title: "Post title",
+      },
+      {
+        createProject,
+        formatPublishFailedMessage: (platform) =>
+          `${platform} localized failed`,
+        publishProject,
+      },
+    );
+
+    expect(result.failed).toEqual([
+      {
+        message: "wechat localized failed",
+        platform: "wechat",
+      },
+    ]);
+  });
+
+  it("uses caller-provided messages when queued publication status is missing", async () => {
+    const publishProject = vi.fn(async () => ({
+      job_id: "job-1",
+      status: "publishing" as const,
+    }));
+    const waitForProjectPublications = vi.fn(
+      async () =>
+        ({
+          items: [],
+          project_id: "project-1",
+        }) as ProjectPublications,
+    );
+
+    const result = await publishExistingProjectToPlatforms(
+      {
+        attemptKey: "attempt-1",
+        platforms: ["wechat"],
+        projectId: "project-1",
+      },
+      {
+        formatPublicationMissingMessage: (platform) =>
+          `${platform} localized status missing`,
+        publishProject,
+        waitForProjectPublications,
+      },
+    );
+
+    expect(result.failed).toEqual([
+      {
+        message: "wechat localized status missing",
+        platform: "wechat",
+      },
+    ]);
   });
 });
