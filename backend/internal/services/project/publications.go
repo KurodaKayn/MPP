@@ -1,13 +1,25 @@
 package project
 
 import (
-	"encoding/json"
-
 	"github.com/google/uuid"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	projectpublication "github.com/kurodakayn/mpp-backend/internal/services/project/publication"
+	"github.com/kurodakayn/mpp-backend/internal/services/project/publicationselection"
 )
+
+func NormalizeProjectPlatforms(input []string) ([]string, error) {
+	return projectpublication.NormalizePlatforms(input)
+}
+
+func pendingPublicationConfigForTemplate(title, summary, coverImageURL string, template *models.ContentTemplate) publicationselection.ConfigForPlatform {
+	return projectpublication.PendingConfigForTemplate(title, summary, coverImageURL, template)
+}
+
+func defaultPublicationConfigForProjectTitle(title string) publicationselection.ConfigForPlatform {
+	return projectpublication.DefaultConfigForProjectTitle(title)
+}
 
 func (s *Service) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.UUID, includeContent bool) (*dto.ProjectPublicationsResponse, error) {
 	readDB := s.projectDetailReadDB(scopeUserID)
@@ -31,38 +43,7 @@ func (s *Service) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.
 
 	var items []dto.PublicationDetail
 	for _, pub := range publications {
-		// Safe parse config
-		var rawConfig map[string]any
-		_ = json.Unmarshal(pub.Config, &rawConfig)
-		safeConfig := filterConfig(rawConfig)
-
-		// Safe parse adapted content
-		var rawContent map[string]any
-		_ = json.Unmarshal(pub.AdaptedContent, &rawContent)
-		safeContent := rawContent
-		if !includeContent {
-			safeContent = summarizeAdaptedContent(rawContent)
-		}
-
-		items = append(items, dto.PublicationDetail{
-			ID:             pub.ID,
-			Platform:       pub.Platform,
-			Enabled:        pub.Enabled,
-			Status:         pub.Status,
-			DraftStatus:    pub.DraftStatus,
-			ReviewStatus:   pub.ReviewStatus,
-			SyncRequired:   pub.SyncRequired,
-			ErrorMessage:   pub.ErrorMessage,
-			Config:         safeConfig,
-			AdaptedContent: safeContent,
-			PublishURL:     pub.PublishURL,
-			RemoteID:       pub.RemoteID,
-			RetryCount:     pub.RetryCount,
-			LastAttemptAt:  pub.LastAttemptAt,
-			PublishedAt:    pub.PublishedAt,
-			CreatedAt:      pub.CreatedAt,
-			UpdatedAt:      pub.UpdatedAt,
-		})
+		items = append(items, projectpublication.ResponseDetailFromModel(pub, includeContent))
 	}
 
 	if items == nil {
@@ -73,30 +54,4 @@ func (s *Service) GetProjectPublications(projectID uuid.UUID, scopeUserID *uuid.
 		ProjectID: projectID,
 		Items:     items,
 	}, nil
-}
-
-// Helper functions to filter sensitive data from JSONB fields
-
-func filterConfig(raw map[string]any) map[string]any {
-	safe := make(map[string]any)
-	allowedKeys := []string{"title", "tags", "cover_image", "topics", "category", "original_declaration", "username"}
-	for _, key := range allowedKeys {
-		if val, ok := raw[key]; ok {
-			safe[key] = val
-		}
-	}
-	return safe
-}
-
-func summarizeAdaptedContent(raw map[string]any) map[string]any {
-	safe := make(map[string]any)
-	if summary, ok := raw["summary"]; ok {
-		safe["summary"] = summary
-	} else {
-		safe["summary"] = "Content adapted (no summary available)"
-	}
-	if format, ok := raw["format"]; ok {
-		safe["format"] = format
-	}
-	return safe
 }

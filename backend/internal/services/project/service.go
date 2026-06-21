@@ -14,7 +14,6 @@ import (
 	dbrouter "github.com/kurodakayn/mpp-backend/internal/db"
 	"github.com/kurodakayn/mpp-backend/internal/models"
 	"github.com/kurodakayn/mpp-backend/internal/pkg/redisdegrade"
-	platformcapabilities "github.com/kurodakayn/mpp-backend/internal/platformcapabilities"
 	"github.com/kurodakayn/mpp-backend/internal/services/accesspolicy"
 	collabdoc "github.com/kurodakayn/mpp-backend/internal/services/collabdoc"
 	"github.com/kurodakayn/mpp-backend/internal/services/project/projecterr"
@@ -37,8 +36,6 @@ type DashboardReadModelUpdater interface {
 	RefreshProjectAsync(ctx context.Context, projectID uuid.UUID)
 	RefreshWorkspaceAsync(ctx context.Context, workspaceID uuid.UUID)
 }
-
-var allowedProjectPlatforms = platformcapabilities.ProjectPlatformSet()
 
 type Service struct {
 	db                *gorm.DB
