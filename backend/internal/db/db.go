@@ -22,6 +22,8 @@ var DefaultRouter *Router
 //go:embed seed/seed_data.sql
 var seedDataSQL string
 
+const schemaAdvisoryLockKey = 776770001
+
 const (
 	dbMaxOpenConnsEnv    = "DB_MAX_OPEN_CONNS"
 	dbMaxIdleConnsEnv    = "DB_MAX_IDLE_CONNS"
@@ -325,6 +327,10 @@ func durationFromEnv(name string, fallback time.Duration) (time.Duration, error)
 }
 
 func syncSchema(database *gorm.DB) error {
+	return withSchemaLock(database, syncSchemaUnlocked)
+}
+
+func syncSchemaUnlocked(database *gorm.DB) error {
 	if err := database.AutoMigrate(
 		&models.User{},
 		&models.Workspace{},
@@ -397,6 +403,19 @@ func syncSchema(database *gorm.DB) error {
 		}
 	}
 	return nil
+}
+
+func withSchemaLock(database *gorm.DB, run func(*gorm.DB) error) error {
+	if database.Name() != "postgres" {
+		return run(database)
+	}
+
+	return database.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", schemaAdvisoryLockKey).Error; err != nil {
+			return err
+		}
+		return run(tx)
+	})
 }
 
 func seed(database *gorm.DB) error {
