@@ -129,6 +129,104 @@ func TestWorkerRunOnceArchivesColdEventsAndDeletesRows(t *testing.T) {
 	}
 }
 
+func TestWorkerRunOnceDeletesExtensionEventClaimsForArchivedRows(t *testing.T) {
+	db := setupArchiveTestDB(t)
+	storage := fake.NewClient()
+	now := time.Date(2026, 6, 11, 10, 0, 0, 0, time.UTC)
+	coldCreatedAt := now.Add(-181 * 24 * time.Hour)
+	hotCreatedAt := now.Add(-10 * 24 * time.Hour)
+
+	coldEvent := models.ExtensionExecutionEvent{
+		CallbackTokenID: uuid.New(),
+		ExecutionID:     "execution-cold",
+		ProjectID:       uuid.New(),
+		UserID:          uuid.New(),
+		EventID:         "event-cold",
+		Platform:        "wechat",
+		Status:          "failed",
+		Metadata:        datatypes.JSON(`{}`),
+		CreatedAt:       coldCreatedAt,
+	}
+	hotEvent := models.ExtensionExecutionEvent{
+		CallbackTokenID: uuid.New(),
+		ExecutionID:     "execution-hot",
+		ProjectID:       uuid.New(),
+		UserID:          uuid.New(),
+		EventID:         "event-hot",
+		Platform:        "wechat",
+		Status:          "failed",
+		Metadata:        datatypes.JSON(`{}`),
+		CreatedAt:       hotCreatedAt,
+	}
+	if err := db.Create(&coldEvent).Error; err != nil {
+		t.Fatalf("create cold extension event: %v", err)
+	}
+	if err := db.Create(&hotEvent).Error; err != nil {
+		t.Fatalf("create hot extension event: %v", err)
+	}
+	if err := db.Create(&models.ExtensionExecutionEventClaim{
+		EventID:  coldEvent.EventID,
+		RecordID: coldEvent.ID,
+	}).Error; err != nil {
+		t.Fatalf("create cold extension event claim: %v", err)
+	}
+	if err := db.Create(&models.ExtensionExecutionEventClaim{
+		EventID:  hotEvent.EventID,
+		RecordID: hotEvent.ID,
+	}).Error; err != nil {
+		t.Fatalf("create hot extension event claim: %v", err)
+	}
+
+	worker := NewWorker(db, storage, Config{
+		Enabled:                          true,
+		Interval:                         time.Hour,
+		BatchSize:                        10,
+		ObjectKeyPrefix:                  "test-archive",
+		PublishEventRetention:            180 * 24 * time.Hour,
+		ExtensionExecutionEventRetention: 180 * 24 * time.Hour,
+		ProjectActivityRetention:         365 * 24 * time.Hour,
+		WorkspaceActivityRetention:       365 * 24 * time.Hour,
+		BrowserSessionHistoryRetention:   90 * 24 * time.Hour,
+	})
+	result, err := worker.RunOnce(context.Background(), now)
+	if err != nil {
+		t.Fatalf("run archive worker: %v", err)
+	}
+
+	extensionResult := tableResult(result, "extension_execution_events")
+	if extensionResult.RowsArchived != 1 {
+		t.Fatalf("expected one archived extension event, got %d", extensionResult.RowsArchived)
+	}
+
+	var remainingEvents []models.ExtensionExecutionEvent
+	if err := db.Find(&remainingEvents).Error; err != nil {
+		t.Fatalf("query remaining extension events: %v", err)
+	}
+	if len(remainingEvents) != 1 || remainingEvents[0].ID != hotEvent.ID {
+		t.Fatalf("expected only hot extension event to remain, got %#v", remainingEvents)
+	}
+
+	if countArchiveRows(t, db, &models.ExtensionExecutionEventClaim{}, "record_id = ?", coldEvent.ID) != 0 {
+		t.Fatalf("expected archived extension event claim to be deleted")
+	}
+	if countArchiveRows(t, db, &models.ExtensionExecutionEventClaim{}, "record_id = ?", hotEvent.ID) != 1 {
+		t.Fatalf("expected hot extension event claim to remain")
+	}
+
+	body := readObject(t, storage, extensionResult.ObjectKey)
+	lines := jsonLines(t, body)
+	if len(lines) != 1 {
+		t.Fatalf("expected one archived extension event line, got %d", len(lines))
+	}
+	if lines[0]["table"] != "extension_execution_events" {
+		t.Fatalf("expected extension event table metadata, got %#v", lines[0]["table"])
+	}
+	row := lines[0]["row"].(map[string]any)
+	if row["ID"] != coldEvent.ID.String() {
+		t.Fatalf("expected archived extension event ID %s, got %#v", coldEvent.ID, row["ID"])
+	}
+}
+
 func TestWorkerRunOnceArchivesOnlyTerminalColdBrowserSessions(t *testing.T) {
 	db := setupArchiveTestDB(t)
 	storage := fake.NewClient()
@@ -383,4 +481,13 @@ func jsonLines(t *testing.T, body string) []map[string]any {
 		t.Fatalf("scan archive JSONL: %v", err)
 	}
 	return lines
+}
+
+func countArchiveRows(t *testing.T, db *gorm.DB, model any, query string, args ...any) int64 {
+	t.Helper()
+	var count int64
+	if err := db.Model(model).Where(query, args...).Count(&count).Error; err != nil {
+		t.Fatalf("count archive rows: %v", err)
+	}
+	return count
 }

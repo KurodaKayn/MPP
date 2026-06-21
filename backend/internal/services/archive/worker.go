@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -43,6 +44,8 @@ type archiveLine[T any] struct {
 	RetentionCutoff time.Time `json:"retention_cutoff"`
 	Row             T         `json:"row"`
 }
+
+type archiveBeforeDeleteHook[T any] func(*gorm.DB, []T) error
 
 // NewWorker creates a cold-row archival worker.
 func NewWorker(db *gorm.DB, storage objectstorage.Client, config Config) *Worker {
@@ -131,9 +134,9 @@ func (w *Worker) archivePublishEvents(ctx context.Context, db *gorm.DB, now time
 }
 
 func (w *Worker) archiveExtensionExecutionEvents(ctx context.Context, db *gorm.DB, now time.Time) (TableResult, error) {
-	return archiveModel[models.ExtensionExecutionEvent](ctx, db, w.storage, w.config, "extension_execution_events", w.config.ExtensionExecutionEventRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
+	return archiveModelWithDeleteHook(ctx, db, w.storage, w.config, "extension_execution_events", w.config.ExtensionExecutionEventRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
 		return query.Where("created_at < ?", cutoff)
-	})
+	}, deleteExtensionExecutionEventClaims)
 }
 
 func (w *Worker) archiveProjectActivities(ctx context.Context, db *gorm.DB, now time.Time) (TableResult, error) {
@@ -169,11 +172,25 @@ func archiveModel[T any](
 	now time.Time,
 	scope func(*gorm.DB, time.Time) *gorm.DB,
 ) (TableResult, error) {
+	return archiveModelWithDeleteHook[T](ctx, db, storage, config, table, retention, now, scope, nil)
+}
+
+func archiveModelWithDeleteHook[T any](
+	ctx context.Context,
+	db *gorm.DB,
+	storage objectstorage.Client,
+	config Config,
+	table string,
+	retention time.Duration,
+	now time.Time,
+	scope func(*gorm.DB, time.Time) *gorm.DB,
+	beforeDelete archiveBeforeDeleteHook[T],
+) (TableResult, error) {
 	cutoff := now.Add(-retention)
 	result := TableResult{Table: table, Cutoff: cutoff}
 
 	for batchNumber := 0; ; batchNumber++ {
-		batchResult, err := archiveModelBatch[T](ctx, db, storage, config, table, cutoff, now, batchNumber, scope)
+		batchResult, err := archiveModelBatch[T](ctx, db, storage, config, table, cutoff, now, batchNumber, scope, beforeDelete)
 		if err != nil {
 			return result, err
 		}
@@ -199,6 +216,7 @@ func archiveModelBatch[T any](
 	now time.Time,
 	batchNumber int,
 	scope func(*gorm.DB, time.Time) *gorm.DB,
+	beforeDelete archiveBeforeDeleteHook[T],
 ) (TableResult, error) {
 	result := TableResult{Table: table, Cutoff: cutoff}
 	var records []T
@@ -225,18 +243,39 @@ func archiveModelBatch[T any](
 	}); err != nil {
 		return result, fmt.Errorf("upload %s archive object: %w", table, err)
 	}
-	deleteResult := db.WithContext(ctx).Delete(&records)
-	if deleteResult.Error != nil {
-		return result, fmt.Errorf("delete archived %s rows: %w", table, deleteResult.Error)
-	}
-	if deleteResult.RowsAffected != int64(len(records)) {
-		return result, fmt.Errorf("delete archived %s rows: expected %d, deleted %d", table, len(records), deleteResult.RowsAffected)
+	if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if beforeDelete != nil {
+			if err := beforeDelete(tx, records); err != nil {
+				return err
+			}
+		}
+		deleteResult := tx.Delete(&records)
+		if deleteResult.Error != nil {
+			return fmt.Errorf("delete archived %s rows: %w", table, deleteResult.Error)
+		}
+		if deleteResult.RowsAffected != int64(len(records)) {
+			return fmt.Errorf("delete archived %s rows: expected %d, deleted %d", table, len(records), deleteResult.RowsAffected)
+		}
+		return nil
+	}); err != nil {
+		return result, err
 	}
 
 	result.RowsArchived = len(records)
 	result.ObjectKey = key
 	result.ObjectKeys = []string{key}
 	return result, nil
+}
+
+func deleteExtensionExecutionEventClaims(tx *gorm.DB, records []models.ExtensionExecutionEvent) error {
+	if len(records) == 0 || !tx.Migrator().HasTable(&models.ExtensionExecutionEventClaim{}) {
+		return nil
+	}
+	recordIDs := make([]uuid.UUID, 0, len(records))
+	for _, record := range records {
+		recordIDs = append(recordIDs, record.ID)
+	}
+	return tx.Where("record_id IN ?", recordIDs).Delete(&models.ExtensionExecutionEventClaim{}).Error
 }
 
 func tryArchiveWorkerLock(ctx context.Context, db *gorm.DB) (bool, error) {
