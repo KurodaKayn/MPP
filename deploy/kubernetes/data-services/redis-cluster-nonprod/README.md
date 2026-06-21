@@ -12,7 +12,8 @@ the intended production-style shape without changing production Redis:
 - A bootstrap Job that runs `redis-cli --cluster create` with one replica per
   master.
 - A cluster-aware `redis_exporter` Deployment for per-node and slot metrics.
-- A backup CronJob that schedules node snapshots and records Cluster topology.
+- A backup CronJob that exports RDB files from primary nodes and records
+  Cluster topology.
 
 It intentionally does not replace the existing `redis` Service or switch app
 traffic by default. Non-production apps keep using `REDIS_ENDPOINT_MODE=direct`
@@ -54,7 +55,7 @@ Record every drill in this table before promoting Cluster settings elsewhere.
 | Slots | `redis-cli --tls --cacert ca.crt -a "$REDIS_PASSWORD" -h redis-cluster-0.redis-cluster-headless.mpp-system.svc.cluster.local CLUSTER SLOTS` | Slots `0..16383` covered | |
 | Failover | `redis-cli --tls --cacert ca.crt -a "$REDIS_PASSWORD" -h <replica> CLUSTER FAILOVER` | Replica promoted and clients recover | |
 | Reshard | `redis-cli --tls --cacert ca.crt -a "$REDIS_PASSWORD" --cluster reshard <node>:6379` | Slots move without uncovered slots | |
-| Backup | `kubectl create job --from=cronjob/redis-cluster-backup redis-cluster-backup-manual -n "$MPP_APP_NS"` | Backup marker and topology files created | |
+| Backup | `kubectl create job --from=cronjob/redis-cluster-backup redis-cluster-backup-manual -n "$MPP_APP_NS"` | RDB files for primary nodes plus topology files created | |
 | Restore | Restore RDB/AOF data into a fresh non-prod Cluster and run `CLUSTER INFO` | `cluster_state:ok`; sampled app keys read back | |
 | Metrics | Scrape `redis-cluster-exporter:9121/metrics` | Per-node, memory, command, keyspace, and Cluster metrics visible | |
 | Hot keys | `redis-cli --tls --cacert ca.crt -a "$REDIS_PASSWORD" --hotkeys -h <node>` | Hot-key sample recorded or provider gap noted | |
