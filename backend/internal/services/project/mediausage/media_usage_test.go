@@ -1,4 +1,4 @@
-package project
+package mediausage
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ import (
 	"github.com/kurodakayn/mpp-backend/internal/services/testsupport"
 )
 
-func TestUpsertMediaUsagesIgnoresDuplicateAssetResourceRefs(t *testing.T) {
+func TestUpsertIgnoresDuplicateAssetResourceRefs(t *testing.T) {
 	db := testsupport.SetupTestDB()
 	require.NoError(t, db.AutoMigrate(&models.MediaAsset{}))
 
@@ -40,8 +40,8 @@ func TestUpsertMediaUsagesIgnoresDuplicateAssetResourceRefs(t *testing.T) {
 	require.NoError(t, db.Create(&asset).Error)
 	resourceID := uuid.New()
 
-	require.NoError(t, upsertMediaUsages(db, workspace.ID, nil, nil, nil, "template", resourceID, models.MediaAssetUsageEditorImage, []uuid.UUID{asset.ID}))
-	require.NoError(t, upsertMediaUsages(db, workspace.ID, nil, nil, nil, "template", resourceID, models.MediaAssetUsageCoverImage, []uuid.UUID{asset.ID}))
+	require.NoError(t, upsert(db, workspace.ID, nil, nil, nil, "template", resourceID, models.MediaAssetUsageEditorImage, []uuid.UUID{asset.ID}))
+	require.NoError(t, upsert(db, workspace.ID, nil, nil, nil, "template", resourceID, models.MediaAssetUsageCoverImage, []uuid.UUID{asset.ID}))
 
 	var count int64
 	require.NoError(t, db.Model(&models.MediaAssetUsage{}).

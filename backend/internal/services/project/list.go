@@ -1,13 +1,14 @@
 package project
 
 import (
-	"strings"
+	"context"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
+	projectlisting "github.com/kurodakayn/mpp-backend/internal/services/project/listing"
 	projectpresenter "github.com/kurodakayn/mpp-backend/internal/services/project/presenter"
 )
 
@@ -28,6 +29,94 @@ func (s *Service) CanUseDashboardProjectListCache() bool {
 
 func (s *Service) ListCachedWorkspaceProjects(workspaceID uuid.UUID, actorUserID uuid.UUID, cursor string, page, limit int, status, platform string) (*dto.PaginationResponse, error) {
 	return s.getCachedWorkspaceProjectList(workspaceID, actorUserID, cursor, page, limit, status, platform)
+}
+
+func (s *Service) projectListCache() *projectlisting.Cache {
+	if s == nil {
+		return nil
+	}
+	return projectlisting.New(projectlisting.Config{
+		Client: s.cache,
+		TTL:    s.cacheTTL,
+		Group:  s.cacheGroup,
+		Guard:  s.projectListGuard,
+	})
+}
+
+func (s *Service) getCachedDashboardProjectList(cursor string, page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
+	params := projectlisting.Params{
+		Cursor:       cursor,
+		Page:         page,
+		Limit:        limit,
+		Status:       status,
+		FilterUserID: filterUserID,
+		Platform:     platform,
+		ScopeUserID:  projectlisting.UUIDStringValue(scopeUserID),
+	}
+	return s.projectListCache().Get(s.requestContext(), params, func(ctx context.Context) (*dto.PaginationResponse, error) {
+		return s.WithContext(ctx).computeProjectList(cursor, page, limit, status, filterUserID, platform, scopeUserID)
+	})
+}
+
+func (s *Service) getCachedWorkspaceProjectList(workspaceID uuid.UUID, actorUserID uuid.UUID, cursor string, page, limit int, status, platform string) (*dto.PaginationResponse, error) {
+	params := projectlisting.Params{
+		Cursor:      cursor,
+		Page:        page,
+		Limit:       limit,
+		Status:      status,
+		Platform:    platform,
+		WorkspaceID: workspaceID.String(),
+		ActorUserID: actorUserID.String(),
+	}
+	return s.projectListCache().Get(s.requestContext(), params, func(ctx context.Context) (*dto.PaginationResponse, error) {
+		return s.WithContext(ctx).computeWorkspaceProjectList(workspaceID, actorUserID, cursor, page, limit, status, platform)
+	})
+}
+
+func (s *Service) canUseDashboardProjectListCache() bool {
+	if s == nil {
+		return false
+	}
+	return s.projectListCache().CanUse(s.requestContext())
+}
+
+func (s *Service) InvalidateDashboardProjectListCache(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	if ctx != nil {
+		s = s.WithContext(ctx)
+	}
+	s.invalidateDashboardProjectListCache()
+}
+
+func (s *Service) invalidateDashboardProjectListCache() {
+	if s == nil {
+		return
+	}
+	s.projectListCache().Invalidate(s.requestContext())
+}
+
+func (s *Service) invalidateDashboardCaches(includeStats bool) {
+	ctx := s.requestContext()
+	s.InvalidateDashboardProjectListCache(ctx)
+	if includeStats && s.statsCache != nil {
+		s.statsCache.InvalidateDashboardStatsCache(ctx)
+	}
+}
+
+func (s *Service) invalidateDashboardScopedStatsCache() {
+	if s.statsCache == nil {
+		return
+	}
+	s.statsCache.InvalidateDashboardScopedStatsCache(s.requestContext())
+}
+
+func (s *Service) refreshProjectReadModel(projectID uuid.UUID) {
+	if s.readModels == nil || projectID == uuid.Nil {
+		return
+	}
+	s.readModels.RefreshProjectAsync(s.requestContext(), projectID)
 }
 
 func (s *Service) computeProjectList(cursor string, page, limit int, status, filterUserID, platform string, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
@@ -120,8 +209,8 @@ func (s *Service) projectListReadDB(scopeUserID *uuid.UUID) *gorm.DB {
 func (s *Service) ListProjectPage(query *gorm.DB, cursor string, page, limit int, scopeUserID *uuid.UUID) (*dto.PaginationResponse, error) {
 	var projects []models.Project
 
-	page, limit = normalizeProjectListPage(page, limit)
-	query, err := applyProjectListCursor(query, cursor)
+	page, limit = projectlisting.NormalizePage(page, limit)
+	query, err := projectlisting.ApplyCursor(query, cursor)
 	if err != nil {
 		return nil, err
 	}
@@ -166,17 +255,17 @@ func (s *Service) ListProjectPage(query *gorm.DB, cursor string, page, limit int
 
 	nextCursor := ""
 	if hasMore && len(projects) > 0 {
-		nextCursor = encodeProjectListCursor(projects[len(projects)-1])
+		nextCursor = projectlisting.EncodeCursor(projects[len(projects)-1])
 	}
 
-	return projectPaginationResponse(items, cursor, page, limit, hasMore, nextCursor), nil
+	return projectlisting.PaginationResponse(items, cursor, page, limit, hasMore, nextCursor), nil
 }
 
 func (s *Service) ListProjectSummaryPage(query *gorm.DB, cursor string, page, limit int) (*dto.PaginationResponse, error) {
 	var summaries []models.ProjectListSummary
 
-	page, limit = normalizeProjectListPage(page, limit)
-	query, err := applyProjectListCursorColumns(query, cursor, "project_list_summaries.created_at", "project_list_summaries.project_id")
+	page, limit = projectlisting.NormalizePage(page, limit)
+	query, err := projectlisting.ApplyCursorColumns(query, cursor, "project_list_summaries.created_at", "project_list_summaries.project_id")
 	if err != nil {
 		return nil, err
 	}
@@ -206,32 +295,8 @@ func (s *Service) ListProjectSummaryPage(query *gorm.DB, cursor string, page, li
 	nextCursor := ""
 	if hasMore && len(summaries) > 0 {
 		last := summaries[len(summaries)-1]
-		nextCursor = encodeProjectListCursorValues(last.CreatedAt, last.ProjectID)
+		nextCursor = projectlisting.EncodeCursorValues(last.CreatedAt, last.ProjectID)
 	}
 
-	return projectPaginationResponse(items, cursor, page, limit, hasMore, nextCursor), nil
-}
-
-func projectPaginationResponse(items []dto.ProjectListItem, cursor string, page int, limit int, hasMore bool, nextCursor string) *dto.PaginationResponse {
-	total := int64((page-1)*limit + len(items))
-	if hasMore {
-		total++
-	}
-	totalPages := page
-	if len(items) == 0 && page == 1 {
-		totalPages = 0
-	} else if hasMore {
-		totalPages = page + 1
-	}
-
-	return &dto.PaginationResponse{
-		Items:      items,
-		Page:       page,
-		Limit:      limit,
-		Total:      total,
-		TotalPages: totalPages,
-		Cursor:     strings.TrimSpace(cursor),
-		NextCursor: nextCursor,
-		HasMore:    hasMore,
-	}
+	return projectlisting.PaginationResponse(items, cursor, page, limit, hasMore, nextCursor), nil
 }

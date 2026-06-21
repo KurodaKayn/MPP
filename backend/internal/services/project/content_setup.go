@@ -2,7 +2,6 @@ package project
 
 import (
 	"github.com/google/uuid"
-	"gorm.io/datatypes"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -49,12 +48,4 @@ func (s *Service) validateBrandProfileForProject(userID uuid.UUID, workspaceID u
 
 func contentTemplateDefaultPlatforms(template *models.ContentTemplate) ([]string, error) {
 	return contentsetup.ContentTemplateDefaultPlatforms(template, NormalizeProjectPlatforms)
-}
-
-func contentTemplatePlatformConfig(template *models.ContentTemplate, platform string) map[string]any {
-	return contentsetup.ContentTemplatePlatformConfig(template, platform)
-}
-
-func mergePublicationConfig(base datatypes.JSON, extra map[string]any) (datatypes.JSON, error) {
-	return contentsetup.MergePublicationConfig(base, extra)
 }
