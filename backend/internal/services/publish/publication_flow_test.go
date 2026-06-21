@@ -84,13 +84,13 @@ func TestBatchPublishProject(t *testing.T) {
 	db.Create(&models.ProjectPlatformPublication{
 		ProjectID: p.ID,
 		Platform:  "wechat",
-		Status:    models.PublicationStatusPending,
+		Status:    models.PublicationStatusDraft,
 		Config:    datatypes.JSON(`{"app_id": "test", "app_secret": "test"}`),
 	})
 	db.Create(&models.ProjectPlatformPublication{
 		ProjectID: p.ID,
 		Platform:  "zhihu",
-		Status:    models.PublicationStatusPending,
+		Status:    models.PublicationStatusDraft,
 	})
 
 	// Test batch publish
@@ -125,7 +125,7 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 	pub := models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "wechat",
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"app_id":"stale","app_secret":"stale-secret","title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
 	}
@@ -144,7 +144,7 @@ func TestPublishProjectUsesSavedWechatCredentials(t *testing.T) {
 
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result.Status)
+	assert.Equal(t, models.PublicationStatusSucceeded, result.Status)
 
 	var completedActivity models.ProjectActivity
 	require.NoError(t, db.First(
@@ -199,7 +199,7 @@ func TestPublishProjectInvalidatesDashboardCaches(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"app_id":"wx","app_secret":"secret","title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
 	}).Error)
@@ -215,7 +215,7 @@ func TestPublishProjectInvalidatesDashboardCaches(t *testing.T) {
 
 	resp, err := s.WithContext(context.Background()).PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, resp.Status)
+	assert.Equal(t, models.PublicationStatusSucceeded, resp.Status)
 	requirePublishCacheKeys(t, redisClient, "mpp:dashboard:projects:list:*", 0)
 	require.Contains(t, requirePublishCacheKeys(t, redisClient, "mpp:dashboard:stats:*", 1), staleStatsKey)
 
@@ -650,7 +650,7 @@ func TestPublishProjectAllowsEmbeddedWechatCredentialsWithoutSavedAccount(t *tes
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"app_id":"wx","app_secret":"secret","title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
 	}
@@ -659,7 +659,7 @@ func TestPublishProjectAllowsEmbeddedWechatCredentialsWithoutSavedAccount(t *tes
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result.Status)
+	assert.Equal(t, models.PublicationStatusSucceeded, result.Status)
 	assert.JSONEq(t, `{"app_id":"wx","app_secret":"secret","title":"Title"}`, string(fakePublisher.Config))
 }
 
@@ -724,7 +724,7 @@ func TestPublishProjectPresignsReadyMediaRefsWithoutPersistingSignedURLs(t *test
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(config),
 		AdaptedContent: datatypes.JSON(adaptedContent),
 	}).Error)
@@ -732,7 +732,7 @@ func TestPublishProjectPresignsReadyMediaRefsWithoutPersistingSignedURLs(t *test
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result.Status)
+	assert.Equal(t, models.PublicationStatusSucceeded, result.Status)
 	expectedURL := "fake://get/mpp-media/" + asset.ObjectKey
 	assert.Contains(t, string(fakePublisher.Config), expectedURL)
 	assert.NotContains(t, string(fakePublisher.Config), mediaRef)
@@ -803,7 +803,7 @@ func TestPublishProjectValidatesWorkspaceLibraryMediaReadyState(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(config),
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}).Error)
@@ -819,7 +819,7 @@ func TestPublishProjectValidatesWorkspaceLibraryMediaReadyState(t *testing.T) {
 
 	result, err = s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result.Status)
+	assert.Equal(t, models.PublicationStatusSucceeded, result.Status)
 	assert.Contains(t, string(fakePublisher.Config), "fake://get/mpp-media/"+asset.ObjectKey)
 }
 
@@ -886,7 +886,7 @@ func TestPublishProjectPreservesReadyMediaRefsWhenContentPipelineResolverIsConfi
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(config),
 		AdaptedContent: datatypes.JSON(adaptedContent),
 	}).Error)
@@ -894,7 +894,7 @@ func TestPublishProjectPreservesReadyMediaRefsWhenContentPipelineResolverIsConfi
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, uuid.Nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result.Status)
+	assert.Equal(t, models.PublicationStatusSucceeded, result.Status)
 	assert.Contains(t, string(fakePublisher.Config), mediaRef)
 	assert.NotContains(t, string(fakePublisher.Config), "fake://get/")
 	assert.Contains(t, string(fakePublisher.AdaptedContent), mediaRef)
@@ -923,7 +923,7 @@ func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{}`),
 		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
 	}
@@ -941,7 +941,7 @@ func TestPublishProjectPassesDecryptedBrowserCookiesToPublisher(t *testing.T) {
 	result, err := s.PublishProject(project.ID, "douyin", &user.ID, uuid.Nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result.Status)
+	assert.Equal(t, models.PublicationStatusSucceeded, result.Status)
 	assert.Contains(t, string(fakePublisher.AccountCookies), "secret-value")
 	assert.NotContains(t, string(fakePublisher.AccountCookies), "ciphertext")
 
@@ -971,7 +971,7 @@ func TestPublishProjectIgnoresBrowserSessionIDForAsyncPublishing(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
 	}
@@ -989,7 +989,7 @@ func TestPublishProjectIgnoresBrowserSessionIDForAsyncPublishing(t *testing.T) {
 	result, err := s.PublishProject(project.ID, "wechat", &user.ID, sessionID)
 
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result.Status)
+	assert.Equal(t, models.PublicationStatusSucceeded, result.Status)
 	assert.Empty(t, fakePublisher.RemoteURL)
 }
 
@@ -1013,7 +1013,7 @@ func TestPublishProjectRequiresSavedCookiesForBrowserCookiePlatforms(t *testing.
 		ProjectID:      project.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{}`),
 		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
 	}
@@ -1054,7 +1054,7 @@ func TestPublishProjectBlocksUnhealthyAccountAndCreatesNotification(t *testing.T
 		Platform:          "wechat",
 		PlatformAccountID: &account.ID,
 		Enabled:           true,
-		Status:            models.PublicationStatusAdapted,
+		Status:            models.PublicationStatusDraft,
 		Config:            datatypes.JSON(`{"title":"Title"}`),
 		AdaptedContent:    datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}).Error)
@@ -1094,7 +1094,7 @@ func TestPublishProjectRequiresPrepublishSyncForPendingPublication(t *testing.T)
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusPending,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{}`),
 	}
@@ -1107,7 +1107,7 @@ func TestPublishProjectRequiresPrepublishSyncForPendingPublication(t *testing.T)
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
-	assert.Equal(t, models.PublicationStatusPending, saved.Status)
+	assert.Equal(t, models.PublicationStatusDraft, saved.Status)
 	assert.Empty(t, saved.ErrorMessage)
 }
 
@@ -1185,7 +1185,7 @@ func TestPublishProjectRejectsProjectEditor(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}).Error)
@@ -1226,7 +1226,7 @@ func TestPublishProjectRejectsProjectViewer(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"ready"}`),
 	}).Error)
@@ -1257,7 +1257,7 @@ func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
 	pub := models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "x",
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"api_key":"stale","api_secret":"stale","access_token":"stale","access_token_secret":"stale","title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{"text":"ready"}`),
 	}
@@ -1278,7 +1278,7 @@ func TestPublishProjectUsesSavedXOAuth2Credentials(t *testing.T) {
 
 	result, err := s.PublishProject(project.ID, "x", &user.ID, uuid.Nil)
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result.Status)
+	assert.Equal(t, models.PublicationStatusSucceeded, result.Status)
 
 	var config map[string]any
 	require.NoError(t, json.Unmarshal(fakePublisher.Config, &config))
@@ -1324,7 +1324,7 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 	pub := models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "x",
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{"text":"ready"}`),
 	}
@@ -1350,7 +1350,7 @@ func TestPublishProjectRefreshesExpiredXOAuth2Token(t *testing.T) {
 
 	result, err := s.PublishProject(project.ID, "x", &user.ID, uuid.Nil)
 	require.NoError(t, err)
-	assert.Equal(t, models.PublicationStatusPublished, result.Status)
+	assert.Equal(t, models.PublicationStatusSucceeded, result.Status)
 	assert.Equal(t, "oauth2-refresh", provider.RefreshToken)
 	assert.Equal(t, "client-id", provider.RefreshConfig.ClientID)
 	assert.Equal(t, "client-secret", provider.RefreshConfig.ClientSecret)
@@ -1389,7 +1389,7 @@ func TestCreateXPostIntentReturnsManualPublishURL(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "x",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{"text":"hello x & \u4e2d\u6587"}`),
 	}
@@ -1411,7 +1411,7 @@ func TestCreateXPostIntentReturnsManualPublishURL(t *testing.T) {
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
-	assert.Equal(t, models.PublicationStatusAdapted, saved.Status)
+	assert.Equal(t, models.PublicationStatusDraft, saved.Status)
 	assert.Equal(t, publishURL, saved.PublishURL)
 	assert.Empty(t, saved.ErrorMessage)
 }
@@ -1433,7 +1433,7 @@ func TestCreateXPostIntentRequiresPrepublishSyncForPendingPublication(t *testing
 		ProjectID:      project.ID,
 		Platform:       "x",
 		Enabled:        true,
-		Status:         models.PublicationStatusPending,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{}`),
 	}
@@ -1446,7 +1446,7 @@ func TestCreateXPostIntentRequiresPrepublishSyncForPendingPublication(t *testing
 
 	var saved models.ProjectPlatformPublication
 	require.NoError(t, db.First(&saved, "id = ?", pub.ID).Error)
-	assert.Equal(t, models.PublicationStatusPending, saved.Status)
+	assert.Equal(t, models.PublicationStatusDraft, saved.Status)
 	assert.JSONEq(t, `{}`, string(saved.AdaptedContent))
 }
 
@@ -1475,7 +1475,7 @@ func TestCreateXPostIntentRejectsProjectEditor(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "x",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{"text":"hello x"}`),
 	}
@@ -1516,7 +1516,7 @@ func TestCreateXPostIntentRejectsProjectViewer(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "x",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{"text":"hello x"}`),
 	}
@@ -1549,7 +1549,7 @@ func TestPublishProjectRejectsDisabledPublication(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        false,
-		Status:         models.PublicationStatusDisabled,
+		Status:         models.PublicationStatusCancelled,
 		Config:         datatypes.JSON(`{"title":"Title"}`),
 		AdaptedContent: datatypes.JSON(`{"summary":"ready"}`),
 	})

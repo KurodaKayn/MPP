@@ -95,14 +95,14 @@ func TestListExtensionPrepublishReturnsCurrentUserDouyinDrafts(t *testing.T) {
 		ProjectID:      olderProject.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"format":"text","text":"` + longText + `"}`),
 	}).Error)
 	disabledPublication := models.ProjectPlatformPublication{
 		ProjectID:      newerProject.ID,
 		Platform:       "douyin",
 		Enabled:        false,
-		Status:         models.PublicationStatusDisabled,
+		Status:         models.PublicationStatusCancelled,
 		AdaptedContent: datatypes.JSON(`{"format":"text","text":"disabled draft"}`),
 	}
 	require.NoError(t, db.Create(&disabledPublication).Error)
@@ -111,14 +111,14 @@ func TestListExtensionPrepublishReturnsCurrentUserDouyinDrafts(t *testing.T) {
 		ProjectID:      unsupportedProject.ID,
 		Platform:       "zhihu",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"markdown":"zhihu draft"}`),
 	}).Error)
 	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 		ProjectID:      otherProject.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"text":"other draft"}`),
 	}).Error)
 
@@ -150,7 +150,7 @@ func TestListExtensionPrepublishReturnsXDrafts(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "x",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"format":"text","text":"x draft"}`),
 	}).Error)
 
@@ -186,7 +186,7 @@ func TestListExtensionPrepublishUsesReader(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"format":"text","text":"reader draft"}`),
 	}).Error)
 
@@ -214,7 +214,7 @@ func TestCreateExtensionHandoffReturnsDouyinArticleHandoff(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"schema_version":1,"format":"text","text":"ready text"}`),
 	}
 	require.NoError(t, db.Create(&publication).Error)
@@ -272,7 +272,7 @@ func TestCreateExtensionHandoffReturnsXPostHandoff(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "x",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"schema_version":1,"format":"text","text":"x ready text"}`),
 	}).Error)
 
@@ -315,14 +315,14 @@ func TestCreateExtensionHandoffReturnsMultiplePlatformHandoff(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"format":"text","text":"douyin ready"}`),
 	}).Error)
 	require.NoError(t, db.Create(&models.ProjectPlatformPublication{
 		ProjectID:      project.ID,
 		Platform:       "x",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"format":"text","text":"x ready"}`),
 	}).Error)
 
@@ -362,7 +362,7 @@ func TestRecordExtensionEventAcceptsKnownTokenAndDeduplicatesEventID(t *testing.
 		ProjectID:      project.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"format":"text","text":"ready text"}`),
 	}).Error)
 
@@ -420,7 +420,7 @@ func TestRecordExtensionEventMarksXPublicationReadyForUserReview(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "x",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		DraftStatus:    models.PublicationDraftStatusReady,
 		ReviewStatus:   models.PublicationReviewStatusDraft,
 		ErrorMessage:   "old error",
@@ -446,7 +446,7 @@ func TestRecordExtensionEventMarksXPublicationReadyForUserReview(t *testing.T) {
 	assert.False(t, resp.Duplicate)
 	var publication models.ProjectPlatformPublication
 	require.NoError(t, db.First(&publication, "project_id = ? AND platform = ?", project.ID, "x").Error)
-	assert.Equal(t, models.PublicationStatusAdapted, publication.Status)
+	assert.Equal(t, models.PublicationStatusDraft, publication.Status)
 	assert.Equal(t, models.PublicationDraftStatusReady, publication.DraftStatus)
 	assert.Equal(t, models.PublicationReviewStatusReviewing, publication.ReviewStatus)
 	assert.Empty(t, publication.ErrorMessage)
@@ -469,7 +469,7 @@ func TestRecordExtensionEventMarksXPublicationFailedWithMessage(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "x",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		DraftStatus:    models.PublicationDraftStatusReady,
 		ReviewStatus:   models.PublicationReviewStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"format":"text","text":"ready text"}`),
@@ -515,7 +515,7 @@ func TestRecordExtensionEventDoesNotApplyDuplicatePublicationUpdate(t *testing.T
 		ProjectID:      project.ID,
 		Platform:       "x",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"format":"text","text":"ready text"}`),
 	}).Error)
 
@@ -574,7 +574,7 @@ func TestRecordExtensionEventRejectsExpiredToken(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{"format":"text","text":"ready text"}`),
 	}).Error)
 	handoff, err := s.CreateExtensionHandoff(user.ID, dto.CreateExtensionHandoffRequest{
@@ -635,7 +635,7 @@ func TestCreateExtensionHandoffRejectsDisabledPublication(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "douyin",
 		Enabled:        false,
-		Status:         models.PublicationStatusDisabled,
+		Status:         models.PublicationStatusCancelled,
 		AdaptedContent: datatypes.JSON(`{"format":"text","text":"ready text"}`),
 	}
 	require.NoError(t, db.Create(&publication).Error)
@@ -665,7 +665,7 @@ func TestCreateExtensionHandoffRejectsMissingAdaptedText(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "douyin",
 		Enabled:        true,
-		Status:         models.PublicationStatusPending,
+		Status:         models.PublicationStatusDraft,
 		AdaptedContent: datatypes.JSON(`{}`),
 	}).Error)
 

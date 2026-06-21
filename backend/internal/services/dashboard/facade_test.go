@@ -24,7 +24,7 @@ func TestDashboardServiceWithContextIsolatesStickyWriterAcrossConcurrentScopes(t
 	limitDashboardFacadeDBConnections(t, writer)
 	limitDashboardFacadeDBConnections(t, reader)
 	router := dbrouter.NewRouter(writer, dbrouter.WithReader(reader))
-	seedDashboardFacadeStats(t, writer, "writer", 1, models.PublicationStatusPublished)
+	seedDashboardFacadeStats(t, writer, "writer", 1, models.PublicationStatusSucceeded)
 	seedDashboardFacadeStats(t, reader, "reader", 2, models.PublicationStatusFailed)
 
 	service := services.NewDashboardServiceWithRouter(writer, router)

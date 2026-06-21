@@ -41,28 +41,28 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 		ProjectID: project.ID,
 		Platform:  "wechat",
 		Enabled:   true,
-		Status:    models.PublicationStatusPending,
+		Status:    models.PublicationStatusDraft,
 		Config:    datatypes.JSON(`{"title":"Platform title"}`),
 	})
 	db.Create(&models.ProjectPlatformPublication{
 		ProjectID: project.ID,
 		Platform:  "zhihu",
 		Enabled:   true,
-		Status:    models.PublicationStatusPending,
+		Status:    models.PublicationStatusDraft,
 		Config:    datatypes.JSON(`{"title":"Platform title"}`),
 	})
 	db.Create(&models.ProjectPlatformPublication{
 		ProjectID: project.ID,
 		Platform:  "x",
 		Enabled:   true,
-		Status:    models.PublicationStatusPending,
+		Status:    models.PublicationStatusDraft,
 		Config:    datatypes.JSON(`{"title":"Platform title"}`),
 	})
 	db.Create(&models.ProjectPlatformPublication{
 		ProjectID: project.ID,
 		Platform:  "douyin",
 		Enabled:   true,
-		Status:    models.PublicationStatusPending,
+		Status:    models.PublicationStatusDraft,
 		Config:    datatypes.JSON(`{"title":"Platform title"}`),
 	})
 
@@ -78,7 +78,7 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 
 	var wechatPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&wechatPub, "project_id = ? AND platform = ?", project.ID, "wechat").Error)
-	assert.Equal(t, models.PublicationStatusAdapted, wechatPub.Status)
+	assert.Equal(t, models.PublicationStatusDraft, wechatPub.Status)
 
 	var wechatContent map[string]any
 	require.NoError(t, json.Unmarshal(wechatPub.AdaptedContent, &wechatContent))
@@ -87,7 +87,7 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 
 	var zhihuPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&zhihuPub, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
-	assert.Equal(t, models.PublicationStatusAdapted, zhihuPub.Status)
+	assert.Equal(t, models.PublicationStatusDraft, zhihuPub.Status)
 
 	var zhihuContent map[string]any
 	require.NoError(t, json.Unmarshal(zhihuPub.AdaptedContent, &zhihuContent))
@@ -97,7 +97,7 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 
 	var xPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&xPub, "project_id = ? AND platform = ?", project.ID, "x").Error)
-	assert.Equal(t, models.PublicationStatusAdapted, xPub.Status)
+	assert.Equal(t, models.PublicationStatusDraft, xPub.Status)
 
 	var xContent map[string]any
 	require.NoError(t, json.Unmarshal(xPub.AdaptedContent, &xContent))
@@ -107,7 +107,7 @@ func TestSyncProjectPrepublishGeneratesPlatformDrafts(t *testing.T) {
 
 	var douyinPub models.ProjectPlatformPublication
 	require.NoError(t, db.First(&douyinPub, "project_id = ? AND platform = ?", project.ID, "douyin").Error)
-	assert.Equal(t, models.PublicationStatusAdapted, douyinPub.Status)
+	assert.Equal(t, models.PublicationStatusDraft, douyinPub.Status)
 
 	var douyinContent map[string]any
 	require.NoError(t, json.Unmarshal(douyinPub.AdaptedContent, &douyinContent))
@@ -189,7 +189,7 @@ func TestSyncProjectPrepublishSanitizesHTMLDraftsBeforePersisting(t *testing.T) 
 		ProjectID: project.ID,
 		Platform:  "wechat",
 		Enabled:   true,
-		Status:    models.PublicationStatusPending,
+		Status:    models.PublicationStatusDraft,
 		Config:    datatypes.JSON(`{"title":"Platform title"}`),
 	}).Error)
 
@@ -249,7 +249,7 @@ func TestSyncProjectPrepublishReadsLatestCollabSnapshot(t *testing.T) {
 		ProjectID: project.ID,
 		Platform:  "wechat",
 		Enabled:   true,
-		Status:    models.PublicationStatusPending,
+		Status:    models.PublicationStatusDraft,
 		Config:    datatypes.JSON(`{"title":"Platform title"}`),
 	}).Error)
 
@@ -290,7 +290,7 @@ func TestSyncProjectPrepublishMarksFailedWhenContentPipelineCompilerFails(t *tes
 		ProjectID:      project.ID,
 		Platform:       "zhihu",
 		Enabled:        true,
-		Status:         models.PublicationStatusPending,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Platform title"}`),
 		AdaptedContent: datatypes.JSON(`{}`),
 	}).Error)
@@ -343,7 +343,7 @@ func TestSyncProjectPrepublishRejectsActivePublishWithoutMarkingSyncing(t *testi
 		ProjectID:      project.ID,
 		Platform:       "zhihu",
 		Enabled:        true,
-		Status:         models.PublicationStatusPending,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Platform title"}`),
 		AdaptedContent: datatypes.JSON(`{}`),
 	}).Error)
@@ -367,7 +367,7 @@ func TestSyncProjectPrepublishRejectsActivePublishWithoutMarkingSyncing(t *testi
 
 	var pendingPublication models.ProjectPlatformPublication
 	require.NoError(t, db.First(&pendingPublication, "project_id = ? AND platform = ?", project.ID, "zhihu").Error)
-	require.Equal(t, models.PublicationStatusPending, pendingPublication.Status)
+	require.Equal(t, models.PublicationStatusDraft, pendingPublication.Status)
 }
 
 func TestSyncProjectPrepublishInvalidatesCachesAfterCommittedEnsureBeforeActivePublish(t *testing.T) {
@@ -395,7 +395,7 @@ func TestSyncProjectPrepublishInvalidatesCachesAfterCommittedEnsureBeforeActiveP
 		ProjectID:      project.ID,
 		Platform:       "zhihu",
 		Enabled:        false,
-		Status:         models.PublicationStatusDisabled,
+		Status:         models.PublicationStatusCancelled,
 		Config:         datatypes.JSON(`{"title":"Prepublish active cache"}`),
 		AdaptedContent: datatypes.JSON(`{"summary":"disabled"}`),
 	}).Error)
@@ -457,7 +457,7 @@ func TestSyncProjectPrepublishDoesNotApplyDraftWhenPublicationBecomesPublishing(
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Platform title"}`),
 		AdaptedContent: datatypes.JSON(`{"format":"html","html":"old draft"}`),
 		RemoteID:       "active-remote",
@@ -512,7 +512,7 @@ func TestUpdateProjectPrepublishDraftSanitizesHTMLBeforePersisting(t *testing.T)
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusPending,
+		Status:         models.PublicationStatusDraft,
 		Config:         datatypes.JSON(`{"title":"Platform title"}`),
 		AdaptedContent: datatypes.JSON(`{}`),
 	}).Error)

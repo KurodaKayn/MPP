@@ -28,13 +28,6 @@ const (
 	PublicationStatusSucceeded  = string(contracts.PublicationStatusSucceeded)
 	PublicationStatusFailed     = string(contracts.PublicationStatusFailed)
 	PublicationStatusCancelled  = string(contracts.PublicationStatusCancelled)
-
-	// Deprecated compatibility aliases. New code should use draft/syncing/queued/
-	// publishing/succeeded/failed/cancelled names.
-	PublicationStatusPending   = PublicationStatusDraft
-	PublicationStatusAdapted   = PublicationStatusDraft
-	PublicationStatusPublished = PublicationStatusSucceeded
-	PublicationStatusDisabled  = PublicationStatusCancelled
 )
 
 // Platform account status constants

@@ -37,7 +37,7 @@ func (s *Service) StartDouyinPublishSession(ctx context.Context, projectID uuid.
 		}
 		return nil, err
 	}
-	if !pub.Enabled || pub.Status == models.PublicationStatusDisabled {
+	if !pub.Enabled || pub.Status == models.PublicationStatusCancelled {
 		return nil, ErrPublicationDisabled
 	}
 	if len(pub.AdaptedContent) == 0 || string(pub.AdaptedContent) == "{}" {

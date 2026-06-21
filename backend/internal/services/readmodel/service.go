@@ -162,7 +162,7 @@ func (s *Service) RefreshWorkspace(workspaceID uuid.UUID) error {
 		Count(&stats.TotalProjects).Error; err != nil {
 		return err
 	}
-	if err := s.countWorkspacePublications(workspaceID, models.PublicationStatusPublished, &stats.TotalPublishedPublications); err != nil {
+	if err := s.countWorkspacePublications(workspaceID, models.PublicationStatusSucceeded, &stats.TotalPublishedPublications); err != nil {
 		return err
 	}
 	if err := s.countWorkspacePublications(workspaceID, models.PublicationStatusFailed, &stats.TotalFailedPublications); err != nil {

@@ -276,7 +276,7 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 				if err := tx.Model(&publication).Updates(map[string]any{
 					"enabled":       false,
 					"error_message": "",
-					"status":        models.PublicationStatusDisabled,
+					"status":        models.PublicationStatusCancelled,
 				}).Error; err != nil {
 					return err
 				}
@@ -302,7 +302,7 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 				"publish_url":     "",
 				"remote_id":       "",
 				"retry_count":     0,
-				"status":          models.PublicationStatusPending,
+				"status":          models.PublicationStatusDraft,
 			}).Error; err != nil {
 				return err
 			}
@@ -454,19 +454,19 @@ func (s *Service) SaveProjectPlatforms(projectID uuid.UUID, userID uuid.UUID, re
 				if err := tx.Model(&publication).Updates(map[string]any{
 					"enabled":       false,
 					"error_message": "",
-					"status":        models.PublicationStatusDisabled,
+					"status":        models.PublicationStatusCancelled,
 				}).Error; err != nil {
 					return err
 				}
 				continue
 			}
 
-			if !publication.Enabled || publication.Status == models.PublicationStatusDisabled {
+			if !publication.Enabled || publication.Status == models.PublicationStatusCancelled {
 				if err := tx.Model(&publication).Updates(map[string]any{
 					"draft_status":  models.PublicationDraftStatusUnsynced,
 					"enabled":       true,
 					"review_status": models.PublicationReviewStatusDraft,
-					"status":        models.PublicationStatusPending,
+					"status":        models.PublicationStatusDraft,
 					"sync_required": true,
 				}).Error; err != nil {
 					return err
@@ -521,7 +521,7 @@ func BuildPendingPublicationPayload(title, summary, coverImageURL string) (datat
 		return nil, nil, "", err
 	}
 
-	return config, datatypes.JSON([]byte(`{}`)), models.PublicationStatusPending, nil
+	return config, datatypes.JSON([]byte(`{}`)), models.PublicationStatusDraft, nil
 }
 
 func sanitizeProjectSourceContent(sourceContent string) string {

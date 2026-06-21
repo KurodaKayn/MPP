@@ -40,7 +40,7 @@ func TestRefreshProjectUpsertsProjectListSummaryAndWorkspaceStats(t *testing.T) 
 		ProjectID:    project.ID,
 		Platform:     "wechat",
 		Enabled:      true,
-		Status:       models.PublicationStatusPublished,
+		Status:       models.PublicationStatusSucceeded,
 		DraftStatus:  models.PublicationDraftStatusReady,
 		ReviewStatus: models.PublicationReviewStatusDraft,
 	}).Error)
@@ -64,7 +64,7 @@ func TestRefreshProjectUpsertsProjectListSummaryAndWorkspaceStats(t *testing.T) 
 	require.NoError(t, json.Unmarshal(summary.Publications, &publications))
 	require.Len(t, publications, 2)
 	require.Equal(t, "wechat", publications[0].Platform)
-	require.Equal(t, models.PublicationStatusPublished, publications[0].Status)
+	require.Equal(t, models.PublicationStatusSucceeded, publications[0].Status)
 
 	var stats models.WorkspaceDashboardStats
 	require.NoError(t, db.First(&stats, "workspace_id = ?", workspaceID).Error)
@@ -130,7 +130,7 @@ func TestRebuildDashboardReplaysFactsAndRemovesOrphanReadModels(t *testing.T) {
 		ProjectID:    projectID,
 		Platform:     "wechat",
 		Enabled:      true,
-		Status:       models.PublicationStatusPublished,
+		Status:       models.PublicationStatusSucceeded,
 		DraftStatus:  models.PublicationDraftStatusReady,
 		ReviewStatus: models.PublicationReviewStatusDraft,
 	}).Error)

@@ -84,7 +84,7 @@ func TestProjectVersionsRestoreSavedContent(t *testing.T) {
 		ProjectID:      project.ID,
 		Platform:       "wechat",
 		Enabled:        true,
-		Status:         models.PublicationStatusAdapted,
+		Status:         models.PublicationStatusDraft,
 		DraftStatus:    models.PublicationDraftStatusReady,
 		ReviewStatus:   models.PublicationReviewStatusApproved,
 		SyncRequired:   false,
