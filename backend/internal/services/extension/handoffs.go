@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/kurodakayn/mpp-backend/internal/dto"
 	"github.com/kurodakayn/mpp-backend/internal/models"
@@ -212,13 +213,6 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 		return nil, ErrExtensionCallbackTokenInvalid
 	}
 
-	var existing models.ExtensionExecutionEvent
-	if err := s.writerDB().First(&existing, "event_id = ?", eventID).Error; err == nil {
-		return &dto.ExtensionEventCallbackResponse{Accepted: true, Duplicate: true}, nil
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
-
 	metadata := datatypes.JSON([]byte(`{}`))
 	if req.Metadata != nil {
 		payload, err := json.Marshal(req.Metadata)
@@ -229,6 +223,7 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 	}
 
 	event := models.ExtensionExecutionEvent{
+		ID:              uuid.New(),
 		CallbackTokenID: token.ID,
 		ExecutionID:     token.ExecutionID,
 		ProjectID:       token.ProjectID,
@@ -242,7 +237,23 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 		ErrorMessage:    strings.TrimSpace(req.ErrorMessage),
 		Metadata:        metadata,
 	}
+	duplicate := false
 	if err := s.writerDB().Transaction(func(tx *gorm.DB) error {
+		claim := models.ExtensionExecutionEventClaim{
+			EventID:  eventID,
+			RecordID: event.ID,
+		}
+		result := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "event_id"}},
+			DoNothing: true,
+		}).Create(&claim)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			duplicate = true
+			return loadClaimedExtensionEvent(tx, eventID, &event)
+		}
 		if err := tx.Create(&event).Error; err != nil {
 			return err
 		}
@@ -251,7 +262,7 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 		return nil, err
 	}
 
-	return &dto.ExtensionEventCallbackResponse{Accepted: true, Duplicate: false}, nil
+	return &dto.ExtensionEventCallbackResponse{Accepted: true, Duplicate: duplicate}, nil
 }
 
 func applyExtensionPublicationEvent(tx *gorm.DB, token models.ExtensionCallbackToken, event models.ExtensionExecutionEvent) error {

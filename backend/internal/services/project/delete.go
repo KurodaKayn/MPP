@@ -51,7 +51,6 @@ func (s *Service) DeleteProject(projectID uuid.UUID, userID uuid.UUID) error {
 		cleanup := []any{
 			&models.PublishEvent{},
 			&models.ExtensionCallbackToken{},
-			&models.ExtensionExecutionEvent{},
 			&models.MediaAssetUsage{},
 			&models.PlatformAccountGrant{},
 			&models.ProjectListSummary{},
@@ -67,6 +66,24 @@ func (s *Service) DeleteProject(projectID uuid.UUID, userID uuid.UUID) error {
 				continue
 			}
 			if err := tx.Where("project_id = ?", projectID).Delete(model).Error; err != nil {
+				return err
+			}
+		}
+		if tx.Migrator().HasTable(&models.ExtensionExecutionEvent{}) {
+			var extensionEventIDs []uuid.UUID
+			if err := tx.Model(&models.ExtensionExecutionEvent{}).
+				Where("project_id = ?", projectID).
+				Pluck("id", &extensionEventIDs).Error; err != nil {
+				return err
+			}
+			if len(extensionEventIDs) > 0 && tx.Migrator().HasTable(&models.ExtensionExecutionEventClaim{}) {
+				if err := tx.Where("record_id IN ?", extensionEventIDs).
+					Delete(&models.ExtensionExecutionEventClaim{}).Error; err != nil {
+					return err
+				}
+			}
+			if err := tx.Where("project_id = ?", projectID).
+				Delete(&models.ExtensionExecutionEvent{}).Error; err != nil {
 				return err
 			}
 		}

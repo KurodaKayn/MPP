@@ -297,12 +297,12 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 	)`).Error)
 
 	require.NoError(t, db.Exec(`CREATE TABLE extension_execution_events (
-		id TEXT PRIMARY KEY,
+		id TEXT NOT NULL,
 		callback_token_id TEXT NOT NULL,
 		execution_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		user_id TEXT NOT NULL,
-		event_id TEXT NOT NULL UNIQUE,
+		event_id TEXT NOT NULL,
 		platform TEXT NOT NULL,
 		status TEXT NOT NULL,
 		message TEXT,
@@ -310,7 +310,13 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 		publish_url TEXT,
 		error_message TEXT,
 		metadata TEXT NOT NULL DEFAULT '{}',
-		created_at DATETIME
+		created_at DATETIME NOT NULL,
+		PRIMARY KEY (id, created_at)
+	)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE extension_execution_event_claims (
+		event_id TEXT PRIMARY KEY,
+		record_id TEXT NOT NULL UNIQUE,
+		created_at DATETIME NOT NULL
 	)`).Error)
 
 	return db
