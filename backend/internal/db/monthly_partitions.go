@@ -147,6 +147,46 @@ var monthlyEventPartitionedTables = []monthlyPartitionedTable{
 			"created_at",
 		},
 	},
+	{
+		name: "remote_browser_sessions",
+		createSQL: `
+			CREATE TABLE IF NOT EXISTS remote_browser_sessions (
+				id uuid NOT NULL,
+				user_id uuid NOT NULL,
+				workspace_id uuid,
+				platform_account_id uuid,
+				platform text NOT NULL,
+				status text NOT NULL,
+				worker_session_ref text NOT NULL DEFAULT '',
+				runtime_reference jsonb NOT NULL DEFAULT '{}'::jsonb,
+				stream_endpoint_ref text NOT NULL DEFAULT '',
+				connect_token_hash text NOT NULL,
+				connect_token_expires_at timestamptz,
+				error_message text NOT NULL DEFAULT '',
+				created_at timestamptz NOT NULL,
+				expires_at timestamptz NOT NULL,
+				completed_at timestamptz,
+				CONSTRAINT pk_remote_browser_sessions_partitioned PRIMARY KEY (id, created_at)
+			) PARTITION BY RANGE (created_at)
+		`,
+		columns: []string{
+			"id",
+			"user_id",
+			"workspace_id",
+			"platform_account_id",
+			"platform",
+			"status",
+			"worker_session_ref",
+			"runtime_reference",
+			"stream_endpoint_ref",
+			"connect_token_hash",
+			"connect_token_expires_at",
+			"error_message",
+			"created_at",
+			"expires_at",
+			"completed_at",
+		},
+	},
 }
 
 func ensureMonthlyEventPartitions(database *gorm.DB, now time.Time) error {
