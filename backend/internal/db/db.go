@@ -336,6 +336,9 @@ func syncSchemaUnlocked(database *gorm.DB) error {
 	if err := ensureMonthlyEventPartitions(database, time.Now().UTC()); err != nil {
 		return err
 	}
+	if err := ensureCollabUpdateBatchHashPartitions(database); err != nil {
+		return err
+	}
 
 	if err := database.AutoMigrate(
 		&models.User{},
