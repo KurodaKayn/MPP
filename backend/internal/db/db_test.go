@@ -152,6 +152,16 @@ func TestMonthlyPartitionedEventModelsUsePartitionCompatiblePrimaryKeys(t *testi
 	require.True(t, database.Migrator().HasTable(&models.ExtensionExecutionEventClaim{}))
 }
 
+func TestCollabUpdateBatchModelUsesHashPartitionCompatiblePrimaryKey(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, syncSchema(database))
+
+	primaryKeyColumns := sqlitePrimaryKeyColumns(t, database, "collab_document_update_batches")
+
+	require.ElementsMatch(t, []string{"id", "document_id"}, primaryKeyColumns)
+}
+
 func TestCreateMonthlyPartitionSQLUsesMonthRange(t *testing.T) {
 	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
@@ -169,6 +179,23 @@ func TestCreateDefaultMonthlyPartitionSQLUsesDefaultPartition(t *testing.T) {
 	require.Contains(t, sql, `"publish_events_default"`)
 	require.Contains(t, sql, `PARTITION OF "publish_events"`)
 	require.Contains(t, sql, " DEFAULT")
+}
+
+func TestCreateHashPartitionSQLUsesDocumentHashRemainder(t *testing.T) {
+	sql := createHashPartitionSQL("collab_document_update_batches", 3, 16)
+
+	require.Contains(t, sql, `"collab_document_update_batches_p03"`)
+	require.Contains(t, sql, `PARTITION OF "collab_document_update_batches"`)
+	require.Contains(t, sql, "FOR VALUES WITH (MODULUS 16, REMAINDER 3)")
+}
+
+func TestCollabUpdateBatchHashPartitionDefinition(t *testing.T) {
+	require.Equal(t, "collab_document_update_batches", collabUpdateBatchHashPartitionedTable.name)
+	require.Equal(t, "document_id", collabUpdateBatchHashPartitionedTable.partitionKey)
+	require.Equal(t, 16, collabUpdateBatchHashPartitionedTable.partitionCount)
+	require.Contains(t, collabUpdateBatchHashPartitionedTable.createSQL, "PARTITION BY HASH (document_id)")
+	require.Contains(t, collabUpdateBatchHashPartitionedTable.createSQL, "PRIMARY KEY (id, document_id)")
+	require.Contains(t, collabUpdateBatchHashPartitionedTable.columns, "document_id")
 }
 
 func TestBackfillExtensionExecutionEventClaims(t *testing.T) {
