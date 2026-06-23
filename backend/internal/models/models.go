@@ -632,8 +632,8 @@ type RemoteBrowserSession struct {
 	ConnectTokenHash      string         `gorm:"not null"`
 	ConnectTokenExpiresAt time.Time
 	ErrorMessage          string    `gorm:"not null;default:''"`
-	CreatedAt             time.Time `gorm:"not null;index:idx_remote_browser_sessions_archive_status_created_id,priority:2"`
-	ExpiresAt             time.Time `gorm:"not null"`
+	CreatedAt             time.Time `gorm:"primaryKey;not null;index:idx_remote_browser_sessions_archive_status_created_id,priority:2"`
+	ExpiresAt             time.Time `gorm:"not null;index:idx_remote_browser_sessions_expires_at"`
 	CompletedAt           *time.Time
 }
 
@@ -926,6 +926,9 @@ func (pa *PlatformAccount) BeforeCreate(_ *gorm.DB) (err error) {
 func (s *RemoteBrowserSession) BeforeCreate(_ *gorm.DB) (err error) {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()
+	}
+	if s.CreatedAt.IsZero() {
+		s.CreatedAt = time.Now().UTC()
 	}
 	return
 }

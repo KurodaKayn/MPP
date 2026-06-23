@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
+	"gorm.io/gorm"
 
 	"github.com/kurodakayn/mpp-backend/internal/contracts"
 	"github.com/kurodakayn/mpp-backend/internal/dto"
@@ -64,6 +65,12 @@ func validateWorkerRuntimeEndpoint(name string, endpoint contracts.BrowserWorker
 	return nil
 }
 
+const browserSessionActiveGuardNamespace = 776770002
+
+func browserSessionActiveGuardScope(userID uuid.UUID, platform string) string {
+	return "mpp:browser-session-active:" + userID.String() + ":" + strings.ToLower(strings.TrimSpace(platform))
+}
+
 func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, userID uuid.UUID, tenantID string, workspaceID uuid.UUID, accountID uuid.UUID, platform string, authorizeTarget bool) (*dto.StartBrowserSessionResponse, error) {
 	adapter, ok := s.adapters[platform]
 	if !ok {
@@ -85,6 +92,7 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 	expiresAt := now.Add(browserSessionTTL)
 
 	// 1. Use Redis as the live active-session lock when available.
+	var dbSessionCreated bool
 	if s.coordinationRedisClient != nil {
 		acquired, err := s.acquireRedisActiveSession(ctx, userID, platform, sessionID, expiresAt)
 		if err != nil {
@@ -114,14 +122,6 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 			_ = s.releaseRedisActiveSession(ctx, userID, platform, sessionID)
 			return nil, err
 		}
-	} else {
-		activeSessionExists, err := s.activeSessionExists(ctx, userID, platform, now)
-		if err != nil {
-			return nil, err
-		}
-		if activeSessionExists {
-			return nil, ErrActiveSessionExists
-		}
 	}
 
 	// 2. Generate stream token
@@ -147,12 +147,21 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 		session.PlatformAccountID = &accountID
 	}
 
-	if err := s.writerDB(ctx).Create(session).Error; err != nil {
-		_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, "")
-		if isActiveSessionUniquenessError(err) {
-			return nil, ErrActiveSessionExists
+	if s.coordinationRedisClient == nil {
+		if err := s.createSessionWithDatabaseActiveGuard(ctx, session, now); err != nil {
+			return nil, err
 		}
-		return nil, err
+		dbSessionCreated = true
+	}
+
+	if !dbSessionCreated {
+		if err := s.writerDB(ctx).Create(session).Error; err != nil {
+			_ = s.cleanupRedisSessionForTenant(ctx, userID, tenantID, platform, sessionID, "")
+			if isActiveSessionUniquenessError(err) {
+				return nil, ErrActiveSessionExists
+			}
+			return nil, err
+		}
 	}
 	if err := s.saveRedisLiveSession(ctx, browserSessionLiveState{
 		SessionID: sessionID,
@@ -263,6 +272,36 @@ func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, us
 		StreamTokenExpiresAt: tokenExpiresAt,
 		ExpiresAt:            expiresAt,
 	}, nil
+}
+
+func (s *BrowserSessionService) createSessionWithDatabaseActiveGuard(ctx context.Context, session *models.RemoteBrowserSession, now time.Time) error {
+	return s.writerDB(ctx).Transaction(func(tx *gorm.DB) error {
+		scoped := *s
+		scoped.db = tx
+		scoped.router = nil
+
+		if tx.Name() == "postgres" {
+			if err := tx.Exec("SELECT pg_advisory_xact_lock(?, hashtext(?))", browserSessionActiveGuardNamespace, browserSessionActiveGuardScope(session.UserID, session.Platform)).Error; err != nil {
+				return err
+			}
+		}
+
+		activeSessionExists, err := scoped.activeSessionExists(ctx, session.UserID, session.Platform, now)
+		if err != nil {
+			return err
+		}
+		if activeSessionExists {
+			return ErrActiveSessionExists
+		}
+
+		if err := tx.Create(session).Error; err != nil {
+			if isActiveSessionUniquenessError(err) {
+				return ErrActiveSessionExists
+			}
+			return err
+		}
+		return nil
+	})
 }
 
 func isActiveSessionUniquenessError(err error) bool {

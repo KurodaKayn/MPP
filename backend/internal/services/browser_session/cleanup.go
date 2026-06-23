@@ -62,7 +62,7 @@ func (s *BrowserSessionService) CleanupExpiredSessions(ctx context.Context, now 
 
 func (s *BrowserSessionService) cleanupExpiredSession(ctx context.Context, sessionID uuid.UUID) error {
 	var session models.RemoteBrowserSession
-	if err := s.writerDB(ctx).First(&session, sessionID).Error; err != nil {
+	if err := s.writerDB(ctx).Where("id = ?", sessionID).First(&session).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return s.removeRedisCleanupMember(ctx, sessionID)
 		}

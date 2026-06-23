@@ -388,13 +388,17 @@ func syncSchemaUnlocked(database *gorm.DB) error {
 		return err
 	}
 
-	// Redis owns normal active-session locking; this index is the atomic fallback when Redis is disabled.
-	if err := database.Exec(`
-		CREATE UNIQUE INDEX IF NOT EXISTS ux_remote_browser_sessions_active_user_platform
-		ON remote_browser_sessions (user_id, platform)
-		WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
-	`).Error; err != nil {
-		return err
+	if database.Name() != "postgres" {
+		// Redis owns normal active-session locking. Non-PostgreSQL local/test databases keep
+		// a partial unique index as the no-Redis fallback; PostgreSQL uses a scoped advisory
+		// transaction lock because partitioned unique indexes must include the partition key.
+		if err := database.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS ux_remote_browser_sessions_active_user_platform
+			ON remote_browser_sessions (user_id, platform)
+			WHERE status IN ('pending', 'ready', 'login_detected', 'capturing')
+		`).Error; err != nil {
+			return err
+		}
 	}
 	if database.Name() == "postgres" {
 		if err := database.Exec(`
