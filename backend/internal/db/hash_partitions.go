@@ -103,6 +103,9 @@ func migrateRegularTableToHashPartitions(database *gorm.DB, table hashPartitione
 	)).Error; err != nil {
 		return err
 	}
+	if err := renameLegacySerialSequence(database, table.name, legacyName, "id"); err != nil {
+		return err
+	}
 
 	if err := database.Exec(table.createSQL).Error; err != nil {
 		return err
@@ -132,6 +135,32 @@ func copyLegacyRowsIntoHashPartitionedTable(database *gorm.DB, table hashPartiti
 	)).Error
 }
 
+func renameLegacySerialSequence(database *gorm.DB, tableName string, legacyName string, columnName string) error {
+	return database.Exec(renameLegacySerialSequenceSQL(tableName, legacyName, columnName)).Error
+}
+
+func renameLegacySerialSequenceSQL(tableName string, legacyName string, columnName string) string {
+	sequenceName := fmt.Sprintf("%s_%s_seq", tableName, columnName)
+	legacySequenceName := fmt.Sprintf("%s_%s_seq", legacyName, columnName)
+	return fmt.Sprintf(`
+DO $$
+DECLARE
+	legacy_sequence text;
+BEGIN
+	SELECT pg_get_serial_sequence(%s, %s) INTO legacy_sequence;
+	IF legacy_sequence IS NOT NULL
+		AND to_regclass(legacy_sequence) = to_regclass(%s)
+	THEN
+		EXECUTE format('ALTER SEQUENCE %%s RENAME TO %%I', legacy_sequence, %s);
+	END IF;
+END $$`,
+		quotePostgresStringLiteral(legacyName),
+		quotePostgresStringLiteral(columnName),
+		quotePostgresStringLiteral(sequenceName),
+		quotePostgresStringLiteral(legacySequenceName),
+	)
+}
+
 func syncSerialSequenceToMaxID(database *gorm.DB, tableName string, columnName string) error {
 	return database.Exec(fmt.Sprintf(
 		`SELECT setval(
@@ -156,4 +185,8 @@ func createHashPartitionSQL(tableName string, partitionIndex int, partitionCount
 		partitionCount,
 		partitionIndex,
 	)
+}
+
+func quotePostgresStringLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
