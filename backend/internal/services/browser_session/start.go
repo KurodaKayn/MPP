@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"strings"
 	"time"
 
@@ -66,13 +65,10 @@ func validateWorkerRuntimeEndpoint(name string, endpoint contracts.BrowserWorker
 	return nil
 }
 
-func browserSessionActiveGuardKey(userID uuid.UUID, platform string) int64 {
-	hash := fnv.New64a()
-	_, _ = hash.Write([]byte("mpp:browser-session-active:"))
-	_, _ = hash.Write([]byte(userID.String()))
-	_, _ = hash.Write([]byte(":"))
-	_, _ = hash.Write([]byte(strings.ToLower(strings.TrimSpace(platform))))
-	return int64(hash.Sum64())
+const browserSessionActiveGuardNamespace = 776770002
+
+func browserSessionActiveGuardScope(userID uuid.UUID, platform string) string {
+	return "mpp:browser-session-active:" + userID.String() + ":" + strings.ToLower(strings.TrimSpace(platform))
 }
 
 func (s *BrowserSessionService) startSessionForWorkspace(ctx context.Context, userID uuid.UUID, tenantID string, workspaceID uuid.UUID, accountID uuid.UUID, platform string, authorizeTarget bool) (*dto.StartBrowserSessionResponse, error) {
@@ -285,7 +281,7 @@ func (s *BrowserSessionService) createSessionWithDatabaseActiveGuard(ctx context
 		scoped.router = nil
 
 		if tx.Name() == "postgres" {
-			if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", browserSessionActiveGuardKey(session.UserID, session.Platform)).Error; err != nil {
+			if err := tx.Exec("SELECT pg_advisory_xact_lock(?, hashtext(?))", browserSessionActiveGuardNamespace, browserSessionActiveGuardScope(session.UserID, session.Platform)).Error; err != nil {
 				return err
 			}
 		}
