@@ -143,6 +143,7 @@ func TestMonthlyPartitionedEventModelsUsePartitionCompatiblePrimaryKeys(t *testi
 		"extension_execution_events",
 		"project_activities",
 		"workspace_activities",
+		"remote_browser_sessions",
 	} {
 		primaryKeyColumns := sqlitePrimaryKeyColumns(t, database, tableName)
 
