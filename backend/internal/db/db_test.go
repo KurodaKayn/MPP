@@ -198,6 +198,19 @@ func TestCollabUpdateBatchHashPartitionDefinition(t *testing.T) {
 	require.Contains(t, collabUpdateBatchHashPartitionedTable.columns, "document_id")
 }
 
+func TestRenameLegacySerialSequenceSQLAvoidsBigserialCollision(t *testing.T) {
+	sql := renameLegacySerialSequenceSQL(
+		"collab_document_update_batches",
+		"collab_document_update_batches_legacy_20260623120000",
+		"id",
+	)
+
+	require.Contains(t, sql, "pg_get_serial_sequence('collab_document_update_batches_legacy_20260623120000', 'id')")
+	require.Contains(t, sql, "to_regclass('collab_document_update_batches_id_seq')")
+	require.Contains(t, sql, "ALTER SEQUENCE %s RENAME TO %I")
+	require.Contains(t, sql, "'collab_document_update_batches_legacy_20260623120000_id_seq'")
+}
+
 func TestBackfillExtensionExecutionEventClaims(t *testing.T) {
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		TranslateError: true,
