@@ -58,8 +58,8 @@ type CollabDocumentState struct {
 }
 
 type CollabDocumentUpdateBatch struct {
-	ID               int64      `gorm:"primaryKey;autoIncrement"`
-	DocumentID       uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:ux_collab_update_batch_doc_seq,priority:1;index:idx_collab_update_batches_doc_seq,priority:1"`
+	ID               int64      `gorm:"primaryKey;autoIncrement:false"`
+	DocumentID       uuid.UUID  `gorm:"type:uuid;primaryKey;not null;uniqueIndex:ux_collab_update_batch_doc_seq,priority:1;index:idx_collab_update_batches_doc_seq,priority:1"`
 	FromSeq          int64      `gorm:"not null;uniqueIndex:ux_collab_update_batch_doc_seq,priority:2"`
 	ToSeq            int64      `gorm:"not null;uniqueIndex:ux_collab_update_batch_doc_seq,priority:3;index:idx_collab_update_batches_doc_seq,priority:2,sort:desc"`
 	UpdatePayload    []byte     `gorm:"type:bytea;not null"`
