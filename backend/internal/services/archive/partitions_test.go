@@ -78,6 +78,7 @@ func TestEncodePartitionJSONLinesPreservesStructFieldNames(t *testing.T) {
 	if err := db.Exec(`CREATE TABLE publish_events_2026_01 (
 		id TEXT PRIMARY KEY,
 		publication_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		user_id TEXT NOT NULL,
 		platform TEXT NOT NULL,
@@ -100,6 +101,7 @@ func TestEncodePartitionJSONLinesPreservesStructFieldNames(t *testing.T) {
 	event := models.PublishEvent{
 		ID:             uuid.New(),
 		PublicationID:  uuid.New(),
+		WorkspaceID:    uuid.New(),
 		ProjectID:      uuid.New(),
 		UserID:         uuid.New(),
 		Platform:       "wechat",
