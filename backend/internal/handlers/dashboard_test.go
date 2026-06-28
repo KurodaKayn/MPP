@@ -125,6 +125,7 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 
 	require.NoError(t, db.Exec(`CREATE TABLE collab_documents (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		owner_user_id TEXT NOT NULL,
 		title TEXT NOT NULL,
 		status TEXT NOT NULL DEFAULT 'active',
@@ -148,6 +149,7 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 
 	require.NoError(t, db.Exec(`CREATE TABLE project_activities (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		actor_user_id TEXT NOT NULL,
 		target_user_id TEXT,
@@ -158,6 +160,7 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 
 	require.NoError(t, db.Exec(`CREATE TABLE project_comments (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		author_id TEXT NOT NULL,
 		body TEXT NOT NULL,
@@ -170,6 +173,7 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 
 	require.NoError(t, db.Exec(`CREATE TABLE project_versions (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		created_by TEXT NOT NULL,
 		version_number INTEGER NOT NULL,
@@ -183,6 +187,7 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 
 	require.NoError(t, db.Exec(`CREATE TABLE project_share_links (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		created_by TEXT NOT NULL,
 		token_hash TEXT NOT NULL UNIQUE,
@@ -235,6 +240,7 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 
 	require.NoError(t, db.Exec(`CREATE TABLE project_platform_publications (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		platform TEXT NOT NULL,
 		platform_account_id TEXT,
@@ -286,6 +292,7 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 
 	require.NoError(t, db.Exec(`CREATE TABLE extension_callback_tokens (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		execution_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		user_id TEXT NOT NULL,
@@ -299,6 +306,7 @@ func setupHandlerTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(`CREATE TABLE extension_execution_events (
 		id TEXT NOT NULL,
 		callback_token_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
 		execution_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		user_id TEXT NOT NULL,

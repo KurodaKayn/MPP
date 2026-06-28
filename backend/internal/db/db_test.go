@@ -121,6 +121,91 @@ func TestSyncSchemaAddsWorkspaceTeamModel(t *testing.T) {
 	require.Equal(t, workspace.Name, loadedProject.Workspace.Name)
 }
 
+func TestProjectDomainTablesCarryWorkspaceID(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, syncSchema(database))
+
+	for _, tc := range []struct {
+		model  any
+		column string
+	}{
+		{&models.CollabDocument{}, "workspace_id"},
+		{&models.CollabDocumentState{}, "workspace_id"},
+		{&models.CollabDocumentUpdateBatch{}, "workspace_id"},
+		{&models.ProjectPlatformPublication{}, "workspace_id"},
+		{&models.ProjectActivity{}, "workspace_id"},
+		{&models.ProjectComment{}, "workspace_id"},
+		{&models.ProjectVersion{}, "workspace_id"},
+		{&models.ProjectShareLink{}, "workspace_id"},
+		{&models.PublishEvent{}, "workspace_id"},
+		{&models.ScheduledPublication{}, "workspace_id"},
+		{&models.MediaAsset{}, "workspace_id"},
+		{&models.MediaAssetUsage{}, "workspace_id"},
+		{&models.ExtensionCallbackToken{}, "workspace_id"},
+		{&models.ExtensionExecutionEvent{}, "workspace_id"},
+		{&models.AIContextSnapshot{}, "workspace_id"},
+		{&models.AIGrowthOptimizationRun{}, "workspace_id"},
+		{&models.AIProposal{}, "workspace_id"},
+		{&models.AIDraftingSession{}, "workspace_id"},
+	} {
+		require.True(t, database.Migrator().HasColumn(tc.model, tc.column), "%T", tc.model)
+	}
+}
+
+func TestProjectDomainRowsDeriveWorkspaceID(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, syncSchema(database))
+
+	owner := models.User{Username: "tenant-owner", Email: "tenant-owner@example.com"}
+	require.NoError(t, database.Create(&owner).Error)
+	workspace := models.Workspace{
+		OwnerUserID: owner.ID,
+		Name:        "Tenant workspace",
+		Slug:        "tenant-workspace",
+	}
+	require.NoError(t, database.Create(&workspace).Error)
+	project := models.Project{
+		UserID:        owner.ID,
+		WorkspaceID:   &workspace.ID,
+		Title:         "Tenant project",
+		SourceContent: "content",
+		Status:        models.ProjectStatusReady,
+	}
+	require.NoError(t, database.Create(&project).Error)
+	document := models.CollabDocument{
+		OwnerUserID: owner.ID,
+		Title:       "Tenant document",
+	}
+	require.NoError(t, database.Create(&document).Error)
+
+	publication := models.ProjectPlatformPublication{
+		ProjectID: project.ID,
+		Platform:  "wechat",
+		Status:    models.PublicationStatusDraft,
+	}
+	require.NoError(t, database.Create(&publication).Error)
+	require.Equal(t, workspace.ID, publication.WorkspaceID)
+
+	activity := models.ProjectActivity{
+		ProjectID:   project.ID,
+		ActorUserID: owner.ID,
+		EventType:   models.ProjectActivityContentSaved,
+		Metadata:    []byte(`{}`),
+	}
+	require.NoError(t, database.Create(&activity).Error)
+	require.Equal(t, workspace.ID, activity.WorkspaceID)
+
+	state := models.CollabDocumentState{
+		DocumentID:     document.ID,
+		YDocState:      []byte("state"),
+		StateSizeBytes: 5,
+	}
+	require.NoError(t, database.Create(&state).Error)
+	require.Equal(t, models.PersonalWorkspaceID(owner.ID), state.WorkspaceID)
+}
+
 func TestSyncSchemaAddsArchiveScanIndexes(t *testing.T) {
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
