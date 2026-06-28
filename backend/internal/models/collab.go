@@ -18,6 +18,7 @@ const (
 
 type CollabDocument struct {
 	ID            uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	WorkspaceID   uuid.UUID  `gorm:"type:uuid;not null;index:idx_collab_documents_workspace_updated,priority:1"`
 	OwnerUserID   uuid.UUID  `gorm:"type:uuid;not null;index:idx_collab_documents_owner_updated,priority:1"`
 	Title         string     `gorm:"not null"`
 	Status        string     `gorm:"not null;default:'active'"`
@@ -26,7 +27,7 @@ type CollabDocument struct {
 	LastEditedBy  *uuid.UUID `gorm:"type:uuid"`
 	LastEditedAt  *time.Time
 	CreatedAt     time.Time      `gorm:"not null"`
-	UpdatedAt     time.Time      `gorm:"not null;index:idx_collab_documents_owner_updated,priority:2,sort:desc"`
+	UpdatedAt     time.Time      `gorm:"not null;index:idx_collab_documents_owner_updated,priority:2,sort:desc;index:idx_collab_documents_workspace_updated,priority:2,sort:desc"`
 	DeletedAt     gorm.DeletedAt `gorm:"index"`
 
 	Owner         User                         `gorm:"foreignKey:OwnerUserID;references:ID"`
@@ -48,6 +49,7 @@ type CollabDocumentCollaborator struct {
 
 type CollabDocumentState struct {
 	DocumentID        uuid.UUID `gorm:"type:uuid;primaryKey;not null"`
+	WorkspaceID       uuid.UUID `gorm:"type:uuid;not null;index"`
 	YDocState         []byte    `gorm:"type:bytea;not null"`
 	StateVector       []byte    `gorm:"type:bytea"`
 	CompactedUntilSeq int64     `gorm:"not null;default:0"`
@@ -60,6 +62,7 @@ type CollabDocumentState struct {
 type CollabDocumentUpdateBatch struct {
 	ID               int64      `gorm:"primaryKey;autoIncrement:false"`
 	DocumentID       uuid.UUID  `gorm:"type:uuid;primaryKey;not null;uniqueIndex:ux_collab_update_batch_doc_seq,priority:1;index:idx_collab_update_batches_doc_seq,priority:1"`
+	WorkspaceID      uuid.UUID  `gorm:"type:uuid;not null;index"`
 	FromSeq          int64      `gorm:"not null;uniqueIndex:ux_collab_update_batch_doc_seq,priority:2"`
 	ToSeq            int64      `gorm:"not null;uniqueIndex:ux_collab_update_batch_doc_seq,priority:3;index:idx_collab_update_batches_doc_seq,priority:2,sort:desc"`
 	UpdatePayload    []byte     `gorm:"type:bytea;not null"`
@@ -75,6 +78,23 @@ type CollabDocumentUpdateBatch struct {
 func (d *CollabDocument) BeforeCreate(_ *gorm.DB) (err error) {
 	if d.ID == uuid.Nil {
 		d.ID = uuid.New()
+	}
+	if d.WorkspaceID == uuid.Nil && d.OwnerUserID != uuid.Nil {
+		d.WorkspaceID = PersonalWorkspaceID(d.OwnerUserID)
+	}
+	return
+}
+
+func (s *CollabDocumentState) BeforeCreate(tx *gorm.DB) (err error) {
+	if s.WorkspaceID == uuid.Nil {
+		s.WorkspaceID = deriveWorkspaceIDFromDocument(tx, s.DocumentID)
+	}
+	return
+}
+
+func (b *CollabDocumentUpdateBatch) BeforeCreate(tx *gorm.DB) (err error) {
+	if b.WorkspaceID == uuid.Nil {
+		b.WorkspaceID = deriveWorkspaceIDFromDocument(tx, b.DocumentID)
 	}
 	return
 }
