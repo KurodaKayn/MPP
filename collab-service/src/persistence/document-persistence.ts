@@ -39,10 +39,15 @@ interface DocumentSeqRow extends Record<string, unknown> {
 }
 
 interface ProjectDocumentRow extends Record<string, unknown> {
+  workspace_id: string;
   source_content: string;
   current_seq: string | number;
   has_state: boolean;
   has_updates: boolean;
+}
+
+interface DocumentWorkspaceRow extends Record<string, unknown> {
+  workspace_id: string;
 }
 
 export interface DocumentPersistence {
@@ -124,6 +129,7 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
     const result = await this.database.query<ProjectDocumentRow>(
       `
         SELECT
+          projects.workspace_id,
           projects.source_content,
           collab_documents.current_seq,
           EXISTS (
@@ -165,16 +171,24 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
         `
           INSERT INTO collab_document_states (
             document_id,
+            workspace_id,
             y_doc_state,
             state_vector,
             compacted_until_seq,
             state_size_bytes,
             updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, NOW())
           ON CONFLICT (document_id) DO NOTHING
         `,
-        [documentId, state, stateVector, currentSeq, state.length],
+        [
+          documentId,
+          row.workspace_id,
+          state,
+          stateVector,
+          currentSeq,
+          state.length,
+        ],
       );
     } finally {
       document.destroy();
@@ -251,25 +265,28 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
     await this.database.query("BEGIN");
     try {
       const seq = await this.lockDocumentAndReadSeq(documentId);
+      const workspaceId = await this.documentWorkspaceId(documentId);
       await this.database.query(
         `
           INSERT INTO collab_document_states (
             document_id,
+            workspace_id,
             y_doc_state,
             state_vector,
             compacted_until_seq,
             state_size_bytes,
             updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, NOW())
           ON CONFLICT (document_id) DO UPDATE SET
+            workspace_id = EXCLUDED.workspace_id,
             y_doc_state = EXCLUDED.y_doc_state,
             state_vector = EXCLUDED.state_vector,
             compacted_until_seq = EXCLUDED.compacted_until_seq,
             state_size_bytes = EXCLUDED.state_size_bytes,
             updated_at = EXCLUDED.updated_at
         `,
-        [documentId, state, stateVector, seq, state.length],
+        [documentId, workspaceId, state, stateVector, seq, state.length],
       );
       await this.database.query("COMMIT");
       await this.pruneCompactedBatches(documentId, seq).catch((error) => {
@@ -397,12 +414,14 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
     await this.database.query("BEGIN");
     try {
       const currentSeq = await this.lockDocumentAndReadSeq(documentId);
+      const workspaceId = await this.documentWorkspaceId(documentId);
       const fromSeq = currentSeq + 1;
       const toSeq = currentSeq + pending.length;
       await this.database.query(
         `
           INSERT INTO collab_document_update_batches (
             document_id,
+            workspace_id,
             from_seq,
             to_seq,
             update_payload,
@@ -411,10 +430,11 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
             actor_user_id,
             created_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
         `,
         [
           documentId,
+          workspaceId,
           fromSeq,
           toSeq,
           payload,
@@ -465,6 +485,23 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
       throw new Error("collaborative document not found");
     }
     return Number(row.current_seq);
+  }
+
+  private async documentWorkspaceId(documentId: string): Promise<string> {
+    const result = await this.database.query<DocumentWorkspaceRow>(
+      `
+        SELECT workspace_id
+        FROM collab_documents
+        WHERE id = $1
+      `,
+      [documentId],
+    );
+
+    const workspaceId = result.rows[0]?.workspace_id;
+    if (!workspaceId) {
+      throw new Error("collaborative document workspace not found");
+    }
+    return workspaceId;
   }
 
   private async pruneCompactedBatches(

@@ -121,6 +121,7 @@ func (s *Service) CreateDocument(ctx context.Context, ownerUserID uuid.UUID, tit
 	}
 
 	document := models.CollabDocument{
+		WorkspaceID:   models.PersonalWorkspaceID(ownerUserID),
 		OwnerUserID:   ownerUserID,
 		Title:         title,
 		Status:        models.CollabDocumentStatusActive,
