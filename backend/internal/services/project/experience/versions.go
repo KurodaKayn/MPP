@@ -12,14 +12,15 @@ import (
 )
 
 func (s *Service) ListProjectVersions(projectID uuid.UUID, userID uuid.UUID) (*dto.ProjectVersionsResponse, error) {
-	if err := s.requireProjectAccess(projectID, userID); err != nil {
+	project, err := s.accessibleProject(projectID, userID)
+	if err != nil {
 		return nil, err
 	}
 
 	var versions []models.ProjectVersion
 	if err := s.db.
 		Preload("Creator", selectUserIdentity).
-		Where("project_id = ?", projectID).
+		Where("workspace_id = ? AND project_id = ?", models.ProjectWorkspaceID(project), projectID).
 		Order("version_number desc").
 		Find(&versions).Error; err != nil {
 		return nil, err
@@ -120,6 +121,7 @@ func CreateProjectVersion(tx *gorm.DB, project models.Project, userID uuid.UUID,
 		}
 	}
 	return tx.Create(&models.ProjectVersion{
+		WorkspaceID:      models.ProjectWorkspaceID(project),
 		ProjectID:        project.ID,
 		CreatedBy:        userID,
 		VersionNumber:    latestVersionNumber + 1,

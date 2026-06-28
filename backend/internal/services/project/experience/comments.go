@@ -13,14 +13,15 @@ import (
 )
 
 func (s *Service) ListProjectComments(projectID uuid.UUID, userID uuid.UUID) (*dto.ProjectCommentsResponse, error) {
-	if err := s.requireProjectAccess(projectID, userID); err != nil {
+	project, err := s.accessibleProject(projectID, userID)
+	if err != nil {
 		return nil, err
 	}
 
 	var comments []models.ProjectComment
 	if err := s.db.
 		Preload("Author", selectUserIdentity).
-		Where("project_id = ?", projectID).
+		Where("workspace_id = ? AND project_id = ?", models.ProjectWorkspaceID(project), projectID).
 		Order("created_at desc").
 		Find(&comments).Error; err != nil {
 		return nil, err
@@ -34,7 +35,8 @@ func (s *Service) ListProjectComments(projectID uuid.UUID, userID uuid.UUID) (*d
 }
 
 func (s *Service) CreateProjectComment(projectID uuid.UUID, userID uuid.UUID, req dto.CreateProjectCommentRequest) (*dto.ProjectComment, error) {
-	if err := s.requireProjectAccess(projectID, userID); err != nil {
+	project, err := s.accessibleProject(projectID, userID)
+	if err != nil {
 		return nil, err
 	}
 	body := strings.TrimSpace(req.Body)
@@ -47,12 +49,13 @@ func (s *Service) CreateProjectComment(projectID uuid.UUID, userID uuid.UUID, re
 		return nil, err
 	}
 	comment := models.ProjectComment{
-		ProjectID:  projectID,
-		AuthorID:   userID,
-		Body:       body,
-		AnchorText: strings.TrimSpace(req.AnchorText),
-		Status:     models.ProjectCommentStatusOpen,
-		Metadata:   metadata,
+		WorkspaceID: models.ProjectWorkspaceID(project),
+		ProjectID:   projectID,
+		AuthorID:    userID,
+		Body:        body,
+		AnchorText:  strings.TrimSpace(req.AnchorText),
+		Status:      models.ProjectCommentStatusOpen,
+		Metadata:    metadata,
 	}
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&comment).Error; err != nil {
@@ -86,11 +89,12 @@ func (s *Service) UpdateProjectComment(projectID uuid.UUID, userID uuid.UUID, co
 	if strings.TrimSpace(req.Status) != models.ProjectCommentStatusResolved {
 		return nil, ErrInvalidProjectComment
 	}
+	workspaceID := models.ProjectWorkspaceID(project)
 
 	now := time.Now().UTC()
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&models.ProjectComment{}).
-			Where("id = ? AND project_id = ?", commentID, projectID).
+			Where("id = ? AND workspace_id = ? AND project_id = ?", commentID, workspaceID, projectID).
 			Updates(map[string]any{
 				"status":      models.ProjectCommentStatusResolved,
 				"resolved_at": &now,

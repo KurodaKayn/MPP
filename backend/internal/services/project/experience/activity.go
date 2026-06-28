@@ -12,7 +12,8 @@ import (
 )
 
 func (s *Service) ListProjectActivities(projectID uuid.UUID, userID uuid.UUID, limit int) (*dto.ProjectActivitiesResponse, error) {
-	if err := s.requireProjectAccess(projectID, userID); err != nil {
+	project, err := s.accessibleProject(projectID, userID)
+	if err != nil {
 		return nil, err
 	}
 	if limit <= 0 || limit > 100 {
@@ -23,7 +24,7 @@ func (s *Service) ListProjectActivities(projectID uuid.UUID, userID uuid.UUID, l
 	if err := s.db.
 		Preload("Actor", selectUserIdentity).
 		Preload("TargetUser", selectUserIdentity).
-		Where("project_id = ?", projectID).
+		Where("workspace_id = ? AND project_id = ?", models.ProjectWorkspaceID(project), projectID).
 		Order("created_at desc").
 		Order("id desc").
 		Limit(limit).
@@ -46,11 +47,16 @@ func RecordProjectActivity(tx *gorm.DB, projectID uuid.UUID, actorUserID uuid.UU
 	if err != nil {
 		return err
 	}
+	var project models.Project
+	if err := tx.Select("id", "user_id", "workspace_id").First(&project, "id = ?", projectID).Error; err != nil {
+		return err
+	}
+	workspaceID := models.ProjectWorkspaceID(project)
 	createdAt := time.Now().UTC()
 	var latestCreatedAt time.Time
 	if err := tx.
 		Model(&models.ProjectActivity{}).
-		Where("project_id = ?", projectID).
+		Where("workspace_id = ? AND project_id = ?", workspaceID, projectID).
 		Select("created_at").
 		Order("created_at desc").
 		Limit(1).
@@ -61,6 +67,7 @@ func RecordProjectActivity(tx *gorm.DB, projectID uuid.UUID, actorUserID uuid.UU
 		createdAt = latestCreatedAt.Add(time.Nanosecond)
 	}
 	return tx.Create(&models.ProjectActivity{
+		WorkspaceID:  workspaceID,
 		ProjectID:    projectID,
 		ActorUserID:  actorUserID,
 		TargetUserID: targetUserID,
