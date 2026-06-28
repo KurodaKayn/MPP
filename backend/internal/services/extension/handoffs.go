@@ -119,7 +119,7 @@ func (s *Service) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensi
 	}
 
 	var project models.Project
-	if err := s.strongReadDB().Select("id", "user_id", "title").First(&project, "id = ?", req.ProjectID).Error; err != nil {
+	if err := s.strongReadDB().Select("id", "user_id", "workspace_id", "title").First(&project, "id = ?", req.ProjectID).Error; err != nil {
 		return nil, err
 	}
 	if project.UserID != userID {
@@ -148,6 +148,7 @@ func (s *Service) CreateExtensionHandoff(userID uuid.UUID, req dto.CreateExtensi
 			}
 			callbackToken := uuid.NewString()
 			if err := tx.Create(&models.ExtensionCallbackToken{
+				WorkspaceID: models.ProjectWorkspaceID(project),
 				ExecutionID: executionID,
 				ProjectID:   project.ID,
 				UserID:      userID,
@@ -225,6 +226,7 @@ func (s *Service) RecordExtensionEvent(req dto.ExtensionEventCallbackRequest) (*
 	event := models.ExtensionExecutionEvent{
 		ID:              uuid.New(),
 		CallbackTokenID: token.ID,
+		WorkspaceID:     token.WorkspaceID,
 		ExecutionID:     token.ExecutionID,
 		ProjectID:       token.ProjectID,
 		UserID:          token.UserID,
