@@ -204,6 +204,86 @@ func TestProjectDomainRowsDeriveWorkspaceID(t *testing.T) {
 	}
 	require.NoError(t, database.Create(&state).Error)
 	require.Equal(t, models.PersonalWorkspaceID(owner.ID), state.WorkspaceID)
+
+	schedule := models.ScheduledPublication{
+		ProjectID:     project.ID,
+		PublicationID: publication.ID,
+		ScheduledAt:   time.Now().UTC().Add(time.Hour),
+		CreatedBy:     owner.ID,
+	}
+	require.NoError(t, database.Create(&schedule).Error)
+	require.Equal(t, workspace.ID, schedule.WorkspaceID)
+
+	asset := models.MediaAsset{
+		UserID:           owner.ID,
+		ProjectID:        &project.ID,
+		Bucket:           "media",
+		ObjectKey:        "workspaces/tenant/project/image.png",
+		OriginalFilename: "image.png",
+		MimeType:         "image/png",
+		SizeBytes:        12,
+		Usage:            models.MediaAssetUsageCoverImage,
+	}
+	require.NoError(t, database.Create(&asset).Error)
+	require.NotNil(t, asset.WorkspaceID)
+	require.Equal(t, workspace.ID, *asset.WorkspaceID)
+
+	assetUsage := models.MediaAssetUsage{
+		MediaAssetID: asset.ID,
+		ProjectID:    &project.ID,
+		ResourceType: "project",
+		ResourceID:   project.ID,
+		UsageKind:    models.MediaAssetUsageCoverImage,
+	}
+	require.NoError(t, database.Create(&assetUsage).Error)
+	require.Equal(t, workspace.ID, assetUsage.WorkspaceID)
+
+	snapshot := models.AIContextSnapshot{
+		ProjectID:       project.ID,
+		CreatedByID:     owner.ID,
+		ContextKind:     "drafting",
+		SourceContent:   "content",
+		TokenEstimate:   1,
+		ContextBudget:   100,
+		CompactionLevel: "none",
+	}
+	require.NoError(t, database.Create(&snapshot).Error)
+	require.Equal(t, workspace.ID, snapshot.WorkspaceID)
+
+	run := models.AIGrowthOptimizationRun{
+		ProjectID:         project.ID,
+		ContextSnapshotID: snapshot.ID,
+		Goal:              "tighten",
+		Intensity:         "balanced",
+		TargetPlatforms:   []byte(`["wechat"]`),
+		Status:            "running",
+		Model:             "test-model",
+		PromptVersion:     "test",
+		CreatedByID:       owner.ID,
+	}
+	require.NoError(t, database.Create(&run).Error)
+	require.Equal(t, workspace.ID, run.WorkspaceID)
+
+	proposal := models.AIProposal{
+		ProjectID:         project.ID,
+		RunID:             &run.ID,
+		ContextSnapshotID: snapshot.ID,
+		ProposalType:      "source_rewrite",
+		TargetPlatform:    "wechat",
+		Status:            "proposed",
+	}
+	require.NoError(t, database.Create(&proposal).Error)
+	require.Equal(t, workspace.ID, proposal.WorkspaceID)
+
+	draftingSession := models.AIDraftingSession{
+		ProjectID:     project.ID,
+		CreatedByID:   owner.ID,
+		Title:         "Drafting",
+		Status:        "active",
+		LastMessageAt: time.Now().UTC(),
+	}
+	require.NoError(t, database.Create(&draftingSession).Error)
+	require.Equal(t, workspace.ID, draftingSession.WorkspaceID)
 }
 
 func TestSyncSchemaAddsArchiveScanIndexes(t *testing.T) {

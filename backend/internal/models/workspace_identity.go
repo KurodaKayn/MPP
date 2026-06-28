@@ -58,3 +58,34 @@ func deriveWorkspaceIDFromDocument(db *gorm.DB, documentID uuid.UUID) uuid.UUID 
 	}
 	return uuid.Nil
 }
+
+func deriveWorkspaceIDFromMediaAsset(db *gorm.DB, mediaAssetID uuid.UUID, projectID *uuid.UUID, fallbackUserID uuid.UUID) uuid.UUID {
+	if projectID != nil && *projectID != uuid.Nil {
+		return deriveWorkspaceIDFromProject(db, *projectID, fallbackUserID)
+	}
+
+	if mediaAssetID == uuid.Nil {
+		if fallbackUserID != uuid.Nil {
+			return PersonalWorkspaceID(fallbackUserID)
+		}
+		return uuid.Nil
+	}
+
+	var asset MediaAsset
+	if err := db.Select("id", "user_id", "workspace_id", "project_id").First(&asset, "id = ?", mediaAssetID).Error; err == nil {
+		if asset.WorkspaceID != nil && *asset.WorkspaceID != uuid.Nil {
+			return *asset.WorkspaceID
+		}
+		if asset.ProjectID != nil && *asset.ProjectID != uuid.Nil {
+			return deriveWorkspaceIDFromProject(db, *asset.ProjectID, asset.UserID)
+		}
+		if asset.UserID != uuid.Nil {
+			return PersonalWorkspaceID(asset.UserID)
+		}
+	}
+
+	if fallbackUserID != uuid.Nil {
+		return PersonalWorkspaceID(fallbackUserID)
+	}
+	return uuid.Nil
+}
