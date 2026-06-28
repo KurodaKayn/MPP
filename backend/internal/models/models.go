@@ -284,33 +284,36 @@ type ProjectCollaborator struct {
 
 type ProjectActivity struct {
 	ID           uuid.UUID      `gorm:"type:uuid;primaryKey;index:idx_project_activities_archive_created_id,priority:2"`
+	WorkspaceID  uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_activities_workspace_created_at,priority:1"`
 	ProjectID    uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_activities_project_created_at,priority:1"`
 	ActorUserID  uuid.UUID      `gorm:"type:uuid;not null;index"`
 	TargetUserID *uuid.UUID     `gorm:"type:uuid;index"`
 	EventType    string         `gorm:"not null;index"`
 	Metadata     datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt    time.Time      `gorm:"primaryKey;not null;index:idx_project_activities_project_created_at,priority:2;index:idx_project_activities_archive_created_id,priority:1"`
+	CreatedAt    time.Time      `gorm:"primaryKey;not null;index:idx_project_activities_project_created_at,priority:2;index:idx_project_activities_workspace_created_at,priority:2;index:idx_project_activities_archive_created_id,priority:1"`
 	Project      Project        `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
 	Actor        User           `gorm:"foreignKey:ActorUserID;constraint:OnDelete:CASCADE"`
 	TargetUser   *User          `gorm:"foreignKey:TargetUserID;constraint:OnDelete:SET NULL"`
 }
 
 type ProjectComment struct {
-	ID         uuid.UUID      `gorm:"type:uuid;primaryKey"`
-	ProjectID  uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_comments_project_created_at,priority:1"`
-	AuthorID   uuid.UUID      `gorm:"type:uuid;not null;index"`
-	Body       string         `gorm:"type:text;not null"`
-	AnchorText string         `gorm:"type:text;not null;default:''"`
-	Status     string         `gorm:"not null;default:'open';index"`
-	Metadata   datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt  time.Time      `gorm:"not null;index:idx_project_comments_project_created_at,priority:2"`
-	ResolvedAt *time.Time
-	Project    Project `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
-	Author     User    `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE"`
+	ID          uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	WorkspaceID uuid.UUID      `gorm:"type:uuid;not null;index"`
+	ProjectID   uuid.UUID      `gorm:"type:uuid;not null;index:idx_project_comments_project_created_at,priority:1"`
+	AuthorID    uuid.UUID      `gorm:"type:uuid;not null;index"`
+	Body        string         `gorm:"type:text;not null"`
+	AnchorText  string         `gorm:"type:text;not null;default:''"`
+	Status      string         `gorm:"not null;default:'open';index"`
+	Metadata    datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	CreatedAt   time.Time      `gorm:"not null;index:idx_project_comments_project_created_at,priority:2"`
+	ResolvedAt  *time.Time
+	Project     Project `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	Author      User    `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE"`
 }
 
 type ProjectVersion struct {
 	ID               uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	WorkspaceID      uuid.UUID  `gorm:"type:uuid;not null;index"`
 	ProjectID        uuid.UUID  `gorm:"type:uuid;not null;index:idx_project_versions_project_created_at,priority:1"`
 	CreatedBy        uuid.UUID  `gorm:"type:uuid;not null;index"`
 	VersionNumber    int        `gorm:"not null"`
@@ -325,17 +328,18 @@ type ProjectVersion struct {
 }
 
 type ProjectShareLink struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
-	ProjectID uuid.UUID `gorm:"type:uuid;not null;index"`
-	CreatedBy uuid.UUID `gorm:"type:uuid;not null;index"`
-	TokenHash string    `gorm:"not null;uniqueIndex"`
-	Role      string    `gorm:"not null"`
-	Status    string    `gorm:"not null;default:'active';index"`
-	ExpiresAt *time.Time
-	CreatedAt time.Time `gorm:"not null"`
-	RevokedAt *time.Time
-	Project   Project `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
-	Creator   User    `gorm:"foreignKey:CreatedBy;constraint:OnDelete:CASCADE"`
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey"`
+	WorkspaceID uuid.UUID `gorm:"type:uuid;not null;index"`
+	ProjectID   uuid.UUID `gorm:"type:uuid;not null;index"`
+	CreatedBy   uuid.UUID `gorm:"type:uuid;not null;index"`
+	TokenHash   string    `gorm:"not null;uniqueIndex"`
+	Role        string    `gorm:"not null"`
+	Status      string    `gorm:"not null;default:'active';index"`
+	ExpiresAt   *time.Time
+	CreatedAt   time.Time `gorm:"not null"`
+	RevokedAt   *time.Time
+	Project     Project `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	Creator     User    `gorm:"foreignKey:CreatedBy;constraint:OnDelete:CASCADE"`
 }
 
 const (
@@ -360,16 +364,6 @@ const (
 	WorkspaceActivityInviteAccepted    = "invite_accepted"
 	WorkspaceActivityInviteRevoked     = "invite_revoked"
 )
-
-var personalWorkspaceNamespace = uuid.MustParse("03d32585-3f8c-48a8-bf40-53aa3f1698c1")
-
-func PersonalWorkspaceID(userID uuid.UUID) uuid.UUID {
-	return uuid.NewSHA1(personalWorkspaceNamespace, []byte(userID.String()))
-}
-
-func PersonalWorkspaceSlug(userID uuid.UUID) string {
-	return "personal-" + userID.String()
-}
 
 type Workspace struct {
 	ID          uuid.UUID      `gorm:"type:uuid;primaryKey"`
@@ -470,11 +464,12 @@ type Notification struct {
 
 type ProjectPlatformPublication struct {
 	ID                uuid.UUID      `gorm:"type:uuid;primaryKey"`
+	WorkspaceID       uuid.UUID      `gorm:"type:uuid;not null;index:idx_publications_workspace_status"`
 	ProjectID         uuid.UUID      `gorm:"type:uuid;not null;uniqueIndex:idx_publications_project_platform"`
 	Platform          string         `gorm:"not null;uniqueIndex:idx_publications_project_platform;index:idx_publications_platform_status"`
 	PlatformAccountID *uuid.UUID     `gorm:"type:uuid;index"`
 	Enabled           bool           `gorm:"not null;default:true"`
-	Status            string         `gorm:"not null;index:idx_publications_platform_status"`
+	Status            string         `gorm:"not null;index:idx_publications_platform_status;index:idx_publications_workspace_status"`
 	DraftStatus       string         `gorm:"not null;default:'unsynced';index"`
 	ReviewStatus      string         `gorm:"not null;default:'draft';index"`
 	SyncRequired      bool           `gorm:"not null;default:false;index"`
@@ -511,6 +506,7 @@ type ProjectListSummary struct {
 type PublishEvent struct {
 	ID             uuid.UUID `gorm:"type:uuid;primaryKey;index:idx_publish_events_archive_created_id,priority:2"`
 	PublicationID  uuid.UUID `gorm:"type:uuid;not null;index"`
+	WorkspaceID    uuid.UUID `gorm:"type:uuid;not null;index:idx_publish_events_workspace_created_at,priority:1"`
 	ProjectID      uuid.UUID `gorm:"type:uuid;not null;index"`
 	UserID         uuid.UUID `gorm:"type:uuid;not null;index:idx_publish_events_user_idempotency"`
 	Platform       string    `gorm:"not null;index"`
@@ -523,7 +519,7 @@ type PublishEvent struct {
 	PublishURL     string
 	ErrorMessage   string
 	Metadata       datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt      time.Time      `gorm:"primaryKey;not null;index:idx_publish_events_archive_created_id,priority:1"`
+	CreatedAt      time.Time      `gorm:"primaryKey;not null;index:idx_publish_events_workspace_created_at,priority:2;index:idx_publish_events_archive_created_id,priority:1"`
 }
 
 type ScheduledPublication struct {
@@ -653,6 +649,7 @@ type PlatformAccountGrant struct {
 
 type ExtensionCallbackToken struct {
 	ID          uuid.UUID `gorm:"type:uuid;primaryKey"`
+	WorkspaceID uuid.UUID `gorm:"type:uuid;not null;index"`
 	ExecutionID string    `gorm:"not null;index"`
 	ProjectID   uuid.UUID `gorm:"type:uuid;not null;index"`
 	UserID      uuid.UUID `gorm:"type:uuid;not null;index"`
@@ -666,6 +663,7 @@ type ExtensionCallbackToken struct {
 type ExtensionExecutionEvent struct {
 	ID              uuid.UUID `gorm:"type:uuid;primaryKey;index:idx_extension_execution_events_archive_created_id,priority:2"`
 	CallbackTokenID uuid.UUID `gorm:"type:uuid;not null;index"`
+	WorkspaceID     uuid.UUID `gorm:"type:uuid;not null;index:idx_extension_execution_events_workspace_created_at,priority:1"`
 	ExecutionID     string    `gorm:"not null;index"`
 	ProjectID       uuid.UUID `gorm:"type:uuid;not null;index"`
 	UserID          uuid.UUID `gorm:"type:uuid;not null;index"`
@@ -677,7 +675,7 @@ type ExtensionExecutionEvent struct {
 	PublishURL      string
 	ErrorMessage    string
 	Metadata        datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt       time.Time      `gorm:"primaryKey;not null;index:idx_extension_execution_events_archive_created_id,priority:1"`
+	CreatedAt       time.Time      `gorm:"primaryKey;not null;index:idx_extension_execution_events_workspace_created_at,priority:2;index:idx_extension_execution_events_archive_created_id,priority:1"`
 }
 
 type ExtensionExecutionEventClaim struct {
@@ -756,9 +754,12 @@ func (u *MediaAssetUsage) BeforeCreate(_ *gorm.DB) (err error) {
 	return
 }
 
-func (p *ProjectPlatformPublication) BeforeCreate(_ *gorm.DB) (err error) {
+func (p *ProjectPlatformPublication) BeforeCreate(tx *gorm.DB) (err error) {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
+	}
+	if p.WorkspaceID == uuid.Nil {
+		p.WorkspaceID = deriveWorkspaceIDFromProject(tx, p.ProjectID, uuid.Nil)
 	}
 	if p.DraftStatus == "" {
 		p.DraftStatus = PublicationDraftStatusUnsynced
@@ -769,9 +770,12 @@ func (p *ProjectPlatformPublication) BeforeCreate(_ *gorm.DB) (err error) {
 	return
 }
 
-func (e *PublishEvent) BeforeCreate(_ *gorm.DB) (err error) {
+func (e *PublishEvent) BeforeCreate(tx *gorm.DB) (err error) {
 	if e.ID == uuid.Nil {
 		e.ID = uuid.New()
+	}
+	if e.WorkspaceID == uuid.Nil {
+		e.WorkspaceID = deriveWorkspaceIDFromProject(tx, e.ProjectID, e.UserID)
 	}
 	if e.CreatedAt.IsZero() {
 		e.CreatedAt = time.Now().UTC()
@@ -855,9 +859,12 @@ func (i *WorkspaceInvite) BeforeCreate(_ *gorm.DB) (err error) {
 	return
 }
 
-func (a *ProjectActivity) BeforeCreate(_ *gorm.DB) (err error) {
+func (a *ProjectActivity) BeforeCreate(tx *gorm.DB) (err error) {
 	if a.ID == uuid.Nil {
 		a.ID = uuid.New()
+	}
+	if a.WorkspaceID == uuid.Nil {
+		a.WorkspaceID = deriveWorkspaceIDFromProject(tx, a.ProjectID, a.ActorUserID)
 	}
 	if a.CreatedAt.IsZero() {
 		a.CreatedAt = time.Now().UTC()
@@ -865,9 +872,12 @@ func (a *ProjectActivity) BeforeCreate(_ *gorm.DB) (err error) {
 	return
 }
 
-func (c *ProjectComment) BeforeCreate(_ *gorm.DB) (err error) {
+func (c *ProjectComment) BeforeCreate(tx *gorm.DB) (err error) {
 	if c.ID == uuid.Nil {
 		c.ID = uuid.New()
+	}
+	if c.WorkspaceID == uuid.Nil {
+		c.WorkspaceID = deriveWorkspaceIDFromProject(tx, c.ProjectID, c.AuthorID)
 	}
 	if c.Status == "" {
 		c.Status = ProjectCommentStatusOpen
@@ -875,16 +885,22 @@ func (c *ProjectComment) BeforeCreate(_ *gorm.DB) (err error) {
 	return
 }
 
-func (v *ProjectVersion) BeforeCreate(_ *gorm.DB) (err error) {
+func (v *ProjectVersion) BeforeCreate(tx *gorm.DB) (err error) {
 	if v.ID == uuid.Nil {
 		v.ID = uuid.New()
+	}
+	if v.WorkspaceID == uuid.Nil {
+		v.WorkspaceID = deriveWorkspaceIDFromProject(tx, v.ProjectID, v.CreatedBy)
 	}
 	return
 }
 
-func (l *ProjectShareLink) BeforeCreate(_ *gorm.DB) (err error) {
+func (l *ProjectShareLink) BeforeCreate(tx *gorm.DB) (err error) {
 	if l.ID == uuid.Nil {
 		l.ID = uuid.New()
+	}
+	if l.WorkspaceID == uuid.Nil {
+		l.WorkspaceID = deriveWorkspaceIDFromProject(tx, l.ProjectID, l.CreatedBy)
 	}
 	if l.Status == "" {
 		l.Status = ProjectShareLinkStatusActive
@@ -940,16 +956,22 @@ func (g *PlatformAccountGrant) BeforeCreate(_ *gorm.DB) (err error) {
 	return
 }
 
-func (t *ExtensionCallbackToken) BeforeCreate(_ *gorm.DB) (err error) {
+func (t *ExtensionCallbackToken) BeforeCreate(tx *gorm.DB) (err error) {
 	if t.ID == uuid.Nil {
 		t.ID = uuid.New()
+	}
+	if t.WorkspaceID == uuid.Nil {
+		t.WorkspaceID = deriveWorkspaceIDFromProject(tx, t.ProjectID, t.UserID)
 	}
 	return
 }
 
-func (e *ExtensionExecutionEvent) BeforeCreate(_ *gorm.DB) (err error) {
+func (e *ExtensionExecutionEvent) BeforeCreate(tx *gorm.DB) (err error) {
 	if e.ID == uuid.Nil {
 		e.ID = uuid.New()
+	}
+	if e.WorkspaceID == uuid.Nil {
+		e.WorkspaceID = deriveWorkspaceIDFromProject(tx, e.ProjectID, e.UserID)
 	}
 	if e.CreatedAt.IsZero() {
 		e.CreatedAt = time.Now().UTC()
