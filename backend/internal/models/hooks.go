@@ -22,9 +22,15 @@ func (p *Project) BeforeCreate(_ *gorm.DB) (err error) {
 	return
 }
 
-func (m *MediaAsset) BeforeCreate(_ *gorm.DB) (err error) {
+func (m *MediaAsset) BeforeCreate(tx *gorm.DB) (err error) {
 	if m.ID == uuid.Nil {
 		m.ID = uuid.New()
+	}
+	if m.WorkspaceID == nil {
+		workspaceID := deriveWorkspaceIDFromMediaAsset(tx, uuid.Nil, m.ProjectID, m.UserID)
+		if workspaceID != uuid.Nil {
+			m.WorkspaceID = &workspaceID
+		}
 	}
 	if m.Status == "" {
 		m.Status = MediaAssetStatusPending
@@ -70,9 +76,12 @@ func (b *BrandProfile) BeforeCreate(_ *gorm.DB) (err error) {
 	return
 }
 
-func (u *MediaAssetUsage) BeforeCreate(_ *gorm.DB) (err error) {
+func (u *MediaAssetUsage) BeforeCreate(tx *gorm.DB) (err error) {
 	if u.ID == uuid.Nil {
 		u.ID = uuid.New()
+	}
+	if u.WorkspaceID == uuid.Nil {
+		u.WorkspaceID = deriveWorkspaceIDFromMediaAsset(tx, u.MediaAssetID, u.ProjectID, uuid.Nil)
 	}
 	return
 }
@@ -106,9 +115,12 @@ func (e *PublishEvent) BeforeCreate(tx *gorm.DB) (err error) {
 	return
 }
 
-func (s *ScheduledPublication) BeforeCreate(_ *gorm.DB) (err error) {
+func (s *ScheduledPublication) BeforeCreate(tx *gorm.DB) (err error) {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()
+	}
+	if s.WorkspaceID == uuid.Nil {
+		s.WorkspaceID = deriveWorkspaceIDFromProject(tx, s.ProjectID, s.CreatedBy)
 	}
 	if s.Status == "" {
 		s.Status = ScheduledPublicationStatusScheduled
