@@ -30,11 +30,12 @@ type RunResult struct {
 }
 
 type TableResult struct {
-	Table        string
-	RowsArchived int
-	ObjectKey    string
-	ObjectKeys   []string
-	Cutoff       time.Time
+	Table              string
+	RowsArchived       int
+	ObjectKey          string
+	ObjectKeys         []string
+	Cutoff             time.Time
+	PartitionsArchived []string
 }
 
 type archiveLine[T any] struct {
@@ -128,27 +129,27 @@ func (w *Worker) runArchiveTables(ctx context.Context, db *gorm.DB, now time.Tim
 }
 
 func (w *Worker) archivePublishEvents(ctx context.Context, db *gorm.DB, now time.Time) (TableResult, error) {
-	return archiveModel[models.PublishEvent](ctx, db, w.storage, w.config, "publish_events", w.config.PublishEventRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
+	return archivePartitionedModel[models.PublishEvent](ctx, db, w.storage, w.config, publishEventsPartitionSpec, w.config.PublishEventRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
 		return query.Where("created_at < ?", cutoff)
-	})
+	}, nil)
 }
 
 func (w *Worker) archiveExtensionExecutionEvents(ctx context.Context, db *gorm.DB, now time.Time) (TableResult, error) {
-	return archiveModelWithDeleteHook(ctx, db, w.storage, w.config, "extension_execution_events", w.config.ExtensionExecutionEventRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
+	return archivePartitionedModel[models.ExtensionExecutionEvent](ctx, db, w.storage, w.config, extensionExecutionEventsPartitionSpec, w.config.ExtensionExecutionEventRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
 		return query.Where("created_at < ?", cutoff)
 	}, deleteExtensionExecutionEventClaims)
 }
 
 func (w *Worker) archiveProjectActivities(ctx context.Context, db *gorm.DB, now time.Time) (TableResult, error) {
-	return archiveModel[models.ProjectActivity](ctx, db, w.storage, w.config, "project_activities", w.config.ProjectActivityRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
+	return archivePartitionedModel[models.ProjectActivity](ctx, db, w.storage, w.config, projectActivitiesPartitionSpec, w.config.ProjectActivityRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
 		return query.Where("created_at < ?", cutoff)
-	})
+	}, nil)
 }
 
 func (w *Worker) archiveWorkspaceActivities(ctx context.Context, db *gorm.DB, now time.Time) (TableResult, error) {
-	return archiveModel[models.WorkspaceActivity](ctx, db, w.storage, w.config, "workspace_activities", w.config.WorkspaceActivityRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
+	return archivePartitionedModel[models.WorkspaceActivity](ctx, db, w.storage, w.config, workspaceActivitiesPartitionSpec, w.config.WorkspaceActivityRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
 		return query.Where("created_at < ?", cutoff)
-	})
+	}, nil)
 }
 
 func (w *Worker) archiveRemoteBrowserSessions(ctx context.Context, db *gorm.DB, now time.Time) (TableResult, error) {
@@ -157,22 +158,9 @@ func (w *Worker) archiveRemoteBrowserSessions(ctx context.Context, db *gorm.DB, 
 		models.BrowserSessionStatusExpired,
 		models.BrowserSessionStatusFailed,
 	}
-	return archiveModel[models.RemoteBrowserSession](ctx, db, w.storage, w.config, "remote_browser_sessions", w.config.BrowserSessionHistoryRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
+	return archivePartitionedModel[models.RemoteBrowserSession](ctx, db, w.storage, w.config, remoteBrowserSessionsPartitionSpec, w.config.BrowserSessionHistoryRetention, now, func(query *gorm.DB, cutoff time.Time) *gorm.DB {
 		return query.Where("created_at < ? AND status IN ?", cutoff, terminalStatuses)
-	})
-}
-
-func archiveModel[T any](
-	ctx context.Context,
-	db *gorm.DB,
-	storage objectstorage.Client,
-	config Config,
-	table string,
-	retention time.Duration,
-	now time.Time,
-	scope func(*gorm.DB, time.Time) *gorm.DB,
-) (TableResult, error) {
-	return archiveModelWithDeleteHook[T](ctx, db, storage, config, table, retention, now, scope, nil)
+	}, nil)
 }
 
 func archiveModelWithDeleteHook[T any](
@@ -265,6 +253,21 @@ func archiveModelBatch[T any](
 	result.ObjectKey = key
 	result.ObjectKeys = []string{key}
 	return result, nil
+}
+
+func mergeTableResult(result *TableResult, next TableResult) {
+	if result.Table == "" {
+		result.Table = next.Table
+	}
+	if result.Cutoff.IsZero() && !next.Cutoff.IsZero() {
+		result.Cutoff = next.Cutoff
+	}
+	result.RowsArchived += next.RowsArchived
+	result.ObjectKeys = append(result.ObjectKeys, next.ObjectKeys...)
+	if result.ObjectKey == "" {
+		result.ObjectKey = next.ObjectKey
+	}
+	result.PartitionsArchived = append(result.PartitionsArchived, next.PartitionsArchived...)
 }
 
 func deleteExtensionExecutionEventClaims(tx *gorm.DB, records []models.ExtensionExecutionEvent) error {
