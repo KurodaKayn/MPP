@@ -129,7 +129,7 @@ export class PostgresDocumentPersistence implements DocumentPersistence {
     const result = await this.database.query<ProjectDocumentRow>(
       `
         SELECT
-          projects.workspace_id,
+          collab_documents.workspace_id,
           projects.source_content,
           collab_documents.current_seq,
           EXISTS (

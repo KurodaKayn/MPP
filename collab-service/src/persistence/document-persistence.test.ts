@@ -175,6 +175,7 @@ describe("PostgresDocumentPersistence", () => {
 
     expect(initialized).toBe(true);
     expect(database.calls[0]?.text).toContain("FROM projects");
+    expect(database.calls[0]?.text).toContain("collab_documents.workspace_id");
     expect(database.calls[0]?.values).toEqual([
       "11111111-1111-4111-8111-111111111111",
     ]);
