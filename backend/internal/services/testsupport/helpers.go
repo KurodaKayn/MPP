@@ -252,6 +252,7 @@ func SetupTestDB() *gorm.DB {
 
 	db.Exec(`CREATE TABLE collab_documents (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		owner_user_id TEXT NOT NULL,
 		title TEXT NOT NULL,
 		status TEXT NOT NULL DEFAULT 'active',
@@ -266,6 +267,7 @@ func SetupTestDB() *gorm.DB {
 
 	db.Exec(`CREATE TABLE collab_document_states (
 		document_id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		y_doc_state BLOB NOT NULL,
 		state_vector BLOB,
 		compacted_until_seq INTEGER NOT NULL DEFAULT 0,
@@ -276,6 +278,7 @@ func SetupTestDB() *gorm.DB {
 	db.Exec(`CREATE TABLE collab_document_update_batches (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		document_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
 		from_seq INTEGER NOT NULL,
 		to_seq INTEGER NOT NULL,
 		update_payload BLOB NOT NULL,
@@ -296,6 +299,7 @@ func SetupTestDB() *gorm.DB {
 
 	db.Exec(`CREATE TABLE project_activities (
 		id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		actor_user_id TEXT NOT NULL,
 		target_user_id TEXT,
@@ -307,6 +311,7 @@ func SetupTestDB() *gorm.DB {
 
 	db.Exec(`CREATE TABLE project_comments (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		author_id TEXT NOT NULL,
 		body TEXT NOT NULL,
@@ -319,6 +324,7 @@ func SetupTestDB() *gorm.DB {
 
 	db.Exec(`CREATE TABLE project_versions (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		created_by TEXT NOT NULL,
 		version_number INTEGER NOT NULL,
@@ -332,6 +338,7 @@ func SetupTestDB() *gorm.DB {
 
 	db.Exec(`CREATE TABLE project_share_links (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		created_by TEXT NOT NULL,
 		token_hash TEXT NOT NULL UNIQUE,
@@ -384,6 +391,7 @@ func SetupTestDB() *gorm.DB {
 
 	db.Exec(`CREATE TABLE project_platform_publications (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		platform TEXT NOT NULL,
 		platform_account_id TEXT,
@@ -454,6 +462,7 @@ func SetupTestDB() *gorm.DB {
 
 	db.Exec(`CREATE TABLE extension_callback_tokens (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		execution_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		user_id TEXT NOT NULL,
@@ -467,6 +476,7 @@ func SetupTestDB() *gorm.DB {
 	db.Exec(`CREATE TABLE extension_execution_events (
 		id TEXT NOT NULL,
 		callback_token_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
 		execution_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		user_id TEXT NOT NULL,

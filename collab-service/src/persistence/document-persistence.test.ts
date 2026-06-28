@@ -158,6 +158,7 @@ describe("PostgresDocumentPersistence", () => {
     database.results = [
       [
         {
+          workspace_id: "99999999-9999-4999-8999-999999999999",
           source_content:
             "<h2>Project heading</h2><p>Hello <strong>team</strong></p>",
           current_seq: 0,
@@ -174,16 +175,20 @@ describe("PostgresDocumentPersistence", () => {
 
     expect(initialized).toBe(true);
     expect(database.calls[0]?.text).toContain("FROM projects");
+    expect(database.calls[0]?.text).toContain("collab_documents.workspace_id");
     expect(database.calls[0]?.values).toEqual([
       "11111111-1111-4111-8111-111111111111",
     ]);
     const insertCall = database.calls[1];
     expect(insertCall?.text).toContain("INSERT INTO collab_document_states");
     expect(insertCall?.text).toContain("ON CONFLICT (document_id) DO NOTHING");
-    expect(insertCall?.values?.[3]).toBe(0);
+    expect(insertCall?.values?.[1]).toBe(
+      "99999999-9999-4999-8999-999999999999",
+    );
+    expect(insertCall?.values?.[4]).toBe(0);
 
     const restored = new Document("restored");
-    applyUpdate(restored, new Uint8Array(insertCall?.values?.[1] as Buffer));
+    applyUpdate(restored, new Uint8Array(insertCall?.values?.[2] as Buffer));
     expect(projectYDocToProseMirrorJSON(restored)).toMatchObject({
       type: "doc",
       content: [
@@ -207,6 +212,7 @@ describe("PostgresDocumentPersistence", () => {
     database.results = [
       [
         {
+          workspace_id: "99999999-9999-4999-8999-999999999999",
           source_content: "<p>Stale project content</p>",
           current_seq: 4,
           has_state: true,
@@ -303,6 +309,11 @@ describe("PostgresDocumentPersistence", () => {
           current_seq: 7,
         },
       ],
+      [
+        {
+          workspace_id: "99999999-9999-4999-8999-999999999999",
+        },
+      ],
     ];
     const persistence = new PostgresDocumentPersistence(
       database,
@@ -334,23 +345,27 @@ describe("PostgresDocumentPersistence", () => {
     expect(database.calls.map((call) => call.text.trim())).toEqual([
       "BEGIN",
       expect.stringContaining("SELECT current_seq"),
+      expect.stringContaining("SELECT workspace_id"),
       expect.stringContaining("INSERT INTO collab_document_update_batches"),
       expect.stringContaining("UPDATE collab_documents"),
       "COMMIT",
     ]);
-    const insertCall = database.calls[2];
+    const insertCall = database.calls[3];
     expect(insertCall?.values?.[0]).toBe(
       "11111111-1111-4111-8111-111111111111",
     );
-    expect(insertCall?.values?.[1]).toBe(8);
-    expect(insertCall?.values?.[2]).toBe(9);
-    expect(insertCall?.values?.[4]).toBe(2);
-    expect(insertCall?.values?.[6]).toBe(
+    expect(insertCall?.values?.[1]).toBe(
+      "99999999-9999-4999-8999-999999999999",
+    );
+    expect(insertCall?.values?.[2]).toBe(8);
+    expect(insertCall?.values?.[3]).toBe(9);
+    expect(insertCall?.values?.[5]).toBe(2);
+    expect(insertCall?.values?.[7]).toBe(
       "33333333-3333-4333-8333-333333333333",
     );
 
     const restored = new Document("restored");
-    applyUpdate(restored, new Uint8Array(insertCall?.values?.[3] as Buffer));
+    applyUpdate(restored, new Uint8Array(insertCall?.values?.[4] as Buffer));
     expect(restored.getMap("content").get("title")).toBe("First");
     expect(restored.getMap("content").get("body")).toBe("Second");
     expect(metrics.flushDurations).toHaveLength(1);
@@ -363,6 +378,11 @@ describe("PostgresDocumentPersistence", () => {
       [
         {
           current_seq: 3,
+        },
+      ],
+      [
+        {
+          workspace_id: "99999999-9999-4999-8999-999999999999",
         },
       ],
     ];
@@ -386,12 +406,13 @@ describe("PostgresDocumentPersistence", () => {
     expect(database.calls.map((call) => call.text.trim())).toEqual([
       "BEGIN",
       expect.stringContaining("SELECT current_seq"),
+      expect.stringContaining("SELECT workspace_id"),
       expect.stringContaining("INSERT INTO collab_document_update_batches"),
       expect.stringContaining("UPDATE collab_documents"),
       "COMMIT",
     ]);
-    expect(database.calls[2]?.values?.[1]).toBe(4);
-    expect(database.calls[2]?.values?.[2]).toBe(5);
+    expect(database.calls[3]?.values?.[2]).toBe(4);
+    expect(database.calls[3]?.values?.[3]).toBe(5);
   });
 
   it("retries batch-limit flush failures without rejecting appendUpdate", async () => {
@@ -404,7 +425,17 @@ describe("PostgresDocumentPersistence", () => {
       ],
       [
         {
+          workspace_id: "99999999-9999-4999-8999-999999999999",
+        },
+      ],
+      [
+        {
           current_seq: 3,
+        },
+      ],
+      [
+        {
+          workspace_id: "99999999-9999-4999-8999-999999999999",
         },
       ],
     ];
@@ -452,8 +483,11 @@ describe("PostgresDocumentPersistence", () => {
     const database = new FakeDatabase();
     database.results = [
       [{ current_seq: 3 }],
+      [{ workspace_id: "99999999-9999-4999-8999-999999999999" }],
       [{ current_seq: 3 }],
+      [{ workspace_id: "99999999-9999-4999-8999-999999999999" }],
       [{ current_seq: 3 }],
+      [{ workspace_id: "99999999-9999-4999-8999-999999999999" }],
     ];
     database.failures = [
       {
@@ -498,6 +532,11 @@ describe("PostgresDocumentPersistence", () => {
           current_seq: 12,
         },
       ],
+      [
+        {
+          workspace_id: "99999999-9999-4999-8999-999999999999",
+        },
+      ],
     ];
     const persistence = new PostgresDocumentPersistence(database);
     const document = new Document("document");
@@ -506,22 +545,23 @@ describe("PostgresDocumentPersistence", () => {
     await persistence.store("11111111-1111-4111-8111-111111111111", document);
 
     expect(database.calls[0]?.text).toBe("BEGIN");
-    const call = database.calls[2];
+    const call = database.calls[3];
     expect(call?.text).toContain("y_doc_state");
     expect(call?.text).not.toContain("ydoc_state");
     expect(call?.text).toContain("ON CONFLICT (document_id) DO UPDATE");
     expect(call?.values?.[0]).toBe("11111111-1111-4111-8111-111111111111");
-    expect(call?.values?.[1]).toBeInstanceOf(Buffer);
+    expect(call?.values?.[1]).toBe("99999999-9999-4999-8999-999999999999");
     expect(call?.values?.[2]).toBeInstanceOf(Buffer);
-    const state = call?.values?.[1] as Buffer;
-    expect(call?.values?.[3]).toBe(12);
-    expect(call?.values?.[4]).toBe(state.length);
-    expect(call?.values?.[2]).toEqual(Buffer.from(encodeStateVector(document)));
-    expect(database.calls[3]?.text).toBe("COMMIT");
-    expect(database.calls[4]?.text).toContain(
+    expect(call?.values?.[3]).toBeInstanceOf(Buffer);
+    const state = call?.values?.[2] as Buffer;
+    expect(call?.values?.[4]).toBe(12);
+    expect(call?.values?.[5]).toBe(state.length);
+    expect(call?.values?.[3]).toEqual(Buffer.from(encodeStateVector(document)));
+    expect(database.calls[4]?.text).toBe("COMMIT");
+    expect(database.calls[5]?.text).toContain(
       "DELETE FROM collab_document_update_batches",
     );
-    expect(database.calls[4]?.values).toEqual([
+    expect(database.calls[5]?.values).toEqual([
       "11111111-1111-4111-8111-111111111111",
       12,
       30,
@@ -534,6 +574,11 @@ describe("PostgresDocumentPersistence", () => {
       [
         {
           current_seq: 12,
+        },
+      ],
+      [
+        {
+          workspace_id: "99999999-9999-4999-8999-999999999999",
         },
       ],
     ];
@@ -563,6 +608,7 @@ describe("PostgresDocumentPersistence", () => {
     expect(database.calls.map((call) => call.text.trim())).toEqual([
       "BEGIN",
       expect.stringContaining("SELECT current_seq"),
+      expect.stringContaining("SELECT workspace_id"),
       expect.stringContaining("INSERT INTO collab_document_states"),
       "COMMIT",
       expect.stringContaining("DELETE FROM collab_document_update_batches"),

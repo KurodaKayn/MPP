@@ -46,16 +46,16 @@ func NewService(
 	}
 }
 
-func (s *Service) requireProjectAccess(projectID uuid.UUID, userID uuid.UUID) error {
+func (s *Service) accessibleProject(projectID uuid.UUID, userID uuid.UUID) (models.Project, error) {
 	if projectID == uuid.Nil || userID == uuid.Nil {
-		return projecterr.ErrInvalidProject
+		return models.Project{}, projecterr.ErrInvalidProject
 	}
 	var project models.Project
 	if err := s.db.Select("id", "user_id", "workspace_id").First(&project, "id = ?", projectID).Error; err != nil {
-		return err
+		return models.Project{}, err
 	}
 	_, err := accesspolicy.ProjectAccessRoleWithDB(s.db, project, userID)
-	return err
+	return project, err
 }
 
 func selectUserIdentity(db *gorm.DB) *gorm.DB {

@@ -27,6 +27,7 @@ var monthlyEventPartitionedTables = []monthlyPartitionedTable{
 			CREATE TABLE IF NOT EXISTS publish_events (
 				id uuid NOT NULL,
 				publication_id uuid NOT NULL,
+				workspace_id uuid NOT NULL,
 				project_id uuid NOT NULL,
 				user_id uuid NOT NULL,
 				platform text NOT NULL,
@@ -46,6 +47,7 @@ var monthlyEventPartitionedTables = []monthlyPartitionedTable{
 		columns: []string{
 			"id",
 			"publication_id",
+			"workspace_id",
 			"project_id",
 			"user_id",
 			"platform",
@@ -67,6 +69,7 @@ var monthlyEventPartitionedTables = []monthlyPartitionedTable{
 			CREATE TABLE IF NOT EXISTS extension_execution_events (
 				id uuid NOT NULL,
 				callback_token_id uuid NOT NULL,
+				workspace_id uuid NOT NULL,
 				execution_id text NOT NULL,
 				project_id uuid NOT NULL,
 				user_id uuid NOT NULL,
@@ -85,6 +88,7 @@ var monthlyEventPartitionedTables = []monthlyPartitionedTable{
 		columns: []string{
 			"id",
 			"callback_token_id",
+			"workspace_id",
 			"execution_id",
 			"project_id",
 			"user_id",
@@ -104,6 +108,7 @@ var monthlyEventPartitionedTables = []monthlyPartitionedTable{
 		createSQL: `
 			CREATE TABLE IF NOT EXISTS project_activities (
 				id uuid NOT NULL,
+				workspace_id uuid NOT NULL,
 				project_id uuid NOT NULL,
 				actor_user_id uuid NOT NULL,
 				target_user_id uuid,
@@ -115,6 +120,7 @@ var monthlyEventPartitionedTables = []monthlyPartitionedTable{
 		`,
 		columns: []string{
 			"id",
+			"workspace_id",
 			"project_id",
 			"actor_user_id",
 			"target_user_id",

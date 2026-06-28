@@ -466,6 +466,12 @@ func (s *Service) recordPublishEvent(event models.PublishEvent) error {
 	if event.ProjectID == uuid.Nil || event.UserID == uuid.Nil || event.Platform == "" || event.JobID == uuid.Nil {
 		return nil
 	}
+	if event.WorkspaceID == uuid.Nil {
+		var project models.Project
+		if err := s.writerDB(s.requestContext()).Select("id", "user_id", "workspace_id").First(&project, "id = ?", event.ProjectID).Error; err == nil {
+			event.WorkspaceID = models.ProjectWorkspaceID(project)
+		}
+	}
 	if event.Metadata == nil {
 		event.Metadata = datatypes.JSON(`{}`)
 	}
@@ -479,6 +485,10 @@ func (s *Service) recordProjectPublishActivity(projectID uuid.UUID, userID uuid.
 	if projectID == uuid.Nil || userID == uuid.Nil || strings.TrimSpace(eventType) == "" {
 		return nil
 	}
+	var project models.Project
+	if err := s.writerDB(s.requestContext()).Select("id", "user_id", "workspace_id").First(&project, "id = ?", projectID).Error; err != nil {
+		return err
+	}
 	payload := datatypes.JSON([]byte(`{}`))
 	if metadata != nil {
 		encoded, err := json.Marshal(metadata)
@@ -488,6 +498,7 @@ func (s *Service) recordProjectPublishActivity(projectID uuid.UUID, userID uuid.
 		payload = datatypes.JSON(encoded)
 	}
 	return s.writerDB(s.requestContext()).Create(&models.ProjectActivity{
+		WorkspaceID: models.ProjectWorkspaceID(project),
 		ProjectID:   projectID,
 		ActorUserID: userID,
 		EventType:   eventType,

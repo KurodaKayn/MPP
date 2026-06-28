@@ -17,14 +17,14 @@ const (
 	ReconcileResetAll
 )
 
-func CreateSelected(tx *gorm.DB, projectID uuid.UUID, platforms []string, configForPlatform ConfigForPlatform) ([]models.ProjectPlatformPublication, error) {
+func CreateSelected(tx *gorm.DB, project models.Project, platforms []string, configForPlatform ConfigForPlatform) ([]models.ProjectPlatformPublication, error) {
 	publications := make([]models.ProjectPlatformPublication, 0, len(platforms))
 	for _, platform := range platforms {
 		config, err := configForPlatform(platform)
 		if err != nil {
 			return nil, err
 		}
-		publication := createPendingPublication(projectID, platform, config)
+		publication := createPendingPublication(project, platform, config)
 		if err := tx.Create(&publication).Error; err != nil {
 			return nil, err
 		}
@@ -33,9 +33,9 @@ func CreateSelected(tx *gorm.DB, projectID uuid.UUID, platforms []string, config
 	return publications, nil
 }
 
-func ReconcileSelected(tx *gorm.DB, projectID uuid.UUID, platforms []string, mode ReconcileMode, configForPlatform ConfigForPlatform) ([]models.ProjectPlatformPublication, error) {
+func ReconcileSelected(tx *gorm.DB, project models.Project, platforms []string, mode ReconcileMode, configForPlatform ConfigForPlatform) ([]models.ProjectPlatformPublication, error) {
 	var existing []models.ProjectPlatformPublication
-	if err := tx.Where("project_id = ?", projectID).Find(&existing).Error; err != nil {
+	if err := tx.Where("project_id = ?", project.ID).Find(&existing).Error; err != nil {
 		return nil, err
 	}
 
@@ -72,14 +72,14 @@ func ReconcileSelected(tx *gorm.DB, projectID uuid.UUID, platforms []string, mod
 		if err != nil {
 			return nil, err
 		}
-		publication := createPendingPublication(projectID, platform, config)
+		publication := createPendingPublication(project, platform, config)
 		if err := tx.Create(&publication).Error; err != nil {
 			return nil, err
 		}
 	}
 
 	var publications []models.ProjectPlatformPublication
-	if err := tx.Where("project_id = ?", projectID).Find(&publications).Error; err != nil {
+	if err := tx.Where("project_id = ?", project.ID).Find(&publications).Error; err != nil {
 		return nil, err
 	}
 	return publications, nil
@@ -99,9 +99,10 @@ func MarkDraftsStale(tx *gorm.DB, projectID uuid.UUID) error {
 		}).Error
 }
 
-func createPendingPublication(projectID uuid.UUID, platform string, config datatypes.JSON) models.ProjectPlatformPublication {
+func createPendingPublication(project models.Project, platform string, config datatypes.JSON) models.ProjectPlatformPublication {
 	return models.ProjectPlatformPublication{
-		ProjectID:      projectID,
+		WorkspaceID:    models.ProjectWorkspaceID(project),
+		ProjectID:      project.ID,
 		Platform:       platform,
 		Enabled:        true,
 		Status:         models.PublicationStatusDraft,

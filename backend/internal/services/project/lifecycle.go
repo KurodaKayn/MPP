@@ -82,7 +82,7 @@ func (s *Service) CreateProjectWithWorkspace(userID uuid.UUID, workspaceID *uuid
 			return err
 		}
 
-		created, err := publicationselection.CreateSelected(tx, project.ID, platforms, pendingPublicationConfigForTemplate(title, req.Summary, req.CoverImageURL, template))
+		created, err := publicationselection.CreateSelected(tx, project, platforms, pendingPublicationConfigForTemplate(title, req.Summary, req.CoverImageURL, template))
 		if err != nil {
 			return err
 		}
@@ -234,7 +234,7 @@ func (s *Service) UpdateProject(projectID uuid.UUID, userID uuid.UUID, req dto.U
 			return err
 		}
 
-		publications, err := publicationselection.ReconcileSelected(tx, project.ID, platforms, publicationselection.ReconcileResetAll, pendingPublicationConfigForTemplate(title, req.Summary, req.CoverImageURL, template))
+		publications, err := publicationselection.ReconcileSelected(tx, project, platforms, publicationselection.ReconcileResetAll, pendingPublicationConfigForTemplate(title, req.Summary, req.CoverImageURL, template))
 		if err != nil {
 			return err
 		}
@@ -338,7 +338,7 @@ func (s *Service) SaveProjectPlatforms(projectID uuid.UUID, userID uuid.UUID, re
 			return ErrForbidden
 		}
 
-		publications, err := publicationselection.ReconcileSelected(tx, project.ID, platforms, publicationselection.ReconcileKeepActive, defaultPublicationConfigForProjectTitle(project.Title))
+		publications, err := publicationselection.ReconcileSelected(tx, project, platforms, publicationselection.ReconcileKeepActive, defaultPublicationConfigForProjectTitle(project.Title))
 		if err != nil {
 			return err
 		}

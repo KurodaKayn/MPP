@@ -229,6 +229,7 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE project_activities (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		actor_user_id TEXT NOT NULL,
 		target_user_id TEXT,
@@ -276,6 +277,7 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 	)`).Error)
 	require.NoError(t, db.Exec(`CREATE TABLE project_platform_publications (
 		id TEXT PRIMARY KEY,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		platform TEXT NOT NULL,
 		platform_account_id TEXT,
@@ -311,6 +313,7 @@ func setupPublishQueueTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, db.Exec(`CREATE TABLE publish_events (
 		id TEXT PRIMARY KEY,
 		publication_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		user_id TEXT NOT NULL,
 		platform TEXT NOT NULL,

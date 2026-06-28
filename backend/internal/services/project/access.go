@@ -57,7 +57,7 @@ func (s *Service) requireProjectOwner(projectID uuid.UUID, actorUserID uuid.UUID
 	}
 
 	var project models.Project
-	if err := s.db.Select("id", "user_id").First(&project, "id = ?", projectID).Error; err != nil {
+	if err := s.db.Select("id", "user_id", "workspace_id").First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
 	}
 	if project.UserID != actorUserID {

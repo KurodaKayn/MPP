@@ -26,6 +26,7 @@ var collabUpdateBatchHashPartitionedTable = hashPartitionedTable{
 		CREATE TABLE IF NOT EXISTS collab_document_update_batches (
 			id bigserial NOT NULL,
 			document_id uuid NOT NULL,
+			workspace_id uuid NOT NULL,
 			from_seq bigint NOT NULL,
 			to_seq bigint NOT NULL,
 			update_payload bytea NOT NULL,
@@ -39,6 +40,7 @@ var collabUpdateBatchHashPartitionedTable = hashPartitionedTable{
 	columns: []string{
 		"id",
 		"document_id",
+		"workspace_id",
 		"from_seq",
 		"to_seq",
 		"update_payload",

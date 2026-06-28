@@ -431,6 +431,7 @@ func setupArchiveTestDB(t *testing.T) *gorm.DB {
 	if err := db.Exec(`CREATE TABLE publish_events (
 		id TEXT PRIMARY KEY,
 		publication_id TEXT NOT NULL,
+		workspace_id TEXT NOT NULL,
 		project_id TEXT NOT NULL,
 		user_id TEXT NOT NULL,
 		platform TEXT NOT NULL,

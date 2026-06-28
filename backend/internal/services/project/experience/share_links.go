@@ -22,11 +22,12 @@ import (
 const projectShareTokenBytes = 32
 
 func (s *Service) ListProjectShareLinks(projectID uuid.UUID, userID uuid.UUID) (*dto.ProjectShareLinksResponse, error) {
-	if _, err := s.requireProjectOwner(projectID, userID); err != nil {
+	project, err := s.requireProjectOwner(projectID, userID)
+	if err != nil {
 		return nil, err
 	}
 	var links []models.ProjectShareLink
-	if err := s.db.Where("project_id = ?", projectID).Order("created_at desc").Find(&links).Error; err != nil {
+	if err := s.db.Where("workspace_id = ? AND project_id = ?", models.ProjectWorkspaceID(*project), projectID).Order("created_at desc").Find(&links).Error; err != nil {
 		return nil, err
 	}
 	items := make([]dto.ProjectShareLink, 0, len(links))
@@ -37,7 +38,8 @@ func (s *Service) ListProjectShareLinks(projectID uuid.UUID, userID uuid.UUID) (
 }
 
 func (s *Service) CreateProjectShareLink(projectID uuid.UUID, userID uuid.UUID, req dto.CreateProjectShareLinkRequest, baseURL string) (*dto.ProjectShareLinkWithToken, error) {
-	if _, err := s.requireProjectOwner(projectID, userID); err != nil {
+	project, err := s.requireProjectOwner(projectID, userID)
+	if err != nil {
 		return nil, err
 	}
 	role, err := normalizeProjectCollaboratorRole(req.Role)
@@ -49,12 +51,13 @@ func (s *Service) CreateProjectShareLink(projectID uuid.UUID, userID uuid.UUID, 
 		return nil, err
 	}
 	link := models.ProjectShareLink{
-		ProjectID: projectID,
-		CreatedBy: userID,
-		TokenHash: hashProjectShareToken(token),
-		Role:      role,
-		Status:    models.ProjectShareLinkStatusActive,
-		ExpiresAt: req.ExpiresAt,
+		WorkspaceID: models.ProjectWorkspaceID(*project),
+		ProjectID:   projectID,
+		CreatedBy:   userID,
+		TokenHash:   hashProjectShareToken(token),
+		Role:        role,
+		Status:      models.ProjectShareLinkStatusActive,
+		ExpiresAt:   req.ExpiresAt,
 	}
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&link).Error; err != nil {
@@ -96,6 +99,9 @@ func (s *Service) AcceptProjectShareLink(token string, userID uuid.UUID) (*dto.A
 		var project models.Project
 		if err := tx.Select("id", "user_id", "workspace_id").First(&project, "id = ?", link.ProjectID).Error; err != nil {
 			return err
+		}
+		if models.ProjectWorkspaceID(project) != link.WorkspaceID {
+			return gorm.ErrRecordNotFound
 		}
 		projectID = project.ID
 
@@ -157,16 +163,18 @@ func (s *Service) AcceptProjectShareLink(token string, userID uuid.UUID) (*dto.A
 }
 
 func (s *Service) RevokeProjectShareLink(projectID uuid.UUID, userID uuid.UUID, linkID uuid.UUID) error {
-	if _, err := s.requireProjectOwner(projectID, userID); err != nil {
+	project, err := s.requireProjectOwner(projectID, userID)
+	if err != nil {
 		return err
 	}
 	if linkID == uuid.Nil {
 		return ErrInvalidProjectShareLink
 	}
+	workspaceID := models.ProjectWorkspaceID(*project)
 	now := time.Now().UTC()
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&models.ProjectShareLink{}).
-			Where("id = ? AND project_id = ? AND status = ?", linkID, projectID, models.ProjectShareLinkStatusActive).
+			Where("id = ? AND workspace_id = ? AND project_id = ? AND status = ?", linkID, workspaceID, projectID, models.ProjectShareLinkStatusActive).
 			Updates(map[string]any{
 				"status":     models.ProjectShareLinkStatusRevoked,
 				"revoked_at": &now,
@@ -189,7 +197,7 @@ func (s *Service) requireProjectOwner(projectID uuid.UUID, actorUserID uuid.UUID
 	}
 
 	var project models.Project
-	if err := s.db.Select("id", "user_id").First(&project, "id = ?", projectID).Error; err != nil {
+	if err := s.db.Select("id", "user_id", "workspace_id").First(&project, "id = ?", projectID).Error; err != nil {
 		return nil, err
 	}
 	if project.UserID != actorUserID {

@@ -158,6 +158,7 @@ func (s *Service) ensureProjectCollabDocument(projectID uuid.UUID, userID uuid.U
 		}
 
 		document := models.CollabDocument{
+			WorkspaceID:   projectWorkspaceID(project),
 			OwnerUserID:   project.UserID,
 			Title:         project.Title,
 			Status:        models.CollabDocumentStatusActive,

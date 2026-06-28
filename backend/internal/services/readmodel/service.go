@@ -194,6 +194,7 @@ func (s *Service) countWorkspacePublications(workspaceID uuid.UUID, status strin
 	return s.db.Model(&models.ProjectPlatformPublication{}).
 		Joins("JOIN projects ON projects.id = project_platform_publications.project_id").
 		Where(where, args...).
+		Where("project_platform_publications.workspace_id = ?", workspaceID).
 		Where("project_platform_publications.status = ?", status).
 		Count(count).Error
 }
